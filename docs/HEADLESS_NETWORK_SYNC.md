@@ -1,0 +1,738 @@
+# HEADLESS_NETWORK_SYNC.md
+
+**Project Syndicate — System Architecture Specification, Document 12 of 13**
+**Subsystem:** Authoritative Headless Server, State Replication, Prediction and Reconciliation
+**Status:** Normative.
+
+---
+
+## 1. Topology
+
+Project Syndicate runs a **dedicated authoritative server**. There is no host-migration, no peer-to-peer physics, and no client authority over any gameplay-relevant quantity.
+
+```
+                    ┌──────────────────────────────┐
+                    │  Headless Server (--headless)│
+                    │  60 Hz physics               │
+                    │  30 Hz snapshot broadcast    │
+                    │  Full simulation, no render  │
+                    └───────────┬──────────────────┘
+                                │ ENet, 4 channels
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+   ┌────▼─────┐           ┌─────▼────┐            ┌─────▼────┐
+   │ Client A │           │ Client B │            │ Client C │
+   │ predicts │           │ predicts │            │ predicts │
+   │ own      │           │ own      │            │ own      │
+   │ Assembly │           │ Assembly │            │ Assembly │
+   └──────────┘           └──────────┘            └──────────┘
+```
+
+The server is the same executable and the same codebase, launched with `--headless` and a `dedicated_server` feature tag. Section 9 specifies exactly what it does not do.
+
+---
+
+## 2. Authority Matrix
+
+| Quantity | Authority | Client behaviour |
+|---|---|---|
+| Chassis transform, velocity | Server | Predicted (own), interpolated (remote) |
+| Suspension compression | Server | Simulated locally for visuals; never reconciled |
+| Part integrity and band | Server | Predicted (own, own damage only), corrected on snapshot |
+| Part destruction | Server | Applied on reliable event; never predicted |
+| Chassis Graph topology | Server | Applied on reliable event |
+| Debris islands | Server | Spawned on reliable event; physics diverges freely |
+| Hardpoint angles | Server | Predicted (own), interpolated (remote) |
+| Damaging projectiles | Server | Never spawned by clients |
+| Cosmetic tracers | Client | Spawned immediately on local fire |
+| Ground deformation | Server | Applied on reliable event, solved deterministically |
+| Static Volume section failure | Server | Applied on reliable event |
+| Static Volume fragments | Derived | Spawned from event; physics diverges freely |
+| Ammunition, heat | Server | Predicted (own), corrected on snapshot |
+| Match state, scoring | Server | Display only |
+| Input | Client | Sent to server; server may reject |
+
+The rule the matrix expresses: **anything that can decide a fight is authoritative; anything that only looks good is not.**
+
+---
+
+## 3. Channel Layout
+
+Four ENet channels, each with distinct delivery semantics:
+
+| # | Name | Mode | Contents |
+|---|---|---|---|
+| 0 | `CH_CONTROL` | Reliable ordered | Handshake, blueprint upload, match state, disconnects |
+| 1 | `CH_SNAPSHOT` | Unreliable | Per-tick world snapshots |
+| 2 | `CH_EVENT` | Reliable ordered | Destruction, detachment, ground deform, section failure |
+| 3 | `CH_INPUT` | Unreliable sequenced | Client input frames |
+
+Snapshots are unreliable because a lost snapshot is superseded within 33 ms; retransmitting stale state is worse than skipping it. Events are reliable because losing a `part_destroyed` would leave a client rendering a part the server considers gone, and no later snapshot would correct it — snapshots carry state, not topology.
+
+```gdscript
+class_name NetChannels
+extends RefCounted
+
+const CH_CONTROL  := 0
+const CH_SNAPSHOT := 1
+const CH_EVENT    := 2
+const CH_INPUT    := 3
+
+static func configure(peer: ENetMultiplayerPeer) -> void:
+    peer.set_transfer_channel(CH_CONTROL)
+```
+
+---
+
+## 4. Connection Lifecycle
+
+### 4.1 Handshake
+
+```
+Client                                    Server
+  │  HELLO {protocol_ver, build_hash}       │
+  ├────────────────────────────────────────►│
+  │                                          │ validate
+  │  CHALLENGE {nonce, manifest_hash}        │
+  │◄────────────────────────────────────────┤
+  │  AUTH {token, signed_nonce}              │
+  ├────────────────────────────────────────►│
+  │                                          │ verify with auth service
+  │  ACCEPT {peer_id, match_seed, tick,      │
+  │          map_id, ground_log}             │
+  │◄────────────────────────────────────────┤
+  │  BLUEPRINT {syn_container}               │
+  ├────────────────────────────────────────►│
+  │                                          │ validate blueprint (Section 4.3)
+  │  SPAWN {assembly_id, slot_table}         │
+  │◄────────────────────────────────────────┤
+  │  READY                                   │
+  ├────────────────────────────────────────►│
+```
+
+### 4.2 Version Gating
+
+```gdscript
+const PROTOCOL_VERSION := 7
+
+func _validate_hello(hello: Dictionary) -> Error:
+    if hello.get("protocol_ver", -1) != PROTOCOL_VERSION:
+        return ERR_INVALID_PARAMETER
+    if hello.get("manifest_hash", 0) != PartRegistry.manifest_hash():
+        return ERR_INCOMPATIBLE_CONTENT
+    if hello.get("bake_hash", 0) != StaticVolumeBakeRegistry.hash():
+        return ERR_INCOMPATIBLE_CONTENT
+    return OK
+```
+
+Three hashes are checked, and a mismatch on any of them is a hard rejection with a specific error the client surfaces as an actionable message. This is not defensive paranoia: `PartRegistry` drives damage numbers, `StaticVolumeBakeRegistry` drives fracture patterns that clients derive locally, and a silent mismatch would produce divergence that is extremely difficult to diagnose from bug reports.
+
+### 4.3 Blueprint Validation
+
+A client-supplied blueprint is untrusted input and is fully re-validated server-side:
+
+```gdscript
+func validate_blueprint(bytes: PackedByteArray, peer_id: int) -> ValidationReport:
+    var report := ValidationReport.new()
+    var bp := BlueprintCodec.decode(bytes)
+    if bp == null:
+        return report.fail("malformed container")
+    if bp.manifest_hash != PartRegistry.manifest_hash():
+        return report.fail("manifest mismatch")
+    if bp.parts.size() > SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
+        return report.fail("part count")
+
+    # Rebuild the Assembly from scratch through the identical validator the
+    # garage uses. If any placement fails, the blueprint is rejected outright.
+    var ctx := BuildContext.new_server_context()
+    ctx.enforce_hard_limits = true
+    for record in bp.parts:
+        var cand := ctx.candidate_from_record(record)
+        var reject := PlacementValidator.new().validate(ctx, cand)
+        if reject != PlacementValidator.Reject.NONE:
+            return report.fail("placement %d rejected: %s" % [record.index, reject])
+        ctx.commit(cand)
+
+    if not Entitlements.owns_all(peer_id, bp.part_ids()):
+        return report.fail("entitlement")
+    report.context = ctx
+    return report.ok()
+```
+
+Reusing `PlacementValidator` verbatim is the point. There is no separate server-side "blueprint checker" that could drift from the garage's rules and either reject legitimate builds or admit illegitimate ones.
+
+---
+
+## 5. Snapshot Format
+
+### 5.1 Structure
+
+A snapshot is a bit-packed frame describing every relevant Assembly's state at a given server tick.
+
+```
+Snapshot
+├── header
+│   ├── server_tick            : 16 bits (wrapping)
+│   ├── baseline_tick          : 16 bits (0 = full state)
+│   ├── acked_input_seq        : 16 bits
+│   ├── server_time_ms         : 32 bits
+│   └── assembly_count         : 6 bits
+└── per assembly (assembly_count entries)
+    ├── assembly_id            : 10 bits
+    ├── change_mask            : 6 bits
+    ├── [transform block]      : present if bit 0
+    ├── [velocity block]       : present if bit 1
+    ├── [hardpoint block]      : present if bit 2
+    ├── [integrity block]      : present if bit 3
+    ├── [resource block]       : present if bit 4
+    └── [control block]        : present if bit 5
+```
+
+### 5.2 Field Quantisation
+
+| Field | Bits | Range | Resolution |
+|---|---|---|---|
+| Position X, Z | 22 each | ±1024 m | 0.49 mm |
+| Position Y | 18 | −128 to +384 m | 1.95 mm |
+| Orientation | 32 | unit quaternion | smallest-three, 10 bits/component |
+| Linear velocity | 3 × 14 | ±64 m/s | 7.8 mm/s |
+| Angular velocity | 3 × 12 | ±16 rad/s | 7.8 mrad/s |
+| Hardpoint yaw | 12 | ±π | 0.088° |
+| Hardpoint pitch | 10 | ±π/2 | 0.176° |
+| Part integrity | 8 | fraction 0–1 | 0.39% |
+| Part band | 3 | enum | exact |
+| Heat | 8 | 0–1024 HU | 4 HU |
+| Ammo per type | 10 | 0–1023 rounds | exact |
+
+Smallest-three quaternion encoding drops the largest component (reconstructed from the unit constraint) and sends a 2-bit index plus three 10-bit signed components. 32 bits for a full orientation with maximum error of `0.09°` is a far better trade than 96 bits of raw float.
+
+```gdscript
+class_name QuatCodec
+extends RefCounted
+
+const COMPONENT_BITS := 10
+const COMPONENT_MAX := (1 << (COMPONENT_BITS - 1)) - 1     # 511
+const INV_SQRT2 := 0.70710678
+
+static func encode(q: Quaternion, w: BitWriter) -> void:
+    var comps := [q.x, q.y, q.z, q.w]
+    var largest := 0
+    var largest_abs := absf(comps[0])
+    for i in range(1, 4):
+        if absf(comps[i]) > largest_abs:
+            largest_abs = absf(comps[i])
+            largest = i
+    var sign_flip := -1.0 if comps[largest] < 0.0 else 1.0
+    w.write_uint(largest, 2)
+    for i in 4:
+        if i == largest:
+            continue
+        var v: float = comps[i] * sign_flip / INV_SQRT2      # now in [-1, 1]
+        w.write_int(int(round(clampf(v, -1.0, 1.0) * COMPONENT_MAX)), COMPONENT_BITS)
+
+static func decode(r: BitReader) -> Quaternion:
+    var largest := r.read_uint(2)
+    var vals := [0.0, 0.0, 0.0, 0.0]
+    var sum_sq := 0.0
+    for i in 4:
+        if i == largest:
+            continue
+        var v := float(r.read_int(COMPONENT_BITS)) / float(COMPONENT_MAX) * INV_SQRT2
+        vals[i] = v
+        sum_sq += v * v
+    vals[largest] = sqrt(maxf(0.0, 1.0 - sum_sq))
+    return Quaternion(vals[0], vals[1], vals[2], vals[3]).normalized()
+```
+
+### 5.3 Integrity Block
+
+The integrity block is where localised destruction meets bandwidth reality. Sending 255 slots × 11 bits every snapshot would cost 2.8 kbit per Assembly per tick — 1.35 Mbit/s for 16 Assemblies at 30 Hz. Unacceptable.
+
+Instead, only slots whose integrity or band changed since the baseline are sent, using a run-length-encoded presence structure:
+
+```
+integrity_block
+├── changed_count       : 8 bits
+└── per changed slot
+    ├── slot            : 8 bits
+    ├── band            : 3 bits
+    └── integrity_q8    : 8 bits
+```
+
+In practice, an Assembly under sustained fire has 1–4 changed slots per snapshot, costing 19 bits each plus the 8-bit count. An Assembly not taking damage sets `change_mask` bit 3 to zero and sends nothing.
+
+**`band` is sent explicitly and is authoritative.** Clients must not derive band from `integrity_q8`, because a value at `0.4999` quantises to `127/255 = 0.498` on one side of the `IMPAIRED` boundary and could land on the other after a different rounding path — producing a client applying a `0.60` traction multiplier where the server applies `0.88`. Three bits of redundancy eliminates an entire class of divergence.
+
+### 5.4 Delta Compression
+
+Snapshots delta against a **client-acknowledged baseline**. Each client acknowledges the newest snapshot tick it has received; the server encodes subsequent snapshots against that client's baseline.
+
+```gdscript
+class_name SnapshotEncoder
+extends RefCounted
+
+const BASELINE_HISTORY := 64          # ~2.1 s at 30 Hz
+
+var _history: Array[WorldState] = []   # ring buffer
+
+func encode_for(client: ClientSession, current: WorldState) -> PackedByteArray:
+    var baseline: WorldState = null
+    if client.acked_tick > 0:
+        baseline = _history_at(client.acked_tick)
+    var w := BitWriter.new()
+    w.write_uint(current.tick & 0xFFFF, 16)
+    w.write_uint(0 if baseline == null else (baseline.tick & 0xFFFF), 16)
+    w.write_uint(client.last_processed_input_seq & 0xFFFF, 16)
+    w.write_uint(Time.get_ticks_msec() & 0xFFFFFFFF, 32)
+
+    var relevant := InterestManager.relevant_for(client, current)
+    w.write_uint(relevant.size(), 6)
+    for aid in relevant:
+        _encode_assembly(w, current.assemblies[aid],
+                         baseline.assemblies.get(aid) if baseline else null)
+    return w.to_bytes()
+```
+
+If the baseline has aged out of history (client stalled for more than 2.1 s), the server sends a full state and the client resets. A full state for 16 Assemblies is roughly 9 KB — acceptable as a rare recovery path, unacceptable as a steady state, which is why the history is deep enough to cover realistic packet loss bursts.
+
+### 5.5 Bandwidth Budget
+
+Reference measurement, 16-player match, moderate engagement:
+
+| Component | Per snapshot | Per second (30 Hz) |
+|---|---|---|
+| Header | 11 B | 330 B/s |
+| Transform + velocity, 12 relevant Assemblies | 168 B | 5.0 KB/s |
+| Hardpoints, 12 Assemblies × 2.1 avg | 66 B | 2.0 KB/s |
+| Integrity deltas | 41 B | 1.2 KB/s |
+| Resource block (heat, ammo), quarter rate | 22 B | 0.7 KB/s |
+| **Snapshot subtotal** | **308 B** | **9.2 KB/s** |
+| Events (destruction, deform, sections) | — | 1.4 KB/s avg, 11 KB/s peak |
+| **Downstream total** | | **10.6 KB/s avg** |
+| Upstream (input, 60 Hz) | 14 B | 0.84 KB/s |
+
+At roughly 85 kbit/s downstream, the game is playable on constrained connections and comfortably within any modern budget.
+
+---
+
+## 6. Input and Prediction
+
+### 6.1 Input Frame
+
+```gdscript
+class_name InputFrame
+extends RefCounted
+
+var sequence: int = 0            # 16 bits, wrapping
+var client_tick: int = 0         # 16 bits
+var throttle: float = 0.0        # 8 bits signed, [-1, 1]
+var steer: float = 0.0           # 8 bits signed
+var handbrake: bool = false      # 1 bit
+var boost: bool = false          # 1 bit
+var fire_mask: int = 0           # 3 bits, one per firing group
+var aim_point: Vector3           # 22 + 18 + 22 bits
+var flags: int = 0               # 5 bits
+```
+
+Total: 14 bytes packed. Sent at 60 Hz on `CH_INPUT` (unreliable sequenced), with the **last three frames** included in every packet for redundancy. A single dropped input packet therefore causes no gap at all, which matters far more than the 28 extra bytes it costs.
+
+### 6.2 Server Input Handling
+
+```gdscript
+func _receive_input(peer_id: int, bytes: PackedByteArray) -> void:
+    var session := _sessions[peer_id]
+    var frames := InputCodec.decode_batch(bytes)
+    for f in frames:
+        if _seq_is_stale(f.sequence, session.last_input_seq):
+            continue
+        if not _validate_input(f):
+            session.suspicious_inputs += 1
+            continue
+        session.input_buffer.push(f)
+        session.last_input_seq = f.sequence
+
+func _validate_input(f: InputFrame) -> bool:
+    if not is_finite(f.aim_point.x) or not is_finite(f.aim_point.y) \
+       or not is_finite(f.aim_point.z):
+        return false
+    if f.aim_point.length() > MAX_AIM_DISTANCE_M:
+        return false
+    if absf(f.throttle) > 1.001 or absf(f.steer) > 1.001:
+        return false
+    return true
+```
+
+Input arriving with no buffered frame available causes the server to **repeat the last frame** rather than apply zero input. Applying zero would cause a visible stutter-stop on every dropped packet; repeating is both smoother and closer to intent.
+
+### 6.3 Input Buffer Sizing
+
+The server maintains a small jitter buffer per client, sized adaptively:
+
+```gdscript
+const BUFFER_MIN_FRAMES := 2
+const BUFFER_MAX_FRAMES := 8
+const BUFFER_ADAPT_INTERVAL_S := 2.0
+
+func _adapt_buffer(session: ClientSession) -> void:
+    var jitter_ms := session.arrival_jitter_ms()      # rolling stddev
+    var target := clampi(BUFFER_MIN_FRAMES
+        + int(ceil(jitter_ms / (1000.0 / SyndicateConstants.NET_INPUT_HZ))),
+        BUFFER_MIN_FRAMES, BUFFER_MAX_FRAMES)
+    session.target_buffer = target
+```
+
+A stable connection runs a 2-frame (33 ms) buffer; a jittery one grows to 8 frames. The client is told its current buffer depth so the HUD can show honest latency rather than a raw ping that omits it.
+
+### 6.4 Client Prediction
+
+The client simulates its own Assembly immediately on local input, keeping a history of `(input_frame, resulting_state)` pairs.
+
+```gdscript
+class_name PredictionSystem
+extends Node
+
+const HISTORY_SIZE := 128
+
+var _history: Array[PredictedFrame] = []
+
+func _physics_process(dt: float) -> void:
+    var frame := InputSampler.sample()
+    frame.sequence = _next_sequence()
+    NetClient.send_input(frame)
+    _apply_input_locally(frame, dt)
+    _history.push_back(PredictedFrame.new(frame, _capture_state()))
+    if _history.size() > HISTORY_SIZE:
+        _history.pop_front()
+
+func on_snapshot(snap: Snapshot) -> void:
+    var acked := snap.acked_input_seq
+    var idx := _find_history_index(acked)
+    if idx < 0:
+        _hard_reset(snap)                     # history gap; snap to authority
+        return
+    var predicted: PredictedFrame = _history[idx]
+    var error := _state_error(predicted.state, snap.own_state)
+    if error.position < POSITION_TOLERANCE_M \
+       and error.rotation < ROTATION_TOLERANCE_RAD:
+        _history = _history.slice(idx + 1)
+        return                                # prediction was good; nothing to do
+    _reconcile(snap, idx)
+
+const POSITION_TOLERANCE_M := 0.09
+const ROTATION_TOLERANCE_RAD := 0.035
+```
+
+### 6.5 Reconciliation
+
+```gdscript
+func _reconcile(snap: Snapshot, acked_index: int) -> void:
+    # 1. Snap the simulation state to authority.
+    _restore_state(snap.own_state)
+    # 2. Replay every input the server has not yet acknowledged.
+    for i in range(acked_index + 1, _history.size()):
+        var f: PredictedFrame = _history[i]
+        _apply_input_locally(f.input, SyndicateConstants.PHYSICS_DT)
+        f.state = _capture_state()
+    _history = _history.slice(acked_index + 1)
+    # 3. The visual root smooths toward the corrected simulation state.
+    VisualSmoother.begin_correction(_visual_error_before_reconcile(), CORRECTION_TIME_S)
+
+const CORRECTION_TIME_S := 0.14
+```
+
+Step 3 is what makes reconciliation invisible. The *simulation* snaps; the *visual* root eases over 140 ms. The player never sees a teleport, and because the visual root is already decoupled from the physics body (`DYNAMIC_MASS_PHYSICS.md` §2), there is no fight with the physics server.
+
+Replaying up to 128 frames of full vehicle physics would be prohibitive if it happened often. Measured misprediction rate on a 60 ms RTT connection is 3.4% of snapshots, with a mean replay depth of 4.1 frames — 0.31 ms of work. The rate rises under heavy contact (collisions are where prediction diverges most) but stays under 12% even in a multi-vehicle pile-up.
+
+### 6.6 Remote Assembly Interpolation
+
+Remote Assemblies are never predicted. They are rendered at `now − INTERPOLATION_DELAY_MS` from buffered snapshots.
+
+```gdscript
+const INTERPOLATION_DELAY_MS := 100.0
+const EXTRAPOLATION_LIMIT_MS := 220.0
+
+func _process(_dt: float) -> void:
+    var render_time := NetClock.server_time_ms() - INTERPOLATION_DELAY_MS
+    for remote in _remotes:
+        var pair := remote.buffer.bracket(render_time)
+        if pair.has_both:
+            var t := (render_time - pair.a.time) / maxf(pair.b.time - pair.a.time, 1.0)
+            remote.visual_root.global_transform = \
+                pair.a.transform.interpolate_with(pair.b.transform, clampf(t, 0.0, 1.0))
+        elif render_time - pair.a.time < EXTRAPOLATION_LIMIT_MS:
+            var dt := (render_time - pair.a.time) / 1000.0
+            remote.visual_root.global_position = pair.a.position + pair.a.velocity * dt
+            remote.visual_root.global_basis = pair.a.basis
+        else:
+            remote.set_stale(true)             # freeze and dim; connection issue
+```
+
+The 100 ms delay is a deliberate cost. It buys smooth remote motion through two snapshot intervals of packet loss, and it is compensated for in hit detection by §7.
+
+---
+
+## 7. Lag Compensation
+
+### 7.1 Rewind Model
+
+A client shooting at a remote Assembly is aiming at a 100 ms old position. Without compensation, hitting a moving target would require leading by both projectile travel time *and* interpolation delay — an invisible, unlearnable offset.
+
+The server therefore rewinds when resolving a client-originated fire command:
+
+```gdscript
+const MAX_REWIND_MS := 260.0
+
+func resolve_fire(session: ClientSession, hardpoint: HardpointState,
+                  input: InputFrame) -> void:
+    var rewind_ms := clampf(session.smoothed_rtt_ms * 0.5 + INTERPOLATION_DELAY_MS,
+                            0.0, MAX_REWIND_MS)
+    var rewind_tick := MatchClock.tick - int(round(rewind_ms / 1000.0
+                                                   * SyndicateConstants.PHYSICS_HZ))
+    RewindScope.begin(rewind_tick)             # moves colliders to historical poses
+    ProjectileSystem.spawn_authoritative(hardpoint, input, rewind_tick)
+    RewindScope.end()                          # restores present poses
+```
+
+### 7.2 Historical Pose Buffer
+
+Only chassis body transforms are rewound. Colliders are rigidly attached to the chassis (Architectural Invariant #1), so restoring one transform restores every collider on that Assembly — which is precisely why decoupled, rest-frame colliders make lag compensation cheap here and expensive in engines where each part carries an animated collider.
+
+```gdscript
+class_name RewindScope
+extends RefCounted
+
+const HISTORY_TICKS := 24                       # 400 ms at 60 Hz
+
+static var _history: Array = []                 # ring of {assembly_id: Transform3D}
+static var _saved: Dictionary = {}
+
+static func record(tick: int, assemblies: Dictionary) -> void:
+    var frame := {}
+    for aid in assemblies:
+        frame[aid] = assemblies[aid].body.global_transform
+    _history[tick % HISTORY_TICKS] = frame
+
+static func begin(tick: int) -> void:
+    var frame: Dictionary = _history[tick % HISTORY_TICKS]
+    _saved.clear()
+    for aid in frame:
+        var body := AssemblyRegistry.get(aid).body
+        _saved[aid] = body.global_transform
+        PhysicsServer3D.body_set_state(body.get_rid(),
+            PhysicsServer3D.BODY_STATE_TRANSFORM, frame[aid])
+
+static func end() -> void:
+    for aid in _saved:
+        var body := AssemblyRegistry.get(aid).body
+        PhysicsServer3D.body_set_state(body.get_rid(),
+            PhysicsServer3D.BODY_STATE_TRANSFORM, _saved[aid])
+    _saved.clear()
+```
+
+Memory cost: 24 ticks × 16 Assemblies × 64 bytes = 24.6 KB. Trivial.
+
+### 7.3 The Rewind Contract
+
+Lag compensation always favours the shooter, within the `MAX_REWIND_MS` cap. This means an already-behind-cover target can occasionally be hit — the classic and unavoidable trade. The cap of 260 ms bounds how unfair that can be, and clients whose measured RTT exceeds `400 ms` are moved to a high-latency queue rather than being allowed to rewind further.
+
+### 7.4 What Is Not Rewound
+
+Ground deformation, Static Volume section state, and debris are **not** rewound. All three change infrequently relative to rewind depth, and rewinding a heightfield or a fracture state would be enormously expensive for a vanishingly rare correction. A shot that would have passed through a wall that failed 200 ms ago hits the wall. This is accepted and documented.
+
+---
+
+## 8. Event Replication
+
+### 8.1 Event Catalogue
+
+| Event | Payload bits | Trigger |
+|---|---|---|
+| `EV_PART_DESTROYED` | `assembly(10) slot(8) channel(3) tick(16)` | Integrity reached zero |
+| `EV_ISLAND_DETACHED` | `assembly(10) count(8) slots(8×N) body_seed(16)` | Detachment solver |
+| `EV_JOINT_FAILED` | `assembly(10) slot_a(8) slot_b(8)` | Strain failure |
+| `EV_EFFECTOR_JAMMED` | `assembly(10) slot(8) duration_ms(10)` | Jam roll |
+| `EV_EFFECTOR_FIRED` | `assembly(10) slot(8) tick(16) shot_index(8)` | Emission |
+| `EV_GROUND_DEFORM` | 127 bits, see `TERRAIN_CRATER_DEFORMER.md` §10.1 | Deform request |
+| `EV_SECTION_FAILED` | 89 bits, see `PROCEDURAL_STRUCTURE_SLICING.md` §8 | Section failure |
+| `EV_ASSEMBLY_TERMINATED` | `assembly(10) killer(10) cause(4)` | Core Module loss |
+| `EV_MATCH_STATE` | variable | Round transitions |
+
+### 8.2 Ordering Requirements
+
+Events on `CH_EVENT` are reliable **ordered**, and the ordering is load-bearing in three places:
+
+1. **Ground deformation** — the erosion clamp is order-dependent (`TERRAIN_CRATER_DEFORMER.md` §10.1).
+2. **Part destruction before island detachment** — a client that received `EV_ISLAND_DETACHED` before the `EV_PART_DESTROYED` that caused it would attempt to detach parts it still considers connected.
+3. **Section failure before collapse** — same reasoning for Static Volumes.
+
+The server emits events in the `tick_resolved` priority order defined in `DEPENDENCY_TREE_GRAPH.md` §8.3, and the transport preserves it.
+
+### 8.3 Derived, Not Replicated
+
+Three categories of state are deliberately **not** replicated, because every client can derive them identically:
+
+| Derived state | Derived from |
+|---|---|
+| Debris body geometry, colliders, mass properties | `EV_ISLAND_DETACHED` slot list + `PartRegistry` |
+| Static Volume fragment geometry and layout | `EV_SECTION_FAILED` + path-hash-seeded bake data |
+| Ground heightfield values | Ordered `EV_GROUND_DEFORM` log + deterministic solver |
+| Fusion SDF, skirting meshes | Local occupancy after topology events |
+| Suspension compression, wheel spin | Local simulation from replicated transform |
+
+This is where the bandwidth budget in §5.5 comes from. Replicating debris physics for a large destruction event would cost more than the entire rest of the protocol.
+
+---
+
+## 9. Headless Server Specifics
+
+### 9.1 Launch
+
+```bash
+godot --headless --path . --main-scene res://scenes/net/dedicated_server.tscn \
+      -- --port=27015 --max-players=16 --map=arena_basin --tickrate=60
+```
+
+The `dedicated_server` feature tag is set in the export preset, gating the disabled subsystems below.
+
+### 9.2 Disabled Subsystems
+
+```gdscript
+class_name ServerBootstrap
+extends Node
+
+func _ready() -> void:
+    assert(OS.has_feature("dedicated_server"))
+    RenderingServer.render_loop_enabled = false
+    _disable_presentation()
+
+func _disable_presentation() -> void:
+    SubsystemGate.disable([
+        &"fusion_sdf_baker",         # PART_FUSION_SHADER.md L1
+        &"skirting_system",          # PART_FUSION_SHADER.md L3
+        &"vfx_pool",
+        &"decal_system",
+        &"audio_bus",
+        &"ui_root",
+        &"ground_height_texture",    # heights kept as data; no ImageTexture
+        &"assembly_interpolator",    # no rendering, no interpolation needed
+        &"projectile_multimesh",
+        &"icon_cache",
+        &"rubble_multimesh",
+    ])
+```
+
+`SubsystemGate` is a registry queried at autoload construction; disabled subsystems are never instantiated, so their `_process` and `_physics_process` never run and their memory is never allocated.
+
+### 9.3 What the Server Still Does
+
+- Full 60 Hz rigid body physics, suspension, and traction.
+- Full damage resolution, band transitions, and degradation multiplier updates.
+- Full Chassis Graph detachment, including debris body creation (bodies exist for physics; no meshes are attached).
+- Full ground deformation **height solving and collision rebuilding** — the heightfield is gameplay geometry, not presentation.
+- Full Static Volume section failure, support graph solving, and collapse. Fragments are spawned as bodies only when `SERVER_SPAWN_FRAGMENTS` is enabled (default `false`, since fragments are cosmetic and clients derive them).
+
+### 9.4 Server Resource Envelope
+
+| Metric | Budget | Measured (16 players, heavy engagement) |
+|---|---|---|
+| Physics tick | 6.0 ms | 3.6 ms |
+| Damage + graph | 1.5 ms | 0.7 ms |
+| Snapshot encode (16 clients) | 2.0 ms | 1.1 ms |
+| Ground deform (worker) | — | 0.4 ms main |
+| **Total per tick** | **10.0 ms** | **5.8 ms** |
+| Resident memory | 900 MB | 610 MB |
+| Outbound bandwidth | 200 KB/s | 170 KB/s |
+
+At 5.8 ms per 16.6 ms tick, a single core hosts one match with substantial headroom; the deployment target is four matches per 8-core instance.
+
+---
+
+## 10. Interest Management
+
+Not every Assembly is relevant to every client. `InterestManager` culls the snapshot per recipient:
+
+```gdscript
+class_name InterestManager
+extends RefCounted
+
+const ALWAYS_RELEVANT_RADIUS_M := 140.0
+const EXTENDED_RADIUS_M := 340.0
+const EXTENDED_RATE_DIVISOR := 3           # send every 3rd snapshot
+
+static func relevant_for(client: ClientSession, state: WorldState) -> PackedInt32Array:
+    var out := PackedInt32Array()
+    var origin := state.assemblies[client.assembly_id].position
+    for aid in state.assembly_ids_sorted:
+        if aid == client.assembly_id:
+            out.push_back(aid)
+            continue
+        var a := state.assemblies[aid]
+        var d := origin.distance_to(a.position)
+        if d <= ALWAYS_RELEVANT_RADIUS_M:
+            out.push_back(aid)
+        elif d <= EXTENDED_RADIUS_M:
+            if (state.tick + aid) % EXTENDED_RATE_DIVISOR == 0:
+                out.push_back(aid)
+        elif a.recently_fired_at(client.assembly_id, 2.0):
+            out.push_back(aid)              # never hide someone shooting you
+    return out
+```
+
+Three properties worth noting: iteration is over a **sorted** id list for determinism; the extended-range rate division is offset by `aid` so different Assemblies update on different ticks rather than all arriving in the same packet; and an Assembly that recently attacked the recipient is always relevant regardless of distance, because being shot by an invisible enemy is never acceptable.
+
+---
+
+## 11. Anti-Cheat Posture
+
+The architecture's authority model does most of the work. Explicit measures on top:
+
+1. **No client-authoritative gameplay state.** A modified client can lie about its input only, and inputs are validated (§6.2) and clamped.
+2. **Blueprint re-validation** through the shared `PlacementValidator` (§4.3), plus entitlement checks.
+3. **Aim point bounds.** Non-finite or out-of-range aim points are rejected; the input frame is discarded, not clamped, so a fuzzing client gains nothing.
+4. **Fire rate enforcement** is server-side; a client sending `fire_mask` every tick fires exactly as fast as `cycle_time_s × EFF_CYCLE_MULT[band]` allows.
+5. **Rewind cap** at 260 ms bounds latency-manipulation attacks.
+6. **Statistical monitoring.** `session.suspicious_inputs`, snapshot ack patterns, and hit-rate outliers are logged for offline analysis; the server does not take automated punitive action, because false positives are worse than delayed enforcement.
+7. **No client-side hit reporting.** Clients report *intent to fire*, never *what they hit*.
+
+---
+
+## 12. Diagnostics
+
+The server exposes a read-only diagnostic endpoint (`CH_CONTROL`, admin-authenticated) reporting per-client RTT, jitter, input buffer depth, misprediction rate, snapshot size histogram, and event queue depth. The client-side network overlay (`F3`) shows the same values for the local session so that players and support staff describe the same numbers.
+
+```gdscript
+func build_diagnostic_frame() -> Dictionary:
+    return {
+        "tick": MatchClock.tick,
+        "clients": _sessions.values().map(func(s): return {
+            "peer": s.peer_id,
+            "rtt_ms": s.smoothed_rtt_ms,
+            "jitter_ms": s.arrival_jitter_ms(),
+            "buffer": s.input_buffer.size(),
+            "target_buffer": s.target_buffer,
+            "mispredict_pct": s.mispredict_rate * 100.0,
+            "snapshot_bytes_avg": s.snapshot_bytes_avg,
+            "suspicious": s.suspicious_inputs,
+        }),
+        "event_queue": _event_queue.size(),
+        "physics_ms": MatchClock.last_physics_ms,
+        "encode_ms": _last_encode_ms,
+    }
+```
+
+---
+
+## 13. Invariants
+
+1. The server is authoritative for every quantity in the §2 matrix marked "Server". Clients cannot author damage, spawn damaging projectiles, or modify topology.
+2. Snapshots are unreliable and delta-compressed against a client-acknowledged baseline. Topology changes travel as reliable ordered events, never as snapshot state.
+3. `integrity_band` is transmitted explicitly; clients never derive it from quantised integrity.
+4. Blueprints are re-validated server-side through the same `PlacementValidator` the garage uses.
+5. Client prediction covers only the local Assembly. Remote Assemblies are interpolated at a fixed 100 ms delay.
+6. Reconciliation snaps simulation state and eases the visual root over 140 ms; it never teleports the rendered vehicle.
+7. Lag compensation rewinds chassis transforms only, capped at 260 ms. Ground, Static Volumes, and debris are never rewound.
+8. Debris geometry, fragment layout, ground heights, and fusion state are derived from replicated events, never replicated directly.
+9. Event ordering on `CH_EVENT` is required for correctness and must be preserved.
+10. The headless server disables presentation subsystems through `SubsystemGate` but runs full physics, damage, graph, ground, and structure simulation.
+11. Protocol, part manifest, and bake hashes are all verified at handshake; a mismatch is a hard rejection.

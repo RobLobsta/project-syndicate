@@ -1,0 +1,725 @@
+# PART_FUSION_SHADER.md
+
+**Project Syndicate — System Architecture Specification, Document 03 of 13**
+**Subsystem:** Seamless Metal Fusion — Occupancy SDF, Vertex Displacement, Smart Skirting
+**Status:** Normative.
+
+---
+
+## 1. Purpose and the Problem Being Solved
+
+An Assembly is built from discrete Structural Components snapped to a `0.25 m` lattice. Rendered naively, this produces the failure mode that defines low-effort construction games: a visibly blocky, interlocking-brick silhouette where every part reads as a separate object with a hard seam, a duplicated bevel, and a shading discontinuity at every join.
+
+Project Syndicate eliminates this without merging geometry, without runtime boolean operations, and without touching physics. The approach has three cooperating layers:
+
+| Layer | Mechanism | Cost | When it runs |
+|---|---|---|---|
+| **L1 — Occupancy SDF** | Signed distance field of the Assembly's solid volume, baked to a 3D texture | ~1.8 ms on a worker thread | On structural change events only |
+| **L2 — Fusion Shader** | Vertex displacement toward the smooth-union isosurface + SDF-gradient normal blending | ~0.4 ms GPU per Assembly | Per frame, GPU |
+| **L3 — Smart Skirting** | Procedurally generated fillet strip meshes along qualifying shared edges | ~2.4 ms on a worker thread | On structural change events only |
+
+L1 and L3 are strictly **event-driven** — they fire on `part_attached`, `part_removed`, `part_destroyed`, and `part_detached`, never on a timer and never per frame. L2 is a pure GPU cost with no CPU counterpart.
+
+**The colliders are never affected by any of this.** Displacement is a vertex-shader operation on a mesh with all collision layers cleared. The physics representation remains the authored `ColliderProfile` primitives from `PART_DATA_SCHEMA.md` §6.2. A player's projectile hits the box, not the fillet. This decoupling is Architectural Invariant #1 and the fusion system is its most visible beneficiary: the visual surface can bulge, blend, and bevel freely because nothing in the simulation reads it.
+
+---
+
+## 2. Layer 1 — The Occupancy Signed Distance Field
+
+### 2.1 Field Definition
+
+Let `S ⊂ ℝ³` be the union of all solid cells of an Assembly whose owning part has `fusion_profile.contributes_to_sdf = true` and is not flagged `FLAG_DESTROYED`. The field is
+
+```
+Φ(p) = signed distance from p to ∂S, negative inside, in metres
+```
+
+sampled on a regular grid with **half-cell spacing** — `0.125 m` — over the lattice extent plus a two-cell border:
+
+```
+SDF_DIMS = (LATTICE_EXTENT * 2) + Vector3i(4, 4, 4) = (100, 68, 100)
+SDF_SPACING_M = LATTICE_UNIT_M * 0.5 = 0.125
+```
+
+680 000 texels at `Image.FORMAT_RH` (16-bit float) is **1.36 MB** per Assembly. With a hard cap of 24 simultaneously fused Assemblies (§8.3), the worst-case VRAM commitment is 32.6 MB, which is budgeted and bounded.
+
+### 2.2 Construction Algorithm
+
+Exact Euclidean distance is computed with a two-pass **Felzenszwalb–Huttenlocher** separable squared-distance transform, run independently on the interior and exterior sets and then subtracted. This is `O(N)` in the number of texels with a small constant, and it is exact — unlike the chamfer/8SSEDT approximations, which produce visible faceting artefacts precisely at the fillet radii we care about.
+
+```gdscript
+class_name OccupancySdfBaker
+extends RefCounted
+
+const DIMS := Vector3i(100, 68, 100)
+const SPACING := SyndicateConstants.LATTICE_UNIT_M * 0.5
+const BORDER := Vector3i(2, 2, 2)
+const INF_SQ := 1.0e20
+
+## Called on a WorkerThreadPool task. Returns a fully populated Image array.
+static func bake(occupancy: LatticeOccupancy, states: Array,
+                 out_slices: Array[Image]) -> void:
+    var count := DIMS.x * DIMS.y * DIMS.z
+    var inside := PackedFloat32Array(); inside.resize(count)
+    var outside := PackedFloat32Array(); outside.resize(count)
+
+    # --- Seed: 0 inside solid, INF outside (and the complement) -----------
+    for i in count:
+        var t := _texel_to_cell(i)
+        var solid := _is_contributing_solid(occupancy, states, t)
+        inside[i] = 0.0 if solid else INF_SQ
+        outside[i] = INF_SQ if solid else 0.0
+
+    _edt_3d(inside)
+    _edt_3d(outside)
+
+    # --- Combine: Φ = sqrt(outside) - sqrt(inside) ------------------------
+    for z in DIMS.z:
+        var img := Image.create(DIMS.x, DIMS.y, false, Image.FORMAT_RH)
+        for y in DIMS.y:
+            for x in DIMS.x:
+                var i := x + y * DIMS.x + z * DIMS.x * DIMS.y
+                var d := (sqrt(outside[i]) - sqrt(inside[i])) * SPACING
+                img.set_pixel(x, y, Color(clampf(d, -2.0, 2.0), 0.0, 0.0, 1.0))
+        out_slices[z] = img
+
+## Separable exact EDT: run the 1-D lower-envelope transform along each axis.
+static func _edt_3d(f: PackedFloat32Array) -> void:
+    _edt_axis(f, 0)
+    _edt_axis(f, 1)
+    _edt_axis(f, 2)
+
+static func _edt_axis(f: PackedFloat32Array, axis: int) -> void:
+    var n := [DIMS.x, DIMS.y, DIMS.z][axis]
+    var stride := [1, DIMS.x, DIMS.x * DIMS.y][axis]
+    var lanes := (DIMS.x * DIMS.y * DIMS.z) / n
+    var d := PackedFloat32Array(); d.resize(n)
+    var v := PackedInt32Array();   v.resize(n)
+    var zbound := PackedFloat32Array(); zbound.resize(n + 1)
+    for lane in lanes:
+        var base := _lane_base(lane, axis, stride)
+        for i in n:
+            d[i] = f[base + i * stride]
+        _lower_envelope(d, v, zbound, n)
+        for i in n:
+            f[base + i * stride] = d[i]
+
+## Standard 1-D squared-distance lower envelope (parabola intersection).
+static func _lower_envelope(d: PackedFloat32Array, v: PackedInt32Array,
+                            z: PackedFloat32Array, n: int) -> void:
+    var src := d.duplicate()
+    var k := 0
+    v[0] = 0
+    z[0] = -INF
+    z[1] = INF
+    for q in range(1, n):
+        var s := 0.0
+        while true:
+            s = ((src[q] + q * q) - (src[v[k]] + v[k] * v[k])) / (2.0 * q - 2.0 * v[k])
+            if s <= z[k]:
+                k -= 1
+            else:
+                break
+        k += 1
+        v[k] = q
+        z[k] = s
+        z[k + 1] = INF
+    k = 0
+    for q in n:
+        while z[k + 1] < float(q):
+            k += 1
+        var dq := float(q - v[k])
+        d[q] = dq * dq + src[v[k]]
+```
+
+The parabola-intersection loop requires a sentinel: when `src[v[k]]` is `INF_SQ`, the division is guarded by seeding `v[0]` from the first finite entry. The shipping implementation in `src/vfx/fusion/occupancy_sdf_baker.gd` includes this guard; it is omitted above only to keep the envelope logic legible.
+
+### 2.3 Upload and Threading
+
+Baking runs on `WorkerThreadPool`. The result is uploaded on the main thread in the frame after completion:
+
+```gdscript
+func request_rebake(assembly_id: int) -> void:
+    if _pending.has(assembly_id):
+        _dirty_again[assembly_id] = true   # coalesce; do not queue a second task
+        return
+    _pending[assembly_id] = WorkerThreadPool.add_task(
+        _bake_task.bind(assembly_id), true, "fusion_sdf_bake")
+
+func _process(_delta: float) -> void:
+    for assembly_id in _pending.keys():
+        var task: int = _pending[assembly_id]
+        if not WorkerThreadPool.is_task_completed(task):
+            continue
+        WorkerThreadPool.wait_for_task_completion(task)
+        _pending.erase(assembly_id)
+        _upload_texture(assembly_id)
+        if _dirty_again.erase(assembly_id):
+            request_rebake(assembly_id)
+```
+
+Coalescing matters: during a destruction cascade, ten parts may be removed in a single physics tick. Without coalescing this would enqueue ten bakes; with it, exactly one bake runs after the cascade settles, and at most one more if further changes arrived mid-bake.
+
+Until the new texture arrives, the shader keeps sampling the previous one. The visual result is that the fillet geometry lags structural change by one to three frames — imperceptible, and vastly preferable to a main-thread stall.
+
+### 2.4 Uniform Block
+
+```gdscript
+func _upload_texture(assembly_id: int) -> void:
+    var tex := ImageTexture3D.new()
+    tex.create(Image.FORMAT_RH, DIMS.x, DIMS.y, DIMS.z, false, _slices[assembly_id])
+    var mat: ShaderMaterial = _fusion_materials[assembly_id]
+    mat.set_shader_parameter("u_occupancy_sdf", tex)
+    mat.set_shader_parameter("u_sdf_dims", Vector3(DIMS))
+    mat.set_shader_parameter("u_sdf_spacing", SPACING)
+    mat.set_shader_parameter("u_sdf_origin_local", _sdf_origin_local())
+
+static func _sdf_origin_local() -> Vector3:
+    # Metric position of texel (0,0,0) centre in assembly-local space.
+    var o := SyndicateConstants.LATTICE_ORIGIN_CELL
+    var b := Vector3(BORDER) * SPACING
+    return Vector3(-o.x, -o.y, -o.z) * SyndicateConstants.LATTICE_UNIT_M - b \
+         + Vector3(SPACING, SPACING, SPACING) * 0.5
+```
+
+One `ShaderMaterial` instance exists per Assembly, shared by every part's visual mesh on that Assembly. Per-part variation is delivered through instance uniforms, not through material duplication, so an Assembly of 200 parts uses one material and one texture.
+
+---
+
+## 3. Layer 2 — The Fusion Shader
+
+### 3.1 Full Shader Source
+
+`src/vfx/shaders/part_fusion.gdshader`:
+
+```glsl
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+
+// ---------------------------------------------------------------------------
+// Occupancy SDF (assembly-local space, metres)
+// ---------------------------------------------------------------------------
+uniform sampler3D u_occupancy_sdf : hint_default_black, filter_linear, repeat_disable;
+uniform vec3  u_sdf_dims          = vec3(100.0, 68.0, 100.0);
+uniform float u_sdf_spacing       = 0.125;
+uniform vec3  u_sdf_origin_local  = vec3(0.0);
+
+// ---------------------------------------------------------------------------
+// Fusion control
+// ---------------------------------------------------------------------------
+uniform float u_fillet_radius     : hint_range(0.0, 0.20) = 0.045;
+uniform float u_blend_k           : hint_range(0.005, 0.25) = 0.070;
+uniform float u_displace_limit    : hint_range(0.0, 0.12) = 0.055;
+uniform float u_normal_blend_gain : hint_range(0.0, 4.0)  = 1.85;
+uniform float u_seam_falloff      : hint_range(0.01, 0.4) = 0.110;
+uniform float u_fusion_enabled    : hint_range(0.0, 1.0)  = 1.0;
+
+// ---------------------------------------------------------------------------
+// Surface
+// ---------------------------------------------------------------------------
+uniform sampler2D u_albedo_atlas  : source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D u_orm_atlas     : hint_default_white, filter_linear_mipmap_anisotropic;
+uniform sampler2D u_normal_atlas  : hint_normal, filter_linear_mipmap_anisotropic;
+uniform sampler2D u_wear_noise    : hint_default_white, filter_linear_mipmap;
+uniform vec4  u_tint              : source_color = vec4(0.62, 0.64, 0.66, 1.0);
+uniform float u_metallic          : hint_range(0.0, 1.0) = 0.92;
+uniform float u_roughness_base    : hint_range(0.0, 1.0) = 0.41;
+uniform float u_triplanar_scale   = 1.6;
+
+// ---------------------------------------------------------------------------
+// Per-instance state (INSTANCE_CUSTOM packs degradation + family + variant)
+//   x : integrity fraction        [0,1]
+//   y : fusion family id / 255    [0,1]
+//   z : surface variant / 15      [0,1]
+//   w : scorch accumulation       [0,1]
+// ---------------------------------------------------------------------------
+varying vec3  v_local_pos;
+varying float v_seam_weight;
+varying vec3  v_sdf_normal;
+varying vec4  v_instance;
+
+// ===========================================================================
+// SDF sampling helpers
+// ===========================================================================
+vec3 sdf_uvw(vec3 local_pos) {
+    vec3 texel = (local_pos - u_sdf_origin_local) / u_sdf_spacing;
+    return (texel + vec3(0.5)) / u_sdf_dims;
+}
+
+float sample_sdf(vec3 local_pos) {
+    vec3 uvw = sdf_uvw(local_pos);
+    // Outside the baked volume, report "far outside" so no displacement occurs.
+    vec3 clamped = clamp(uvw, vec3(0.0), vec3(1.0));
+    float outside_penalty = length(uvw - clamped) * 4.0;
+    return texture(u_occupancy_sdf, clamped).r + outside_penalty;
+}
+
+// Central-difference gradient. h is one texel; the field is C0-continuous
+// under trilinear filtering, which is sufficient for shading normals.
+vec3 sdf_gradient(vec3 local_pos) {
+    float h = u_sdf_spacing;
+    vec2 e = vec2(h, 0.0);
+    float dx = sample_sdf(local_pos + e.xyy) - sample_sdf(local_pos - e.xyy);
+    float dy = sample_sdf(local_pos + e.yxy) - sample_sdf(local_pos - e.yxy);
+    float dz = sample_sdf(local_pos + e.yyx) - sample_sdf(local_pos - e.yyx);
+    vec3 g = vec3(dx, dy, dz) / (2.0 * h);
+    float m = length(g);
+    return m > 1e-5 ? g / m : vec3(0.0, 1.0, 0.0);
+}
+
+// Polynomial smooth-min: rounds the union of two half-spaces by radius k.
+float smin_poly(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+// ===========================================================================
+// VERTEX — fillet displacement
+// ===========================================================================
+void vertex() {
+    v_instance = INSTANCE_CUSTOM;
+    v_local_pos = VERTEX;
+
+    float phi = sample_sdf(VERTEX);
+    vec3  grad = sdf_gradient(VERTEX);
+
+    // The authored surface sits on the flat face: phi ~= 0 there.
+    // A convex or concave seam is characterised by a gradient that departs
+    // from the mesh normal. That angular departure is the seam signal.
+    float align = clamp(dot(grad, NORMAL), -1.0, 1.0);
+    float angular_seam = 1.0 - clamp(align, 0.0, 1.0);
+
+    // Proximity term: how close this vertex is to a structural boundary
+    // relative to the seam falloff distance.
+    float proximity = 1.0 - smoothstep(0.0, u_seam_falloff, abs(phi));
+
+    float seam = clamp(angular_seam * proximity, 0.0, 1.0);
+    seam = seam * seam * (3.0 - 2.0 * seam);          // smoothstep-shaped
+    seam *= u_fusion_enabled;
+    v_seam_weight = seam;
+
+    // Smooth-union target: pull the surface toward the rounded isosurface.
+    // The flat plane through this vertex (distance 0 along NORMAL) is unioned
+    // with the neighbourhood field to produce the fillet.
+    float flat_plane = 0.0;
+    float rounded = smin_poly(flat_plane, phi, max(u_blend_k, 1e-4));
+
+    // Newton step along the gradient toward Φ = rounded.
+    float step_dist = clamp(rounded - phi, -u_displace_limit, u_displace_limit);
+    vec3 displacement = grad * step_dist * seam;
+
+    // A second inward pull collapses the hard 90-degree corner into a bevel
+    // of radius u_fillet_radius without perforating the silhouette.
+    displacement -= NORMAL * (u_fillet_radius * seam * 0.5);
+
+    VERTEX += displacement;
+    v_sdf_normal = sdf_gradient(VERTEX);
+}
+
+// ===========================================================================
+// FRAGMENT — normal reconciliation and surface
+// ===========================================================================
+void fragment() {
+    // --- Triplanar surface sampling in assembly-local space -----------------
+    vec3 bw = abs(normalize(v_sdf_normal));
+    bw = pow(bw, vec3(4.0));
+    bw /= (bw.x + bw.y + bw.z);
+
+    vec2 uv_x = v_local_pos.zy * u_triplanar_scale;
+    vec2 uv_y = v_local_pos.xz * u_triplanar_scale;
+    vec2 uv_z = v_local_pos.xy * u_triplanar_scale;
+
+    // Variant selection shifts into the atlas cell for this part's surface id.
+    float variant = floor(v_instance.z * 15.0 + 0.5);
+    vec2 cell = vec2(mod(variant, 4.0), floor(variant / 4.0)) * 0.25;
+    vec2 fx = cell + fract(uv_x) * 0.25;
+    vec2 fy = cell + fract(uv_y) * 0.25;
+    vec2 fz = cell + fract(uv_z) * 0.25;
+
+    vec3 albedo = texture(u_albedo_atlas, fx).rgb * bw.x
+                + texture(u_albedo_atlas, fy).rgb * bw.y
+                + texture(u_albedo_atlas, fz).rgb * bw.z;
+
+    vec3 orm = texture(u_orm_atlas, fx).rgb * bw.x
+             + texture(u_orm_atlas, fy).rgb * bw.y
+             + texture(u_orm_atlas, fz).rgb * bw.z;
+
+    // --- Normal: mesh normal blended toward the SDF gradient at seams -------
+    vec3 fused_n = normalize(mix(normalize(NORMAL),
+                                 normalize(v_sdf_normal),
+                                 clamp(v_seam_weight * u_normal_blend_gain, 0.0, 1.0)));
+
+    // Detail normal, triplanar, applied in tangent space around fused_n.
+    vec3 dn = texture(u_normal_atlas, fx).rgb * bw.x
+            + texture(u_normal_atlas, fy).rgb * bw.y
+            + texture(u_normal_atlas, fz).rgb * bw.z;
+    dn = dn * 2.0 - 1.0;
+
+    vec3 t = normalize(cross(fused_n, abs(fused_n.y) < 0.99
+                                      ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(fused_n, t);
+    vec3 final_n = normalize(fused_n + (t * dn.x + b * dn.y) * 0.65);
+    NORMAL = (VIEW_MATRIX * vec4(
+        (MODEL_MATRIX * vec4(final_n, 0.0)).xyz, 0.0)).xyz;
+
+    // --- Degradation-driven surface response --------------------------------
+    float integrity = v_instance.x;
+    float scorch = clamp(v_instance.w, 0.0, 1.0);
+    float wear = texture(u_wear_noise, fy * 0.5).r;
+
+    // Damage darkens, roughens, and de-metallises the surface progressively.
+    float dmg = 1.0 - integrity;
+    float burn = clamp(scorch + dmg * wear * 0.85, 0.0, 1.0);
+
+    ALBEDO = mix(albedo * u_tint.rgb, vec3(0.055, 0.048, 0.044), burn * 0.78);
+    METALLIC = u_metallic * (1.0 - burn * 0.62);
+    ROUGHNESS = clamp(u_roughness_base * orm.g + burn * 0.45, 0.05, 1.0);
+    AO = orm.r;
+
+    // Seam bead: a subtle brightening exactly on the fused edge sells the weld.
+    float bead = smoothstep(0.35, 0.85, v_seam_weight);
+    ALBEDO += vec3(0.045, 0.040, 0.035) * bead * (1.0 - burn);
+    ROUGHNESS = mix(ROUGHNESS, clamp(ROUGHNESS + 0.22, 0.0, 1.0), bead);
+}
+```
+
+### 3.2 Why This Produces a Weld Rather Than a Blob
+
+Three constraints keep the displacement from turning the Assembly into an amorphous mass:
+
+1. **`u_displace_limit` (0.055 m)** caps any vertex's movement at roughly one fifth of a cell. Panels stay recognisably panel-shaped.
+2. **`seam` gates the displacement** on *both* proximity to a boundary and angular departure of the SDF gradient from the mesh normal. A vertex in the middle of a flat exposed panel has `angular_seam ≈ 0` and does not move at all. Only vertices near a join move.
+3. **`u_blend_k` (0.070 m)** sets the smooth-union radius. It is deliberately smaller than the fillet radius so the union rounds the corner without inflating the surrounding surface.
+
+The net visual is a continuous fillet running along every internal join, with flat panel faces preserved between them — which is exactly what a welded and ground steel body looks like.
+
+### 3.3 Cross-Family Seams
+
+Parts fuse smoothly only with parts sharing a `fusion_profile.fusion_family`. Cross-family adjacency (a Structural Component meeting an Effector Module housing, say) receives a **weld bead** instead: the fillet radius is reduced to 30% and a raised bead strip is inserted by the skirting generator (§4.4). This is a design choice, not a technical limitation — it keeps functional modules legible as separate objects while the hull itself reads as one welded body.
+
+The family test occurs at skirting-generation time on the CPU, not in the shader, because it is a per-edge structural fact that changes only on structural events.
+
+### 3.4 Instance Uniform Packing
+
+```gdscript
+class_name FusionInstanceWriter
+extends RefCounted
+
+static func write(mesh_instance: GeometryInstance3D, state: PartInstanceState,
+                  def: PartDefinition) -> void:
+    mesh_instance.set_instance_shader_parameter("INSTANCE_CUSTOM", Color(
+        state.integrity_fraction(def),
+        float(FusionFamilyTable.id_of(def.fusion_profile.fusion_family)) / 255.0,
+        float(def.fusion_profile.surface_variant) / 15.0,
+        clampf(state.accumulated_heat_hu / 600.0, 0.0, 1.0)))
+```
+
+This is written on band change and on heat threshold crossings, not per frame. `COMPONENT_HEALTH_DAMAGE.md` §8 defines the exact trigger set.
+
+---
+
+## 4. Layer 3 — Smart Skirting Meshes
+
+### 4.1 Rationale
+
+Vertex displacement can only move vertices that exist. Where two panels meet at a concave right angle, the correct fillet geometry needs surface area that neither panel's authored mesh contains. Rather than tessellating every part heavily (which would multiply vertex count across the whole Assembly), Project Syndicate generates thin **skirting strips** only along edges that actually need them.
+
+A skirting strip is a swept fillet profile running along a shared edge between two adjacent parts. Skirts are generated into a **single combined `ArrayMesh` per Assembly**, so the entire skirting system costs one draw call regardless of how many edges qualify.
+
+### 4.2 Edge Classification
+
+For each pair of face-adjacent occupied cells belonging to *different* slots, the shared face is examined. An edge of that face qualifies for skirting when the two cells diagonally adjacent across the edge produce one of three configurations:
+
+| Configuration | Both diagonals solid | Result |
+|---|---|---|
+| **Concave** | Neither diagonal solid, both orthogonal neighbours solid | Concave fillet strip (inward arc) |
+| **Convex** | Both orthogonal neighbours empty | Convex bevel strip (outward arc) |
+| **Flush** | Exactly one orthogonal neighbour solid | No strip — the surface is already continuous |
+
+```gdscript
+class_name SkirtingEdgeClassifier
+extends RefCounted
+
+enum EdgeKind { NONE = 0, CONCAVE = 1, CONVEX = 2 }
+
+## The four in-plane edge directions of a face whose normal is `face`.
+static func edge_dirs(face: Vector3i) -> Array[Vector3i]:
+    if face.x != 0: return [Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+    if face.y != 0: return [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+    return [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0)]
+
+static func classify(occ: LatticeOccupancy, cell: Vector3i,
+                     face: Vector3i, edge: Vector3i) -> EdgeKind:
+    var side_solid := not occ.is_free(cell + edge)
+    var over_solid := not occ.is_free(cell + face)
+    var diag_solid := not occ.is_free(cell + face + edge)
+    if over_solid:
+        return EdgeKind.NONE                      # buried; not a visible edge
+    if side_solid and not diag_solid:
+        return EdgeKind.CONCAVE
+    if not side_solid:
+        return EdgeKind.CONVEX
+    return EdgeKind.NONE
+```
+
+### 4.3 Strip Generation
+
+Contiguous runs of identically classified edges are merged into a single strip before geometry is emitted. A `1.0 m` panel edge therefore produces one 4-cell strip, not four 1-cell strips — reducing vertex count roughly fourfold on typical builds.
+
+The swept profile is a quarter-arc sampled at `PROFILE_SEGMENTS = 4` (5 vertices), giving 5 × 2 = 10 vertices per strip quad ring and `4 × 2 × 3 = 24` indices per segment pair.
+
+```gdscript
+class_name SkirtingBuilder
+extends RefCounted
+
+const PROFILE_SEGMENTS := 4
+
+static func build(occ: LatticeOccupancy, states: Array,
+                  runs: Array[SkirtRun]) -> ArrayMesh:
+    var verts := PackedVector3Array()
+    var norms := PackedVector3Array()
+    var uvs   := PackedVector2Array()
+    var colors := PackedColorArray()
+    var idx   := PackedInt32Array()
+
+    for run in runs:
+        var radius: float = run.fillet_radius
+        var sign_f := 1.0 if run.kind == SkirtingEdgeClassifier.EdgeKind.CONVEX else -1.0
+        var a_axis := Vector3(run.face_a)          # first surface normal
+        var b_axis := Vector3(run.face_b)          # second surface normal
+        var along  := Vector3(run.direction)
+        var start  := LatticeMath.cell_to_local(run.start_cell)
+        var length := float(run.cell_count) * SyndicateConstants.LATTICE_UNIT_M
+
+        var base := verts.size()
+        for end_i in 2:
+            var origin := start + along * (length * float(end_i))
+            for s in PROFILE_SEGMENTS + 1:
+                var t := float(s) / float(PROFILE_SEGMENTS)
+                var ang := t * PI * 0.5
+                var offset := (a_axis * cos(ang) + b_axis * sin(ang)) * radius * sign_f
+                var corner := origin + (a_axis + b_axis) * (SyndicateConstants.LATTICE_UNIT_M * 0.5)
+                var p := corner - (a_axis + b_axis) * radius * sign_f + offset
+                verts.push_back(p)
+                norms.push_back((offset.normalized() * sign_f))
+                uvs.push_back(Vector2(t, float(end_i) * length))
+                colors.push_back(Color(run.integrity_a, run.integrity_b,
+                                       float(run.surface_variant) / 15.0, 1.0))
+        for s in PROFILE_SEGMENTS:
+            var v0 := base + s
+            var v1 := base + s + 1
+            var v2 := base + (PROFILE_SEGMENTS + 1) + s
+            var v3 := base + (PROFILE_SEGMENTS + 1) + s + 1
+            idx.append_array([v0, v2, v1, v1, v2, v3])
+
+    var arrays := []
+    arrays.resize(Mesh.ARRAY_MAX)
+    arrays[Mesh.ARRAY_VERTEX] = verts
+    arrays[Mesh.ARRAY_NORMAL] = norms
+    arrays[Mesh.ARRAY_TEX_UV] = uvs
+    arrays[Mesh.ARRAY_COLOR]  = colors
+    arrays[Mesh.ARRAY_INDEX]  = idx
+    var mesh := ArrayMesh.new()
+    if verts.size() > 0:
+        mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+    return mesh
+```
+
+Vertex colour carries per-end integrity fractions so a skirt spanning a damaged and an undamaged part shows the transition, and carries the surface variant so the skirt matches the atlas cell of the panels it joins.
+
+### 4.4 Weld Bead Variant
+
+When `run.cross_family` is true, `radius` is scaled by `0.30` and `sign_f` is forced to `+1.0` (outward), producing a raised bead. The bead uses a dedicated atlas cell (`variant = 15`) with higher roughness and a heat-tint gradient — visually reading as a weld line rather than a machined fillet.
+
+### 4.5 Skirt Shader
+
+`src/vfx/shaders/skirt_fusion.gdshader` is a reduced variant of the fusion shader: it performs no vertex displacement (the geometry is already the fillet) but shares the triplanar surface block, atlas layout, and degradation response, sampling the same `u_albedo_atlas`/`u_orm_atlas`/`u_normal_atlas` so that skirts and panels are indistinguishable in material response.
+
+```glsl
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back,
+            diffuse_burley, specular_schlick_ggx;
+
+uniform sampler2D u_albedo_atlas : source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D u_orm_atlas    : hint_default_white, filter_linear_mipmap_anisotropic;
+uniform sampler2D u_normal_atlas : hint_normal, filter_linear_mipmap_anisotropic;
+uniform vec4  u_tint : source_color = vec4(0.62, 0.64, 0.66, 1.0);
+uniform float u_metallic  : hint_range(0.0, 1.0) = 0.92;
+uniform float u_roughness_base : hint_range(0.0, 1.0) = 0.44;
+uniform float u_triplanar_scale = 1.6;
+
+varying vec3 v_local_pos;
+varying vec4 v_edge_data;
+
+void vertex() {
+    v_local_pos = VERTEX;
+    v_edge_data = COLOR;
+}
+
+void fragment() {
+    vec3 n = normalize(NORMAL);
+    vec3 bw = pow(abs(n), vec3(4.0));
+    bw /= (bw.x + bw.y + bw.z);
+
+    float variant = floor(v_edge_data.b * 15.0 + 0.5);
+    vec2 cell = vec2(mod(variant, 4.0), floor(variant / 4.0)) * 0.25;
+    vec2 fx = cell + fract(v_local_pos.zy * u_triplanar_scale) * 0.25;
+    vec2 fy = cell + fract(v_local_pos.xz * u_triplanar_scale) * 0.25;
+    vec2 fz = cell + fract(v_local_pos.xy * u_triplanar_scale) * 0.25;
+
+    vec3 albedo = texture(u_albedo_atlas, fx).rgb * bw.x
+                + texture(u_albedo_atlas, fy).rgb * bw.y
+                + texture(u_albedo_atlas, fz).rgb * bw.z;
+    vec3 orm = texture(u_orm_atlas, fx).rgb * bw.x
+             + texture(u_orm_atlas, fy).rgb * bw.y
+             + texture(u_orm_atlas, fz).rgb * bw.z;
+
+    // UV.x runs across the fillet profile; blend the two ends' integrity.
+    float integrity = mix(v_edge_data.r, v_edge_data.g, clamp(UV.y, 0.0, 1.0));
+    float burn = clamp(1.0 - integrity, 0.0, 1.0);
+
+    ALBEDO = mix(albedo * u_tint.rgb, vec3(0.055, 0.048, 0.044), burn * 0.78);
+    METALLIC = u_metallic * (1.0 - burn * 0.62);
+    ROUGHNESS = clamp(u_roughness_base * orm.g + burn * 0.45, 0.05, 1.0);
+    AO = orm.r * (0.72 + 0.28 * UV.x);   // darken the inside of concave fillets
+}
+```
+
+### 4.6 Skirt Lifecycle
+
+```gdscript
+class_name AssemblySkirtingSystem
+extends Node
+
+var _mesh_instance: MeshInstance3D
+var _pending_task: int = -1
+var _dirty: bool = false
+
+func _ready() -> void:
+    EventBus.assembly_structure_changed.connect(_on_structure_changed)
+    _mesh_instance = MeshInstance3D.new()
+    _mesh_instance.layers = RenderLayers.LAYER_ASSEMBLY_VISUAL
+    _mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+    add_child(_mesh_instance)
+
+func _on_structure_changed(assembly_id: int) -> void:
+    if assembly_id != _assembly_id:
+        return
+    _dirty = true
+    if _pending_task == -1:
+        _pending_task = WorkerThreadPool.add_task(_rebuild_task, true, "skirt_rebuild")
+
+func _rebuild_task() -> void:
+    _dirty = false
+    var runs := SkirtRunCollector.collect(_occupancy, _states)
+    _staged_mesh = SkirtingBuilder.build(_occupancy, _states, runs)
+
+func _process(_delta: float) -> void:
+    if _pending_task != -1 and WorkerThreadPool.is_task_completed(_pending_task):
+        WorkerThreadPool.wait_for_task_completion(_pending_task)
+        _pending_task = -1
+        _mesh_instance.mesh = _staged_mesh
+        _mesh_instance.material_override = _skirt_material
+        if _dirty:
+            _on_structure_changed(_assembly_id)
+```
+
+The skirting `MeshInstance3D` has no collision of any kind. It is never added to a `PhysicsBody3D`, never generates a trimesh shape, and is not present on any physics layer. Losing it entirely — as happens on the lowest fusion quality setting — changes appearance only, never gameplay.
+
+---
+
+## 5. Mesh Authoring Requirements
+
+For displacement to produce a clean fillet, the part's visual mesh must have vertices within the seam band. `EXTENSION_PIPELINE.md` §6 enforces the following at import:
+
+1. Every face that can abut another part must have an **edge loop inset by 0.03–0.06 m** from each border. This is the loop that gets displaced into the fillet.
+2. Maximum edge length on abutting faces is `0.125 m` (half a lattice cell), so the displaced surface is smooth rather than faceted.
+3. Normals must be **smooth-shaded across the inset loop** and hard-shaded elsewhere, so that only the fillet band picks up the blended SDF normal.
+4. Meshes must be authored in the part's local frame with the pivot cell centre at the origin, because the shader samples the SDF in assembly-local space derived from `VERTEX`.
+5. Vertex count budget per part: 400 (Structural Component), 1 600 (Motive Assembly), 3 200 (Effector Module), 4 800 (Core Module).
+
+The import validator rejects meshes violating (1), (2), or (5) and warns on (3).
+
+---
+
+## 6. Quality Tiers and LOD
+
+| Tier | SDF dims | Vertex displacement | Skirting | Normal blend | Target |
+|---|---|---|---|---|---|
+| **Ultra** | 100×68×100 | On, limit 0.055 | Full, radius ×1.0 | Full gradient | Desktop high |
+| **High** | 100×68×100 | On, limit 0.040 | Full, radius ×0.85 | Full gradient | Desktop mid |
+| **Medium** | 52×36×52 | On, limit 0.028 | Concave edges only | Gradient ×0.6 | Desktop low / mobile high |
+| **Low** | — | Off | Off | Off — baked normal maps only | Mobile mid |
+| **Minimal** | — | Off | Off | Off | Mobile low |
+
+At **Low** and **Minimal**, the material falls back to `part_standard.gdshader`, which shares the atlas and degradation response but has no SDF uniform and no displacement. The silhouette is blockier; nothing else changes. Because gameplay never reads the fused surface, quality tier has **zero** competitive impact — a point the settings UI states explicitly.
+
+### 6.1 Distance LOD
+
+Beyond `FUSION_LOD_DISTANCE_M = 45.0`, `u_fusion_enabled` is driven to `0.0` by the Assembly's LOD controller, which reduces the vertex shader to a pass-through. The transition is faded over `8.0 m` by lerping `u_fusion_enabled` rather than switching it, so no popping occurs.
+
+```gdscript
+func _update_fusion_lod(camera_distance: float) -> void:
+    var t := 1.0 - clampf((camera_distance - FUSION_LOD_DISTANCE_M) / 8.0, 0.0, 1.0)
+    if absf(t - _last_lod_value) < 0.02:
+        return                            # hysteresis: avoid per-frame uniform writes
+    _last_lod_value = t
+    _fusion_material.set_shader_parameter("u_fusion_enabled", t)
+```
+
+---
+
+## 7. Interaction With Destruction
+
+When a part is destroyed and detached, three things happen in order within the same frame:
+
+1. Its `MeshInstance3D` is reparented to the debris `RigidBody3D`, and its material is swapped from the shared fusion material to `part_debris.gdshader` — a standalone variant with no SDF uniform. Debris cannot fuse; it is no longer part of any Assembly's occupancy.
+2. `EventBus.assembly_structure_changed` fires, marking the SDF and skirting dirty.
+3. On the next completed bake, the fillets that previously blended into the lost part retract, and new skirt runs are generated along the newly exposed edges.
+
+The visible result is that a torn-off panel leaves a raw, unfilleted opening with exposed structure, while the surrounding intact panels remain fused. This is the intended read: **fusion is a property of intact structure, and damage restores the blocky truth underneath.**
+
+Debris material additionally receives `u_tear_edge_intensity`, driven from the count of severed attachment nodes, which drives a scorched, ragged rim along the fracture using the same wear noise texture.
+
+---
+
+## 8. Performance Budget and Caps
+
+### 8.1 Per-Assembly Costs
+
+| Operation | Thread | Budget | Typical (180 parts) |
+|---|---|---|---|
+| SDF bake (Ultra) | Worker | 4.0 ms | 1.8 ms |
+| SDF bake (Medium) | Worker | 1.2 ms | 0.5 ms |
+| SDF texture upload | Main | 0.9 ms | 0.4 ms |
+| Skirt run collection | Worker | 3.0 ms | 1.1 ms |
+| Skirt mesh build | Worker | 4.0 ms | 2.4 ms |
+| Skirt mesh assignment | Main | 0.3 ms | 0.1 ms |
+| Fusion vertex shading | GPU | 0.6 ms | 0.4 ms |
+
+### 8.2 Rebuild Coalescing
+
+Structural change events are coalesced through a **120 ms debounce** in match play. A destruction cascade that removes twelve parts over four physics ticks triggers exactly one SDF bake and one skirt rebuild. In the garage the debounce is `0 ms`, because the player expects immediate feedback and structural changes there are user-paced.
+
+```gdscript
+const REBUILD_DEBOUNCE_MATCH_S := 0.120
+const REBUILD_DEBOUNCE_GARAGE_S := 0.0
+```
+
+### 8.3 Global Caps
+
+- **Maximum simultaneously fused Assemblies: 24.** Beyond this, Assemblies are ranked by screen-space area and distance; those outside the top 24 drop to the **Low** tier until a slot frees. Rank is re-evaluated every 500 ms, not per frame.
+- **Maximum concurrent bake tasks: 4.** Additional requests queue.
+- **Skirt vertex ceiling per Assembly: 24 000.** When exceeded, `CONVEX` runs are dropped first (they are the least visually load-bearing), then short runs (`cell_count == 1`).
+
+---
+
+## 9. Invariants
+
+1. Neither the fusion shader nor the skirting mesh ever produces, modifies, or is read by collision geometry. All fused visuals live on nodes with `collision_layer = 0` and `collision_mask = 0`.
+2. SDF bakes and skirt rebuilds are triggered exclusively by structural events. No per-frame, per-tick, or timer-driven rebuild exists.
+3. Bakes run on `WorkerThreadPool`; only texture upload and mesh assignment touch the main thread.
+4. One `ShaderMaterial` and one SDF texture per Assembly. Per-part variation goes through instance uniforms.
+5. Skirting is a single `ArrayMesh` per Assembly, drawn once.
+6. Fusion quality settings have no effect on hit registration, damage, mass, or any other simulated quantity.
+7. Debris never participates in fusion. Detachment swaps to a non-fusing material in the same frame.
