@@ -4,7 +4,7 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 1 (environment bootstrap + core data/math foundation).
+Last updated: session 1 (environment bootstrap, core data/math foundation, lattice occupancy).
 
 ---
 
@@ -37,9 +37,19 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**14 files, 731 checks, 0 failures.** Verified to actually fail on a planted
-violation (global `randf()`, a `_process` in `src/assembly/graph/`, and a
-`find_child()` each produce a located, actionable failure and exit 1).
+**16 files, 1000 checks, 0 failures.** Verified to actually fail on planted
+faults, not merely to pass:
+
+| Planted fault | Caught by |
+|---|---|
+| global `randf()` in `src/` | `test_no_global_rng` |
+| `_process` in `src/assembly/graph/` | `test_no_polling` (both tests) |
+| `find_child()` in `src/` | `test_no_forbidden_patterns` |
+| transposed rotation matrix | `test_orientation_table` (32 failures) |
+| dropped origin offset in `resolve` | `test_footprint_solver` (30 failures) |
+| `out` buffer not shrunk on reuse | `test_footprint_solver` |
+
+Each reports file, line, and the invariant, and the runner exits 1.
 
 ---
 
@@ -75,6 +85,13 @@ These are all verified against 4.7.1 in this repo, not recalled.
 6. **A typed-array `const` does not give a `for` loop's variable a static type.**
    With `untyped_declaration=2` (error, as configured) you must write
    `for name: String in CANONICAL:`.
+
+6a. **Packed arrays pass by reference as function arguments but copy on
+   assignment.** `func f(out: PackedVector3Array)` mutating `out` *is* visible
+   to the caller, so doc 02 §5's zero-allocation out-parameter design works as
+   written. But `var mine := shared` or `obj.field = shared` takes a copy. The
+   two behaviours look identical at the call site and differ completely, so be
+   explicit about which one a piece of code relies on.
 
 7. **`Callable.bind()` does not make two Callables compare unequal.** Two bound
    Callables over the same object and method are equal, so binding an index
@@ -136,6 +153,8 @@ Nothing else in the thirteen documents was changed.
   `ColliderProfile`, `FusionProfile`, `ProxyPrimitiveDef`, `PartVisualProfile`,
   and the six class profiles.
 - `src/core/math/` — `LatticeMath`, `OrientationTable` (full 24-element group).
+- `src/assembly/lattice/` — `LatticeOccupancy` (dense byte-per-cell overlap
+  authority), `FootprintSolver`, `ResolvedNode`.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `src/net/net_channels.gd`, `src/assembly/runtime/assembly_stats.gd`.
 - `project.godot` — autoloads, physics/display settings, all 33 input actions.
@@ -153,7 +172,7 @@ Conformance tests present: `test_autoload_set`, `test_input_actions`,
 
 Unit/integration: `test_lattice_math`, `test_orientation_table`,
 `test_part_definition_bake`, `test_collider_profile_serialisation`,
-`test_tick_ordering`.
+`test_lattice_occupancy`, `test_footprint_solver`, `test_tick_ordering`.
 
 ---
 
@@ -187,17 +206,23 @@ Unit/integration: `test_lattice_math`, `test_orientation_table`,
 
 ## 6. Suggested next steps, in dependency order
 
-1. **`LatticeOccupancy` + `FootprintSolver`** (doc 02 §3, §5). Both are fully
-   specified, both are pure logic, and both are directly unit-testable against
-   the `OrientationTable` that already passes.
+1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done this session.**
+   `LatticeOccupancy` stores per-slot cell lists in a flat array indexed by slot
+   rather than the dictionary sketched in doc 02 §3. The public interface is
+   unchanged; a flat array drops the hashing and makes `slots_in_use()`
+   ascending by construction, which I-9 needs. Not an architecture change, so
+   doc 02 was left alone.
 2. **First two part definitions and `tools/validate_part_registry.gd`.** The
    validator's rules are fully written out in doc 01 §6.2 and §5.1; the
    `ColliderProfile` coverage-band check (82–118%) already has the volume maths
    it needs on `ColliderPrimitiveDef.volume_m3()` and
    `PartDefinition.occupancy_volume_m3()`.
-3. **`PlacementValidator`** (doc 02) — everything in the garage, the
+3. **`PlacementValidator`** (doc 02 §7) — everything in the garage, the
    auto-assembler, and server-side blueprint validation routes through it, so it
-   is the highest-leverage next system.
+   is the highest-leverage next system. The pieces it composes now exist:
+   `FootprintSolver.all_in_bounds` and `LatticeOccupancy.is_footprint_free` are
+   deliberately separate because the two rejections carry different `Reject`
+   codes, and `ResolvedNode.opposes` holds the mating rule.
 4. **`ChassisGraph`** (doc 04), which `test_no_polling` is already configured to
    police.
 
