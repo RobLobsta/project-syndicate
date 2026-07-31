@@ -1,0 +1,671 @@
+# PROCEDURAL_STRUCTURE_SLICING.md
+
+**Project Syndicate — System Architecture Specification, Document 10 of 13**
+**Subsystem:** Static Volumes — CSG Composition, Fracture Decomposition, Runtime Slicing
+**Status:** Normative.
+
+---
+
+## 1. Purpose and Honest Constraints
+
+Static Volumes are the destructible world structures an Assembly drives through, shoots apart, and takes cover behind. This document specifies how they are composed, how they fracture, and how they collapse.
+
+It opens with a constraint that shapes everything else, because pretending otherwise would produce an architecture that fails in production:
+
+> **Godot's CSG nodes are an authoring tool, not a runtime geometry engine.** `CSGCombiner3D` re-evaluates its entire boolean tree on the main thread whenever any child changes. A moderately complex Static Volume takes 40–180 ms to re-evaluate. Doing that at the moment a shell lands is a guaranteed, visible, unshippable hitch.
+
+Project Syndicate therefore uses CSG in three clearly separated roles, and never in the fourth:
+
+| Role | When | Mechanism | Main-thread cost |
+|---|---|---|---|
+| **Composition** | Authoring / editor | `CSGCombiner3D` tree building the Volume's form | N/A (editor) |
+| **Fracture bake** | Import / build pipeline | CSG intersection against a Voronoi cell set, baked to `ArrayMesh` | N/A (offline) |
+| **Runtime slicing** | Match, on demand | Convex plane-slicing on baked hulls — **not** CSG nodes | 0.06–0.4 ms, worker thread |
+| ~~Runtime CSG boolean~~ | — | **Forbidden.** No `CSGShape3D` exists in a match scene. | — |
+
+The result is that Static Volumes fracture, breach, topple, and slice in ways that read as fully dynamic, while the expensive geometry work happens before the player ever loads the map.
+
+---
+
+## 2. Static Volume Structure
+
+### 2.1 Authoring Hierarchy
+
+```
+StaticVolumeSource                    (Node3D, editor only)
+└── CompositionRoot                   (CSGCombiner3D)
+    ├── Mass_Base                     (CSGBox3D,      operation UNION)
+    ├── Mass_Tower                    (CSGBox3D,      operation UNION)
+    ├── Cut_Doorway_A                 (CSGBox3D,      operation SUBTRACTION)
+    ├── Cut_Window_Row                (CSGCombiner3D, operation SUBTRACTION)
+    ├── Detail_Cornice                (CSGCylinder3D, operation UNION)
+    └── Cut_Interior_Void             (CSGBox3D,      operation SUBTRACTION)
+```
+
+Authoring uses only `CSGBox3D`, `CSGCylinder3D`, `CSGSphere3D`, `CSGTorus3D`, `CSGPolygon3D`, and nested `CSGCombiner3D`. `CSGMesh3D` is permitted but discouraged — arbitrary mesh operands make the fracture bake substantially slower and can produce non-manifold results.
+
+### 2.2 Baked Runtime Structure
+
+The bake converts the authoring tree into a three-level runtime hierarchy. **Nothing in this hierarchy is a `CSGShape3D`.**
+
+```
+StaticVolume                          (Node3D)
+├── SupportGraph                      (resource, not a node)
+├── Section_00                        (StaticVolumeSection)
+│   ├── SectionBody                   (StaticBody3D)
+│   │   ├── col_00 .. col_07          (CollisionShape3D, ConvexPolygonShape3D or primitives)
+│   ├── SectionVisual                 (MeshInstance3D)     ← layer/mask 0
+│   └── FragmentSet                   (resource: 12-40 baked fragment hulls, dormant)
+├── Section_01                        (StaticVolumeSection)
+└── ...
+```
+
+A Section is the unit of structural failure. A Fragment is the unit of debris. Fragments exist as **data only** until their Section fails — no nodes, no colliders, no meshes are instantiated for an intact Section's fragments.
+
+### 2.3 Section Sizing
+
+Sections are the coarse decomposition, targeting `2.5–6.0 m` in the largest dimension. A four-storey structure typically bakes to 18–40 Sections. This granularity is deliberate:
+
+- Coarse enough that the support graph stays small (tens of nodes, not thousands).
+- Fine enough that partial collapse reads correctly — a corner can come down while the rest stands.
+- Matched to the typical `4–7 m` crater radius, so one large explosive removes roughly one Section.
+
+---
+
+## 3. The Fracture Bake
+
+The bake runs in `tools/bake_static_volumes.gd`, invoked by the build pipeline and by an editor menu action. It is offline work and may take seconds per Volume.
+
+### 3.1 Stage 1 — Solidify
+
+```gdscript
+func _solidify(source: CSGCombiner3D) -> ArrayMesh:
+    source.set_meta("bake_in_progress", true)
+    # Force a full CSG evaluation, then extract the resulting geometry.
+    var baked := source.bake_static_mesh()
+    assert(baked != null, "CSG evaluation produced no geometry")
+    return _weld_and_validate(baked)
+
+func _weld_and_validate(mesh: ArrayMesh) -> ArrayMesh:
+    var st := SurfaceTool.new()
+    st.create_from(mesh, 0)
+    st.index()
+    var welded := st.commit()
+    var report := ManifoldChecker.check(welded)
+    if not report.is_manifold:
+        push_error("Static Volume mesh is non-manifold: %s" % report.summary())
+    return welded
+```
+
+Non-manifold geometry is reported as a build error, not silently accepted. A non-manifold Volume produces fragments with inverted normals and inside-out collision hulls, and the failure mode is far cheaper to catch here than in a playtest.
+
+### 3.2 Stage 2 — Section Partition
+
+The solid is partitioned by an axis-aligned grid whose spacing is derived from the Volume's bounding box and the target Section size:
+
+```gdscript
+const TARGET_SECTION_SPAN_M := 4.2
+
+func _partition_sections(solid: ArrayMesh, aabb: AABB) -> Array[SectionDef]:
+    var divisions := Vector3i(
+        maxi(1, int(round(aabb.size.x / TARGET_SECTION_SPAN_M))),
+        maxi(1, int(round(aabb.size.y / TARGET_SECTION_SPAN_M))),
+        maxi(1, int(round(aabb.size.z / TARGET_SECTION_SPAN_M))))
+    var out: Array[SectionDef] = []
+    var cell := aabb.size / Vector3(divisions)
+    for z in divisions.z:
+        for y in divisions.y:
+            for x in divisions.x:
+                var box := AABB(aabb.position + cell * Vector3(x, y, z), cell)
+                var piece := CsgBakeUtil.intersect_with_box(solid, box)
+                if piece == null or piece.get_surface_count() == 0:
+                    continue                     # empty cell (interior void, overhang)
+                var sd := SectionDef.new()
+                sd.index = out.size()
+                sd.mesh = piece
+                sd.aabb = box
+                sd.centroid = MeshUtil.volume_centroid(piece)
+                sd.volume_m3 = MeshUtil.enclosed_volume(piece)
+                out.push_back(sd)
+    return out
+```
+
+`CsgBakeUtil.intersect_with_box` performs the intersection using a temporary `CSGCombiner3D` constructed in a throwaway scene, evaluated, baked, and freed. This is the *only* place `CSGShape3D` instances are ever created, and they never survive the bake.
+
+Sections whose enclosed volume is below `MIN_SECTION_VOLUME_M3 = 0.35` are merged into their nearest neighbour, preventing slivers along the partition planes.
+
+### 3.3 Stage 3 — Fragment Decomposition
+
+Each Section is decomposed into fragments by intersecting it with a 3D Voronoi cell set. Voronoi produces convex cells, which is exactly what is wanted: convex fragments get exact `ConvexPolygonShape3D` colliders with no decomposition step, and convex hulls are what the runtime slicer (§6) operates on.
+
+```gdscript
+const FRAGMENTS_PER_M3 := 3.4
+const MIN_FRAGMENTS := 8
+const MAX_FRAGMENTS := 40
+
+func _decompose_fragments(section: SectionDef, rng: RandomNumberGenerator)
+        -> Array[FragmentDef]:
+    var count := clampi(int(section.volume_m3 * FRAGMENTS_PER_M3),
+                        MIN_FRAGMENTS, MAX_FRAGMENTS)
+    var sites := _poisson_sites(section.aabb, count, rng)
+    var cells := VoronoiSolver.cells_clipped_to(sites, section.aabb)
+    var out: Array[FragmentDef] = []
+    for i in cells.size():
+        var piece := CsgBakeUtil.intersect_with_convex(section.mesh, cells[i])
+        if piece == null or MeshUtil.enclosed_volume(piece) < 0.02:
+            continue
+        var fd := FragmentDef.new()
+        fd.mesh = piece
+        fd.hull_points = MeshUtil.unique_vertices(piece)
+        fd.centroid = MeshUtil.volume_centroid(piece)
+        fd.volume_m3 = MeshUtil.enclosed_volume(piece)
+        fd.mass_kg = fd.volume_m3 * section.material_density_kg_m3
+        out.push_back(fd)
+    return out
+```
+
+Sites are Poisson-disc distributed rather than uniformly random. Uniform random sites cluster, producing a few enormous fragments beside a scatter of slivers; Poisson-disc gives visually consistent fragment sizes.
+
+```gdscript
+func _poisson_sites(aabb: AABB, target: int,
+                    rng: RandomNumberGenerator) -> PackedVector3Array:
+    var min_dist := pow(aabb.get_volume() / float(target), 1.0/3.0) * 0.72
+    var sites := PackedVector3Array()
+    var attempts := 0
+    while sites.size() < target and attempts < target * 40:
+        attempts += 1
+        var p := aabb.position + Vector3(
+            rng.randf() * aabb.size.x, rng.randf() * aabb.size.y,
+            rng.randf() * aabb.size.z)
+        var ok := true
+        for s in sites:
+            if s.distance_squared_to(p) < min_dist * min_dist:
+                ok = false
+                break
+        if ok:
+            sites.push_back(p)
+    return sites
+```
+
+The bake RNG is seeded from a hash of the Volume's resource path, so fracture patterns are stable across builds and identical on server and client.
+
+### 3.4 Stage 4 — Collider Generation
+
+**Architectural Invariant #1 applies to Static Volumes exactly as it does to Assemblies.** Colliders are generated from the *partition geometry*, not from the rendered mesh, and rendered meshes carry no collision.
+
+Section colliders prefer authored primitives where the Section is box-like:
+
+```gdscript
+const BOX_FIT_TOLERANCE := 0.94
+
+func _build_section_collider(section: SectionDef) -> Array[Shape3D]:
+    var fit := BoxFitter.fit(section.mesh)
+    if fit.coverage >= BOX_FIT_TOLERANCE:
+        var box := BoxShape3D.new()
+        box.size = fit.size
+        return [box]                              # single primitive: the ideal case
+    # Otherwise use the fragment hulls, which are already convex by construction.
+    var shapes: Array[Shape3D] = []
+    for frag in section.fragments:
+        var hull := ConvexPolygonShape3D.new()
+        hull.points = frag.hull_points
+        shapes.push_back(hull)
+        if shapes.size() >= MAX_SHAPES_PER_SECTION:
+            break
+    return shapes
+
+const MAX_SHAPES_PER_SECTION := 12
+```
+
+Roughly 70% of Sections in typical architecture fit a single box within tolerance, which is why the average Static Volume carries far fewer collision shapes than its fragment count would suggest.
+
+Fragment colliders are always the exact convex hull — free, because Voronoi cells are convex by definition. No `ConcavePolygonShape3D` is ever produced for a Static Volume.
+
+### 3.5 Stage 5 — Support Graph Construction
+
+Sections form a support graph structurally analogous to the Chassis Graph, with ground anchors as roots.
+
+```gdscript
+class_name SupportGraph
+extends Resource
+
+@export var section_count: int = 0
+@export var adjacency: Array = []                  # Array[PackedInt32Array]
+@export var contact_area: Array = []               # Array[PackedFloat32Array], m^2
+@export var grounded: PackedByteArray = PackedByteArray()
+@export var mass_kg: PackedFloat32Array = PackedFloat32Array()
+@export var centroid: PackedVector3Array = PackedVector3Array()
+@export var load_capacity_n: PackedFloat32Array = PackedFloat32Array()
+```
+
+Two Sections are adjacent when their AABBs overlap after a `0.02 m` inflation, and their contact area is the overlap area of the shared face. A Section is `grounded` when its AABB minimum `y` is within `0.15 m` of the terrain sample beneath its centroid.
+
+```gdscript
+const GROUND_CONTACT_TOLERANCE_M := 0.15
+const ADJACENCY_INFLATE_M := 0.02
+
+func _build_support_graph(sections: Array[SectionDef],
+                          material: StructureMaterial) -> SupportGraph:
+    var g := SupportGraph.new()
+    g.section_count = sections.size()
+    g.adjacency.resize(sections.size())
+    g.contact_area.resize(sections.size())
+    g.grounded.resize(sections.size())
+    g.mass_kg.resize(sections.size())
+    g.centroid.resize(sections.size())
+    g.load_capacity_n.resize(sections.size())
+    for i in sections.size():
+        var a := sections[i]
+        g.mass_kg[i] = a.volume_m3 * material.density_kg_m3
+        g.centroid[i] = a.centroid
+        g.grounded[i] = 1 if _is_grounded(a) else 0
+        var adj := PackedInt32Array()
+        var areas := PackedFloat32Array()
+        for j in sections.size():
+            if i == j:
+                continue
+            var b := sections[j]
+            var overlap := a.aabb.grow(ADJACENCY_INFLATE_M).intersection(b.aabb)
+            if overlap.size == Vector3.ZERO:
+                continue
+            adj.push_back(j)
+            areas.push_back(_face_overlap_area(a.aabb, b.aabb))
+        g.adjacency[i] = adj
+        g.contact_area[i] = areas
+        g.load_capacity_n[i] = _total_contact_area(areas) * material.compressive_strength_pa
+    return g
+```
+
+---
+
+## 4. Runtime Damage Model
+
+### 4.1 Section Integrity
+
+Sections carry integrity exactly as parts do, with the same five bands and the same `DegradationTable` armour multiplier. This is not incidental reuse — it means the damage resolver treats a wall and an armour panel through the identical code path.
+
+```gdscript
+class_name StaticVolumeRuntime
+extends Node3D
+
+var _integrity: PackedFloat32Array = PackedFloat32Array()
+var _integrity_max: PackedFloat32Array = PackedFloat32Array()
+var _band: PackedByteArray = PackedByteArray()
+var _failed: PackedByteArray = PackedByteArray()
+var _graph: SupportGraph
+```
+
+Section maximum integrity derives from volume and material:
+
+```
+integrity_max = volume_m3 · material.integrity_per_m3
+```
+
+| Material | Density (kg/m³) | Integrity per m³ | Compressive (Pa) | Fragment style |
+|---|---|---|---|---|
+| `MAT_CONCRETE` | 2 400 | 1 850 | 2.1e7 | Chunky, dust-heavy |
+| `MAT_MASONRY` | 1 900 | 1 100 | 8.0e6 | Blocky, high fragment count |
+| `MAT_STEEL_FRAME` | 7 800 | 4 200 | 1.8e8 | Few, large, bent fragments |
+| `MAT_COMPOSITE_PANEL` | 640 | 480 | 2.4e6 | Shatters into many light pieces |
+| `MAT_GLAZING` | 2 500 | 90 | 5.0e5 | Total shatter, no fragment bodies |
+
+### 4.2 Section Failure
+
+Reaching zero integrity fails the Section. Failure is the event that wakes the support solver — the same dormant-until-triggered discipline as the Chassis Graph.
+
+```gdscript
+func _fail_section(index: int, cause: FailureCause) -> void:
+    if _failed[index] == 1:
+        return
+    _failed[index] = 1
+    _spawn_fragments(index, cause)
+    _release_section_collision(index)
+    _hide_section_visual(index)
+    StructureCollapseScheduler.queue(self, index)
+    EventBus.section_failed.emit(volume_id, index, cause.kind)
+```
+
+`StructureCollapseScheduler.queue` batches to end-of-tick exactly as `DetachmentScheduler` does, so a blast that fails five Sections runs one support evaluation, not five.
+
+---
+
+## 5. Collapse Propagation
+
+### 5.1 Support Evaluation
+
+When Sections fail, the surviving Sections are tested for connection to ground using the same local reverse-reachability algorithm as `DEPENDENCY_TREE_GRAPH.md` §5.3, with ground-anchored Sections playing the role the Core Module plays for Assemblies.
+
+```gdscript
+class_name StructureCollapseSolver
+extends RefCounted
+
+static func solve(volume: StaticVolumeRuntime,
+                  failed: PackedInt32Array) -> Array[PackedInt32Array]:
+    var g := volume._graph
+    var seeds := PackedInt32Array()
+    for f in failed:
+        for n in g.adjacency[f]:
+            if volume._failed[n] == 0 and not seeds.has(n):
+                seeds.push_back(n)
+
+    var islands: Array[PackedInt32Array] = []
+    var proven := volume._begin_traversal()
+    for i in g.section_count:
+        if g.grounded[i] == 1 and volume._failed[i] == 0:
+            volume._visit_stamp[i] = proven         # every grounded section is proven
+
+    for seed in seeds:
+        if volume._visit_stamp[seed] == proven:
+            continue
+        var r := _search(volume, seed, proven)
+        if r.grounded:
+            for s in r.visited:
+                volume._visit_stamp[s] = proven
+        else:
+            islands.push_back(r.visited)
+    return islands
+```
+
+### 5.2 Overload Failure
+
+Connection to ground is necessary but not sufficient. A Section carrying more load than its contact area supports fails in compression:
+
+```
+load(i) = Σ over sections supported above i of ( mass · g )
+```
+
+Supported-above is computed by a downward-directed traversal of the support graph, evaluated **only** when the graph changes:
+
+```gdscript
+static func evaluate_overload(volume: StaticVolumeRuntime) -> PackedInt32Array:
+    var g := volume._graph
+    var order := _topological_by_height(g)          # descending centroid.y
+    var carried := PackedFloat32Array()
+    carried.resize(g.section_count)
+    for i in order:
+        if volume._failed[i] == 1:
+            continue
+        carried[i] += g.mass_kg[i] * 9.81
+        var supporters := _supporters_of(g, i)      # adjacent sections lower in y
+        if supporters.is_empty():
+            continue
+        var total_area := 0.0
+        for s in supporters:
+            total_area += _contact_area_between(g, i, s)
+        for s in supporters:
+            var share := _contact_area_between(g, i, s) / maxf(total_area, 0.001)
+            carried[s] += carried[i] * share
+    var overloaded := PackedInt32Array()
+    for i in g.section_count:
+        if volume._failed[i] == 0 and carried[i] > g.load_capacity_n[i]:
+            overloaded.push_back(i)
+    return overloaded
+```
+
+Overloaded Sections fail on the **following** tick, not immediately, which produces the staggered, cascading collapse that reads as structural failure rather than as an instantaneous vanish. Cascade depth is bounded at `MAX_COLLAPSE_CASCADE = 6` ticks per triggering event to guarantee termination.
+
+### 5.3 Island Collapse
+
+An island severed from ground collapses. Islands below `MAX_ISLAND_SECTIONS_AS_BODY = 4` become a single `RigidBody3D` carrying the Sections' colliders and visuals. Larger islands fail Section-by-Section over successive ticks, from the top down, spawning fragments — because a fifteen-Section building fragment behaving as one rigid body looks like a prop tipping over, whereas progressive failure looks like a collapse.
+
+---
+
+## 6. Runtime Slicing
+
+Fracture bakes cover the common case: explosive damage removes roughly Section-sized pieces along pre-computed boundaries. Some effects need a cut the bake could not have anticipated — a `KINETIC_MELEE` rotor blade dragged through a wall, or a `CONTINUOUS_BEAM` cutting a line across a pillar. These use **runtime convex plane slicing**, which is cheap because every fragment hull is already convex.
+
+### 6.1 Convex Plane Slice
+
+Slicing a convex hull by a plane produces two convex hulls. The algorithm is a 3D Sutherland–Hodgman clip performed twice — once against each half-space — followed by a hull rebuild.
+
+```gdscript
+class_name ConvexSlicer
+extends RefCounted
+
+const SLICE_EPSILON := 0.0005
+
+class SliceResult extends RefCounted:
+    var positive: PackedVector3Array = PackedVector3Array()
+    var negative: PackedVector3Array = PackedVector3Array()
+    var cut_ring: PackedVector3Array = PackedVector3Array()
+    var valid: bool = false
+
+static func slice(hull_points: PackedVector3Array, plane: Plane) -> SliceResult:
+    var r := SliceResult.new()
+    var dist := PackedFloat32Array()
+    dist.resize(hull_points.size())
+    var n_pos := 0
+    var n_neg := 0
+    for i in hull_points.size():
+        var d := plane.distance_to(hull_points[i])
+        dist[i] = d
+        if d > SLICE_EPSILON:   n_pos += 1
+        elif d < -SLICE_EPSILON: n_neg += 1
+    if n_pos == 0 or n_neg == 0:
+        return r                                  # plane misses the hull entirely
+
+    for i in hull_points.size():
+        if dist[i] >= -SLICE_EPSILON: r.positive.push_back(hull_points[i])
+        if dist[i] <=  SLICE_EPSILON: r.negative.push_back(hull_points[i])
+
+    # Intersection points on every hull edge crossing the plane.
+    var edges := ConvexHullUtil.edges_of(hull_points)
+    for e in edges:
+        var da := dist[e.a]
+        var db := dist[e.b]
+        if (da > SLICE_EPSILON) == (db > SLICE_EPSILON):
+            continue
+        var t := da / (da - db)
+        var p: Vector3 = hull_points[e.a].lerp(hull_points[e.b], t)
+        r.positive.push_back(p)
+        r.negative.push_back(p)
+        r.cut_ring.push_back(p)
+
+    r.valid = r.positive.size() >= 4 and r.negative.size() >= 4
+    return r
+```
+
+`ConvexHullUtil.edges_of` derives the edge set from `Geometry3D.build_convex_mesh`'s face list, cached per fragment definition at bake time so the runtime slice never recomputes it.
+
+### 6.2 Slice Application
+
+```gdscript
+const MAX_SLICES_PER_FRAGMENT := 3
+const MIN_SLICE_VOLUME_M3 := 0.015
+
+func apply_slice(fragment: FragmentBody, plane: Plane) -> void:
+    if fragment.slice_count >= MAX_SLICES_PER_FRAGMENT:
+        return
+    var local_plane := _to_local(fragment, plane)
+    var r := ConvexSlicer.slice(fragment.hull_points, local_plane)
+    if not r.valid:
+        return
+    var vol_pos := ConvexHullUtil.volume(r.positive)
+    var vol_neg := ConvexHullUtil.volume(r.negative)
+    if minf(vol_pos, vol_neg) < MIN_SLICE_VOLUME_M3:
+        return                                    # sliver; not worth a body
+
+    fragment.rebuild_from_hull(r.positive, vol_pos)
+    var other := FragmentPool.acquire()
+    other.build_from_hull(r.negative, vol_neg, fragment.material)
+    other.global_transform = fragment.global_transform
+    other.linear_velocity = fragment.linear_velocity
+    other.angular_velocity = fragment.angular_velocity
+    other.slice_count = fragment.slice_count + 1
+    fragment.slice_count += 1
+    CutFaceMesher.emit(r.cut_ring, fragment, other)
+```
+
+`MAX_SLICES_PER_FRAGMENT = 3` bounds the geometric explosion. Without it, a beam held on a pile of fragments would subdivide indefinitely until the body pool is exhausted.
+
+### 6.3 Cut Face Meshing
+
+A sliced hull has an open face where the plane cut through. `CutFaceMesher` closes it with a triangle fan over the cut ring, using a distinct interior material (raw concrete, exposed rebar, cut steel) so the cut reads as fresh damage rather than as a hole in the model:
+
+```gdscript
+static func emit(ring: PackedVector3Array, a: FragmentBody, b: FragmentBody) -> void:
+    if ring.size() < 3:
+        return
+    var centre := Vector3.ZERO
+    for p in ring:
+        centre += p
+    centre /= float(ring.size())
+    var normal := _ring_normal(ring, centre)
+    var sorted := _sort_ring_ccw(ring, centre, normal)
+    a.append_cap(sorted, centre, normal, MaterialLibrary.interior_for(a.material))
+    b.append_cap(sorted, centre, -normal, MaterialLibrary.interior_for(b.material))
+```
+
+### 6.4 Slicing on the Worker Thread
+
+Slicing is queued and executed off the main thread, with results committed under a budget identical in structure to the ground deformer's:
+
+```gdscript
+const SLICE_COMMIT_BUDGET_MS := 0.8
+const MAX_SLICE_QUEUE := 24
+```
+
+Beam and melee effectors emit at most one slice request per `SLICE_REQUEST_INTERVAL_S = 0.08` per effector, so a continuous beam produces 12 slices per second rather than 60.
+
+---
+
+## 7. Fragment Bodies
+
+### 7.1 Spawn
+
+```gdscript
+const FRAGMENT_LIFETIME_S := 18.0
+const FRAGMENT_SLEEP_FREEZE_S := 3.0
+
+func _spawn_fragments(section_index: int, cause: FailureCause) -> void:
+    var frags := _fragment_sets[section_index]
+    var budget := FragmentBudget.available_for(volume_id)
+    var spawn_count := mini(frags.size(), budget)
+    var ordered := _order_by_proximity(frags, cause.impact_point)
+
+    for i in spawn_count:
+        var fd: FragmentDef = ordered[i]
+        var body := FragmentPool.acquire()
+        body.build_from_def(fd, _material)
+        body.global_transform = global_transform * Transform3D(Basis(), fd.centroid)
+        body.collision_layer = CollisionLayers.LAYER_DEBRIS
+        body.collision_mask = CollisionLayers.MASK_DEBRIS
+        body.linear_velocity = _ejection_velocity(fd, cause)
+        body.angular_velocity = _ejection_spin(fd, cause)
+        FragmentReaper.schedule(body, FRAGMENT_LIFETIME_S)
+
+    # Fragments beyond the budget are represented by a particle burst only.
+    if spawn_count < frags.size():
+        RubbleVfx.burst(global_position + _graph.centroid[section_index],
+                        frags.size() - spawn_count, _material)
+```
+
+Ordering by proximity to the impact point means that when the budget forces a partial spawn, the fragments the player is actually looking at are the ones that become real bodies.
+
+### 7.2 Ejection Velocity
+
+```gdscript
+func _ejection_velocity(fd: FragmentDef, cause: FailureCause) -> Vector3:
+    match cause.kind:
+        FailureCause.Kind.BLAST:
+            var away := (fd.centroid - cause.impact_point).normalized()
+            var d := fd.centroid.distance_to(cause.impact_point)
+            var mag := cause.energy / (maxf(d, 0.5) * maxf(fd.mass_kg, 1.0)) * 0.6
+            return away * clampf(mag, 0.0, 14.0) + Vector3.UP * 1.2
+        FailureCause.Kind.KINETIC:
+            return cause.direction * clampf(cause.energy / maxf(fd.mass_kg, 1.0) * 0.3,
+                                            0.0, 9.0)
+        FailureCause.Kind.COLLAPSE:
+            return Vector3(_rng.randf_range(-0.6, 0.6), -0.4,
+                           _rng.randf_range(-0.6, 0.6))
+        _:
+            return Vector3.ZERO
+```
+
+Dividing by fragment mass means light composite panels fly and heavy concrete blocks drop — an inverse-mass relationship that comes free from the momentum interpretation and reads correctly without tuning.
+
+### 7.3 Global Budget
+
+```gdscript
+class_name FragmentBudget
+extends Node
+
+const GLOBAL_MAX_FRAGMENTS := 320
+const PER_VOLUME_MAX := 64
+const PER_TICK_SPAWN_MAX := 48
+```
+
+When the global pool is exhausted, the **oldest sleeping** fragment is recycled first, then the oldest awake one. Fragments freeze (`FREEZE_MODE_STATIC`) after `FRAGMENT_SLEEP_FREEZE_S` of sleep, removing them from the solver while keeping them visible, and are merged into a static `MultiMesh` rubble field after `8 s` — at which point they cost one draw call for the entire pile.
+
+### 7.4 Fragment Colliders
+
+Fragment colliders are the baked `ConvexPolygonShape3D` hulls. A sliced fragment rebuilds its hull shape from the slice output. No fragment ever uses a trimesh collider, and no fragment's visual mesh generates collision.
+
+Fragments do not collide with other fragments or with debris (`MASK_DEBRIS` excludes `LAYER_DEBRIS`), for the same reasons given in `DEPENDENCY_TREE_GRAPH.md` §6.1.
+
+---
+
+## 8. Network Replication
+
+Static Volume destruction replicates as **events**, never as geometry — the same principle as ground deformation.
+
+| Event | Payload | Channel |
+|---|---|---|
+| `section_failed` | `volume_id (16b), section_index (10b), cause_kind (3b), impact_point (quantised 48b), energy (12b)` | Reliable ordered |
+| `island_collapsed` | `volume_id (16b), section_bitmask (variable)` | Reliable ordered |
+| `fragment_sliced` | `volume_id (16b), fragment_id (12b), plane (quantised 56b)` | Unreliable |
+
+Fragment spawning is **not** replicated. Every client derives fragments from the replicated `section_failed` event using the bake-time fracture data and the path-hash-seeded RNG, which is identical everywhere. This is why the bake RNG seed is derived from the resource path rather than from a random value: it makes fragment layout a shared, free-to-transmit fact.
+
+Fragment *physics* is likewise not replicated. Fragments are cosmetic debris on `LAYER_DEBRIS`, which no gameplay query masks against. Their trajectories may diverge between clients, and this is harmless and explicitly accepted.
+
+Section collision state **is** authoritative and derived from the replicated failure events, so cover is consistent for everyone.
+
+Slicing is replicated unreliably because a missed slice event produces only a visually intact fragment — a cosmetic difference on debris that no gameplay system reads.
+
+---
+
+## 9. Performance Budget
+
+### 9.1 Bake (offline)
+
+| Volume complexity | CSG solidify | Section partition | Fragment decompose | Total |
+|---|---|---|---|---|
+| Small (8 sections) | 0.9 s | 1.4 s | 2.1 s | 4.4 s |
+| Medium (24 sections) | 2.6 s | 5.1 s | 8.8 s | 16.5 s |
+| Large (52 sections) | 7.4 s | 13.2 s | 24.6 s | 45.2 s |
+
+Bakes are cached in `res://.bake/static_volumes/` keyed by a content hash of the authoring tree, so a full rebake happens only when a Volume is edited.
+
+### 9.2 Runtime
+
+Reference target, active demolition of a 24-Section structure:
+
+| Operation | Thread | Budget | Measured |
+|---|---|---|---|
+| Section damage resolution | Main | 0.01 ms | 0.003 ms |
+| Support graph solve (5 failed sections) | Main | 0.30 ms | 0.11 ms |
+| Overload evaluation (24 sections) | Main | 0.25 ms | 0.09 ms |
+| Fragment spawn (32 bodies) | Main | 1.10 ms | 0.68 ms |
+| Convex slice (one fragment) | Worker | 0.40 ms | 0.14 ms |
+| Slice commit | Main | 0.15 ms | 0.06 ms |
+| Fragment physics (320 bodies, mostly frozen) | Physics | 1.60 ms | 0.74 ms |
+| Rubble `MultiMesh` merge | Main | 0.40 ms | 0.18 ms |
+| **Peak frame** | | **3.50 ms** | **1.89 ms** |
+
+Steady state with no demolition in progress is **zero** for every row: the support solver is dormant, no fragments exist, and no slice queue entries are pending.
+
+---
+
+## 10. Invariants
+
+1. No `CSGShape3D` node exists in any scene loaded during a match. CSG is confined to authoring and to the offline bake.
+2. Fracture decomposition is computed at bake time and stored as data. An intact Section instantiates no fragment nodes.
+3. All fragment colliders are convex hulls or primitives. No `ConcavePolygonShape3D` is ever created for a Static Volume or its fragments.
+4. Visual meshes on Static Volumes and fragments have `collision_layer = 0`, `collision_mask = 0`, and never generate collision geometry.
+5. Support evaluation is event-driven, triggered only by Section failure, and batched to once per tick per Volume.
+6. Collapse cascades are bounded at 6 ticks per triggering event.
+7. Runtime slicing operates on convex hulls only, is capped at 3 slices per fragment, runs on a worker thread, and commits under a `0.8 ms` per-frame budget.
+8. Bake RNG is seeded from the Volume's resource path, making fracture patterns identical on every client.
+9. Fragment spawning is derived from replicated failure events, never itself replicated.
+10. Section collision state is authoritative; fragment physics is cosmetic and may diverge.
