@@ -104,5 +104,4 @@ func _seal() -> void:
 
 
 func _path_for_key(key: StringName) -> String:
-	var segments := String(key).split(".")
-	return "res://data/parts/%s/%s.tres" % [segments[0], String(key)]
+	return PartManifest.definition_path(key)

@@ -38,31 +38,42 @@ func has_axis_normal() -> bool:
 	return AXIS_NORMALS.has(face_normal)
 
 
+## The mating matrix of [code]docs/GRID_SNAPPING_LOGIC.md[/code] §7.3, flattened
+## to [code]row * ATTACHMENT_POLARITY_COUNT + column[/code] where both indices are
+## [enum PartEnums.AttachmentPolarity] values.
+##
+## A flat array rather than the dictionary the document sketches: the mate
+## selector and the auto-assembler both read this per candidate node pair, and an
+## integer-keyed [Dictionary] pays a hash for a lookup that is two adds.
+##
+##          male   female neutral axle   deck
+const POLARITY_MATRIX: Array[bool] = [
+	false, true, true, false, true,  # FACE_MALE
+	true, false, true, false, false,  # FACE_FEMALE
+	true, true, true, false, true,  # FACE_NEUTRAL
+	false, false, false, true, false,  # AXLE
+	true, false, true, false, false,  # DECK
+]
+
+
+## True when a node of [param other] polarity may mate with one of [param a].
+##
+## AXLE is exclusive — a Motive Assembly axle mates only with another axle. DECK
+## is an upward-facing mounting surface, so it accepts a protruding or neutral
+## face but never a recess and never a second deck: two decks facing each other
+## describe no physical joint.
+static func polarity_compatible(
+	a: PartEnums.AttachmentPolarity, other: PartEnums.AttachmentPolarity
+) -> bool:
+	var count := PartEnums.ATTACHMENT_POLARITY_COUNT
+	if a < 0 or other < 0 or a >= count or other >= count:
+		return false
+	return POLARITY_MATRIX[int(a) * count + int(other)]
+
+
 ## True when a node of [param other] polarity may mate with this one.
-## AXLE and DECK are exclusive: they mate only with their own kind.
 func accepts_polarity(other: PartEnums.AttachmentPolarity) -> bool:
-	match polarity:
-		PartEnums.AttachmentPolarity.FACE_MALE:
-			return (
-				other == PartEnums.AttachmentPolarity.FACE_FEMALE
-				or other == PartEnums.AttachmentPolarity.FACE_NEUTRAL
-			)
-		PartEnums.AttachmentPolarity.FACE_FEMALE:
-			return (
-				other == PartEnums.AttachmentPolarity.FACE_MALE
-				or other == PartEnums.AttachmentPolarity.FACE_NEUTRAL
-			)
-		PartEnums.AttachmentPolarity.FACE_NEUTRAL:
-			return (
-				other == PartEnums.AttachmentPolarity.FACE_MALE
-				or other == PartEnums.AttachmentPolarity.FACE_FEMALE
-				or other == PartEnums.AttachmentPolarity.FACE_NEUTRAL
-			)
-		PartEnums.AttachmentPolarity.AXLE:
-			return other == PartEnums.AttachmentPolarity.AXLE
-		PartEnums.AttachmentPolarity.DECK:
-			return other == PartEnums.AttachmentPolarity.DECK
-	return false
+	return polarity_compatible(polarity, other)
 
 
 ## True when a part of [param part_class] may mate at this node.

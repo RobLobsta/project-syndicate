@@ -79,3 +79,6 @@ const INTEGRITY_BAND_COUNT: int = 5
 
 ## Number of part classes; sizes the per-class bucket arrays in PartRegistry.
 const PART_CLASS_COUNT: int = 7
+
+## Number of attachment polarities; sizes the mating matrix in [AttachmentNodeDef].
+const ATTACHMENT_POLARITY_COUNT: int = 5
