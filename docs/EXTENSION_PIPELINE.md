@@ -94,13 +94,13 @@ static func _mirror_collider(cp: ColliderProfile) -> Array[ProxyPrimitiveDef]:
 
 static func _primitive_mesh(p: ProxyPrimitiveDef) -> Mesh:
     match p.kind:
-        ColliderProfile.PrimitiveKind.BOX:
+        ColliderPrimitiveDef.PrimitiveKind.BOX:
             var b := BoxMesh.new(); b.size = p.half_extents_m * 2.0; return b
-        ColliderProfile.PrimitiveKind.CYLINDER:
+        ColliderPrimitiveDef.PrimitiveKind.CYLINDER:
             var c := CylinderMesh.new()
             c.top_radius = p.radius_m; c.bottom_radius = p.radius_m
             c.height = p.height_m; c.radial_segments = 12; return c
-        ColliderProfile.PrimitiveKind.CAPSULE:
+        ColliderPrimitiveDef.PrimitiveKind.CAPSULE:
             var cp := CapsuleMesh.new()
             cp.radius = p.radius_m; cp.height = p.height_m
             cp.radial_segments = 12; return cp

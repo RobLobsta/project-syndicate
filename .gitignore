@@ -1,0 +1,22 @@
+# Godot engine artefacts
+.godot/
+/android/
+*.translation
+
+# Local toolchain: engine binary, editor/user data, test output.
+# Provisioned by tools/ci/bootstrap_env.sh; never committed.
+.tooling/
+
+# Export output
+/build/
+/export/
+
+# DCC scratch that escaped art_src/
+*.blend1
+*.blend2
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
