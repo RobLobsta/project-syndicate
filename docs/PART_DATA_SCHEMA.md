@@ -352,24 +352,50 @@ Face normals are constrained to `±X`, `±Y`, `±Z`. Diagonal mating is not supp
 
 **Architectural Invariant #1** (see `CLAUDE.md` §6): physics never touches a visual mesh. `ColliderProfile` describes the *only* geometry the physics server ever sees for this part.
 
+The primitive type is declared **top-level**, in its own file, and not as an inner class of `ColliderProfile`:
+
 ```gdscript
-class_name ColliderProfile
+class_name ColliderPrimitiveDef        # src/core/data/collider_primitive_def.gd
 extends Resource
 
 enum PrimitiveKind { BOX = 0, CYLINDER = 1, CAPSULE = 2, SPHERE = 3 }
 
-class PrimitiveDef extends Resource:
-    @export var kind: PrimitiveKind = PrimitiveKind.BOX
-    @export var half_extents_m: Vector3 = Vector3(0.125, 0.125, 0.125)  # BOX
-    @export var radius_m: float = 0.125                                  # CYL/CAP/SPH
-    @export var height_m: float = 0.25                                   # CYL/CAP
-    @export var local_offset_m: Vector3 = Vector3.ZERO
-    @export var local_basis_euler_deg: Vector3 = Vector3.ZERO
+@export var kind: PrimitiveKind = PrimitiveKind.BOX
+@export var half_extents_m: Vector3 = Vector3(0.125, 0.125, 0.125)  # BOX
+@export var radius_m: float = 0.125                                  # CYL/CAP/SPH
+@export var height_m: float = 0.25                                   # CYL/CAP
+@export var local_offset_m: Vector3 = Vector3.ZERO
+@export var local_basis_euler_deg: Vector3 = Vector3.ZERO
+```
 
-@export var primitives: Array[PrimitiveDef] = []
+```gdscript
+class_name ColliderProfile             # src/core/data/collider_profile.gd
+extends Resource
+
+@export var primitives: Array[ColliderPrimitiveDef] = []
 ## Hard ceiling. The validator rejects any profile exceeding this.
 const MAX_PRIMITIVES_PER_PART: int = 3
 ```
+
+> **Why top-level, and not an inner class.** This document originally specified
+> `PrimitiveDef` as an inner class of `ColliderProfile`. Godot 4 cannot serialise
+> an inner-class `Resource` into a `.tres`: saving writes the element script as
+> an empty `[sub_resource type="GDScript"]` carrying no source, and on load every
+> element fails typed-array validation and is silently dropped. A profile saved
+> with three primitives loads back with **zero**, with no error reported to the
+> caller.
+>
+> Because Invariant I-1 makes `ColliderProfile` the only source of Assembly
+> collision geometry, that would ship every part in the game with an empty
+> collider set and no hit registration at all — from what reads as a
+> code-organisation preference. The type is therefore top-level, and
+> `tests/unit/test_collider_profile_serialisation.gd` round-trips a populated
+> profile through `.tres` on every CI run so the arrangement cannot regress.
+>
+> `ProxyPrimitiveDef` (`docs/EXTENSION_PIPELINE.md` §2) mirrors these fields and
+> is a separate type for a different reason: a proxy visual is generated from the
+> collider once, at promotion time, and the two evolve independently thereafter.
+> Sharing one type would let an art edit move a hitbox.
 
 Rules enforced by `tools/validate_part_registry.gd`:
 
