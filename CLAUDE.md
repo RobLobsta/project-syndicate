@@ -109,11 +109,13 @@ project-syndicate/
 │   │
 │   ├── assembly/
 │   │   ├── lattice/                ← lattice_occupancy.gd, footprint_solver.gd,
+│   │   │                             resolved_node.gd, placement_candidate.gd,
 │   │   │                             placement_validator.gd, build_context.gd,
+│   │   │                             build_budget_ledger.gd, build_shape_cache.gd,
 │   │   │                             build_command.gd
 │   │   ├── graph/                  ← chassis_graph.gd, detachment_solver.gd,
 │   │   │                             detachment_scheduler.gd, island_detacher.gd,
-│   │   │                             mate_selector.gd
+│   │   │                             mate_selector.gd, mate_record.gd
 │   │   ├── mass/                   ← mass_solver.gd, inertia_solver.gd,
 │   │   │                             mass_recompute_scheduler.gd
 │   │   ├── runtime/                ← assembly_runtime.gd, chassis_body_ref.gd,
