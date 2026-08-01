@@ -27,14 +27,26 @@ const FACE_ZN: Vector3i = Vector3i(0, 0, -1)
 var _done: bool = false
 
 
-## The `accepts_classes` restriction every AXLE node carries: a drive station
-## takes a Motive Assembly and nothing else (§14 rule 18).
+## The `accepts_classes` restriction an AXLE [i]station[/i] carries: a drive
+## station takes a Motive Assembly and nothing else (§14 rule 18).
 ##
 ## A function rather than a `const`, because a `Packed*Array` constructor is not
 ## a constant expression in GDScript — the same rule that already forbids
 ## `const X: PackedStringArray = PackedStringArray([...])`.
 static func motive_only() -> PackedInt32Array:
 	return PackedInt32Array([PartEnums.PartClass.MOTIVE_ASSEMBLY])
+
+
+## The restriction a Motive Assembly's own drive face carries: §4.2's other half.
+##
+## The two halves are not the same list and putting the station's list on both
+## sides is the defect this function exists to name. `_check_mating` tests
+## `accepts_class` in [i]both[/i] directions, so a drive face keyed to
+## MOTIVE_ASSEMBLY rejects the very station §4.2 requires it to mate with — and
+## the part is then unmountable on anything, which is exactly what four of the
+## nine shipped parts were until the first placement test tried it.
+static func structural_only() -> PackedInt32Array:
+	return PackedInt32Array([PartEnums.PartClass.STRUCTURAL_COMPONENT])
 
 
 func _process(_delta: float) -> bool:
@@ -115,7 +127,11 @@ func _author_wheeled_allroad() -> String:
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = cells
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: motive_only()}, cells
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
 	)
 	def.mass_kg = 68.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -167,7 +183,7 @@ func _author_tracked_short_bogie() -> String:
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: motive_only()}
+		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: structural_only()}
 	)
 	def.mass_kg = 210.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -236,7 +252,7 @@ func _author_rotor_coaxial_mid() -> String:
 	# The mast mounts downward onto a station, so the AXLE face is -Y and the
 	# disc axis is the part's local +Y that RotorSolver rotates.
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: motive_only()}
+		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: structural_only()}
 	)
 	def.mass_kg = 265.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -318,7 +334,7 @@ func _author_limb_strider() -> String:
 	# The pivot is the top cell and the limb hangs below it, so the AXLE face is
 	# +Y: a limb mounts under a chassis, where a wheel mounts beside one.
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: motive_only()}
+		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: structural_only()}
 	)
 	def.mass_kg = 185.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)

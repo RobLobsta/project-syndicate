@@ -228,6 +228,17 @@ func _apply_coupling_torque(body: RigidBody3D, mp: MassSolver.MassProperties) ->
 
 This reproduces the steady-state coupling exactly and the transient response to within a few percent, because it omits the `(I_diag − I_full) ω̇` term. That omission is bounded and stable: `ω̇` is itself limited by the torque budget, and the clamp on `τ_couple` guarantees the correction can never inject energy faster than the solver removes it. `tests/physics/test_inertia_coupling.gd` verifies that an asymmetric Assembly spun about its intermediate axis exhibits the expected tumbling within 5% of the analytic solution over 10 seconds.
 
+> **Amendment — the premise above is measurably false, and the section is left standing until it is decided what replaces it.**
+>
+> "Godot solves this with `I_diag`" asserts that the server integrates `I ω̇ + ω × (I ω) = τ` with the diagonal tensor. It does not. `tests/physics/test_inertia_coupling.gd::test_the_server_applies_no_gyroscopic_term_of_its_own` puts an Assembly whose three principal moments differ by 15% into a spin about its **intermediate** axis — the configuration that tumbles fastest in reality — and measures the angular velocity unchanged to seven significant figures after five simulated seconds. A free rigid body cannot do that. The server integrates `I_diag ω̇ = τ` and applies no gyroscopic term at all.
+>
+> Two things follow, and neither is settled here.
+>
+> 1. **The `+ ω × (I_diag ω)` half corrects for a term nothing applies.** For a server that applies none, the minimal faithful correction is `τ = − ω × (I_full ω)`; the more accurate one premultiplies it by `I_diag I_full⁻¹`, which is what actually maps the desired `ω̇` onto the torque the server will divide by `I_diag`.
+> 2. **§11 invariant 10 does not hold under explicit Euler.** Both forms are power-neutral in the continuous limit — `(ω × X) · ω` is identically zero — and neither is when the torque is evaluated at the start of a 60 Hz tick. Measured on a 6 rad/s spin, both add roughly 16% of the rotational energy over five seconds. The clamp bounds the divergence; it does not remove it. A form that satisfies the invariant needs the correction evaluated implicitly, or the angular momentum renormalised each tick.
+>
+> `MotiveSystem._apply_coupling_torque` implements the block above verbatim rather than a corrected form, because choosing between the two is an architecture decision and CLAUDE.md §0 puts that in front of a reviewer rather than inside an implementation. The measurements are in the test file, asserted, so the choice cannot be made from memory.
+
 ### 3.5 Application to the Body
 
 ```gdscript
@@ -426,6 +437,12 @@ func _build_probe(slot: int, def: PartDefinition, st: PartInstanceState) -> Shap
 
 The mask deliberately excludes `LAYER_ASSEMBLY_HULL` and `LAYER_DEBRIS`. Wheels do not push off other vehicles or off wreckage. This removes an entire family of exploits (wheel-climbing an opponent) and a family of instabilities (two Assemblies' suspensions fighting each other).
 
+**Where this runs.** The constructor is `AssemblyRuntime._build_motive_probes`, called from `attach_part`, so a probe set exists for exactly the parts whose colliders exist and is built from the same `PartInstanceState` (§2's tree, and doc 04 §6's release path disables both together). Probes are named `probe_s<slot>_<station>`: §2's `probe_s014` predates §14's road stations, and a tracked part needs one name per station. `MotiveContact.probe` holds the reference, bound once when the Motive Assembly registers — a part cannot move relative to the chassis, so resolving a formatted node name per tick would be a string build and a `NodePath` construction inside the tick loop for a node that is fixed from placement to destruction.
+
+**Rest length is measured from the probe origin, and the probe origin is the contact centre.** §6.2 reads compression as `rest_length − distance`, and `distance` is from `part_com_local` down to the surface. A Motive Assembly resting on its own authored collider puts that distance at one `contact_radius_m`. **`suspension_rest_length_m` must therefore exceed `contact_radius_m`**, by the static sag the build is meant to settle at, or compression clamps to zero on every contact, the normal force is zero, `_apply_traction` returns before applying anything, and the Assembly rests on its colliders with the suspension inert and no drive force reaching the ground at all.
+
+> **This is not true of the rows shipped in §10.3 of document 01.** `mot.wheeled.allroad.t2` pairs a 0.32 m rest length with a 0.50 m rolling radius, and `mot.tracked.short_bogie.t2` a 0.32 m rest length with a 0.50 m radius. `tests/physics/test_ground_assembly.gd` builds a four-contact Assembly from shipped data, settles it on real ground, and measures zero compression and zero normal force on all four contacts, and a full-throttle displacement of zero. The correction is a balance change to §10.3 — a rest length longer than the radius, which also makes the part's own collider the bump stop it should be — and CLAUDE.md §12 puts a balance change behind a review rather than inside a session's test pass, so it is flagged rather than made.
+
 ### 6.2 Spring-Damper Force
 
 For a probe with compression `x` (metres of travel consumed) and compression rate `ẋ`:
@@ -510,6 +527,8 @@ F_arb = k_arb · (x_left − x_right)
 ```
 
 Pairing is derived automatically at spawn: probes whose local `z` coordinates are within `0.35 m` and whose local `x` coordinates have opposite signs form a pair. `k_arb` defaults to `0.22 · k_eff`, exposed as a garage tuning slider in the range `[0.0, 0.6]`.
+
+`MotiveSystem._rebuild_axle_pairs` runs on every registration change rather than per tick — pairing is a property of where the builder put the Motive Assemblies, and they do not move. Each contact is taken at most once and both loops run ascending by slot then station, so the pair set is a deterministic function of the build (Invariant I-9). The force is applied after the families have solved, because it differentiates the compressions they wrote this tick; running it first would couple the previous tick's roll into this one. Losing one end of an axle re-derives the set and leaves the survivor unpaired, rather than pushing against a probe that has left with a severed island.
 
 ---
 

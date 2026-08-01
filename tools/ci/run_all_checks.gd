@@ -15,9 +15,32 @@ extends SceneTree
 ## the process then idles forever with the suite's output still buffered. Waiting
 ## one frame also guarantees the eight autoloads are in the tree, which the
 ## integration tests need.
+##
+## [b]The run is a coroutine.[/b] A test method that calls
+## [method TestCase.physics_frames] suspends until the engine has actually
+## stepped the physics server, which is the only way [code]tests/physics/[/code]
+## can observe a force. Three things make that work and each of them is
+## load-bearing:
+##
+## [enum]
+## [*] [method _process] returns [code]false[/code]. A [SceneTree] script's
+##     [method _process] returning [code]true[/code] [i]quits the main loop[/i],
+##     and a suspended run would never be resumed — the suite reported the
+##     handful of checks that had run before the first suspension and exited
+##     zero. The run ends at [method SceneTree.quit] in [method _run] instead.
+## [*] [member _done] guards re-entry, because [method _process] now fires on
+##     every frame the run needs rather than once.
+## [*] A suspended GDScript call returns a [code]GDScriptFunctionState[/code]
+##     rather than its declared type, so the result of [method Object.call] is
+##     awaited whenever it is an [Object]. It cannot be named directly — the
+##     class is not exposed to script — hence the [Signal] construction.
+## [/enum]
 
 const TESTS_ROOT: String = "res://tests"
 const TEST_FILE_PREFIX: String = "test_"
+
+## Signal a suspended GDScript call emits when it finally returns.
+const COROUTINE_COMPLETED: StringName = &"completed"
 
 ## Directories under tests/, in the order CLAUDE.md §9.1 lists them. Suites run
 ## cheapest-first so that a broken constant fails before a physics soak does.
@@ -33,12 +56,16 @@ const SUITE_ORDER: Array[String] = [
 var _done: bool = false
 
 
+## Returning [code]false[/code] keeps the main loop alive so that a suspended
+## run can be resumed; [method _run] quits when it is finished. See the class
+## docstring — returning [code]true[/code] here is the one edit that makes the
+## suite silently report a partial pass.
 func _process(_delta: float) -> bool:
 	if _done:
-		return true
+		return false
 	_done = true
 	_run()
-	return true
+	return false
 
 
 func _run() -> void:
@@ -54,7 +81,7 @@ func _run() -> void:
 
 	print("run_all_checks: %d test files" % files.size())
 	for path in files:
-		var result := _run_file(path)
+		var result: Dictionary = await _run_file(path)
 		total_checks += int(result["checks"])
 		var failures: PackedStringArray = result["failures"]
 		total_failures += failures.size()
@@ -99,7 +126,13 @@ func _run_file(path: String) -> Dictionary:
 	instance.before_all()
 	for name in methods:
 		instance._set_current(name)
-		instance.call(name)
+		# A test that suspended hands back a GDScriptFunctionState instead of the
+		# void it declares. Awaiting it is what lets a physics test wait for a
+		# tick; without this the method resumes after its file's results have
+		# already been read, and every check past the first await is lost.
+		var pending: Variant = instance.call(name)
+		if pending is Object:
+			await Signal(pending as Object, COROUTINE_COMPLETED)
 	instance.after_all()
 
 	return {"checks": instance.check_count(), "failures": instance.failures()}

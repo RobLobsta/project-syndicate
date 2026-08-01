@@ -39,6 +39,18 @@ extends Node3D
 const MAX: int = SyndicateConstants.MAX_PARTS_PER_ASSEMBLY
 const INVALID: int = SyndicateConstants.INVALID_SLOT
 
+## Probe sphere radius as a fraction of the part's contact radius (doc 05 §6.1).
+## A shape cast rather than a ray: a ray through the contact centre drops into
+## the gaps between ground triangles and off the edges of Static Volumes, and a
+## sphere this size cannot.
+const PROBE_RADIUS_RATIO: float = 0.85
+
+## The rolling direction in a Motive Assembly's own local space, before its
+## placement orientation is applied. A track's road stations are distributed
+## along it (doc 05 §14.1) and it is the axis the authored footprints are long
+## on: `mot.tracked.short_bogie.t2` is eight cells here and three across.
+const ROLLING_AXIS_LOCAL: Vector3 = Vector3.RIGHT
+
 ## Subsystem tag gating the interpolator. A dedicated server disables it and no
 ## interpolator is constructed at all — §9.2 of doc 12 gates at construction, not
 ## per frame.
@@ -75,6 +87,10 @@ var mass_properties: MassSolver.MassProperties = null
 ## Shape index -> the [CollisionShape3D] holding it. The array index is the
 ## body's shape index, which holds because shapes are only ever appended.
 var _shapes: Array[CollisionShape3D] = []
+
+## Slot -> its suspension probes, fore to aft. Only Motive Assemblies appear,
+## and a rotary one appears with an empty list: a disc touches nothing.
+var _probes: Dictionary = {}
 
 
 func _init() -> void:
@@ -179,6 +195,7 @@ func attach_part(slot: int) -> void:
 		body.add_child(node)
 		body.register_shape(index, slot)
 	st.collider_shape_ids = indices
+	_build_motive_probes(slot, def, st)
 
 
 ## Takes [param slot]'s collision geometry out of the simulation.
@@ -199,6 +216,10 @@ func release_part(slot: int) -> void:
 	for i in st.collider_shape_ids:
 		if i >= 0 and i < _shapes.size():
 			_shapes[i].disabled = true
+	# A part out of the simulation stops sweeping. The probes are disabled rather
+	# than freed for the same reason the shapes are: repair puts the part back,
+	# and rebuilding a probe would need the placement again.
+	_set_probes_enabled(slot, false)
 
 
 ## Re-registers [param slot]'s collider primitives against the debris body
@@ -235,6 +256,10 @@ func detach_colliders_to(
 			Transform3D(source.transform.basis, source.transform.origin - island_com_local)
 		)
 		source.disabled = true
+	# The island's Motive Assemblies are debris now. Debris does not steer, and a
+	# probe still sweeping from a departed part would hand the motion layer a
+	# contact for a wheel that is no longer attached.
+	_set_probes_enabled(slot, false)
 
 
 ## Re-enables geometry that [method release_part] disabled, for the repair path
@@ -246,6 +271,70 @@ func restore_part(slot: int) -> void:
 	for i in st.collider_shape_ids:
 		if i >= 0 and i < _shapes.size():
 			_shapes[i].disabled = false
+	_set_probes_enabled(slot, true)
+
+
+## Builds [param slot]'s suspension probes under [code]MotiveProbes[/code], one
+## per ground contact the part will carry. Doc 05 §6.1, and §14.1 for a track.
+##
+## A probe is not collision geometry and does not touch Architectural Invariant
+## I-1: a [ShapeCast3D] is a query, not a shape owner, and it reads the world
+## rather than presenting anything to it. It lives inside [member body] so that
+## its origin and its downward sweep follow the chassis — suspension travel is
+## along the chassis's own down, not along world down, which is the difference
+## between a banked Assembly's springs working and its springs unloading.
+##
+## The mask is Ground Arrays and Static Volumes only (§11 invariant 5). Excluding
+## [constant CollisionLayers.LAYER_ASSEMBLY_HULL] and
+## [constant CollisionLayers.LAYER_DEBRIS] removes an entire family of exploits —
+## climbing an opponent — and one of instabilities, two Assemblies' suspensions
+## pushing against each other.
+func _build_motive_probes(slot: int, def: PartDefinition, st: PartInstanceState) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	var nodes: Array[ShapeCast3D] = []
+	_probes[slot] = nodes
+	# A disc is the one family with no ground contact, so it gets no probe and
+	# the empty list above is the answer, not a missing entry.
+	if profile.locomotion_mode() == PartEnums.LocomotionMode.ROTARY:
+		return
+
+	var part_local := MassSolver.part_com_local(st, def)
+	var origins := PackedVector3Array([part_local])
+	if profile.track_profile != null:
+		origins = TrackSolver.station_positions(
+			profile.track_profile,
+			part_local,
+			OrientationTable.basis_for(st.orientation_index) * ROLLING_AXIS_LOCAL
+		)
+
+	var reach := profile.suspension_rest_length_m + profile.suspension_travel_limit_m
+	for station: int in origins.size():
+		var probe := ShapeCast3D.new()
+		probe.name = "probe_s%03d_%d" % [slot, station]
+		var sphere := SphereShape3D.new()
+		sphere.radius = profile.contact_radius_m * PROBE_RADIUS_RATIO
+		probe.shape = sphere
+		probe.position = origins[station]
+		probe.target_position = Vector3(0.0, -reach, 0.0)
+		probe.collision_mask = CollisionLayers.MASK_GROUND | CollisionLayers.MASK_STATIC_VOLUME
+		probe.max_results = 1
+		probe.enabled = true
+		nodes.append(probe)
+		motive_probes.add_child(probe)
+
+
+## [param slot]'s suspension probes, fore to aft. Empty for everything that is
+## not a Motive Assembly, and for a rotary one.
+func motive_probes_of(slot: int) -> Array[ShapeCast3D]:
+	var nodes: Array[ShapeCast3D] = _probes.get(slot, [] as Array[ShapeCast3D])
+	return nodes
+
+
+func _set_probes_enabled(slot: int, enabled: bool) -> void:
+	for probe: ShapeCast3D in motive_probes_of(slot):
+		probe.enabled = enabled
 
 
 func state(slot: int) -> PartInstanceState:

@@ -815,13 +815,40 @@ func _check_motive_family_payload(def: PartDefinition) -> void:
 
 ## §4.2: AXLE mates only with AXLE, so a station that accepted anything would
 ## make the polarity a slower FACE_NEUTRAL. A Structural Component offering one
-## must key it to Motive Assemblies; a Motive Assembly's own drive face needs no
-## restriction, because the station it mates with already carries it.
+## must key it to Motive Assemblies, and a Motive Assembly's own drive face must
+## still admit the Structural Component it bolts to.
+##
+## Both halves are checked because [code]PlacementValidator._check_mating[/code]
+## tests [code]accepts_class[/code] in [i]both[/i] directions. This rule
+## originally checked the station's half alone and said in as many words that the
+## drive face "needs no restriction, because the station it mates with already
+## carries it" — which is true of what the face may accept and says nothing about
+## what it may refuse. All four shipped `mot.*` parts were authored carrying the
+## station's own list on their drive face, so every Motive Assembly in the
+## registry rejected the only class §4.2 lets it mount on. Nothing with
+## locomotion could be built at all, and no validator rule, no unit test, and no
+## conformance test said a word: the defect is invisible until something attempts
+## a placement, which `tests/physics/test_ground_assembly.gd` is the first thing
+## in the project's history to do.
 func _check_axle_keying(def: PartDefinition) -> void:
 	for node: AttachmentNodeDef in def.attachment_nodes:
 		if node.polarity != PartEnums.AttachmentPolarity.AXLE:
 			continue
 		if def.part_class == PartEnums.PartClass.MOTIVE_ASSEMBLY:
+			if (
+				not node.accepts_classes.is_empty()
+				and not node.accepts_classes.has(PartEnums.PartClass.STRUCTURAL_COMPONENT)
+			):
+				_fail(
+					RULE_AXLE_KEYING,
+					def.part_key,
+					(
+						"node '%s' is a drive face that refuses STRUCTURAL_COMPONENT, "
+						% node.node_name
+					)
+					+ "so it cannot mate with the AXLE station §4.2 requires and the "
+					+ "part is unmountable on anything"
+				)
 			continue
 		if def.part_class != PartEnums.PartClass.STRUCTURAL_COMPONENT:
 			_fail(

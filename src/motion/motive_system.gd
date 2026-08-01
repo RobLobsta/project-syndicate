@@ -16,9 +16,10 @@ extends Node
 ## bands all arrive as cached values written by their owners on their own events.
 ##
 ## [method step] is the whole tick and [method _physics_process] does nothing but
-## call it. That split is not decoration: the suite never runs a physics frame,
-## so a test drives [method step] directly with contacts it constructed itself,
-## through the identical path the engine uses.
+## call it. That split is not decoration: it lets a unit test drive one tick with
+## contacts it constructed itself, through the identical path the engine uses,
+## and it lets a [code]tests/physics/[/code] test let the engine drive it instead
+## and assert what the body did.
 
 ## Rate at which the strain model's dynamic amplification factor is refreshed.
 ## §9: 10 Hz, not per tick, because the graph re-evaluates strain against it and
@@ -29,6 +30,11 @@ const KAPPA_INTERVAL_S: float = 0.1
 ## load on a part at the end of a long boom, which pure linear acceleration
 ## misses.
 const KAPPA_ANGULAR_WEIGHT: float = 0.35
+
+## Ceiling on the §3.4 coupling torque, in N·m. §11 invariant 10: the correction
+## omits the `(I_diag − I_full) ω̇` term, and this clamp is what guarantees the
+## omission can never inject energy faster than the solver removes it.
+const COUPLING_TORQUE_LIMIT_NM: float = 24000.0
 
 ## Assembly this system moves. Set once, before the node enters the tree.
 var runtime: AssemblyRuntime = null
@@ -63,6 +69,11 @@ var _limbs: Dictionary = {}  # slot -> LimbState
 ## offsets into this, which is what keeps them in a fixed relationship no matter
 ## how the cadence changes.
 var _gait_clock: float = 0.0
+
+## Contacts forming an axle pair, left at even indices and right at odd (§6.5).
+## Rebuilt on every registration change, never per tick: pairing is a function of
+## where the builder put the Motive Assemblies, and they do not move.
+var _axle_pairs: Array[MotiveContact] = []
 
 var _kappa_accum: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
@@ -132,6 +143,8 @@ func register(slot: int, def: PartDefinition, state: PartInstanceState = null) -
 			_contacts[slot] = [_new_contact(slot, 0)]
 
 	_write_band_multipliers(slot, PartEnums.IntegrityBand.NOMINAL)
+	_bind_probes(slot)
+	_rebuild_axle_pairs()
 
 
 ## Drops a Motive Assembly that has been destroyed or detached.
@@ -142,6 +155,9 @@ func unregister(slot: int) -> void:
 	_contacts.erase(slot)
 	_discs.erase(slot)
 	_limbs.erase(slot)
+	# Anti-roll couples two surviving probes. Losing one end of an axle leaves
+	# the other unpaired rather than pushing against a probe that has left.
+	_rebuild_axle_pairs()
 	# Phases are a function of the surviving limb set, so losing one re-phases
 	# the rest. A walker that loses a limb changes its gait; leaving the others
 	# on their old offsets would leave a hole in the cycle.
@@ -182,7 +198,15 @@ func reassign_gait_phases() -> void:
 ## [member AssemblyRuntime.body], and no family touches anything else (§11
 ## invariant 11).
 func step(dt: float) -> void:
-	if runtime == null or runtime.body == null or input == null:
+	if runtime == null or runtime.body == null:
+		return
+	# Before the input guard, and before any family runs. The coupling torque is
+	# a property of the Assembly's mass distribution, not of what it is being
+	# asked to do: an Assembly tumbling with nobody at the controls still has an
+	# asymmetric tensor, and a wreck spinning through the air is exactly where
+	# the correction is most visible.
+	_apply_coupling_torque()
+	if input == null:
 		return
 	_gather_contacts()
 
@@ -200,6 +224,9 @@ func step(dt: float) -> void:
 			PartEnums.LocomotionMode.AMBULATORY:
 				_solve_ambulatory(slot, dt)
 
+	# After the families, because it differentiates the compressions they wrote
+	# this tick. Running it first would couple last tick's roll into this one.
+	_apply_anti_roll()
 	_update_kappa(dt)
 
 
@@ -473,6 +500,66 @@ func _apply_traction(
 	)
 
 
+## §6.5. Couples paired probes so that an axle resists roll rather than letting
+## each corner rise and fall alone.
+##
+## Reads the compression each family already wrote onto its contact this tick, so
+## an anti-roll bar costs one subtraction per axle and no second probe sweep. The
+## force is equal and opposite by construction: it transfers load across the
+## axle, and can never change the Assembly's total normal force.
+##
+## An airborne pair contributes nothing, because an ungrounded contact has zero
+## compression and both ends of the subtraction come from the same solver.
+func _apply_anti_roll() -> void:
+	for i: int in _axle_pairs.size() / 2:
+		var left := _axle_pairs[i * 2]
+		var right := _axle_pairs[i * 2 + 1]
+		if not left.grounded and not right.grounded:
+			continue
+		var profile := _definition(left.slot).motive_profile
+		var k_eff := SuspensionSolver.retune(profile, _static_load_n(left.slot)).x
+		var f := SuspensionSolver.anti_roll_force(
+			k_eff,
+			left.prev_compression_m,
+			right.prev_compression_m,
+			SuspensionSolver.ANTI_ROLL_RATIO
+		)
+		if is_zero_approx(f):
+			continue
+		# Along each contact's own normal rather than a shared one, so a pair
+		# straddling a camber transfers load along the surface it is standing on.
+		_apply_at(left.probe.global_position, left.normal_world * -f)
+		_apply_at(right.probe.global_position, right.normal_world * f)
+
+
+## §3.4. Applies the residual gyroscopic torque Godot's diagonal-only
+## [member RigidBody3D.inertia] cannot produce.
+##
+## Euler's equation in the body frame is `I ω̇ + ω × (I ω) = τ`. The server
+## solves it with the diagonal tensor; the difference between that and the true
+## tensor is applied here as an external torque, which reproduces the
+## steady-state coupling exactly and the transient to within a few percent.
+##
+## Without it a lopsided Assembly — one heavy Effector Module on the left flank —
+## rotates as though it were symmetric: no precession, no yaw coupling under roll
+## input, and no tumble about the intermediate axis. It reads as a vehicle that
+## is subtly weightless rather than as a missing term.
+func _apply_coupling_torque() -> void:
+	var mp := runtime.mass_properties
+	if mp == null:
+		return
+	var basis := runtime.body.global_transform.basis
+	var w := basis.inverse() * runtime.body.angular_velocity
+	var diag_term := w.cross(
+		Vector3(mp.inertia_diag.x * w.x, mp.inertia_diag.y * w.y, mp.inertia_diag.z * w.z)
+	)
+	var full_term := w.cross(mp.inertia_full * w)
+	var tau := (diag_term - full_term).limit_length(COUPLING_TORQUE_LIMIT_NM)
+	if tau.is_zero_approx():
+		return
+	runtime.body.apply_torque(basis * tau)
+
+
 func _apply_at(point_world: Vector3, force: Vector3) -> void:
 	if force.is_zero_approx():
 		return
@@ -518,17 +605,16 @@ func _new_contact(slot: int, station_index: int) -> MotiveContact:
 
 ## Populates this tick's probe results.
 ##
-## The one part of the motion layer the suite cannot exercise: a query against
-## the main world's space answers nothing without a physics step, and the runner
-## never lets one run. It is therefore kept as thin as it can be — a loop over
-## already-built [ShapeCast3D] nodes copying four fields — with every derived
-## quantity computed by a pure solver that a test can reach.
+## A loop over already-built [ShapeCast3D] nodes copying four fields, with every
+## derived quantity computed by a pure solver a test can reach directly. It is
+## kept that thin deliberately, and now that `tests/physics/` can step the engine
+## it is also exercised end to end rather than only by inspection.
 func _gather_contacts() -> void:
 	var xform := runtime.body.global_transform
 	for slot: int in _motive_slots:
 		var contacts: Array = _contacts.get(slot, [])
 		for c: MotiveContact in contacts:
-			var probe := _probe_for(c)
+			var probe := c.probe
 			c.clear_probe()
 			if probe == null or not probe.is_colliding():
 				continue
@@ -546,11 +632,85 @@ func _point_velocity(point_world: Vector3) -> Vector3:
 	return runtime.body.linear_velocity + runtime.body.angular_velocity.cross(r)
 
 
-func _probe_for(c: MotiveContact) -> ShapeCast3D:
-	var name_hint := "probe_s%03d_%d" % [c.slot, c.station_index]
-	if runtime.motive_probes == null:
+## Binds [param slot]'s contacts to the probes [AssemblyRuntime] built for them.
+##
+## Runs once per registration, which fixes the ordering the §6 wiring already
+## has: [method AssemblyRuntime.adopt] builds the physics geometry, and only then
+## is a Motive Assembly registered here. A part registered before its runtime
+## exists — which the garage does — simply keeps a null probe and contributes no
+## contact, because there is no world for it to sweep yet.
+func _bind_probes(slot: int) -> void:
+	if runtime == null:
+		return
+	var probes := runtime.motive_probes_of(slot)
+	var contacts: Array = _contacts.get(slot, [])
+	for i: int in mini(probes.size(), contacts.size()):
+		var c: MotiveContact = contacts[i]
+		c.probe = probes[i]
+
+
+## Recomputes the §6.5 axle pairs across every registered contact.
+##
+## Ascending slot then station on both sides of the comparison, and each contact
+## taken at most once, so the pair set is a deterministic function of the build
+## (Invariant I-9). Left is the negative-x end of each pair, which is what makes
+## the sign of [method SuspensionSolver.anti_roll_force] mean what its
+## documentation says it means.
+func _rebuild_axle_pairs() -> void:
+	_axle_pairs.clear()
+	var flat: Array[MotiveContact] = []
+	for slot: int in _motive_slots:
+		if _family[slot] == PartEnums.LocomotionMode.ROTARY:
+			continue
+		for c: MotiveContact in _contacts.get(slot, []):
+			if c.probe != null:
+				flat.append(c)
+
+	# Only the far end of a pair is marked. Marking the near end as well reads as
+	# symmetry and is dead: the outer loop visits each index once and ascending,
+	# so an index can only be claimed by an earlier one — which is the `taken[j]`
+	# write — and never revisits itself. Fault injection removed the second write
+	# without a single test noticing, which is what dead code looks like here.
+	var taken := PackedByteArray()
+	taken.resize(flat.size())
+	for i: int in flat.size():
+		if taken[i] != 0:
+			continue
+		for j: int in range(i + 1, flat.size()):
+			if taken[j] != 0:
+				continue
+			var a := flat[i].probe.position
+			var b := flat[j].probe.position
+			if not SuspensionSolver.is_axle_pair(a, b):
+				continue
+			taken[j] = 1
+			if a.x < b.x:
+				_axle_pairs.append(flat[i])
+				_axle_pairs.append(flat[j])
+			else:
+				_axle_pairs.append(flat[j])
+				_axle_pairs.append(flat[i])
+			break
+
+
+## Axle pairs found across this Assembly's probes. Diagnostics and tests.
+func axle_pair_count() -> int:
+	return _axle_pairs.size() / 2
+
+
+## One end of axle pair [param index]: [param right] false for the negative-x
+## end, true for the positive-x one.
+##
+## The side matters and a count does not. Four probes make two pairs whether they
+## were matched across the Assembly or down one flank, so a test that counts them
+## passes against pairing that ignores §6.5's sign test entirely — which is the
+## one thing the pairing exists to do, because two probes on the same side have
+## no roll couple between them to resist.
+func axle_pair_end(index: int, right: bool) -> MotiveContact:
+	var at := index * 2 + (1 if right else 0)
+	if at < 0 or at >= _axle_pairs.size():
 		return null
-	return runtime.motive_probes.get_node_or_null(NodePath(name_hint)) as ShapeCast3D
+	return _axle_pairs[at]
 
 
 ## The definition at [param slot], or null when there is nothing there.

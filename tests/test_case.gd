@@ -39,6 +39,31 @@ func _set_current(method: String) -> void:
 	_current = method
 
 
+## ===== PHYSICS ========================================================
+
+
+## Suspends the calling test until the engine has stepped physics
+## [param count] times. [code]await physics_frames(n)[/code].
+##
+## The only way a test observes a force. Everything the motion layer derives is
+## a pure static solver a test can call directly, but the step from a solved
+## force to a body that moved is the physics server's, and until this existed
+## the suite did all of its work inside a single [code]_process[/code] callback
+## and never let one tick run.
+##
+## Two consequences worth knowing before reaching for it. A body added to the
+## tree is registered in the space immediately but keeps whatever transform it
+## had when it was added until a tick flushes it — so a query before the first
+## frame answers against a stale pose rather than answering nothing, which is
+## the trap that reads as "the space is empty". And a physics test costs real
+## wall time at 60 Hz: prefer the fewest frames that make the claim, and assert
+## a derived number rather than soaking.
+func physics_frames(count: int) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	for i: int in maxi(count, 1):
+		await tree.physics_frame
+
+
 ## ===== ASSERTIONS ======================================================
 ## Every assertion returns true on success so that a test can bail out of a
 ## sequence whose later steps would crash on the failure it just recorded.
