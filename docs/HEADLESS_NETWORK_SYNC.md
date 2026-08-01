@@ -532,6 +532,8 @@ static func end() -> void:
 
 Memory cost: 24 ticks × 16 Assemblies × 64 bytes = 24.6 KB. Trivial.
 
+**Amendment: `AssemblyRegistry` is an object, not a global.** `RewindScope` above resolves a body with `AssemblyRegistry.get(aid)`. `CLAUDE.md` §4 freezes the autoload list at eight, so the registry is an ordinary `RefCounted` owned by the match scene and passed to the systems that need it; the call is `registry.get_runtime(aid).body`. `COMPONENT_HEALTH_DAMAGE.md` §5.1 records the same amendment, and `DEPENDENCY_TREE_GRAPH.md` §6.2's `DebrisPool` took the same shape for the same reason.
+
 ### 7.3 The Rewind Contract
 
 Lag compensation always favours the shooter, within the `MAX_REWIND_MS` cap. This means an already-behind-cover target can occasionally be hit — the classic and unavoidable trade. The cap of 260 ms bounds how unfair that can be, and clients whose measured RTT exceeds `400 ms` are moved to a high-latency queue rather than being allowed to rewind further.
@@ -616,6 +618,7 @@ func _disable_presentation() -> void:
         &"ui_root",
         &"ground_height_texture",    # heights kept as data; no ImageTexture
         &"assembly_interpolator",    # no rendering, no interpolation needed
+        &"debris_visibility",        # no viewers, so no wreck is ever kept for one
         &"projectile_multimesh",
         &"icon_cache",
         &"rubble_multimesh",
@@ -623,6 +626,8 @@ func _disable_presentation() -> void:
 ```
 
 `SubsystemGate` is a registry queried at autoload construction; disabled subsystems are never instantiated, so their `_process` and `_physics_process` never run and their memory is never allocated.
+
+`debris_visibility` is the newest entry and the one whose absence changes behaviour rather than merely omitting an object. `DEPENDENCY_TREE_GRAPH.md` §6.2 keeps a retired wreck in the world until every viewer has looked away; with the tag disabled no `VisibleOnScreenNotifier3D` is constructed, and a debris body is recycled the moment it retires. That is the correct server behaviour and not a degradation of it: the simulated half of a wreck's life — the half that makes it an obstacle — ends on the same tick either way, which is what §9.3 requires of it.
 
 ### 9.3 What the Server Still Does
 

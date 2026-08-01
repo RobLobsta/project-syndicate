@@ -119,7 +119,9 @@ project-syndicate/
 │   │   ├── mass/                   ← mass_solver.gd, inertia_solver.gd,
 │   │   │                             mass_recompute_scheduler.gd
 │   │   ├── runtime/                ← assembly_runtime.gd, chassis_body_ref.gd,
-│   │   │                             assembly_interpolator.gd, assembly_registry.gd
+│   │   │                             assembly_interpolator.gd, assembly_registry.gd,
+│   │   │                             debris_body_ref.gd, debris_pool.gd,
+│   │   │                             debris_reaper.gd
 │   │   └── autobuild/              ← auto_assembler.gd, generation_context.gd,
 │   │                                 archetype_profile.gd, objective.gd
 │   │

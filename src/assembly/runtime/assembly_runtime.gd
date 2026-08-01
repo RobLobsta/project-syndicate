@@ -201,6 +201,42 @@ func release_part(slot: int) -> void:
 			_shapes[i].disabled = true
 
 
+## Re-registers [param slot]'s collider primitives against the debris body
+## [param target], rebased onto [param island_com_local], and takes them out of
+## this Assembly's simulation. Doc 04 §6's collider transfer.
+##
+## [b]Amendment to doc 04 §6.[/b] §6 speaks of transferring the colliders, and
+## the nodes cannot move. A body's shape indices are assignment order, so
+## removing one renumbers every later index and repoints the shape-index to slot
+## map of doc 08 §5.4 for every part placed after the island — one severed panel
+## turning into mis-attributed hits across the rest of the hull, which is the
+## same failure [method release_part] exists to avoid. The primitives are instead
+## registered on the debris body — the [i]same[/i] [Shape3D] resources, shared
+## rather than rebuilt, which is what §6.1 means by reusing the authored
+## primitives — and this body's copies are disabled where they stand.
+##
+## The rebase is a pure translation: the debris body's frame is this Assembly's
+## translated onto the island centre of mass, so the shape keeps its orientation
+## and loses the offset. [IslandDetacher] sets the body's transform afterwards,
+## which is what makes that true.
+func detach_colliders_to(
+	target: DebrisBodyRef, slot: int, island_com_local: Vector3
+) -> void:
+	var st := state(slot)
+	if st == null:
+		push_error("AssemblyRuntime: collider detach of empty slot %d" % slot)
+		return
+	for i in st.collider_shape_ids:
+		if i < 0 or i >= _shapes.size():
+			continue
+		var source := _shapes[i]
+		target.adopt_shape(
+			source.shape,
+			Transform3D(source.transform.basis, source.transform.origin - island_com_local)
+		)
+		source.disabled = true
+
+
 ## Re-enables geometry that [method release_part] disabled, for the repair path
 ## of doc 08 §11.
 func restore_part(slot: int) -> void:

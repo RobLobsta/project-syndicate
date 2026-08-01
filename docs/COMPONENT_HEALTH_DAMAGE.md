@@ -96,6 +96,10 @@ func apply(packet: DamagePacket) -> DamageOutcome:
     return DamageOutcome.applied(effective, band_after)
 ```
 
+**Amendment: `AssemblyRegistry` is an object, not a global.** This section and §5.3 both write `AssemblyRegistry.get(aid)`. `CLAUDE.md` §4 freezes the autoload list at eight, and a `static var` holding the same dictionary would be that global with less of the visibility that makes an autoload reviewable — so the registry is an ordinary `RefCounted` owned by the match scene and handed to the systems that need it, exactly as `DEPENDENCY_TREE_GRAPH.md` §6.2's `DebrisPool` is. The lookup is `registry.get_runtime(aid)`; the name changed too, because `Object.get` already exists and shadowing it would make every property read on the registry go somewhere surprising.
+
+The registry's `ids()` is ascending, which §5.3 depends on: a blast frequently destroys parts across several Assemblies, and the order they are resolved in determines the order of `part_destroyed`, which determines debris body ordering on the network.
+
 ---
 
 ## 4. Kinetic Resolution

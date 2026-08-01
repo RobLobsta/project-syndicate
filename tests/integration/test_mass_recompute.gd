@@ -58,7 +58,7 @@ func test_a_registration_is_solved_and_applied_one_tick_later() -> void:
 	var probe := _MassProbe.new()
 	s.mass_applied.connect(probe.on_applied)
 
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	check_eq(s.pending(), PackedInt32Array([ASSEMBLY_A]), "registration marks the Assembly dirty")
 
 	MatchClock.tick_started.emit(100)
@@ -77,7 +77,7 @@ func test_a_registration_is_solved_and_applied_one_tick_later() -> void:
 func test_the_applied_properties_are_the_ones_the_solver_computes() -> void:
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 200)
 
 	var expected := MassSolver.compute(runtime.states, runtime.graph)
@@ -98,7 +98,7 @@ func test_a_quiet_tick_costs_nothing() -> void:
 	# breaks must never reach the worker thread.
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 300)
 
 	for tick in 5:
@@ -113,7 +113,7 @@ func test_a_quiet_tick_costs_nothing() -> void:
 func test_every_documented_trigger_marks_the_assembly_dirty() -> void:
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 500)
 
 	EventBus.part_attached.emit(ASSEMBLY_A, 2)
@@ -142,7 +142,7 @@ func test_events_for_an_unknown_assembly_are_ignored() -> void:
 	# never been given.
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 600)
 
 	EventBus.part_attached.emit(ASSEMBLY_B, 1)
@@ -160,7 +160,7 @@ func test_a_burst_of_events_produces_exactly_one_solve() -> void:
 	var runtime := _adopted_runtime(ASSEMBLY_A)
 	var probe := _MassProbe.new()
 	s.mass_applied.connect(probe.on_applied)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 700)
 	probe.count = 0
 
@@ -181,8 +181,8 @@ func test_two_assemblies_are_captured_in_ascending_id_order() -> void:
 	var probe := _MassProbe.new()
 	s.mass_applied.connect(probe.on_applied)
 
-	s.register(ASSEMBLY_A, a)
-	s.register(ASSEMBLY_B, b)
+	s.registry.register(a)
+	s.registry.register(b)
 	check_eq(
 		s.pending(), PackedInt32Array([ASSEMBLY_B, ASSEMBLY_A]),
 		"the queue is ascending by id, not by arrival"
@@ -203,10 +203,10 @@ func test_a_result_for_an_assembly_that_died_mid_solve_is_discarded() -> void:
 	var runtime := _adopted_runtime(ASSEMBLY_A)
 	var probe := _MassProbe.new()
 	s.mass_applied.connect(probe.on_applied)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 
 	MatchClock.tick_started.emit(900)
-	s.unregister(ASSEMBLY_A)
+	s.registry.unregister(ASSEMBLY_A)
 	MatchClock.tick_started.emit(901)
 
 	check_eq(probe.count, 0, "there is nothing to recompute for a wreck")
@@ -216,8 +216,8 @@ func test_a_result_for_an_assembly_that_died_mid_solve_is_discarded() -> void:
 func test_unregistering_drops_queued_work() -> void:
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
-	s.unregister(ASSEMBLY_A)
+	s.registry.register(runtime)
+	s.registry.unregister(ASSEMBLY_A)
 	check_eq(s.pending(), PackedInt32Array(), "the queued entry left with the Assembly")
 
 	MatchClock.tick_started.emit(1000)
@@ -233,7 +233,7 @@ func test_losing_a_part_moves_the_mass_and_the_centre_of_mass() -> void:
 	# recompute rather than from a special case.
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 1100)
 	var com_before := runtime.body.center_of_mass
 
@@ -256,7 +256,7 @@ func test_repeated_loss_and_restoration_returns_to_the_baseline() -> void:
 	# to its starting numbers is the only way a one-entry-per-cycle leak shows.
 	var s := _new_scheduler()
 	var runtime := _adopted_runtime(ASSEMBLY_A)
-	s.register(ASSEMBLY_A, runtime)
+	s.registry.register(runtime)
 	_advance(s, 1200)
 	var baseline_mass := runtime.body.mass
 	var baseline_com := runtime.body.center_of_mass
@@ -286,6 +286,9 @@ func test_repeated_loss_and_restoration_returns_to_the_baseline() -> void:
 
 func _new_scheduler() -> MassRecomputeScheduler:
 	var s := MassRecomputeScheduler.new()
+	# One registry per scheduler, so a test's Assemblies cannot be seen by the
+	# scheduler the previous test left behind.
+	s.registry = AssemblyRegistry.new()
 	_schedulers.append(s)
 	# _ready is where every connection is made, and a Node only gets one in a
 	# tree. Going through an autoload's tree is how a TestCase, which is a

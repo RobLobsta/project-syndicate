@@ -440,52 +440,73 @@ extends RefCounted
 const DEBRIS_LIFETIME_S := 22.0
 const DEBRIS_MIN_PARTS_FOR_BODY := 1
 
-static func detach(assembly: AssemblyRuntime, island: PackedByteArray) -> RigidBody3D:
-    var body := DebrisPool.acquire()
+static func detach(
+    runtime: AssemblyRuntime, island: PackedByteArray, pool: DebrisPool
+) -> DebrisBodyRef:
     var total_mass := 0.0
     var weighted := Vector3.ZERO
+    var carried := PackedByteArray()
 
     # --- Aggregate mass properties in assembly-local space -----------------
     for slot in island:
-        var st: PartInstanceState = assembly.states[slot]
+        var st := runtime.state(slot)
+        if st == null:
+            continue                            # reported; §5.3 severed it already
+        assert(not runtime.graph.is_alive(slot))
         var def := PartRegistry.definition(st.part_def_id)
-        var p := LatticeMath.cell_to_local(st.origin_cell) \
-               + OrientationTable.basis_for(st.orientation_index) * def.com_offset_m
+        var p := MassSolver.part_com_local(st, def)
         total_mass += def.mass_kg
         weighted += p * def.mass_kg
-    var island_com_local := weighted / maxf(total_mass, 0.001)
+        carried.append(slot)
+    if carried.size() < DEBRIS_MIN_PARTS_FOR_BODY:
+        return null
+    var island_com_local := weighted / maxf(total_mass, MassSolver.MASS_FLOOR_KG)
 
-    # --- Transfer visuals and colliders -----------------------------------
-    for slot in island:
-        var st: PartInstanceState = assembly.states[slot]
-        st.flags |= PartFlags.FLAG_DETACHED
-        assembly.detach_colliders_to(body, slot, island_com_local)
-        assembly.detach_visual_to(body, slot, island_com_local)
-        assembly.graph.alive[slot] = 0
+    # --- Re-register colliders, rebased onto the island COM ----------------
+    var body := pool.acquire()
+    body.source_assembly_id = runtime.assembly_id
+    body.slots = carried
+    for slot in carried:
+        runtime.states[slot].flags |= PartFlags.FLAG_DETACHED
+        runtime.detach_colliders_to(body, slot, island_com_local)
 
-    body.mass = total_mass
-    body.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-    body.center_of_mass = Vector3.ZERO          # already re-centred on the island COM
-    body.inertia = InertiaSolver.island_inertia(assembly.states, island, island_com_local)
-    body.collision_layer = CollisionLayers.LAYER_DEBRIS
-    body.collision_mask = CollisionLayers.MASK_DEBRIS
-    body.global_transform = assembly.body.global_transform \
+    var mp := MassSolver.MassProperties.new()
+    mp.total_mass = total_mass
+    mp.com_local = Vector3.ZERO                 # already re-centred on the island COM
+    mp.inertia_diag = InertiaSolver.island_inertia(runtime.states, carried, island_com_local)
+    MassSolver.apply_mass_properties(body, mp)
+
+    body.global_transform = runtime.body.global_transform \
                           * Transform3D(Basis(), island_com_local)
 
     # --- Inherit the velocity the island actually had at its own COM -------
-    var r := assembly.body.global_transform.basis * island_com_local
-    body.linear_velocity = assembly.body.linear_velocity \
-                         + assembly.body.angular_velocity.cross(r)
-    body.angular_velocity = assembly.body.angular_velocity
+    var r := runtime.body.global_transform.basis * island_com_local
+    body.linear_velocity = runtime.body.linear_velocity \
+                         + runtime.body.angular_velocity.cross(r)
+    body.angular_velocity = runtime.body.angular_velocity
 
-    DebrisReaper.schedule(body, DEBRIS_LIFETIME_S)
-    EventBus.island_detached.emit(assembly.assembly_id, island, body.get_instance_id())
+    pool.reaper.schedule(body, DEBRIS_LIFETIME_S)
+    EventBus.island_detached.emit(runtime.assembly_id, carried, body.get_instance_id())
     return body
 ```
 
-`island_inertia` takes the state array rather than the `AssemblyRuntime` this section originally passed it. It reads nothing else from the runtime, and taking the array keeps the mass layer independent of the runtime layer — the same reason `ChassisGraph.attach` takes a part's mass rather than reaching into `PartRegistry` for it. It is implemented in `DYNAMIC_MASS_PHYSICS.md` §3.3 and is the only part of this section that exists ahead of `DebrisPool`.
+`island_inertia` takes the state array rather than the `AssemblyRuntime` this section originally passed it. It reads nothing else from the runtime, and taking the array keeps the mass layer independent of the runtime layer — the same reason `ChassisGraph.attach` takes a part's mass rather than reaching into `PartRegistry` for it. It is implemented in `DYNAMIC_MASS_PHYSICS.md` §3.3.
 
 The velocity inheritance term `ω × r` is essential. Without it, a panel shorn off a spinning Assembly drops straight down while the Assembly rotates away — a tell-tale artefact of naive detachment implementations. With it, the panel flies off tangentially, exactly as it should.
+
+**Six amendments**, none of which changes what this section decides:
+
+1. **`DebrisPool` and `DebrisReaper` are instances, passed in.** This section originally called them as globals. `CLAUDE.md` §4 freezes the autoload list at eight, so the pool is an ordinary `Node` owned by the match scene; it constructs and owns the reaper, because a reaper pointed at no pool is not a meaningful object. The pool also holds an `AssemblyRegistry` and exposes `on_island_severed`, which is the production form of `DetachmentScheduler.island_sink`: the seam between §5 and §6 is exactly one lookup wide, and assigning that method is the single line the match scene writes to connect the two halves of detachment.
+
+2. **The graph writes belong to §5.3, not here.** This section wrote `assembly.graph.alive[slot] = 0`, which `ChassisGraph.remove_node` has already done by the time an island is announced. Two owners of the one fact this whole subsystem turns on is worse than either alone: neither would be load-bearing, and either could be deleted silently. §6 asserts the slot is already dead instead.
+
+3. **Colliders are re-registered on the debris body, not moved to it.** A body's shape indices are assignment order, so removing one renumbers every later index and repoints the shape-index to slot map of `COMPONENT_HEALTH_DAMAGE.md` §5.4 for every part placed after the island — one severed panel becoming mis-attributed hits across the rest of the hull. The island's primitives are therefore registered on the debris body — the *same* `Shape3D` resources, shared rather than rebuilt, which is what §6.1 means by reusing the authored primitives — and the Assembly's copies are disabled where they stand, exactly as `AssemblyRuntime.release_part` disables them.
+
+4. **`detach_visual_to` is absent.** No Assembly has meshes yet; `EXTENSION_PIPELINE.md` §9 owns their spawn, and the visual half of detachment lands with it.
+
+5. **The mass properties go through `MassSolver.apply_mass_properties`.** Writing `body.mass` and `body.inertia` directly here would be a second place that has to know Godot refuses a zero mass and reads a zero inertia as "derive it from the collision shapes" — the exact coupling Architectural Invariant I-1 forbids. `DYNAMIC_MASS_PHYSICS.md` §3.5 owns those floors.
+
+6. **`DEBRIS_MIN_PARTS_FOR_BODY` is tested against the parts that resolved**, not against the argument. With the minimum at one the two agree, so testing both would leave neither load-bearing.
 
 ### 6.1 Debris Colliders
 
@@ -505,6 +526,29 @@ body.angular_damp = 0.55
 ```
 
 `DebrisReaper` additionally freezes any debris body that has been asleep for more than 4 s (`freeze_mode = FREEZE_MODE_STATIC`), removing it from the solver entirely while keeping it visible until its lifetime expires.
+
+**Four amendments.**
+
+**A body's lifetime ends in two events, not one.** As written, `DEBRIS_LIFETIME_S` both removed the wreck from the simulation and deleted it. Watched, that is a wreck blinking out of the world in front of the player, and waiting for the player to look away is the obvious fix and the wrong one as a single event: debris is an obstacle — `CLAUDE.md` §5.1's `MASK_ASSEMBLY_HULL` includes `LAYER_DEBRIS`, and §9.3 of `HEADLESS_NETWORK_SYNC.md` has the dedicated server spawning these bodies for exactly that reason — so a wreck kept alive by one player's camera would be a collision every other machine had already stopped simulating.
+
+Splitting the event settles it:
+
+| Phase | Ends when | Deterministic? |
+|---|---|---|
+| Simulated | `expires_at_tick`, i.e. `DEBRIS_LIFETIME_S` after the island was severed | Yes — the same tick on the server and on every client |
+| Retired | off every screen for `OFFSCREEN_DWELL_S` (0.5 s), or `LINGER_MAX_S` (30 s) after retiring, or when the pool needs the slot | No, and nothing simulated may depend on it |
+
+Retirement is `DebrisPool.retire`: velocity zeroed, `freeze_mode = FREEZE_MODE_STATIC`, layer and mask cleared. It happens on the scheduled tick whatever any camera is pointing at, so the set of debris that is an obstacle stays identical everywhere. What follows is presentation, and is the only part a viewer influences.
+
+Two details make the split safe rather than merely well-intentioned. `DebrisPool.acquire` evicts a **retired** body before a simulated one, so the deterministic set is never squeezed by how long one player happened to look at a wreck — a live body is only taken when all 96 are live, and that condition is reached at the same moment on every machine. And the off-screen test is a dwell rather than an instant, because a camera shake that clips a wreck out of frame for two frames would otherwise recycle it, and the player who panned back would find it gone.
+
+Visibility comes from a `VisibleOnScreenNotifier3D` fitted to the island's collider bounds, gated on the `debris_visibility` subsystem tag (doc 12 §9.2). It is a `VisualInstance3D` under a `PhysicsBody3D`, which elsewhere would violate Architectural Invariant I-1; it does not here, because a notifier draws nothing, owns no geometry, is a query volume the renderer already evaluates while culling, and is consulted only after the body has stopped being an obstacle. A build with the tag disabled constructs no notifier, and its bodies are recycled at `expires_at_tick` exactly as this section originally said.
+
+**Both deadlines are tick counts, not accumulated seconds.** 22 s is 1320 additions of `PHYSICS_DT`, which does not land on a round number, so a float countdown expires a tick early or late depending on how the additions happened to round. The tick a body leaves the simulation is replicated (`HEADLESS_NETWORK_SYNC.md` §5), so the server and a client accumulating in a different order would disagree about it. `DebrisReaper` stores `expires_at_tick`, `linger_deadline_tick`, `offscreen_since_tick` and `asleep_since_tick` on the body and compares integers. The same reasoning produced §4.2's dwell epsilon; here the problem can be removed rather than tolerated.
+
+**Shape nodes are reused, never freed.** A body returning to the pool disables its `CollisionShape3D` children and rewinds a cursor; the next island overwrites them in place and appends only if it needs more. Freeing them would mean removing nodes from a body inside a physics callback — the reaper runs on `MatchClock.tick_started` — and, worse, `queue_free` would leave the recycling path above handing out a body still carrying the last island's geometry for the rest of the frame.
+
+**The 0.25 s recycle fade is not implemented.** It is presentation, and debris has no meshes to fade until `EXTENSION_PIPELINE.md` §9 lands. A recycled body currently disappears on the tick it is taken. Once meshes exist, the fade belongs on the two paths where a wreck can go while somebody is watching it — the `LINGER_MAX_S` cap and pool exhaustion — and nowhere else, because the off-screen path is by construction unobserved.
 
 ---
 
