@@ -53,6 +53,8 @@ var neighbours: Array = []
 var edge_strength: Array = []                          # slot -> PackedFloat32Array
 ## Parallel array: accumulated strain fraction [0,1] of the edge.
 var edge_strain: Array = []                            # slot -> PackedFloat32Array
+## Parallel array: 1 when both nodes forming the edge bear load.
+var edge_bears_load: Array = []                        # slot -> PackedByteArray
 
 ## --- Cached aggregates ------------------------------------------------
 var mass_kg: PackedFloat32Array = PackedFloat32Array()  # slot -> its own mass
@@ -83,6 +85,8 @@ func _init() -> void:
 ```
 
 Every array is fixed-size and preallocated at construction. The graph performs **no heap allocation during a match** except when growing a per-slot adjacency list at attach time, which only happens in the garage.
+
+`edge_bears_load` was added to the parallel edge arrays after the fact. §3.2's first ordering key is whether a joint bears load on **both** sides, and that fact previously lived only on the `MateRecord` the placement produced, which is discarded once the edge is built. Re-parenting after a destruction (§5.3) has no mate records to consult, so without this array the match path would have had to rank survivors on three of §3.2's four keys while the garage ranked them on four — the exact drift `MateSelector.outranks` exists to prevent. It is maintained by `_add_edge` alongside `edge_strength` and read through `edge_bears_load_at(slot, index)`.
 
 `mass_kg` was added to the cached aggregates after the fact. §3.1 calls `m_mass_of(slot)` to compute the delta it propagates, and this section originally declared no field to hold it — leaving the graph unable to compute a value its own attach path depends on. Storing it here follows the precedent of the other aggregates and keeps the graph free of a `PartRegistry` dependency, so it stays constructible in a unit test with no autoloads. `attach` therefore takes the part's mass as its final argument, and `m_mass_of(slot)` is `mass_kg[slot]`.
 
@@ -122,11 +126,11 @@ func attach(slot: int, primary_parent: int, mates: Array[MateRecord]) -> void:
         children[primary_parent] = kids
 
     for m in mates:
-        _add_edge(slot, m.other_slot, m.joint_strength_n)
+        _add_edge(slot, m.other_slot, m.joint_strength_n, m.bears_load)
 
     _propagate_mass_delta(slot, m_mass_of(slot))
 
-func _add_edge(a: int, b: int, strength: float) -> void:
+func _add_edge(a: int, b: int, strength: float, bears_load: bool) -> void:
     var na: PackedByteArray = neighbours[a]
     var sa: PackedFloat32Array = edge_strength[a]
     var ta: PackedFloat32Array = edge_strain[a]
@@ -175,6 +179,8 @@ func _propagate_mass_delta(from_slot: int, delta: float) -> void:
 
 The `guard` is not defensive padding; the primary tree is an invariant that other code can violate through a bug, and a silent infinite loop inside a physics tick is far worse than an assertion.
 
+`_mass_dirty` is a plain `bool` on the graph, read through `is_mass_dirty()` and reset through `clear_mass_dirty()`. The snippet above set it before this section declared it. It is what the detachment scheduler turns into `assembly_mass_dirty` (§8.2) once the tick's structural work is finished: the mass solver runs at `PRIORITY_MASS`, one phase after detachment, and needs to know the structure moved underneath it without re-deriving that from the topology.
+
 ---
 
 ## 4. Strain
@@ -214,6 +220,12 @@ func update_dynamic_factor(chassis_accel_mps2: float) -> void:
 
 10 Hz is not per-frame polling of connectivity; it is a scalar smoothing filter costing one lerp per Assembly. Connectivity itself remains untouched.
 
+**Both deposit terms decay.** `deposit_recoil_force` (doc 07 §8) and `deposit_impact_force` (doc 08 §6.2) each record the *peak* force at a slot, and `decay_deposits(dt)` pulls both towards zero exponentially — recoil over `RECOIL_DECAY_TAU_S = 0.6`, impact over `IMPACT_DECAY_TAU_S = 0.9`. Doc 08 already decayed the impact term; doc 07 deposited recoil without ever clearing it, which would have made a single discharge a load the mounting joint carried for the rest of the match. Both are recent-load deposits and differ only in time constant. A slot whose deposits fall below `DEPOSIT_FLOOR_N = 1.0` leaves the decay set entirely, so `decay_deposits` returns immediately on an Assembly that is not being loaded, and returns `false` once nothing is.
+
+`F_recoil(s)` and `F_impact(s)` are **subtree sums** — an Effector Module three parts up still loads the joint at the bottom of the stack. `recompute_strain` accumulates them child-to-parent in a single descending-depth sweep (a counting sort into preallocated scratch), so one pass is `O(V)` rather than a walk per slot. Strain is carried on the edge to the **primary tree parent**: §4.1 defines exactly one force per part, and §3.2 is where the decision was made about which joint that force flows through.
+
+The stored strain value is always current. Only the `joint_strain_changed` announcement is gated, by `STRAIN_REPORT_EPSILON = 0.01` — gating the write instead lets a joint sit at a stale strain indefinitely because each individual step stayed under the epsilon.
+
 ### 4.2 Strain Failure
 
 An edge whose strain exceeds `1.0` for longer than `STRAIN_FAILURE_DWELL_S` fails and is removed. This is one of the three events that can wake the graph.
@@ -237,7 +249,11 @@ func evaluate_strain(assembly_id: int, dt: float) -> void:
                 EventBus.joint_failed.emit(assembly_id, slot, ns[i])
 ```
 
-`_strained_candidates` is a small dirty set populated when a strain value is written above `0.85`. Edges below that threshold are never revisited.
+`_strained_candidates` is a small dirty set populated when a strain value is written above `0.85`. Edges below that threshold are never revisited. It is **rebuilt** on each `recompute_strain` rather than only added to, so a joint that was briefly overloaded during a jump stops being swept once the load comes off; `recompute_strain` is the only writer of `edge_strain`, which is what makes rebuilding it correct. The set is sorted ascending so that a cascade of failures is emitted in the same order on the server and on every client replaying the same events.
+
+**The dwell key is canonical over the unordered pair**, `min(a,b) * MAX + max(a,b)`, not the ordered `slot * MAX + other` the snippet above uses. An edge is stored at both endpoints, so an ordered key gives one physical joint two independent timers: a joint whose two ends enter the candidate set on different passes then fails later than its dwell says, and one whose ends both enter it fails twice.
+
+The dwell comparison carries a tolerance of `EPSILON_LINEAR`. Dwell is a sum of sixtieths of a second and cannot represent `0.45` exactly, so a bare `>=` grants the joint one extra tick — and the exact tick a joint fails on is replicated, so a server and a client accumulating in a different order would disagree about it.
 
 ### 4.3 Strain Feedback
 
@@ -333,6 +349,16 @@ static func _search_from(graph: ChassisGraph, seed: int,
     return SearchResult.new(false, visited)
 ```
 
+`remove_node(slot)` is defined here, having been called above without being declared. It orphans the slot's primary children and then detaches it, returning the orphans. `detach` cannot serve on its own: it requires a childless slot, which a destroyed part in the middle of a hull never is.
+
+**Surviving orphans are re-parented.** A part whose tree parent was destroyed but which still reaches the Core Module through another support edge stays on the Assembly, and it must be given a new tree parent — a live part with `parent == INVALID` keeps its mass out of every ancestor's `subtree_mass` and out of every strain figure computed from it, silently and permanently. `MateSelector.choose_support_parent(graph, slot)` picks it, ranking the surviving edges on §3.2's four keys read straight off the graph.
+
+This is not the garage's re-parenting of §9.1. There is no confirmation prompt, nothing is *kept* that the support edges do not already hold up, and no candidate is re-derived from the lattice — after a destruction the mating is already settled and the surviving edges are exactly the legal parents. What the two share is the ordering, deliberately: a part must not land under one parent when placed and a different one when the part holding it up is shot away.
+
+Re-parenting runs **after** the islands are severed, not before. Severing an island orphans any survivor whose tree parent was in it, so the orphan set is not complete until the islands are gone — and once they are, a leaving part can no longer be picked as a new parent, because it is no longer alive.
+
+Removal order *within* an island does not matter and deliberately so, since `remove_node` lifts a slot's children off it before detaching it. A part is never asked to leave while something still hangs from it.
+
 There is a subtlety worth stating explicitly, because it is easy to get wrong: `_search_from` allocates a **new** local stamp on each seed, while `proven_stamp` is a stamp from an earlier `_begin_traversal()` call. Since `_stamp_counter` only increments, the proven stamp is strictly less than every local stamp, and the two comparisons cannot alias. `_begin_traversal` is therefore called `1 + seeds.size()` times per evaluation, which is why the wrap check in §2.2 exists.
 
 ### 5.4 Complexity in Practice
@@ -386,6 +412,12 @@ func _resolve_all() -> void:
 ```
 
 `_resolve_assembly` removes **all** destroyed slots first, collects the union of their surviving neighbours as seeds, and then runs a single reverse-reachability pass. One pass, one island set, one debris spawn per island.
+
+The pending sets are **swapped out before resolution begins**, not cleared after it. `_pending.clear()` at the end of the pass would wipe exactly the secondary deaths §5.6 exists to defer — the ones queued *during* resolution, which must survive into the next tick.
+
+A failed joint is queued separately from a destroyed part. `joint_failed` severs the edge immediately and queues the part the joint was holding up; that part is intact and merely unsupported, so it must not go into the destroyed set. If it turns out to still reach the Core Module through another edge it simply re-parents; if it does not, it is *itself* the island, along with everything still attached to it, and `DetachmentSolver.sever_unsupported` is what severs that component. Passing it to `solve` instead would treat it as a part that has ceased to exist, search outwards from the neighbours it leaves behind, and quietly delete an unsupported leaf without reporting an island for it.
+
+Turning a severed island into a `RigidBody3D` is §6 and is reached through the scheduler's `island_sink`. The scheduler resolves topology — which parts stopped being attached, and what the Assembly looks like afterwards — and announces each island on its own `island_severed` signal, which is the authoritative structural fact and is true whether or not a debris body is spawned to represent it. `EventBus.island_detached` (§8.2) is emitted by §6, once a body exists to carry an id.
 
 The deterministic sort of both assembly ids and slot indices is not cosmetic. It guarantees the server and every client that replays the same event set produce identical island decompositions and identical debris body ordering, which the network layer relies on (`HEADLESS_NETWORK_SYNC.md` §7.3).
 
@@ -508,6 +540,10 @@ if destroyed_slots.has(ChassisGraph.CORE):
 
 `AssemblyTerminator` partitions the remaining live parts into connected components using a single full flood fill — the one place a full fill is correct, because every node genuinely must be classified — and emits one debris body per component, capped at 8 bodies with the remainder merged into the largest.
 
+The partition is `DetachmentSolver.partition_live_components`, and the cap is `MAX_TERMINAL_COMPONENTS = 8`. Merging is by descending component size, ties broken on the lowest slot, so which component absorbs the remainder never depends on traversal order and no slot is ever dropped.
+
+Every slot destroyed in the same tick — the Core Module included — is removed **before** the partition runs. Those parts are gone, not debris; partitioning first would put the destroyed Core Module into a component and spawn a body for a part that no longer exists.
+
 ---
 
 ## 8. Event Contract
@@ -532,7 +568,12 @@ Every signal the graph consumes or emits, with its exact payload. These are decl
 | `island_detached` | `(assembly_id: int, slots: PackedByteArray, body_id: int)` | Network replication, audio, VFX, scoring |
 | `assembly_mass_dirty` | `(assembly_id: int)` | `MassSolver` |
 | `assembly_terminated` | `(assembly_id: int, killer_id: int)` | Match state, scoring, respawn |
+| `island_severed` | `(assembly_id: int, slots: PackedByteArray)` | `IslandDetacher` (§6), tests |
 | `joint_strain_changed` | `(assembly_id: int, slot_a: int, slot_b: int, strain: float)` | Skirt stress decals, audio groan cue |
+
+`island_severed` is declared on `DetachmentScheduler` rather than on the `EventBus`, because it is the handoff between two halves of one subsystem and not a cross-system signal. `island_detached` remains the `EventBus` signal, carrying the debris body id §6 produces.
+
+`killer_id` is a peer id, and is `0` when the termination is unattributed. Only the damage layer knows who fired the packet that reached zero; the graph sees a `part_destroyed` carrying a damage channel, not an attacker. Until attribution is recorded, terminations report `0`.
 
 ### 8.3 Ordering Guarantee
 

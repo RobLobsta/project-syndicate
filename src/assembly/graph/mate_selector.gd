@@ -57,15 +57,90 @@ static func choose_primary_slot(mates: Array[MateRecord], graph: ChassisGraph) -
 ## Strict at every key: equal values fall through to the next, and the final key
 ## can never tie because two mates cannot share a slot.
 static func outranks(a: MateRecord, b: MateRecord, graph: ChassisGraph) -> bool:
-	if a.bears_load != b.bears_load:
-		return a.bears_load
+	return _outranks_keys(
+		a.bears_load,
+		a.joint_strength_n,
+		int(graph.depth[a.other_slot]),
+		a.other_slot,
+		b.bears_load,
+		b.joint_strength_n,
+		int(graph.depth[b.other_slot]),
+		b.other_slot
+	)
 
-	if not is_equal_approx(a.joint_strength_n, b.joint_strength_n):
-		return a.joint_strength_n > b.joint_strength_n
 
-	var da := int(graph.depth[a.other_slot])
-	var db := int(graph.depth[b.other_slot])
-	if da != db:
-		return da < db
+## Slot of the best support-edge neighbour of [param slot] that still reaches the
+## Core Module, or [constant SyndicateConstants.INVALID_SLOT] when none does.
+##
+## This is the match-mode counterpart of the garage's alternate-parent search
+## (§9.2 of doc 02). The garage re-derives its candidates from the lattice
+## because it must also honour polarity and class acceptance for a part being
+## moved; after a destruction the mating is already settled and the surviving
+## edges are exactly the legal parents, so ranking reads straight off the graph.
+##
+## Both paths rank on the same four keys through [method _outranks_keys], which
+## is the whole reason [member ChassisGraph.edge_bears_load] is stored: a part
+## must not land under one parent when placed and a different one when the part
+## holding it up is shot away.
+static func choose_support_parent(graph: ChassisGraph, slot: int) -> int:
+	var best := SyndicateConstants.INVALID_SLOT
+	var best_strength := 0.0
+	var best_bears := false
+	var best_depth := 0
 
-	return a.other_slot < b.other_slot
+	# Hoisted: it is the same answer for every neighbour, and it shares the
+	# graph's traversal scratch with the reachability query below.
+	var own_subtree := graph.subtree_slots(slot)
+
+	var ns: PackedByteArray = graph.neighbours[slot]
+	for i in ns.size():
+		var other := int(ns[i])
+		if graph.alive[other] == 0:
+			continue
+		# A part cannot be held up by something it already holds up, and a
+		# candidate that is itself severed would let the graph claim a
+		# connection the Assembly does not have.
+		if own_subtree.has(other):
+			continue
+		if not graph.is_connected_to_core(other):
+			continue
+
+		var bears := graph.edge_bears_load_at(slot, i)
+		var strength := graph.edge_strength[slot][i]
+		var d := int(graph.depth[other])
+		if (
+			best == SyndicateConstants.INVALID_SLOT
+			or _outranks_keys(
+				bears, strength, d, other, best_bears, best_strength, best_depth, best
+			)
+		):
+			best = other
+			best_bears = bears
+			best_strength = strength
+			best_depth = d
+	return best
+
+
+## The §3.2 ordering itself, over the four keys rather than over a carrier type.
+##
+## Strict at every key: equal values fall through to the next, and the final key
+## can never tie because two candidates cannot share a slot. Both entry points
+## above delegate here so there is exactly one expression of the ordering — two
+## copies would agree until someone changed one of them.
+static func _outranks_keys(
+	a_bears: bool,
+	a_strength: float,
+	a_depth: int,
+	a_slot: int,
+	b_bears: bool,
+	b_strength: float,
+	b_depth: int,
+	b_slot: int
+) -> bool:
+	if a_bears != b_bears:
+		return a_bears
+	if not is_equal_approx(a_strength, b_strength):
+		return a_strength > b_strength
+	if a_depth != b_depth:
+		return a_depth < b_depth
+	return a_slot < b_slot
