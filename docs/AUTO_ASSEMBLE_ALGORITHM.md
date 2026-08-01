@@ -56,6 +56,9 @@ extends Resource
 @export var display_name_key: StringName = &"archetype.skirmisher"
 
 ## --- Hard structural targets -----------------------------------------
+## Which locomotion families Phase 3 may draw from. Empty = GROUND only, which
+## is what every archetype predating the rotary and ambulatory families meant.
+@export var locomotion_modes: PackedInt32Array = PackedInt32Array()
 @export var motive_count_range: Vector2i = Vector2i(4, 6)
 @export var effector_count_range: Vector2i = Vector2i(1, 3)
 @export var power_plant_count_range: Vector2i = Vector2i(1, 2)
@@ -96,6 +99,23 @@ extends Resource
 | `bastion` | 8–12 tracked | 2–3 mixed | Total integrity, power headroom | `w_armour_core 3.0`, `w_power_headroom 1.6` |
 | `harrier` | 4 wheeled/omni | 2–4 guided | Mass efficiency, mobility | `w_mass_efficiency 2.2`, `w_speed 2.0` |
 | `support` | 4–6 wheeled | 0–2 | Support module coverage | `w_power_headroom 2.4`, `w_armour_core 1.4` |
+| `rotorcraft` | 2–4 rotary | 1–3 direct/guided | Lift margin, yaw balance | `w_mass_efficiency 3.0`, `w_power_headroom 2.6`, `w_armour_core 0.5` |
+| `strider` | 2–6 ambulatory | 1–3 mixed, ≥1 melee | Stance margin, reach | `w_stability 2.4`, `w_firepower 2.0`, `w_speed 0.8` |
+
+The two new archetypes are the reason `locomotion_modes` exists. Phase 3 filters the Motive Assembly candidate set by it, so a `rotorcraft` never places a wheel and a `skirmisher` never accidentally places a rotor disc because one happened to score well on mass efficiency.
+
+Both carry a hard constraint the ground archetypes do not, checked in Phase 3 rather than deferred to the objective, because a build that fails either is not merely poor — it does not function:
+
+| Archetype | Additional hard constraint | Rejected because |
+|---|---|---|
+| `rotorcraft` | `Σ T_max ≥ 1.15 × M · g` | An Assembly that cannot lift its own mass with 15% margin never leaves the ground |
+| `rotorcraft` | `\|Σ spin_sign · torque_reaction_ratio · Q\| ≤ Σ yaw_authority_nm` | An Assembly whose reaction torque exceeds its yaw authority spins and cannot hold a heading (`DYNAMIC_MASS_PHYSICS.md` §12.4) |
+| `strider` | `Σ max_foot_force_n × duty_factor ≥ 1.30 × M · g` | Stance force must hold the Assembly up with only the duty-factor share of limbs planted |
+| `strider` | `limb count ≥ 2` and even | An odd limb set has no phase assignment that keeps the swing set balanced (§13.3 of doc 05) |
+
+`w_mass_efficiency 3.0` on `rotorcraft` is the highest weight given to any term by any archetype, and it is not a preference. Lift scales with disc area and mass does not, so every kilogram the generator spends on armour it did not need costs altitude, climb rate, and manoeuvre margin simultaneously. A rotorcraft that armours like a `brawler` is a rotorcraft that cannot take off, and the objective has to feel that pressure or Phase 7's shell fill will happily ground it.
+
+`strider` mandating at least one melee Effector Module is a design statement rather than an engineering one: an ambulatory Assembly closes distance under fire far worse than a wheeled one, so it needs a reason to be in contact, and `eff.melee.beam_edge.t4` is it.
 
 ---
 

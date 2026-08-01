@@ -23,7 +23,32 @@ enum MotiveKind {
 	OMNI_ROLLER = 3,
 	AMBULATORY_LIMB = 4,
 	REPULSOR_PAD = 5,
+	ROTOR_DISC = 6,
 }
+
+## Which solver in [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] moves an Assembly
+## carrying a given [enum MotiveKind]. Derived, never authored.
+enum LocomotionMode {
+	GROUND = 0,  # doc 05 §6 suspension + §7 traction
+	ROTARY = 1,  # doc 05 §12 rotor lift and tilt
+	AMBULATORY = 2,  # doc 05 §13 gait
+	TRACKED = 3,  # doc 05 §14 road stations and differential drive
+}
+
+## Indexed by [enum MotiveKind], and frozen alongside the enum it indexes.
+##
+## This exists so that no subsystem outside [MotiveSystem] ever branches on
+## [enum MotiveKind]: family selection is one array index, and a fourth family
+## is an append here rather than a new branch in every consumer. Doc 01 §4.1.
+const LOCOMOTION_OF_MOTIVE_KIND: Array[int] = [
+	LocomotionMode.GROUND,  # WHEELED_STEERED
+	LocomotionMode.GROUND,  # WHEELED_FIXED
+	LocomotionMode.TRACKED,  # TRACKED_SEGMENT
+	LocomotionMode.GROUND,  # OMNI_ROLLER
+	LocomotionMode.AMBULATORY,  # AMBULATORY_LIMB
+	LocomotionMode.GROUND,  # REPULSOR_PAD
+	LocomotionMode.ROTARY,  # ROTOR_DISC
+]
 
 enum EffectorKind {
 	BALLISTIC_DIRECT = 0,
@@ -31,6 +56,7 @@ enum EffectorKind {
 	CONTINUOUS_BEAM = 2,
 	GUIDED_ORDNANCE = 3,
 	KINETIC_MELEE = 4,
+	ENERGY_MELEE = 5,
 }
 
 enum DamageChannel {
@@ -82,3 +108,35 @@ const PART_CLASS_COUNT: int = 7
 
 ## Number of attachment polarities; sizes the mating matrix in [AttachmentNodeDef].
 const ATTACHMENT_POLARITY_COUNT: int = 5
+
+## Number of Motive Assembly kinds. Asserted against
+## [constant LOCOMOTION_OF_MOTIVE_KIND]'s length so that appending a kind
+## without giving it a locomotion family fails the suite rather than reading
+## GROUND off the end of the array.
+const MOTIVE_KIND_COUNT: int = 7
+
+## Number of Effector Module kinds.
+const EFFECTOR_KIND_COUNT: int = 6
+
+
+## The locomotion family that moves an Assembly carrying [param kind].
+##
+## The single point at which a [enum MotiveKind] becomes a solver choice.
+## Out-of-range input returns GROUND and pushes an error rather than reading
+## past the array: an unmapped kind is a data error, and silently treating it as
+## a wheel is how one would ship.
+static func locomotion_of(kind: int) -> int:
+	if kind < 0 or kind >= LOCOMOTION_OF_MOTIVE_KIND.size():
+		push_error("PartEnums: MotiveKind %d has no locomotion family" % kind)
+		return LocomotionMode.GROUND
+	return LOCOMOTION_OF_MOTIVE_KIND[kind]
+
+
+## True when [param kind] is one of the two melee [enum EffectorKind] values.
+##
+## Melee is a property of two kinds rather than one, and every consumer that
+## needs the distinction — the validator, the emission loop, the melee solver —
+## would otherwise write the same two-way comparison and one of them would
+## eventually forget [constant EffectorKind.ENERGY_MELEE].
+static func is_melee_effector(kind: int) -> bool:
+	return kind == EffectorKind.KINETIC_MELEE or kind == EffectorKind.ENERGY_MELEE

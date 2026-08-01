@@ -41,6 +41,18 @@ Parts snap to a grid, but they don't *look* like they snap to a grid. A signed-d
 
 Then something shoots a hole in it, and the raw blocky structure underneath is exactly what you see.
 
+### Four ways to move, and none of them bolted on
+
+Wheels, tracks, rotors, and legs are the same part class, mounted through the same drive station, simulated on the same single rigid body. What changes is only how each one turns intent into force.
+
+Rotors work by momentum theory: thrust from disc area and tip speed, a swashplate you tilt to accelerate, ground effect that lets a heavy machine lift off but not climb out, extra lift once you get moving forward, and a settling descent that drops you into your own downwash until you fly out of it. Point the disc where you want to go and the machine goes there because the thrust vector moved, not because a "fly" function moved it.
+
+Legs walk on a spring-loaded inverted pendulum with real foot placement — plant ahead of neutral to brake, behind it to accelerate, off-axis to turn. There is no yaw torque anywhere in the walking code; a machine turns because its feet land somewhere else. Ask one to stand still and it stands on every foot instead of marching in place.
+
+Tracks steer by driving their two sides at different rates, freely at a standstill and barely at all once you're moving, and a long track shears the ground along its whole length when you try to turn it. A heavy tracked machine is *committed*, and that is the price of everything else it gets.
+
+And a beam blade cuts by sweeping a volume, mostly thermal, which is why it goes through light plate and struggles against composite — and why holding it lit browns out the rest of your machine.
+
 ### Ground and structures that remember
 
 Explosions carve craters into the terrain — real bowls with raised ejecta rims, permanent for the rest of the match. Crater interiors are worse to drive through. Crater rims are cover.
@@ -49,7 +61,7 @@ Structures fracture along pre-computed fault lines into individual sections, and
 
 ### Auto-assemble
 
-Don't want to build? Pick an archetype — skirmisher, brawler, artillery, bastion, harrier, support — a budget, and a tier ceiling. A constraint solver builds you a legal, competent machine from parts you actually own, using the same placement rules your cursor uses. Or lock the parts you've already placed and let it finish the job around them.
+Don't want to build? Pick an archetype — skirmisher, brawler, artillery, bastion, harrier, support, rotorcraft, strider — a budget, and a tier ceiling. A constraint solver builds you a legal, competent machine from parts you actually own, using the same placement rules your cursor uses. Or lock the parts you've already placed and let it finish the job around them.
 
 ---
 

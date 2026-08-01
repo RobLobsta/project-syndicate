@@ -34,6 +34,12 @@ const RULE_TIER_SCALING: int = 13
 const RULE_VISUAL_COLLISION: int = 14
 const RULE_CORE_BUDGETS: int = 15
 const RULE_EFFECTOR_LIMITS: int = 16
+const RULE_MOTIVE_FAMILY_PAYLOAD: int = 17
+const RULE_AXLE_KEYING: int = 18
+const RULE_ROTOR: int = 19
+const RULE_MELEE: int = 20
+const RULE_LIMB: int = 21
+const RULE_TRACK: int = 22
 
 ## ===== RULE CONSTANTS ==================================================
 
@@ -158,6 +164,12 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_visual_collision(def)
 	_check_core_budgets(def)
 	_check_effector_limits(def)
+	_check_motive_family_payload(def)
+	_check_axle_keying(def)
+	_check_rotor(def)
+	_check_melee(def)
+	_check_limb(def)
+	_check_track(def)
 
 
 func failures() -> PackedStringArray:
@@ -745,6 +757,358 @@ func _check_effector_limits(def: PartDefinition) -> void:
 			"pitch_limit_deg is (%.1f, %.1f); the minimum exceeds the maximum"
 			% [profile.pitch_limit_deg.x, profile.pitch_limit_deg.y]
 		)
+
+
+## ===== RULE 17 — MOTIVE FAMILY PAYLOAD =================================
+
+## Fields on [MotiveAssemblyProfile] that describe a passive ground suspension.
+## Zero on every family that does not have one.
+const SUSPENSION_FIELDS: Array[String] = [
+	"suspension_rest_length_m",
+	"suspension_stiffness_n_m",
+	"suspension_damping_ns_m",
+	"suspension_travel_limit_m",
+]
+
+
+func _check_motive_family_payload(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null:
+		return  # Rule 6 has already reported the missing payload.
+
+	var present := 0
+	if profile.rotor_profile != null:
+		present += 1
+	if profile.limb_profile != null:
+		present += 1
+	if profile.track_profile != null:
+		present += 1
+	if present > 1:
+		_fail(
+			RULE_MOTIVE_FAMILY_PAYLOAD,
+			def.part_key,
+			"carries %d family payloads; exactly one matches the kind" % present
+		)
+
+	var expected := profile.family_payload()
+	match profile.kind:
+		PartEnums.MotiveKind.ROTOR_DISC, PartEnums.MotiveKind.AMBULATORY_LIMB, \
+		PartEnums.MotiveKind.TRACKED_SEGMENT:
+			if expected == null:
+				_fail(
+					RULE_MOTIVE_FAMILY_PAYLOAD,
+					def.part_key,
+					"kind %d requires a family payload and carries none" % profile.kind
+				)
+		_:
+			if present > 0:
+				_fail(
+					RULE_MOTIVE_FAMILY_PAYLOAD,
+					def.part_key,
+					"kind %d takes no family payload but carries one" % profile.kind
+				)
+
+
+## ===== RULE 18 — AXLE KEYING ===========================================
+
+## §4.2: AXLE mates only with AXLE, so a station that accepted anything would
+## make the polarity a slower FACE_NEUTRAL. A Structural Component offering one
+## must key it to Motive Assemblies; a Motive Assembly's own drive face needs no
+## restriction, because the station it mates with already carries it.
+func _check_axle_keying(def: PartDefinition) -> void:
+	for node: AttachmentNodeDef in def.attachment_nodes:
+		if node.polarity != PartEnums.AttachmentPolarity.AXLE:
+			continue
+		if def.part_class == PartEnums.PartClass.MOTIVE_ASSEMBLY:
+			continue
+		if def.part_class != PartEnums.PartClass.STRUCTURAL_COMPONENT:
+			_fail(
+				RULE_AXLE_KEYING,
+				def.part_key,
+				(
+					"node '%s' is AXLE on a part of class %d; only Motive Assemblies "
+					% [node.node_name, def.part_class]
+				)
+				+ "and Structural Components may carry one"
+			)
+			continue
+		if node.accepts_classes != PackedInt32Array(
+			[PartEnums.PartClass.MOTIVE_ASSEMBLY]
+		):
+			_fail(
+				RULE_AXLE_KEYING,
+				def.part_key,
+				(
+					"node '%s' is an AXLE station but does not restrict accepts_classes "
+					% node.node_name
+				)
+				+ "to MOTIVE_ASSEMBLY, so anything could be bolted to a drive station"
+			)
+
+
+## ===== RULE 19 — ROTOR =================================================
+
+## §14 rule 19: maximum thrust must match rated load this closely. A rotor that
+## cannot lift its own rating presents as an Assembly that silently refuses to
+## leave the ground, with nothing in the logs.
+const ROTOR_THRUST_TOLERANCE: float = 0.01
+
+
+func _check_rotor(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null or profile.kind != PartEnums.MotiveKind.ROTOR_DISC:
+		return
+
+	_fail_if_nonzero(RULE_ROTOR, def, profile, "traction_coefficient", "a disc touches nothing")
+	_fail_if_nonzero(RULE_ROTOR, def, profile, "rolling_resistance", "a disc does not roll")
+	_fail_if_nonzero(RULE_ROTOR, def, profile, "max_steer_angle_deg", "a disc steers by cyclic")
+	for field: String in SUSPENSION_FIELDS:
+		_fail_if_nonzero(RULE_ROTOR, def, profile, field, "a disc has no suspension")
+
+	var rotor := profile.rotor_profile
+	if rotor == null:
+		return  # Rule 17 has already reported it.
+
+	if rotor.disc_radius_m <= 0.0:
+		_fail(RULE_ROTOR, def.part_key, "disc_radius_m is %.3f" % rotor.disc_radius_m)
+	if rotor.blade_count < 2:
+		_fail(RULE_ROTOR, def.part_key, "blade_count is %d" % rotor.blade_count)
+	if rotor.spin_sign != 1 and rotor.spin_sign != -1:
+		_fail(RULE_ROTOR, def.part_key, "spin_sign is %d; must be +1 or -1" % rotor.spin_sign)
+	if rotor.nominal_rad_s <= 0.0:
+		_fail(RULE_ROTOR, def.part_key, "nominal_rad_s is %.3f" % rotor.nominal_rad_s)
+	if rotor.collective_limit_deg.x > rotor.collective_limit_deg.y:
+		_fail(
+			RULE_ROTOR,
+			def.part_key,
+			(
+				"collective_limit_deg is (%.1f, %.1f); the minimum exceeds the maximum"
+				% [rotor.collective_limit_deg.x, rotor.collective_limit_deg.y]
+			)
+		)
+	if rotor.torque_reaction_ratio < 0.0 or rotor.torque_reaction_ratio > 1.0:
+		_fail(
+			RULE_ROTOR,
+			def.part_key,
+			"torque_reaction_ratio is %.3f; outside [0, 1]" % rotor.torque_reaction_ratio
+		)
+
+	var required := profile.rated_load_kg * SyndicateConstants.GRAVITY_MPS2
+	var actual := rotor.max_thrust_n()
+	if required > 0.0 and absf(actual - required) / required > ROTOR_THRUST_TOLERANCE:
+		_fail(
+			RULE_ROTOR,
+			def.part_key,
+			(
+				"max thrust is %.0f N against a rated load of %.0f N (%.1f%% out); "
+				% [actual, required, 100.0 * (actual - required) / required]
+			)
+			+ "a disc that cannot lift its rating silently refuses to fly"
+		)
+
+
+## ===== RULE 20 — MELEE =================================================
+
+## Emission fields that must be zero on a module that emits nothing.
+const MELEE_ZERO_FIELDS: Array[String] = [
+	"muzzle_velocity_mps",
+	"cycle_time_s",
+	"recoil_impulse_ns",
+	"spread_bloom_deg",
+]
+
+const MELEE_MIX_TOLERANCE: float = 0.001
+
+
+func _check_melee(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.EFFECTOR_MODULE:
+		return
+	var profile := def.effector_profile
+	if profile == null:
+		return  # Rule 6 has already reported the missing payload.
+
+	if not profile.is_melee():
+		if profile.melee_profile != null:
+			_fail(
+				RULE_MELEE,
+				def.part_key,
+				"kind %d is not melee but carries a melee_profile" % profile.kind
+			)
+		return
+
+	for field: String in MELEE_ZERO_FIELDS:
+		_fail_if_nonzero(RULE_MELEE, def, profile, field, "a melee module emits nothing")
+	if profile.magazine_rounds != 0:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			"magazine_rounds is %d; a melee module consumes no ammunition"
+			% profile.magazine_rounds
+		)
+
+	var melee := profile.melee_profile
+	if melee == null:
+		_fail(RULE_MELEE, def.part_key, "melee kind %d carries no melee_profile" % profile.kind)
+		return
+
+	if melee.channel_mix.size() != PartEnums.DAMAGE_CHANNEL_COUNT:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			"channel_mix has %d entries; expected %d"
+			% [melee.channel_mix.size(), PartEnums.DAMAGE_CHANNEL_COUNT]
+		)
+	elif absf(melee.channel_mix_sum() - 1.0) > MELEE_MIX_TOLERANCE:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			(
+				"channel_mix sums to %.4f; a mix that is not 1.0 silently scales every "
+				% melee.channel_mix_sum()
+			)
+			+ "strike this part ever lands"
+		)
+	var target_cap := MeleeSolver.MAX_TARGETS_PER_SWING
+	if melee.max_targets_per_swing < 1 or melee.max_targets_per_swing > target_cap:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			"max_targets_per_swing is %d; outside [1, %d]"
+			% [melee.max_targets_per_swing, MeleeSolver.MAX_TARGETS_PER_SWING]
+		)
+	if melee.swing_samples < 2 or melee.swing_samples > MeleeSolver.MAX_SWING_SAMPLES:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			"swing_samples is %d; outside [2, %d]"
+			% [melee.swing_samples, MeleeSolver.MAX_SWING_SAMPLES]
+		)
+	if melee.reaction_ratio < 0.0 or melee.reaction_ratio > 1.0:
+		_fail(
+			RULE_MELEE,
+			def.part_key,
+			"reaction_ratio is %.3f; outside [0, 1]" % melee.reaction_ratio
+		)
+
+
+## ===== RULE 21 — LIMB ==================================================
+
+func _check_limb(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null or profile.kind != PartEnums.MotiveKind.AMBULATORY_LIMB:
+		return
+
+	for field: String in SUSPENSION_FIELDS:
+		_fail_if_nonzero(
+			RULE_LIMB, def, profile, field, "a limb's compliance is commanded, not passive"
+		)
+
+	var limb := profile.limb_profile
+	if limb == null:
+		return  # Rule 17 has already reported it.
+
+	if limb.duty_factor <= 0.0 or limb.duty_factor >= 1.0:
+		_fail(
+			RULE_LIMB, def.part_key, "duty_factor is %.3f; outside (0, 1)" % limb.duty_factor
+		)
+	if limb.leg_length_m <= 0.0:
+		_fail(RULE_LIMB, def.part_key, "leg_length_m is %.3f" % limb.leg_length_m)
+	if limb.stance_height_ratio <= 0.0 or limb.stance_height_ratio > 1.0:
+		_fail(
+			RULE_LIMB,
+			def.part_key,
+			"stance_height_ratio is %.3f; outside (0, 1]" % limb.stance_height_ratio
+		)
+	if limb.max_cadence_hz < limb.nominal_cadence_hz:
+		_fail(
+			RULE_LIMB,
+			def.part_key,
+			"max_cadence_hz %.2f is below nominal_cadence_hz %.2f"
+			% [limb.max_cadence_hz, limb.nominal_cadence_hz]
+		)
+	if limb.max_step_length_m > 2.0 * limb.leg_length_m:
+		_fail(
+			RULE_LIMB,
+			def.part_key,
+			(
+				"max_step_length_m %.3f exceeds twice leg_length_m %.3f; such a step "
+				% [limb.max_step_length_m, limb.leg_length_m]
+			)
+			+ "cannot be taken with a foot on the ground at either end of it"
+		)
+
+
+## ===== RULE 22 — TRACK =================================================
+
+func _check_track(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null or profile.kind != PartEnums.MotiveKind.TRACKED_SEGMENT:
+		return
+
+	_fail_if_nonzero(
+		RULE_TRACK,
+		def,
+		profile,
+		"max_steer_angle_deg",
+		"a track steers by differential drive; one that angled its hub would be a wheel"
+	)
+
+	var track := profile.track_profile
+	if track == null:
+		return  # Rule 17 has already reported it.
+
+	if track.road_stations < 1 or track.road_stations > TrackProfile.MAX_ROAD_STATIONS:
+		_fail(
+			RULE_TRACK,
+			def.part_key,
+			"road_stations is %d; outside [1, %d]"
+			% [track.road_stations, TrackProfile.MAX_ROAD_STATIONS]
+		)
+	if track.patch_length_m <= 0.0:
+		_fail(RULE_TRACK, def.part_key, "patch_length_m is %.3f" % track.patch_length_m)
+	if track.differential_authority < 0.0 or track.differential_authority > 1.0:
+		_fail(
+			RULE_TRACK,
+			def.part_key,
+			"differential_authority is %.3f; outside [0, 1]" % track.differential_authority
+		)
+	if track.internal_loss < 0.0 or track.internal_loss >= 1.0:
+		_fail(
+			RULE_TRACK,
+			def.part_key,
+			"internal_loss is %.3f; outside [0, 1)" % track.internal_loss
+		)
+	if track.lateral_grip_ratio <= 0.0:
+		_fail(
+			RULE_TRACK,
+			def.part_key,
+			"lateral_grip_ratio is %.3f; a track with no lateral grip slides sideways "
+			% track.lateral_grip_ratio
+			+ "without limit"
+		)
+
+
+## Reports [param field] on [param profile] when it is not zero.
+##
+## The zero-field checks of rules 19, 20, 21, and 22 are all the same shape: a
+## family that has no use for a field must leave it at zero rather than carrying
+## a plausible-looking value no code reads, because the next author to read the
+## data cannot tell the difference.
+func _fail_if_nonzero(
+	rule: int, def: PartDefinition, profile: Resource, field: String, reason: String
+) -> void:
+	var value: float = profile.get(field)
+	if is_zero_approx(value):
+		return
+	_fail(rule, def.part_key, "%s is %.4f but must be zero: %s" % [field, value, reason])
 
 
 ## ===== REPORT (§14) ====================================================

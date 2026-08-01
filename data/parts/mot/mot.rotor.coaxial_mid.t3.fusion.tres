@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="FusionProfile" format=3 uid="uid://cmb4a8862lol6"]
+
+[ext_resource type="Script" path="res://src/core/data/fusion_profile.gd" id="1_el1s3"]
+
+[resource]
+script = ExtResource("1_el1s3")
+accepts_skirting = false
+fusion_family = &"vane_std"

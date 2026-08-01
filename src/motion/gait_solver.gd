@@ -1,0 +1,234 @@
+class_name GaitSolver
+extends RefCounted
+## Ambulatory locomotion, owned by
+## [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] §13.
+##
+## A limb is a [b]virtual leg[/b]: one spring-damper force along the hip-to-foot
+## line, with a foot that is planted or swinging. This is the Spring-Loaded
+## Inverted Pendulum, the standard model of legged locomotion in biomechanics
+## and robotics, and it reproduces the force profile of real walking from two
+## parameters. §13.1 of document 05 records why Architectural Invariant I-3
+## does not merely forbid a jointed leg but makes one unnecessary.
+##
+## The visible articulation — thigh, shank, foot — is inverse kinematics under
+## [code]VisualRoot[/code], driven from the hip and foot positions this solver
+## already knows. It is presentation, exactly like the hardpoint hierarchy of
+## document 07 §2, and Invariant I-1 keeps it out of the physics.
+
+## Commanded speed below which the gait freezes with every foot planted.
+##
+## Not an optimisation — it is the behaviour. A walker asked to stand still
+## stands, on every foot, rather than marching in place. It is also the only
+## state in which every limb contributes stance force at once, which is why a
+## stationary Assembly is rock-solid and a moving one visibly bobs.
+const STANDING_SPEED_MPS: float = 0.15
+
+
+## Phase offsets for a limb set, parallel to [param hips_local] and
+## [param slots].
+##
+## Computed once per structural change and never per tick. Deterministic from
+## the blueprint alone, which §11 invariant 16 requires: the server and every
+## client must assign the same offsets or the same walker takes different steps
+## on different machines.
+##
+## The rule, for n limbs: partition by the sign of the hip's lateral coordinate
+## (zero to the left, so a single centred limb is deterministic), sort the left
+## set fore-to-aft and the right set [b]aft-to-fore[/b], interleave left first,
+## and assign [code]i / n[/code] over the result.
+##
+## The reversal is the whole design. Interleaving two same-direction orderings
+## gives a four-limb Assembly the sequence front-left, front-right, rear-left,
+## rear-right — and since the swing window is one contiguous arc of the cycle,
+## the two limbs swinging together are the two front ones, leaving the Assembly
+## standing on its rear pair and pitching forward every stride. Reversing one
+## side makes the pair that swings together a [b]diagonal[/b], with the other
+## diagonal still planted. That is what a real quadruped does, and it falls out
+## of one reverse.
+static func assign_phase_offsets(
+	hips_local: PackedVector3Array, slots: PackedInt32Array
+) -> PackedFloat32Array:
+	var count := hips_local.size()
+	var out := PackedFloat32Array()
+	out.resize(count)
+	if count == 0:
+		return out
+
+	var left: Array[int] = []
+	var right: Array[int] = []
+	for i: int in count:
+		if hips_local[i].x <= 0.0:
+			left.append(i)
+		else:
+			right.append(i)
+
+	# Fore is -Z in assembly space, so ascending Z is fore-to-aft. Ties break on
+	# slot index, which gives a total order; two limbs at one position would
+	# otherwise be ordered by whatever the sort happened to do.
+	var by_fore_aft := func(a: int, b: int) -> bool:
+		if not is_equal_approx(hips_local[a].z, hips_local[b].z):
+			return hips_local[a].z < hips_local[b].z
+		return slots[a] < slots[b]
+	left.sort_custom(by_fore_aft)
+	right.sort_custom(by_fore_aft)
+	right.reverse()
+
+	var order: Array[int] = []
+	var limit := maxi(left.size(), right.size())
+	for i: int in limit:
+		if i < left.size():
+			order.append(left[i])
+		if i < right.size():
+			order.append(right[i])
+
+	for i: int in order.size():
+		out[order[i]] = float(i) / float(count)
+	return out
+
+
+## Gait cadence in Hz for [param speed_command_mps], or 0.0 when standing.
+##
+## Derived from step length rather than authored. The body advances one step
+## length per stance, so a cadence that did not track commanded speed would
+## slide the planted foot across the ground every stride — which reads as ice
+## and is the single most common failure of procedural walk cycles.
+static func cadence_hz(profile: LimbProfile, speed_command_mps: float) -> float:
+	var speed := absf(speed_command_mps)
+	if speed < STANDING_SPEED_MPS:
+		return 0.0
+	var raw := speed / maxf(profile.max_step_length_m, SyndicateConstants.EPSILON_LINEAR)
+	return clampf(raw, profile.nominal_cadence_hz, profile.max_cadence_hz)
+
+
+## The shared gait clock after one tick at [param cadence_hz], wrapped to
+## [0, 1).
+##
+## A cadence of zero holds the clock, which is what freezes the gait in the
+## standing state without a second code path.
+static func advance_clock(clock: float, cadence_hz_value: float, dt: float) -> float:
+	return fposmod(clock + cadence_hz_value * dt, 1.0)
+
+
+## A limb's phase from the shared clock and its own offset.
+static func phase_of(clock: float, phase_offset: float) -> float:
+	return fposmod(clock + phase_offset, 1.0)
+
+
+## Where to plant the foot, in world space, on a swing-to-stance transition.
+##
+## The Raibert placement law. The first term is the [b]neutral point[/b]:
+## planting there leaves the body's horizontal velocity unchanged across the
+## stance, because its momentum carries it over the foot symmetrically. The
+## second is the correction — planting ahead of neutral brakes, behind
+## accelerates, and [member LimbProfile.placement_gain_s] sets how hard.
+##
+## This is not a heuristic dressed as physics; it is the balance law legged
+## robots actually use, and it is why an Assembly here accelerates by leaning
+## and reaching rather than by having a force added to it.
+##
+## Yaw is placement too: [param turn_command] rotates the target about the
+## vertical, so the feet land off-axis and the resulting stance forces yaw the
+## body. There is no yaw torque term anywhere in this family.
+static func foot_target(
+	profile: LimbProfile,
+	hip_world: Vector3,
+	ground_y: float,
+	velocity_mps: Vector3,
+	desired_velocity_mps: Vector3,
+	cadence_hz_value: float,
+	turn_command: float
+) -> Vector3:
+	var hip_ground := Vector3(hip_world.x, ground_y, hip_world.z)
+	if cadence_hz_value <= 0.0:
+		return hip_ground
+
+	var stance_s := profile.stance_duration_s(cadence_hz_value)
+	var v_flat := Vector3(velocity_mps.x, 0.0, velocity_mps.z)
+	var desired_flat := Vector3(desired_velocity_mps.x, 0.0, desired_velocity_mps.z)
+	var offset := v_flat * (stance_s * 0.5) + (v_flat - desired_flat) * profile.placement_gain_s
+
+	if not is_zero_approx(turn_command):
+		var yaw := deg_to_rad(profile.turn_rate_deg_s * turn_command * stance_s)
+		offset = offset.rotated(Vector3.UP, yaw)
+
+	# Clamped twice, in this order: the step first, then the reach. A leg cannot
+	# reach past its own length, and clamping the reach after the step is what
+	# keeps a limb from planting a foot it would have to over-extend to hold.
+	offset = offset.limit_length(profile.max_step_length_m * 0.5)
+	var target := hip_ground + offset
+	var from_hip := target - hip_world
+	if from_hip.length() > profile.leg_length_m:
+		target = hip_world + from_hip.normalized() * profile.leg_length_m
+	return target
+
+
+## Axial stance force in newtons along the hip-to-foot line.
+##
+## Clamped non-negative because a leg pushes and never pulls, the same rule
+## §6.2 states for suspension. Clamped above at [member
+## LimbProfile.max_foot_force_n], which is what makes an overloaded Assembly sag
+## rather than launch: a limb rated at 42 kN under a build that puts 60 kN on it
+## simply cannot hold the body up, and the Assembly settles until enough limbs
+## share the load or it sits down.
+static func stance_axial_force_n(
+	profile: LimbProfile, length_m: float, prev_length_m: float, dt: float
+) -> float:
+	var compression := profile.stance_rest_length_m() - length_m
+	var rate := 0.0
+	if dt > 0.0:
+		rate = (length_m - prev_length_m) / dt
+	var f := profile.stance_stiffness_n_m * compression - profile.stance_damping_ns_m * rate
+	return clampf(f, 0.0, profile.max_foot_force_n)
+
+
+## Effective foot friction coefficient.
+##
+## Runs through the same [constant DegradationTable.MOTIVE_TRACTION] band
+## multiplier the wheels use, so a damaged limb loses grip before it loses the
+## ability to hold weight — the more interesting of the two failure orders.
+static func foot_mu(
+	profile: MotiveAssemblyProfile, band: int, surface_multiplier: float
+) -> float:
+	return (
+		profile.traction_coefficient
+		* DegradationTable.multiplier(DegradationTable.MOTIVE_TRACTION, band)
+		* surface_multiplier
+	)
+
+
+## [param force] with its tangential component limited by what the normal load
+## can hold against [param mu].
+##
+## A foot demanding more shear than friction allows slips: the force is scaled
+## back and the caller slides the plant point by the residual, so an Assembly on
+## a slick surface cannot accelerate, loses its footing progressively rather
+## than in one frame, and recovers when it reaches grip.
+static func limit_by_friction(force: Vector3, normal: Vector3, mu: float) -> Vector3:
+	var n := normal.normalized()
+	var along := force.dot(n)
+	if along <= 0.0:
+		return Vector3.ZERO
+	var tangent := force - n * along
+	var cap := mu * along
+	if tangent.length() <= cap:
+		return force
+	return n * along + tangent.normalized() * cap
+
+
+## True when [method limit_by_friction] would have scaled the tangent back.
+static func would_slip(force: Vector3, normal: Vector3, mu: float) -> bool:
+	var n := normal.normalized()
+	var along := force.dot(n)
+	if along <= 0.0:
+		return false
+	return (force - n * along).length() > mu * along
+
+
+## Foot height above the line from [param from_world] to [param to_world] at
+## swing progress [param t], in metres.
+##
+## Presentation only: nothing in the simulation reads a swinging foot. A
+## parabola peaking at [member LimbProfile.step_height_m] at mid-swing.
+static func swing_height_m(profile: LimbProfile, t: float) -> float:
+	var u := clampf(t, 0.0, 1.0)
+	return profile.step_height_m * 4.0 * u * (1.0 - u)

@@ -358,6 +358,51 @@ func compute_stability_metrics(mp: MassSolver.MassProperties,
 
 ## 6. Suspension
 
+> **Locomotion dispatch.** Sections 6 and 7 describe how a **ground** Motive
+> Assembly moves an Assembly. They are one of four families. `MotiveSystem`
+> selects the family by `PartEnums.LOCOMOTION_OF_MOTIVE_KIND[kind]` — a single
+> array index, never a branch on `MotiveKind` — and dispatches to §6+§7 for
+> `GROUND`, to **§12** for `ROTARY`, to **§13** for `AMBULATORY`, and to
+> **§14** for `TRACKED`. Everything outside this document sees one Motive
+> Assembly class producing forces on one rigid body; only the force
+> *derivation* differs. §6.0 states what the four families are required to have
+> in common.
+>
+> §14 is the family that reuses the most of §6 and §7: a road station's
+> suspension force is `_suspension_force` unchanged and its friction is the same
+> Pacejka curve. That reuse is only available because both are pure static
+> solvers taking a contact and a profile, which is worth preserving the next
+> time one of them is tempted to reach for state.
+
+### 6.0 The Contract Every Family Meets
+
+A locomotion family is free to compute its forces however its physics demands,
+and is bound by exactly five rules. They exist because the rest of the project
+— mass, strain, damage, network, garage — was written against a Motive Assembly
+that behaves like §6 and §7, and a family that broke any of these would need all
+of it changed.
+
+1. **It contributes only `apply_force` and `apply_torque` on `ChassisBody`.**
+   No family may add a body, a joint, or a collision shape. Invariant I-3 is not
+   relaxed for a walker whose legs look like they ought to be jointed, and §13.1
+   explains why they need not be.
+2. **It reads the cached band multiplier array and never integrity.** Invariant
+   I-5. A rotor at `IMPAIRED` loses thrust by indexing `DegradationTable`, the
+   same way a wheel loses traction.
+3. **It writes no state the mass solver owns.** Mass, COM, and inertia come from
+   §3 and change only on structural events. A family carrying per-limb or
+   per-disc state keeps it in its own flat arrays, indexed by slot.
+4. **It is deterministic given (contacts, control input, its own state).** No
+   global RNG, no wall-clock, no iteration over unordered keys. Invariant I-9,
+   and the network layer replays these forces.
+5. **Its per-slot state is bounded and slot-indexed.** `MAX_MOTIVE_PER_ASSEMBLY`
+   is 24 for every family; a rotary or ambulatory build gets no larger budget
+   than a wheeled one.
+
+Rule 1 is the load-bearing one. It is what lets a rotorcraft take blast damage,
+shed a wing panel, re-solve its mass, and keep flying with the new COM — without
+a line of code in the damage or mass layers knowing that rotors exist.
+
 ### 6.1 Probe Geometry
 
 Each Motive Assembly gets one `ShapeCast3D` under `MotiveProbes`. A **shape** cast, not a ray cast: a ray through the wheel centre falls into gaps between terrain triangles and off the edges of Static Volumes, producing the classic dropped-wheel stutter. A sphere cast of radius `contact_radius_m × 0.85` is immune to that.
@@ -513,11 +558,17 @@ F_max = μ_eff · N · f(s)
 directed opposite the slip velocity, then split back into longitudinal and lateral components proportionally:
 
 ```
-F_long = −F_max · (κ / κ_peak) / s
+F_long = +F_max · (κ / κ_peak) / s
 F_lat  = −F_max · (tan α / tan α_peak) / s
 ```
 
 This is a **friction circle**: a wheel spending its grip on cornering has none left for acceleration, which is the correct and interesting behaviour.
+
+**Amendment — the longitudinal sign.** This section originally wrote both components as negative. That is wrong, and it is wrong in a way that inverts the throttle: with `κ = (ω·r − v_long)/…` from §7.1, a driven contact has **positive** κ, so a negative `F_long` pushes the Assembly backwards. Pressing the accelerator would have decelerated it.
+
+The asymmetry between the two signs is real, not a typo being papered over. Both components oppose the contact patch's sliding, but the two slip quantities are defined with opposite senses. `κ` is `(ω·r − v_long)`, which is already the *negative* of the patch's slip velocity — a contact turning faster than the ground slides its patch backwards and is pushed forwards. `tan α` follows `v_lat` directly, with no such inversion, so a contact sliding right is pushed left and keeps its minus sign.
+
+§7.4's equation is the check: `I_c · ω̇ = τ_drive − τ_brake − F_long · r` only makes sense with `F_long` positive under drive, since that term is the ground *retarding* the spin-up of a driven contact. The two sections disagreed, and §7.4 was the one that was right. The conflict was invisible while nothing implemented either, and surfaced on the first test that asserted a driven contact accelerates the Assembly it is attached to.
 
 ```gdscript
 const V_REF := 0.8
@@ -532,7 +583,7 @@ func _traction_forces(c: MotiveContact, mp: MotiveAssemblyProfile,
     var v_long: float = c.velocity.dot(c.forward)
     var v_lat: float = c.velocity.dot(c.lateral)
     var denom := maxf(absf(v_long), V_REF)
-    var kappa := (c.wheel_omega * mp.contact_radius_m - v_long) / denom
+    var kappa := (c.contact_omega * mp.contact_radius_m - v_long) / denom
     var tan_alpha := v_lat / denom
 
     var sx := kappa / KAPPA_PEAK
@@ -605,31 +656,33 @@ func _effective_mu(mp: MotiveAssemblyProfile, normal_n: float,
 
 Band lookups are array indexes, not branches, and `band` is a cached field on `PartInstanceState` updated only on band-crossing events (`COMPONENT_HEALTH_DAMAGE.md` §8). The traction path performs no health arithmetic.
 
-### 7.4 Wheel Angular State
+### 7.4 Contact Angular State
 
-Each driven Motive Assembly integrates its own wheel spin, which is what allows slip ratio to be meaningful:
+Each driven Motive Assembly integrates its own contact spin, which is what allows slip ratio to be meaningful:
 
 ```
-I_w · ω̇ = τ_drive − τ_brake − F_long · r
-I_w = ½ · m_wheel · r²
+I_c · ω̇ = τ_drive − τ_brake − F_long · r
+I_c = ½ · m_contact · r²
 ```
 
 ```gdscript
-func _integrate_wheel(slot: int, drive_nm: float, brake_nm: float,
-                      f_long: float, dt: float) -> void:
+func _integrate_contact(slot: int, drive_nm: float, brake_nm: float,
+                        f_long: float, dt: float) -> void:
     var def := PartRegistry.definition(_states[slot].part_def_id)
     var mp := def.motive_profile
     var r := mp.contact_radius_m
-    var i_w := 0.5 * def.mass_kg * r * r
+    var i_c := 0.5 * def.mass_kg * r * r
     var brake_sign := -signf(_omega[slot])
     var tau := drive_nm + brake_sign * brake_nm - f_long * r
-    _omega[slot] += (tau / maxf(i_w, 0.001)) * dt
-    # Brake must not reverse the wheel through zero within one tick.
-    if brake_nm > 0.0 and signf(_omega[slot]) != signf(_omega[slot] - (tau/i_w)*dt):
+    _omega[slot] += (tau / maxf(i_c, 0.001)) * dt
+    # Brake must not reverse the contact through zero within one tick.
+    if brake_nm > 0.0 and signf(_omega[slot]) != signf(_omega[slot] - (tau/i_c)*dt):
         _omega[slot] = 0.0
 ```
 
-The zero-crossing guard on braking is what prevents the wheel from oscillating around zero and injecting energy — another classic stutter source.
+The zero-crossing guard on braking is what prevents the contact from oscillating around zero and injecting energy — another classic stutter source.
+
+**Amendment — naming.** This section originally wrote `wheel_omega`, `m_wheel`, and `_integrate_wheel`. `CLAUDE.md` §8 prohibits *wheel* in identifiers, and §7.1's own contact frame already uses the neutral vocabulary. The conflict was invisible while nothing implemented the section; it surfaced the moment the traction solver was written, and the document was corrected rather than the code allowed to diverge from it. `MotiveContact.contact_omega` is the field name throughout. The prose retains the word where it is explaining a physical intuition, which §8 permits and which is the same latitude §10.3 of document 01 already takes with its `mot.wheeled.*` family tags.
 
 ### 7.5 Torque Distribution
 
@@ -792,6 +845,12 @@ At 60 Hz the tick budget is 16.6 ms, leaving substantial headroom for rendering 
 
 ## 11. Invariants
 
+Invariants 11 to 18 govern the rotary, ambulatory, and tracked families defined
+in §12, §13, and §14, which follow this section. They are placed after it rather
+than before because renumbering §11 would invalidate the "§11 invariant N"
+references already written into `AssemblyRuntime`, `AssemblyInterpolator`, and
+`MassRecomputeScheduler`.
+
 1. One `RigidBody3D` per Assembly. No joints between parts. Ever.
 2. `VisualRoot` is a sibling of `ChassisBody`, has `collision_layer = 0` and `collision_mask = 0` throughout, and is written only by the interpolator.
 3. Mass, COM, and inertia are recomputed only on structural events and consumable mass steps — never per frame.
@@ -802,3 +861,537 @@ At 60 Hz the tick budget is 16.6 ms, leaving substantial headroom for rendering 
 8. Degradation multipliers are shared constants indexed by band, identical across every degrading subsystem.
 9. `physics_jitter_fix` is `0.0`; smoothness comes from explicit interpolation.
 10. The coupling torque is clamped and may never inject net energy.
+11. A locomotion family contributes only `apply_force` and `apply_torque` on `ChassisBody`. No family adds a body, a joint, or a collision shape (§6.0).
+12. Family selection is `LOCOMOTION_OF_MOTIVE_KIND[kind]`, an array index. No subsystem outside `MotiveSystem` branches on `MotiveKind`.
+13. Rotor thrust is applied along the tilted disc axis at the disc's own offset, so a rotor forward of the COM pitches the Assembly. Cyclic is limited on the resultant deflection, never per axis.
+14. A rotor's reaction torque is `spin_sign · torque_reaction_ratio · Q` and is applied about the disc axis. An Assembly whose reaction torque exceeds its yaw authority is legal, flyable only with an opposed disc, and reported by the garage rather than prevented.
+15. A limb applies force only while its phase is in stance and only along the hip-to-planted-foot vector, clamped non-negative and bounded by `max_foot_force_n`. Horizontal force is bounded by foot friction; exceeding it slides the plant point rather than adding grip.
+16. Gait phase assignment is a deterministic function of the limb set's geometry and slot indices, identical on server and client, computed once per structural change.
+17. A tracked Motive Assembly steers only by differential drive. No tracked kind has a steer angle, and its road stations are derived from `patch_length_m` and `road_stations`, never authored as a list.
+18. Slew resistance is bounded by `SLEW_REFERENCE_RAD_S` and may only oppose an existing yaw rate. It is a resistance, never a brake, and can never reverse the sign of `ω_y`.
+
+---
+
+## 12. Rotor Lift and Tilt
+
+A `ROTOR_DISC` Motive Assembly is a thrust source with a steerable axis. It
+produces one force and up to two torques on `ChassisBody` and nothing else. It
+runs no probe, touches no ground, and has no contact — which makes it, of the
+three families, by far the cheapest per tick.
+
+### 12.1 Disc State
+
+```gdscript
+class_name RotorDiscState
+extends RefCounted
+
+var slot: int = SyndicateConstants.INVALID_SLOT
+var omega_rad_s: float = 0.0        # current angular rate; spools toward command
+var collective_deg: float = 0.0     # current blade pitch, rate-limited
+var cyclic_deg: Vector2 = Vector2.ZERO   # x = pitch deflection, y = roll deflection
+var last_thrust_n: float = 0.0      # telemetry and the HUD lift meter
+var last_shaft_w: float = 0.0       # feeds the power draw of §12.5
+```
+
+One per rotary Motive Assembly, in a flat array indexed by the same ordering the
+ground family uses for its contacts. Nothing here is read by any other system.
+
+### 12.2 Thrust
+
+Momentum theory, with the disc area from the profile's own radius:
+
+```
+A = π · disc_radius_m²
+T = C_T · ρ · A · (Ω R)² · (θ_collective / θ_collective_max)
+```
+
+The collective term is signed and normalised against the profile's **maximum**
+collective, which is what `thrust_coefficient` is quoted at. A negative
+collective therefore produces negative thrust — the disc pushes along its own
+`−axis`, which is how a rotorcraft holds itself down against a gust, and is why
+`collective_limit_deg.x` is authored negative rather than clamped at zero.
+
+`ρ` is `SyndicateConstants.AIR_DENSITY_KG_M3`, shared with §8 for the reason
+document 01 §3 gives.
+
+Three regime multipliers modify `T`. All three are continuous, none has a
+threshold that snaps, and each exists because its absence produces a specific
+complaint:
+
+```
+ground_effect  = 1 + gain_ge · max(0, 1 − h / (ground_effect_radii · R))
+translational  = 1 + gain_tl · min(1, v_horizontal / translational_lift_mps)
+vortex_ring    = 1 − loss_vr · clamp(v_descent / vortex_ring_descent_mps, 0, 1)
+                       · (1 − min(1, v_horizontal / translational_lift_mps))
+
+T_effective = T · ground_effect · translational · vortex_ring
+             · DegradationTable.MOTIVE_TRACTION[band]
+```
+
+- **Ground effect** is why a heavy rotorcraft can lift off but cannot climb out.
+  Without it, hovering a metre above a Ground Array feels identical to hovering
+  at two hundred, and the player never learns that the disc is working.
+- **Translational lift** is why forward flight is more efficient than a hover,
+  and is what makes a running takeoff a real technique rather than a cosmetic
+  one.
+- **Vortex ring state** is the punishment for descending vertically at speed
+  into the disc's own downwash. The `(1 − v_horizontal/…)` factor is the escape:
+  fly forward and it releases immediately, which is the actual recovery
+  technique and is discoverable without a tutorial.
+
+The band multiplier is `MOTIVE_TRACTION`, reused rather than given a rotary
+column of its own. A rotor at `IMPAIRED` loses 40% of its thrust, exactly as a
+wheel at `IMPAIRED` loses 40% of its grip. Invariant I-5 wants one table, and
+splitting it so that the two families could drift apart would be a balance
+liability, not a modelling gain.
+
+### 12.3 Tilt
+
+The disc axis in assembly space is the part's local `+Y` under its lattice
+orientation:
+
+```
+axis_assembly = OrientationTable.basis_for(orientation_index) * Vector3.UP
+```
+
+Cyclic deflects the thrust vector away from that axis. The two components are
+**not** clamped independently: a swashplate's authority is a cone, so the
+resultant deflection is what `cyclic_limit_deg` bounds.
+
+```gdscript
+static func thrust_direction(orientation_index: int, cyclic_deg: Vector2,
+                             limit_deg: float) -> Vector3:
+    var b := OrientationTable.basis_for(orientation_index)
+    var d := cyclic_deg.limit_length(limit_deg)      # cone, not box
+    var dir := Vector3.UP
+    dir = dir.rotated(Vector3.RIGHT, deg_to_rad(d.x))    # pitch about local X
+    dir = dir.rotated(Vector3.BACK, deg_to_rad(d.y))     # roll about local Z
+    return (b * dir).normalized()
+```
+
+Clamping per axis instead would let a stick held to a corner produce
+`sqrt(2) × limit` of deflection, which is the classic diagonal-is-faster bug and
+is immediately exploitable in a game where tilt is how you accelerate.
+
+Thrust is applied **at the disc's own position**, not at the COM:
+
+```gdscript
+body.apply_force(thrust_dir_world * t_effective, disc_pos_world - body.global_position)
+```
+
+This is the same decision §6.3 makes for suspension and it buys the same thing:
+a disc mounted forward of the centre of mass pitches the Assembly nose-down when
+it lifts, so rotor placement is a real design problem with a real wrong answer,
+and no explicit pitching-moment term exists anywhere in the code.
+
+### 12.4 Reaction Torque and Yaw
+
+A powered disc drags air around with it and the airframe feels the opposite:
+
+```
+Q = C_Q · ρ · A · (Ω R)² · R
+τ_reaction = −spin_sign · torque_reaction_ratio · Q · axis_world
+τ_yaw      = yaw_command · yaw_authority_nm · axis_world
+```
+
+`torque_reaction_ratio` is `0.0` for a coaxial disc, whose counter-rotating half
+cancels the reaction inside the part, and `1.0` for a lone main disc, which
+transmits all of it. The sum over an Assembly is what decides whether it can
+hold a heading:
+
+```
+Σ (spin_sign_i · torque_reaction_ratio_i · Q_i)   must be coverable by   Σ yaw_authority_nm_i
+```
+
+Two `main_single` discs with opposite `spin_sign` cancel. One alone does not,
+and the Assembly rotates under its own torque until something stops it. **This
+is legal.** The garage reports the shortfall on the stat panel and the
+auto-assembler's objective penalises it (`AUTO_ASSEMBLE_ALGORITHM.md` §3.1,
+`rotorcraft` archetype), but nothing forbids building it, because a player who
+discovers *why* their aircraft spins has learned something real about
+helicopters and a validator that refused the build would have taught them
+nothing.
+
+### 12.5 Shaft Power
+
+```
+P = Q · Ω        watts
+draw_pu = P / ROTOR_W_PER_PU        ROTOR_W_PER_PU = 4500.0
+```
+
+`ROTOR_W_PER_PU` is the exchange rate between the physical shaft power the rotor
+genuinely needs and the abstract Power Unit the rest of the schema budgets in.
+It is `4500` because that is the value at which `mot.rotor.coaxial_mid.t3` at
+full collective draws **150 PU** — precisely the supply of one
+`pwr.combustion.standard.t2`. The intended reading of a rotorcraft's power line
+is therefore "one standard Power Plant per mid disc", which is legible in the
+garage without arithmetic.
+
+When supply falls short, the Power Plant layer scales the **commanded angular
+rate**, not the thrust:
+
+```
+omega_command = nominal_rad_s · throttle · power_available_fraction
+```
+
+Scaling Ω rather than T is the honest model and the better feel. Thrust falls as
+`Ω²`, so a 10% power shortfall costs 19% of lift; the disc audibly and visibly
+slows; and because Ω is behind the spool filter of §12.6, the loss arrives over
+seconds rather than instantly. A rotorcraft losing a Power Plant sinks. It does
+not switch off.
+
+### 12.6 Spool
+
+The angular rate approaches its command as a first-order lag, integrated with
+the exact discrete solution rather than an Euler step:
+
+```gdscript
+static func spool(omega: float, command: float, tau_s: float, dt: float) -> float:
+    if tau_s <= 0.0:
+        return command
+    return omega + (command - omega) * (1.0 - exp(-dt / tau_s))
+```
+
+Using `exp` makes the result independent of `dt`, which matters here for a
+reason it does not elsewhere in this document: a client re-simulating a rotor
+during rollback replays several ticks in one frame, and an Euler lag would
+converge at a different rate under replay than it did live. Collective and
+cyclic are **rate**-limited instead of lagged (`move_toward` against
+`collective_rate_deg_s` and `cyclic_rate_deg_s`), because a swashplate is
+mechanically driven and genuinely does move at a constant rate.
+
+`spool_down_tau_s` is longer than `spool_up_tau_s` on every shipping disc. A
+rotor with no power keeps turning, which is what makes an unpowered descent
+survivable rather than a stone drop.
+
+### 12.7 Cost
+
+| Stage | Per disc per tick |
+|---|---|
+| Spool, collective, cyclic integration | 3 `move_toward`, 1 `exp` |
+| Thrust magnitude and three regime multipliers | ~20 flops |
+| Direction (two `rotated`, one basis multiply) | ~40 flops |
+| Force and two torque applications | 3 server calls |
+
+There is no query of any kind. A rotary Assembly is cheaper per Motive Assembly
+than a wheeled one by roughly the cost of the shape cast it does not perform.
+
+---
+
+## 13. Ambulatory Locomotion
+
+An `AMBULATORY_LIMB` Motive Assembly walks. This section specifies what
+"walking" means for an Assembly that is, by Invariant I-3, a single rigid body
+with no joints anywhere in it.
+
+### 13.1 Why a Rigid Body Can Walk
+
+The obvious objection is that legs are jointed and I-3 forbids joints. The
+objection dissolves once the question is asked precisely: what does a leg
+*contribute to the equations of motion of the body it carries?* Exactly one
+thing — a force at the hip, directed along the line from the hip to whatever the
+foot is standing on, bounded by what the foot can push and by what friction lets
+it shear. The internal articulation that produces that force affects the body
+only through it.
+
+So the leg is simulated as a **virtual leg**: a spring-damper along the
+hip-to-foot line, with a foot that is planted or swinging. This is the
+Spring-Loaded Inverted Pendulum, which is the standard model of legged
+locomotion in biomechanics and robotics precisely because it reproduces the
+force profile of real walking and running from two parameters. The visible
+articulation — thigh, shank, foot — is inverse kinematics under `VisualRoot`,
+driven from the hip and foot positions the simulation already knows. It is
+presentation, exactly like the hardpoint hierarchy of doc 07 §2, and Invariant
+I-1 keeps it out of the physics.
+
+What this buys is that a walker takes damage, sheds a limb, re-solves its mass,
+and redistributes its weight across the remaining stance feet with no code in
+the damage or mass layers aware that legs exist. What it costs is that a limb
+cannot be a physical obstacle to anything but itself — a shot passes through the
+visible shin and hits the authored `ColliderProfile` box, which is the same
+trade doc 07 §2 makes for a turret barrel and is the correct one for the same
+reasons.
+
+### 13.2 Limb State
+
+```gdscript
+class_name LimbState
+extends RefCounted
+
+var slot: int = SyndicateConstants.INVALID_SLOT
+## Position in the gait cycle, [0, 1). Stance while below duty_factor.
+var phase: float = 0.0
+## Phase this limb is offset to within the Assembly's gait. Assigned by §13.3.
+var phase_offset: float = 0.0
+var planted: bool = false
+## World position the foot was planted at on touchdown. Meaningless in swing.
+var foot_world: Vector3 = Vector3.ZERO
+## Hip-to-foot distance last tick, for the damper term.
+var prev_length_m: float = 0.0
+## True when the last stance tick demanded more shear than friction allowed.
+var slipping: bool = false
+```
+
+### 13.3 Phase Assignment
+
+Every limb needs a phase offset, and the assignment must be identical on the
+server and on every client, must be reproducible from the blueprint alone, and
+must produce a gait that keeps the Assembly supported. It is computed once, on
+`assembly_structure_changed`, and never per tick.
+
+The rule, for `n` limbs:
+
+1. Partition limbs by the sign of their hip position's lateral coordinate in
+   assembly-local space. Zero goes to the left set, so a single centred limb is
+   deterministic.
+2. Sort the left set fore-to-aft and the right set **aft-to-fore**, breaking
+   ties on slot index.
+3. Interleave the two, left first.
+4. Assign `phase_offset = i / n` over the interleaved ordering.
+
+The reversal in step 2 is the whole design. Interleaving two same-direction
+orderings gives a quadruped the sequence front-left, front-right, rear-left,
+rear-right, and since the swing window is one contiguous arc of the cycle, the
+two limbs that swing together are the two front ones — leaving the Assembly
+standing on its rear pair and pitching forward every stride. Reversing one side
+gives front-left, rear-right, rear-left, front-right, so the limbs that swing
+together are a **diagonal pair** and the pair still planted is the other
+diagonal. That is what a real quadruped does, and it falls out of one `reverse`.
+
+The rule degenerates correctly at both ends: two limbs get offsets `0.0` and
+`0.5` and alternate, which is bipedal walking; six give a wave gait with
+alternating sides.
+
+### 13.4 Cadence and the Standing State
+
+```
+if |v_command| < STANDING_SPEED_MPS:      gait is frozen, every foot planted
+else  f = clamp(|v_command| / max_step_length_m, nominal_cadence_hz, max_cadence_hz)
+phase = fract(phase_offset + gait_clock)   with  gait_clock += f · dt
+```
+
+`STANDING_SPEED_MPS = 0.15`. The frozen state is not an optimisation, it is the
+behaviour: a walker asked to stand still stands, on every foot, rather than
+marching in place. It is also the only state in which every limb contributes
+stance force simultaneously, which is what makes a stationary walker rock-solid
+and a moving one visibly bob — the correct relationship, and one that comes free.
+
+Deriving `f` from step length rather than authoring it is what keeps the feet
+from skating. The body advances one step length per stance, so a cadence that
+did not track commanded speed would slide the planted foot across the ground
+every stride, which reads as ice and is the single most common failure of
+procedural walk cycles.
+
+### 13.5 Foot Placement
+
+On the swing→stance transition, the foot is planted at a target given by the
+Raibert placement law:
+
+```
+p_foot = p_hip_ground + v · (T_stance / 2) + k_v · (v − v_desired)
+T_stance = duty_factor / f
+```
+
+The first term is the **neutral point**: planting there leaves the body's
+horizontal velocity unchanged across the stance, because the body's momentum
+carries it over the foot symmetrically. The second is the correction — planting
+*ahead* of neutral brakes, planting *behind* accelerates, and `placement_gain_s`
+sets how hard. This is not a heuristic dressed as physics; it is the balance law
+legged robots actually use, and it is the reason a walker in this game
+accelerates by leaning and reaching rather than by having a force added to it.
+
+Yaw is placement too. A turn command rotates the target about the Assembly's
+vertical axis by `turn_rate_deg_s · T_stance`, so the feet land off-axis and the
+resulting stance forces yaw the body. There is no yaw torque term anywhere in
+the ambulatory family.
+
+The target is clamped twice, in this order: the offset from the hip's ground
+projection is limited to `max_step_length_m / 2`, then the whole hip-to-target
+vector is limited to `leg_length_m`. A leg cannot reach past its own length, and
+clamping the reach *after* the step length is what keeps a limb from planting a
+foot it would have to over-extend to hold.
+
+### 13.6 Stance Force
+
+```
+r  = p_hip_world − p_foot_world          (points from foot up to hip)
+L  = |r|
+L₀ = stance_height_ratio · leg_length_m
+x  = L₀ − L                              (positive in compression)
+L̇  = (L − L_prev) / dt
+F_axial = clamp(k · x − c · L̇, 0, max_foot_force_n)
+F = F_axial · r̂                          applied at the hip offset
+```
+
+The lower clamp at zero is the same rule §6.2 states for suspension and exists
+for the same reason: a leg pushes and never pulls. The upper clamp is what makes
+an overloaded walker sag rather than launch — a limb rated at 42 kN under a
+build that puts 60 kN on it simply cannot hold the body up, and the Assembly
+settles until enough limbs share the load or it sits down.
+
+Friction bounds the shear. Split `F` into its component along the contact normal
+and its tangent, and if the tangent exceeds what the normal load can hold, scale
+it back and mark the foot slipping:
+
+```
+F_n = F · n̂
+F_t = F − F_n · n̂
+μ = traction_coefficient · SurfaceTable.multiplier(surface_id)
+      · DegradationTable.MOTIVE_TRACTION[band]
+if |F_t| > μ · F_n:
+    F_t *= μ · F_n / |F_t|
+    slipping = true
+```
+
+A slipping foot also **slides its plant point** by the residual, so a walker on
+`SURFACE_SLICK` cannot accelerate, loses its footing progressively rather than
+in one frame, and recovers when it reaches grip. Note that `μ` runs through the
+same `MOTIVE_TRACTION` band multiplier the wheels use — a damaged limb loses
+grip before it loses the ability to hold weight, which is the more interesting
+of the two failure orders.
+
+### 13.7 Swing
+
+A swinging limb applies **no force**. Its share of the Assembly's weight is
+taken up by the remaining stance limbs automatically, because the body sinks
+fractionally and their springs compress further. This is the whole reason to use
+a spring rather than a solved load distribution: the redistribution is a
+consequence, it costs nothing, and it is correct when a limb is destroyed
+mid-stride as well as when one is merely swinging.
+
+The foot's visible position over the swing is a parabolic arc from the last
+plant point to the next target, peaking at `step_height_m`, sampled from the
+phase. It is written to `VisualRoot` and read by nothing in the simulation.
+
+### 13.8 What This Section Does Not Do
+
+Stated explicitly so a future session does not assume otherwise:
+
+- **No flight phase.** Every shipping `duty_factor` is above `0.5`, so support
+  is continuous. A run is expressible and is untuned.
+- **No balance recovery beyond placement.** The Raibert term is the only balance
+  authority. A walker shoved hard enough falls over, and falling over is just
+  the rigid body doing what the forces say.
+- **No terrain-aware footfall.** The plant target is projected onto whatever the
+  probe finds beneath it; a limb does not search for a better foothold.
+- **No inverse kinematics.** §13.1's visible articulation belongs to doc 13 with
+  the rest of the mesh pipeline, and the simulation is complete without it.
+
+---
+
+## 14. Tracked Locomotion
+
+A `TRACKED_SEGMENT` Motive Assembly is a ground contact that has been smeared
+along the hull. It reuses §6.2's spring-damper and §7.2's friction curve
+verbatim, once per road station, and adds two things a point contact has no term
+for: a drive model that steers by rate difference rather than by angle, and a
+resistance to slewing the patch across the ground.
+
+### 14.1 Road Stations
+
+`TrackProfile.station_offsets_m()` places `road_stations` probes evenly along
+`patch_length_m`, symmetric about the part's pivot. Each is an ordinary §6.1
+shape cast and produces an ordinary `MotiveContact`.
+
+The consequence is the interesting part. Because each station carries its own
+spring and each spring is applied at its own offset from the COM, a tracked
+Assembly driving over a rise **conforms to it**: the forward stations compress,
+the rear ones extend, the net force stays roughly constant, and the hull barely
+moves. A single-point contact at the same place would ride up over the rise and
+throw the whole Assembly. This is not modelled — it is what happens when four
+springs are placed a foot apart and the rigid body is left to do its job.
+
+It is also why `road_stations` is capped at `MAX_ROAD_STATIONS = 8`. Four tracked
+Motive Assemblies at eight stations each is 32 shape casts on one Assembly,
+already twice what a wheeled build of the same part count costs.
+
+`station_load_share` is the fraction of the part's rated load one station is
+expected to carry, and it is authored *below* `1 / road_stations` on both
+shipping rows. That deliberate softness at the ends of the patch is what lets a
+track conform rather than bridge rigidly, and it is the tuning knob to reach for
+when a tracked build feels like it is on stilts.
+
+### 14.2 Differential Drive
+
+There is no steer angle. `max_steer_angle_deg` is zero on every tracked row and
+§14 rule 22 of document 01 requires it. Steering is a difference in the drive
+applied to the Assembly's left and right tracked Motive Assemblies, partitioned
+by the sign of each part's lateral position in assembly-local space:
+
+```
+authority = differential_authority · (1 − clamp(|v| / pivot_taper_mps, 0, 1))
+bias      = steer_command · authority                    ∈ [−1, 1]
+τ_left    = τ_share · (1 + bias) · (1 − internal_loss)
+τ_right   = τ_share · (1 − bias) · (1 − internal_loss)
+```
+
+At rest `authority` is full, so `bias = ±1` drives one side forward and the
+other backward and the Assembly counter-rotates on the spot. At
+`pivot_taper_mps` authority is zero, both sides receive the same torque, and
+steering is whatever the patch's lateral friction concedes — which, at
+`lateral_grip_ratio` of 1.35 or more, is very little. A tracked Assembly
+therefore pivots freely when stopped and commits to a long arc at speed, and
+neither behaviour is a special case: they are one linear expression evaluated at
+two speeds.
+
+`internal_loss` is charged **before** the torque reaches the ground, not
+afterwards, because that is where it physically goes — into the track's own
+pins, links, and idlers. The visible result is that a tracked Assembly is slower
+than a wheeled one of identical power, which is correct and is the cost the grip
+and the ground pressure are bought with.
+
+An Assembly with tracked Motive Assemblies on only one side is legal and drives
+in circles. Nothing prevents it; the garage's stability line reports the
+imbalance the same way it reports a rotor's unopposed reaction torque, for the
+same reason §12.4 gives.
+
+### 14.3 Slew Resistance
+
+Turning a long patch shears the ground along its whole length. The resisting
+torque about the Assembly's vertical axis is proportional to patch length, to
+normal load, and to the rate of the slew:
+
+```
+τ_slew = −sign(ω_y) · slew_resistance_nm_per_n_m · patch_length_m · N_total
+         · min(1, |ω_y| / SLEW_REFERENCE_RAD_S)          SLEW_REFERENCE_RAD_S = 1.2
+```
+
+The `min` is what keeps it a resistance rather than a brake: below the reference
+rate it scales in, above it is constant, and it never exceeds what the friction
+of the patch could actually supply. Without the cap a fast spin would generate
+unbounded counter-torque and the Assembly would snap to a stop, which reads as
+hitting a wall.
+
+The `L · N` product is the design statement. A heavy tracked Assembly is
+*committed*: doubling its armour doubles the torque needed to change its
+heading, and no steering input overcomes it. That is the failure mode a
+`bastion` build is meant to have, and it emerges from two authored numbers
+rather than from a handling penalty applied on top.
+
+### 14.4 Lateral Grip
+
+A station's lateral friction coefficient is the part's `traction_coefficient`
+scaled by `lateral_grip_ratio`, which is above 1.0 on both shipping rows. The
+longitudinal coefficient is unscaled. This anisotropy is real — a track resists
+sliding sideways far better than it resists being driven along — and it is
+applied inside §7.2's combined-slip solve rather than after it, so the friction
+circle becomes a friction **ellipse** and the trade between cornering grip and
+drive grip stays correct.
+
+Applying it afterwards would let a station spend lateral grip it never had on
+longitudinal force, which presents as a tracked Assembly that accelerates faster
+while sliding sideways than while going straight.
+
+### 14.5 Cost
+
+| Stage | Per tracked Motive Assembly per tick |
+|---|---|
+| Shape casts | `road_stations`, so 4 or 6 |
+| Suspension force | `road_stations` × §6.2, unchanged |
+| Traction force | `road_stations` × §7.2, unchanged |
+| Drive partition and slew torque | Once per Assembly, not per part |
+
+A four-station tracked Motive Assembly costs about four times a wheeled one.
+The shipping budget of §10.5 assumes tracked builds run fewer Motive Assemblies
+— two long bogies replace six wheels — so the totals land within a few percent
+of each other.

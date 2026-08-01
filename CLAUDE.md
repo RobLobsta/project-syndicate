@@ -48,8 +48,12 @@ When a value appears in more than one place, exactly one document **owns** it an
 | Fusion shader uniforms and defaults | 03 |
 | `EventBus` signal list and priority groups | 04 |
 | Suspension, traction, Pacejka, aero constants | 05 |
+| Rotor thrust, tilt, spool, and shaft-power constants | 05 |
+| Gait phase, cadence, foot placement, and stance constants | 05 |
+| Road station, differential drive, and slew constants | 05 |
 | Archetype weights and budget ratios | 06 |
 | Effector timing, spread, recoil, jam constants | 07 |
+| Melee reach, arc, sweep, and reaction constants | 07 |
 | `DegradationTable` (every band multiplier) | 08 |
 | Damage channel formulas and thresholds | 08 |
 | `CraterProfile`, `SurfaceTable` (incl. traction multipliers) | 09 |
@@ -125,9 +129,13 @@ project-syndicate/
 │   │   └── autobuild/              ← auto_assembler.gd, generation_context.gd,
 │   │                                 archetype_profile.gd, objective.gd
 │   │
-│   ├── motion/                     ← motive_system.gd, suspension.gd, traction.gd,
-│   │                                 aero_system.gd, power_system.gd,
-│   │                                 control_system.gd
+│   ├── motion/                     ← motive_system.gd, motive_contact.gd,
+│   │                                 suspension_solver.gd, traction_solver.gd,
+│   │                                 rotor_solver.gd, rotor_disc_state.gd,
+│   │                                 gait_solver.gd, limb_state.gd,
+│   │                                 track_solver.gd, track_station.gd,
+│   │                                 aero_solver.gd, power_system.gd,
+│   │                                 control_input.gd, control_system.gd
 │   │
 │   ├── combat/
 │   │   ├── damage/                 ← damage_resolver.gd, damage_packet.gd,
@@ -135,7 +143,8 @@ project-syndicate/
 │   │   │                             visual_damage_controller.gd
 │   │   ├── effectors/              ← effector_system.gd, hardpoint_state.gd,
 │   │   │                             aim_solver.gd, firing_group_binding.gd,
-│   │   │                             ammo_ledger.gd
+│   │   │                             ammo_ledger.gd, melee_solver.gd,
+│   │   │                             melee_strike_state.gd
 │   │   └── projectiles/            ← projectile_system.gd, projectile_registry.gd,
 │   │                                 guided_projectile_controller.gd
 │   │
@@ -367,6 +376,7 @@ Physics geometry and visual geometry are separate, independently authored assets
 - An Assembly is one `RigidBody3D`. There are **no joints between parts**. Ever.
 - Structural failure is a discrete topological event in the Chassis Graph, never a physics constraint.
 - Suspension travel is modelled per Motive Assembly by shape casts; the chassis itself is rigid.
+- This holds for every locomotion family. An ambulatory limb is a **virtual leg** — one spring-damper force along the hip-to-foot line — and its visible articulation is inverse kinematics under `VisualRoot`. A rotor disc is a thrust vector. Neither is a joint, neither is a body, and `docs/DYNAMIC_MASS_PHYSICS.md` §13.1 records why a jointed leg is not merely forbidden but unnecessary.
 
 ### I-4 — Event-Driven Structural Evaluation
 - Connectivity, mass properties, fusion SDF, skirting, strain, and functional degradation are recomputed **only** in response to discrete events.
@@ -423,6 +433,8 @@ Every system that can be triggered repeatedly has an explicit bound:
 | Terminal debris components | 8 per Assembly |
 | Collapse cascades | 6 ticks per trigger |
 | Fragment slicing | 3 slices per fragment |
+| Melee targets | `max_targets_per_swing`, ≤ 8 |
+| Melee sweep segments | `swing_samples`, ≤ 16 |
 | Auto-assemble backtracking | 6 attempts |
 | Ground deform commit | 1.5 ms/frame |
 | Slice commit | 0.8 ms/frame |
@@ -486,6 +498,8 @@ Generic engineering nomenclature is mandatory across code, data, comments, commi
 Prohibited in identifiers, resource names, and localisation keys: *cabin, cockpit, armor plate, wheel, engine, weapon, gun, cannon, terrain, building, vehicle, car, health bar*.
 
 `hardpoint` is permitted **only** for the two-DOF rotational mount internal to an Effector Module.
+
+`rotor`, `disc`, `limb`, `foot`, `hip`, `stance`, `swing`, and `gait` are permitted as **family and mechanism** vocabulary — `mot.rotor.*`, `LimbState.foot_world`, `GaitSolver` — in exactly the way `wheeled` and `tracked` already are in `mot.wheeled.*` and `MotiveKind.WHEELED_STEERED`. What stays prohibited is using any of them as a **substitute for the class**: the class is always `MOTIVE_ASSEMBLY`, never "the legs" or "the rotors". `helicopter`, `mech`, `walker`, and `aircraft` are prohibited outright — an Assembly is an Assembly regardless of how it gets around, and that is the point of §I-3's last bullet.
 
 ---
 

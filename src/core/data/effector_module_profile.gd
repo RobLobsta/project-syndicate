@@ -34,3 +34,14 @@ extends Resource
 ## ===== THERMAL =========================================================
 @export var heat_per_shot_hu: float = 7.5
 @export var jam_clear_time_s: float = 1.6
+
+## ===== MELEE PAYLOAD ===================================================
+## Non-null for KINETIC_MELEE and ENERGY_MELEE, null for every other kind.
+## A melee module emits no projectile, so the emission and dispersion fields
+## above are required to be zero on one rather than merely ignored.
+@export var melee_profile: MeleeProfile = null
+
+
+## True when this module resolves by swept volume rather than by projectile.
+func is_melee() -> bool:
+	return PartEnums.is_melee_effector(kind)

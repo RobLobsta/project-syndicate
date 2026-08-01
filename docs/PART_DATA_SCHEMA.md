@@ -63,6 +63,7 @@ const MAX_MOTIVE_PER_ASSEMBLY: int = 24
 
 ## --- Simulation cadence ------------------------------------------------
 const GRAVITY_MPS2: float = 9.81
+const AIR_DENSITY_KG_M3: float = 1.225
 const PHYSICS_HZ: int = 60
 const PHYSICS_DT: float = 1.0 / 60.0
 const NET_SNAPSHOT_HZ: int = 30
@@ -82,6 +83,8 @@ const EPSILON_ANGULAR: float = 0.00017453  # ~0.01 degrees in radians
 `LATTICE_UNIT_M` is `0.25`. Every dimension in every part table below is expressed in **cells**, never metres. Metre values are derived at load time by multiplication. This guarantees that a future rescale of the lattice is a one-constant change.
 
 `GRAVITY_MPS2` is declared here rather than read from `ProjectSettings` because the strain model (`DEPENDENCY_TREE_GRAPH.md` §4.1), the suspension load split (`DYNAMIC_MASS_PHYSICS.md` §6), and the ballistic solver (`WEAPON_TARGETING_LOGIC.md` §5) must all agree on it exactly, and a project setting can be changed by an editor action that touches no code. It was added when the strain model became the first system to need it as a named value; the documents above previously each wrote the literal.
+
+**Amendment.** `AIR_DENSITY_KG_M3` is declared here for the identical reason, and was added when rotor lift became the second consumer of it. `DYNAMIC_MASS_PHYSICS.md` §8 (Control Surface aerodynamics) and §12 (rotor thrust) both need `ρ`, and §12's momentum-theory thrust and §8's dynamic pressure must not be able to disagree about the atmosphere they are computed in — a rotorcraft carrying a Control Surface would otherwise generate lift and drag from two different airs. Document 05 continues to own every other aerodynamic constant; it owns only the *use* of this one, not its value.
 
 ---
 
@@ -110,7 +113,28 @@ enum MotiveKind {
     OMNI_ROLLER      = 3,
     AMBULATORY_LIMB  = 4,
     REPULSOR_PAD     = 5,
+    ROTOR_DISC       = 6,
 }
+
+## Which solver in DYNAMIC_MASS_PHYSICS.md moves an Assembly carrying this
+## Motive Assembly. Derived from MotiveKind, never authored.
+enum LocomotionMode {
+    GROUND     = 0,   # doc 05 §6 suspension + §7 traction
+    ROTARY     = 1,   # doc 05 §12 rotor lift and tilt
+    AMBULATORY = 2,   # doc 05 §13 gait
+    TRACKED    = 3,   # doc 05 §14 road stations and differential drive
+}
+
+## Indexed by MotiveKind. Frozen alongside the enum it indexes.
+const LOCOMOTION_OF_MOTIVE_KIND: Array[int] = [
+    LocomotionMode.GROUND,      # WHEELED_STEERED
+    LocomotionMode.GROUND,      # WHEELED_FIXED
+    LocomotionMode.TRACKED,     # TRACKED_SEGMENT
+    LocomotionMode.GROUND,      # OMNI_ROLLER
+    LocomotionMode.AMBULATORY,  # AMBULATORY_LIMB
+    LocomotionMode.GROUND,      # REPULSOR_PAD
+    LocomotionMode.ROTARY,      # ROTOR_DISC
+]
 
 enum EffectorKind {
     BALLISTIC_DIRECT   = 0,
@@ -118,6 +142,7 @@ enum EffectorKind {
     CONTINUOUS_BEAM    = 2,
     GUIDED_ORDNANCE    = 3,
     KINETIC_MELEE      = 4,
+    ENERGY_MELEE       = 5,
 }
 
 enum DamageChannel {
@@ -159,6 +184,35 @@ enum OcclusionProfile {
     TRANSPARENT     = 2,  # no blast LOS attenuation
 }
 ```
+
+### 4.1 Three Locomotion Families, One Class
+
+`ROTOR_DISC` and `ENERGY_MELEE` were appended when the project committed to shipping rotary-wing and ambulatory Assemblies alongside wheeled ones. They are appends, not a redesign, and that is the point: an Assembly that flies is not a different kind of object. It is the same `RigidBody3D`, the same Chassis Graph, the same damage model, and the same one Core Module — it merely has Motive Assemblies whose contribution to `F` and `τ` is computed by a different solver.
+
+`LocomotionMode` exists so that no subsystem outside `MotiveSystem` ever branches on `MotiveKind`. A rotor is not a special case of a wheel with the traction turned off; it is a distinct force producer selected by one array index, and adding a fourth family later is an append to `LOCOMOTION_OF_MOTIVE_KIND` rather than a new branch in every consumer.
+
+The three families and where their physics lives:
+
+| Family | Kinds | Solver | Produces |
+|---|---|---|---|
+| Ground | `WHEELED_*`, `OMNI_ROLLER`, `REPULSOR_PAD` | doc 05 §6 + §7 | Suspension normal force at one hub, longitudinal and lateral friction |
+| Tracked | `TRACKED_SEGMENT` | doc 05 §14 | The same, distributed across road stations, steered by differential drive |
+| Rotary | `ROTOR_DISC` | doc 05 §12 | Thrust along a tiltable disc axis, reaction torque, shaft power draw |
+| Ambulatory | `AMBULATORY_LIMB` | doc 05 §13 | Virtual-leg stance force at a planted foot, gait-phased |
+
+`TRACKED` is its own family rather than a flag on `GROUND`, and the reason is worth stating because the opposite decision is the tempting one. A track reuses the ground family's *mathematics* — the same spring-damper of §6.2, the same Pacejka curve of §7.2 — but not its *shape*: it carries several contacts instead of one, it steers by driving its two sides at different rates instead of by angling a hub, and slewing its patch across the ground costs it grip in a way a point contact has no term for. Routed through `GROUND`, each of those becomes an `if kind == TRACKED_SEGMENT` inside a hot loop, which is precisely what `LOCOMOTION_OF_MOTIVE_KIND` exists to prevent. Routed through its own family, the shared mathematics stays shared because §6 and §7 are pure static solvers that `TrackSolver` calls.
+
+### 4.2 `AXLE` Is a Keyed Connector — Resolved
+
+`AttachmentPolarity.AXLE` mates only with `AXLE` (§7.3 of `GRID_SNAPPING_LOGIC.md`, and the matrix is asserted cell by cell in `tests/unit/test_attachment_polarity.gd`). Until the first Motive Assembly was authored it had no user, and the open question was whether a Motive Assembly's mounting face should be `AXLE` — which under rule 11 of §14 makes it *only* `AXLE`, since a cell face carries exactly one node — or `FACE_NEUTRAL` like everything else, which would leave `AXLE` permanently dead.
+
+**Resolved in favour of the keyed reading.** A Motive Assembly's drive face carries `AXLE` and nothing else. It therefore cannot be mated to an arbitrary armour panel; it mates to a Structural Component that offers an `AXLE` station, whose nodes additionally restrict `accepts_classes` to `MOTIVE_ASSEMBLY`. The shipping station is `str.hub.axle_station.t2` (§10.2), a 2×2×2 block with `AXLE` on ±X and neutral faces elsewhere, so it bolts to structure through Z or Y and offers two drive stations on X.
+
+Three reasons this is the right reading rather than the convenient one:
+
+1. **It is the only reading under which the polarity means anything.** A polarity that mates with everything is `FACE_NEUTRAL` with extra steps.
+2. **It makes the drive train a build decision.** A wheel is not glue. Mounting one costs a hub, mass, and a mount station, which is exactly the trade the rest of the schema makes the player reason about.
+3. **One station serves all three families.** The 24-orientation group points the station's drive axis anywhere, so the same part carries a wheel on a horizontal axis, a rotor mast on a vertical one, and a limb hip on a downward one. Rotary and ambulatory locomotion cost no new connector vocabulary at all — which is the strongest available evidence that the three families really are one class.
 
 ---
 
@@ -471,9 +525,153 @@ extends Resource
 @export var rolling_resistance: float = 0.014
 @export var brake_torque_nm: float = 2600.0
 @export var driven: bool = true
+
+## --- Family payload; exactly one non-null, matching `kind` -------------
+@export var rotor_profile: RotorProfile = null   # ROTOR_DISC only
+@export var limb_profile: LimbProfile = null     # AMBULATORY_LIMB only
 ```
 
 `traction_coefficient` is the *nominal* value. `DYNAMIC_MASS_PHYSICS.md` §6 and `COMPONENT_HEALTH_DAMAGE.md` §7 define the degradation multipliers applied on top of it.
+
+**Amendment — the family payload.** `MotiveAssemblyProfile` originally held one flat field set describing a ground contact. Rotary and ambulatory Motive Assemblies need parameters a wheel has no meaning for (disc radius, collective range, duty factor, step length) and would leave a wheel carrying a dozen fields it never reads. Rather than widen the profile until every kind ignores two thirds of it, the kind-specific parameters live in a sub-resource selected by `kind`, mirroring exactly the way `PartDefinition` selects a class payload — the same rule, the same validator shape, and the same failure mode when it is violated.
+
+The fields that *survive* on the profile itself are the ones all three families genuinely share, and it is worth naming why each does:
+
+| Field | Ground | Rotary | Ambulatory |
+|---|---|---|---|
+| `rated_load_kg` | Suspension retune datum (§6.4 of doc 05) | Disc loading at which lift is quoted | Load the stance spring holds without bottoming |
+| `contact_radius_m` | Rolling radius | *Hub* radius, not disc radius — the collider's, not the aerodynamics' | Foot contact sphere radius |
+| `traction_coefficient` | Tyre μ | Unused; validator requires `0.0` | Foot–ground μ |
+| `suspension_*` | Spring, damper, travel | Unused; validator requires `0.0` | Unused — the stance spring is on `LimbProfile`, because a leg's compliance is commanded, not passive |
+| `rolling_resistance` | Rolling loss | Unused | Unused |
+| `driven` | Receives drive torque | Receives shaft power | Receives gait command |
+
+`contact_radius_m` keeping its meaning across all three is deliberate: `GRID_SNAPPING_LOGIC.md` §7.5's ground-clearance check and the probe geometry of doc 05 §6.1 both read it, and neither should have to know which family it is looking at.
+
+### 7.2.1 `RotorProfile`
+
+```gdscript
+class_name RotorProfile
+extends Resource
+
+## ===== DISC GEOMETRY ===================================================
+@export var disc_radius_m: float = 2.60
+@export var blade_count: int = 4
+## +1 or -1. Paired contra-rotating discs cancel reaction torque.
+@export var spin_sign: int = 1
+
+## ===== SPOOL ===========================================================
+@export var nominal_rad_s: float = 85.0
+## Time constant of the first-order approach to commanded angular rate.
+@export var spool_up_tau_s: float = 2.40
+@export var spool_down_tau_s: float = 4.80
+
+## ===== LIFT ============================================================
+## Thrust coefficient at maximum collective: T = C_T · ρ · A · (Ω R)².
+@export var thrust_coefficient: float = 0.020
+## Shaft torque coefficient: Q = C_Q · ρ · A · (Ω R)² · R.
+@export var torque_coefficient: float = 0.0024
+@export var collective_limit_deg: Vector2 = Vector2(-4.0, 14.0)
+@export var collective_rate_deg_s: float = 22.0
+
+## ===== TILT ============================================================
+## Maximum cyclic deflection of the thrust vector from the disc axis.
+@export var cyclic_limit_deg: float = 14.0
+@export var cyclic_rate_deg_s: float = 48.0
+## Yaw torque available from differential collective across a coaxial pair, or
+## from a tail station on a single-rotor build.
+@export var yaw_authority_nm: float = 9600.0
+
+## ===== REGIME ==========================================================
+## Fraction of reaction torque transmitted to the chassis. 0.0 for a coaxial
+## disc whose counter-rotating half cancels it; 1.0 for a lone main rotor.
+@export var torque_reaction_ratio: float = 0.0
+## Height above ground, in disc radii, below which ground effect adds thrust.
+@export var ground_effect_radii: float = 1.0
+## Peak ground-effect thrust gain at zero height.
+@export var ground_effect_gain: float = 0.24
+## Airspeed at which translational lift reaches its full value.
+@export var translational_lift_mps: float = 14.0
+@export var translational_lift_gain: float = 0.18
+## Descent rate at which the disc enters its own downwash and loses thrust.
+@export var vortex_ring_descent_mps: float = 6.0
+@export var vortex_ring_loss: float = 0.32
+```
+
+Every one of these is consumed by `DYNAMIC_MASS_PHYSICS.md` §12, which owns their semantics and their formulas; this section owns only their existence and their units.
+
+### 7.2.2 `LimbProfile`
+
+```gdscript
+class_name LimbProfile
+extends Resource
+
+## ===== GEOMETRY ========================================================
+## Hip-to-foot distance at full extension.
+@export var leg_length_m: float = 1.90
+## Hip position relative to the part's pivot cell centre.
+@export var hip_offset_m: Vector3 = Vector3(0.0, 0.75, 0.0)
+@export var foot_radius_m: float = 0.16
+## Height the stance controller holds the hip at, as a fraction of leg_length_m.
+@export var stance_height_ratio: float = 0.86
+
+## ===== STANCE ==========================================================
+## Virtual-leg spring. Compliance is commanded, not passive: these are the
+## gains of a controller, which is why they are here and not on the suspension
+## fields of the parent profile.
+@export var stance_stiffness_n_m: float = 96000.0
+@export var stance_damping_ns_m: float = 12000.0
+@export var max_foot_force_n: float = 42000.0
+
+## ===== GAIT ============================================================
+## Fraction of the gait cycle spent in stance. 0.60 walks, below 0.50 runs
+## with a flight phase.
+@export var duty_factor: float = 0.62
+@export var nominal_cadence_hz: float = 1.05
+@export var max_cadence_hz: float = 2.20
+@export var max_step_length_m: float = 1.10
+## Peak foot clearance over the swing arc.
+@export var step_height_m: float = 0.34
+## Raibert velocity-error gain on the foot placement law.
+@export var placement_gain_s: float = 0.19
+@export var turn_rate_deg_s: float = 45.0
+```
+
+### 7.2.3 `TrackProfile`
+
+```gdscript
+class_name TrackProfile
+extends Resource
+
+## ===== CONTACT PATCH ===================================================
+## Length of the ground contact patch along the rolling axis.
+@export var patch_length_m: float = 1.90
+## Road stations along the patch. Each carries one suspension probe and one
+## traction contact, so this multiplies the part's per-tick cost.
+@export var road_stations: int = 4
+@export var station_load_share: float = 0.25
+
+## ===== DRIVE ===========================================================
+@export var sprocket_rad_s: float = 22.0
+## 1.0 permits a full counter-rotating pivot; 0.5 permits only a skid turn.
+@export var differential_authority: float = 1.0
+## Speed at which differential authority reaches zero.
+@export var pivot_taper_mps: float = 9.0
+
+## ===== SHEAR ===========================================================
+## Torque resisting a slew of the patch, per metre of length per newton of load.
+@export var slew_resistance_nm_per_n_m: float = 0.42
+## Lateral friction multiplier on top of `traction_coefficient`.
+@export var lateral_grip_ratio: float = 1.35
+## Fraction of drive force lost to the track's own internal friction.
+@export var internal_loss: float = 0.08
+
+const MAX_ROAD_STATIONS: int = 8
+```
+
+`station_offsets_m()` derives the stations from `patch_length_m` and `road_stations` rather than accepting a list, evenly spaced and symmetric about the patch centre. An authored asymmetric list would move the part's effective contact centre away from its collider with nothing reporting it — the same class of silent divergence §6.2 exists to prevent between visual and physical geometry.
+
+`differential_authority` and `pivot_taper_mps` together are what make a tracked Assembly feel tracked. At rest, authority is full and the two sides can counter-rotate, so the Assembly pivots on the spot. At `pivot_taper_mps` authority is zero and steering is whatever the lateral friction of the patch allows, which is very little — so a tracked build at speed turns in a long, deliberate arc. Nothing switches; the taper is linear and continuous, and both behaviours are the same expression evaluated at different speeds.
 
 ### 7.3 `PowerPlantProfile`
 
@@ -518,7 +716,62 @@ extends Resource
 @export var recoil_impulse_ns: float = 1450.0
 @export var heat_per_shot_hu: float = 7.5
 @export var jam_clear_time_s: float = 1.6
+
+## Non-null for KINETIC_MELEE and ENERGY_MELEE, null for every other kind.
+@export var melee_profile: MeleeProfile = null
 ```
+
+### 7.4.1 `MeleeProfile`
+
+A melee Effector Module emits no projectile. It sweeps a volume, and everything the emission fields describe — muzzle velocity, spread, magazine, projectile key — is meaningless for it. Those fields are required by the validator to be zero on a melee module, and the behaviour lives here instead. Semantics are owned by `WEAPON_TARGETING_LOGIC.md` §15.
+
+```gdscript
+class_name MeleeProfile
+extends Resource
+
+## ===== REACH ===========================================================
+## Distance from the hardpoint pivot to the tip of the striking edge.
+@export var reach_m: float = 2.40
+## Radius of the swept capsule. The edge is a volume, not a line: a zero-radius
+## sweep passes between two adjacent parts of a lattice-built Assembly.
+@export var edge_radius_m: float = 0.18
+## Angular extent of one swing about the hardpoint yaw axis.
+@export var swing_arc_deg: float = 150.0
+## Sweep samples per swing. Bounds the query cost; see doc 07 §15.3.
+@export var swing_samples: int = 6
+
+## ===== TIMING ==========================================================
+@export var wind_up_s: float = 0.28
+@export var swing_duration_s: float = 0.22
+@export var recovery_s: float = 0.46
+
+## ===== EFFECT ==========================================================
+## Damage of one strike, split across channels by `channel_mix`.
+@export var strike_damage: float = 640.0
+## Fractions summing to 1.0, indexed by DamageChannel.
+@export var channel_mix: PackedFloat32Array = PackedFloat32Array([0, 0, 0, 0, 0])
+## Impulse delivered to the struck Assembly, along the edge's travel direction.
+@export var strike_impulse_ns: float = 2800.0
+## Fraction of that impulse applied back to the wielder.
+@export var reaction_ratio: float = 0.35
+## Parts one swing may strike before it stops. Bounds the damage a single
+## sweep can submit; see CLAUDE.md §6 I-12.
+@export var max_targets_per_swing: int = 3
+
+## ===== REGIME ==========================================================
+## Closing speed below which a strike does nothing. A ram spike needs the
+## Assembly to be moving; a powered edge does not, and authors 0.0.
+@export var min_closing_speed_mps: float = 0.0
+## True for a continuously energised edge that damages on contact for as long
+## as it is held against a target, rather than on a discrete swing.
+@export var sustained: bool = false
+## Damage per second while sustained contact is maintained.
+@export var sustained_damage_s: float = 0.0
+## Power drawn while the edge is energised, on top of `power_draw_pu`.
+@export var energised_draw_pu: float = 0.0
+```
+
+`channel_mix` is what separates the two melee kinds without a second code path. A `KINETIC_MELEE` ram spike authors `[0.15, 0, 0.85, 0, 0]` — overwhelmingly `IMPACT`. An `ENERGY_MELEE` edge authors `[0.10, 0, 0.15, 0.75, 0]` — overwhelmingly `THERMAL`, which is what makes it cut through a `str.panel.*` (thermal resistance 0.05) and struggle against a `str.panel.composite` (0.38) and an `eff.beam.*` mount (0.44). The kind enum selects the presentation and the power model; the channel mix does the balance work.
 
 ### 7.5 `SupportModuleProfile`
 
@@ -649,6 +902,9 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `str.riser.column.t2` | 2×4×2 | 26 | 330 | 13 | 1900 | `OPAQUE_SOLID` |
 | `str.shell.curved.t3` | 6×3×4 | 88 | 900 | 27 | 820 | `OPAQUE_SOLID` |
 | `str.aperture.port.t2` | 4×2×1 | 21 | 210 | 9 | 300 | `TRANSPARENT` |
+| `str.hub.axle_station.t2` | 2×2×2 | 29 | 340 | 16 | 2400 | `OPAQUE_SOLID` |
+
+`str.hub.axle_station.t2` is the `AXLE` station of §4.2 and the only part in the shipping set that carries `AXLE` nodes. Its `AXLE` faces are ±X, restricted by `accepts_classes` to `MOTIVE_ASSEMBLY`; ±Y and ±Z are `FACE_NEUTRAL` so it can be built into a chassis from four sides. The load capacity is high for its mass because everything an Assembly's locomotion does to it passes through this one joint: a 1180 kg-rated Motive Assembly under a 2.4 g manoeuvre loads its station harder than any panel in the table ever sees.
 
 ### 10.3 Motive Assemblies
 
@@ -664,6 +920,48 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
 | `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×8×3 | 185 | 720 | 1400 | 1.22 | 45 | 96000 | 12000 |
 | `mot.repulsor.pad.t5` | `REPULSOR_PAD` | 5×2×5 | 140 | 480 | 1600 | 0.72 | 0 | 26000 | 8800 |
+| `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 265 | 690 | 2600 | 0.00 | 0 | 0 | 0 |
+| `mot.rotor.coaxial_heavy.t4` | `ROTOR_DISC` | 5×7×5 | 410 | 1010 | 4400 | 0.00 | 0 | 0 | 0 |
+| `mot.rotor.main_single.t3` | `ROTOR_DISC` | 4×6×4 | 210 | 620 | 2200 | 0.00 | 0 | 0 | 0 |
+| `mot.limb.strider.t3` | `AMBULATORY_LIMB` | 3×7×3 | 132 | 500 | 980 | 1.18 | 42 | 68000 | 8600 |
+
+The four zero columns on the rotary rows are not omissions. A `ROTOR_DISC` has no traction coefficient, no steer angle, and no suspension, and the validator requires those four fields to be exactly zero on it (§14 rule 19) rather than leaving a plausible-looking value that no code reads. Its actual parameters are in `RotorProfile`, tabulated separately below because they share no columns with a ground contact:
+
+| `part_key` | Disc R (m) | Blades | Ω (rad/s) | C_T | C_Q | Collective (°) | Cyclic (°) | Reaction | Yaw (N·m) | Draw (PU) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `mot.rotor.coaxial_mid.t3` | 2.60 | 4 | 85.0 | 0.020 | 0.0024 | −4 … 14 | 14 | 0.00 | 9600 | 150 |
+| `mot.rotor.coaxial_heavy.t4` | 3.40 | 6 | 65.0 | 0.020 | 0.0024 | −4 … 15 | 12 | 0.00 | 15400 | 196 |
+| `mot.rotor.main_single.t3` | 3.10 | 3 | 55.0 | 0.020 | 0.0024 | −5 … 15 | 18 | 1.00 | 0 | 98 |
+
+**These numbers are derived, not chosen, and the derivation is a validator rule.** `DYNAMIC_MASS_PHYSICS.md` §12.2 computes maximum thrust as `T = C_T · ρ · A · (Ω R)²` with `A = π R²`. Every row above is solved so that `T` at full collective equals the row's `rated_load_kg × g` to within 1%, which is what §14 rule 19 checks. A rotor that cannot lift its own rating is a data error that would present as an Assembly which simply refuses to leave the ground, with nothing in the logs, so it is checked rather than trusted.
+
+Working the mid disc through: `A = π(2.6)² = 21.24 m²`, tip speed `ΩR = 85 × 2.6 = 221 m/s`, so `T = 0.020 × 1.225 × 21.24 × 221² = 25 410 N`, against `2600 × 9.81 = 25 506 N`. The tip speed of 221 m/s is not a coincidence either — it is where a real rotor lives, below the transonic blade tip, and all three rows share it. They also share `C_T`, which means they share a disc loading of `1200 N/m²`; that is about 2.7× a real utility helicopter and is the one deliberate departure from reality in the family, bought so that a rotor fits inside a 12 m Build Lattice.
+
+`C_Q = 0.0024` follows from `C_T` rather than being independent: momentum theory gives induced velocity `v_i = sqrt(T / 2ρA) = 22.1 m/s`, so ideal `C_Q = C_T · v_i / (ΩR) = 0.0020`, and the shipping value carries 20% on top for profile power. Because the three rows share a disc loading they share `v_i`, and therefore share `C_Q` exactly.
+
+The `Draw (PU)` column is `shaft_power / ROTOR_W_PER_PU` at full collective, with the constant owned by doc 05 §12.5. It is stored on the definition's `power_draw_pu` as the **full-collective** figure so that the garage's power budget is conservative: an Assembly that balances on paper can always hover.
+
+`mot.rotor.main_single.t3` is the deliberate hard case: `torque_reaction_ratio = 1.00` and `yaw_authority_nm = 0`, so a build carrying one of them and nothing else spins under its own reaction torque and cannot stop. It is flyable only in a pair with opposed `spin_sign`, or with a second station mounted to produce anti-torque. That is real rotorcraft engineering surfaced as a build constraint, and the garage reports it: an Assembly whose net `Σ torque_reaction_ratio · spin_sign` is non-zero and whose `Σ yaw_authority_nm` cannot cover it fails the stability line in the stat panel. A coaxial disc is the forgiving option and costs mass for the privilege — 265 kg against 210 kg at the same tier.
+
+Tracked rows carry the ground columns, and their `Steer (°)` of zero is required rather than incidental (§14 rule 22): a track that steered by angling its hub would be a wheel. Their remaining parameters:
+
+| `part_key` | Patch (m) | Stations | Sprocket (rad/s) | Diff. auth. | Pivot taper (m/s) | Slew resist. | Lateral grip | Internal loss |
+|---|---|---|---|---|---|---|---|---|
+| `mot.tracked.short_bogie.t2` | 1.90 | 4 | 22.0 | 1.00 | 9.0 | 0.42 | 1.35 | 0.08 |
+| `mot.tracked.long_bogie.t3` | 2.90 | 6 | 19.0 | 0.85 | 7.0 | 0.51 | 1.48 | 0.10 |
+
+The long bogie is the deliberate trade and reads directly off the row: more patch and more stations buy it grip (`1.48` lateral against `1.35`) and the ability to bridge a wider gap, and cost it agility (`0.85` authority against `1.00`, tapering to nothing by 7 m/s instead of 9) and efficiency (`0.10` internal loss against `0.08`). A short-bogie Assembly pivots and darts; a long-bogie one holds a line and does not care what it drives over. Both are `TRACKED_SEGMENT` and neither needs a line of code the other does not.
+
+`slew_resistance_nm_per_n_m` scales with patch length *and* with normal load, so the resistance to turning is `k · L · N`. That product is the whole reason a heavy tracked Assembly is committed once it is moving: doubling the armour doubles the torque required to change heading, and there is no steering input that can overcome it. This is the failure mode a `bastion` build is supposed to have.
+
+Ambulatory rows carry the ground columns because a foot genuinely has a friction coefficient and a rated load. `Susp. k` and `Susp. c` on a limb row are the **stance** stiffness and damping and are stored on `LimbProfile`, not on the suspension fields of the parent profile — the parent's suspension fields are zero on a limb, for the reason §7.2 gives. The remaining gait parameters:
+
+| `part_key` | Leg (m) | Duty | Cadence (Hz) | Max step (m) | Step height (m) | Foot force (N) | Turn (°/s) |
+|---|---|---|---|---|---|---|---|
+| `mot.limb.strider.t3` | 1.62 | 0.64 | 1.15 | 0.92 | 0.29 | 30000 | 42 |
+| `mot.limb.strider.t4` | 1.90 | 0.62 | 1.05 | 1.10 | 0.34 | 42000 | 45 |
+
+A `duty_factor` above `0.5` means more than half the gait cycle is spent in stance, so a two-limbed Assembly always has at least one foot planted and never leaves the ground. This is what makes a biped tractable under Invariant I-3: the chassis is one rigid body held up by whichever feet are currently in stance, and there is never a tick with no support. Duty factors below `0.5` describe a run with a flight phase and are outside the shipping set — not because the solver cannot express one, but because a flight phase makes support intermittent and the tuning is a separate piece of work.
 
 ### 10.4 Power Plants
 
@@ -690,6 +988,19 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `eff.guided.pod_heavy.t4` | `GUIDED_ORDNANCE` | 6×4×6 | 235 | 500 | 76 | 0.90 | 54 | 1100 | 10.5 |
 | `eff.melee.ram_spike.t2` | `KINETIC_MELEE` | 5×3×3 | 130 | 900 | 0 | 0.00 | 0 | 0 | 0.0 |
 | `eff.melee.rotor_blade.t4` | `KINETIC_MELEE` | 6×4×3 | 245 | 1300 | 90 | 0.00 | 0 | 0 | 4.5 |
+| `eff.melee.beam_edge.t3` | `ENERGY_MELEE` | 3×3×6 | 68 | 290 | 98 | 0.00 | 0 | 0 | 8.0 |
+| `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 3×3×8 | 96 | 420 | 145 | 0.00 | 0 | 0 | 11.0 |
+
+The `Cycle`, `Muzzle`, and `Recoil` columns are zero on every melee row and are required to be (§14 rule 20). Melee timing is `wind_up_s + swing_duration_s + recovery_s` on `MeleeProfile`, and there is no muzzle and no projectile. `Draw (PU)` is non-zero on the powered edges because an energised edge draws continuously, which is the trade that distinguishes it from a spike: a ram spike costs no power and needs the Assembly to be moving, a beam edge costs 145 PU of the budget and cuts from a standstill.
+
+| `part_key` | Reach (m) | Edge R (m) | Arc (°) | Wind-up / swing / recovery (s) | Strike | Channel mix | Impulse (N·s) | Sustained |
+|---|---|---|---|---|---|---|---|---|
+| `eff.melee.ram_spike.t2` | 1.30 | 0.22 | 0 | 0.00 / 0.10 / 0.30 | 480 | `[0.15, 0, 0.85, 0, 0]` | 5200 | no |
+| `eff.melee.rotor_blade.t4` | 1.80 | 0.30 | 360 | 0.00 / 0.16 / 0.00 | 310 | `[0.40, 0, 0.60, 0, 0]` | 2400 | no |
+| `eff.melee.beam_edge.t3` | 1.90 | 0.15 | 140 | 0.24 / 0.20 / 0.50 | 470 | `[0.10, 0, 0.15, 0.75, 0]` | 1900 | yes, 260/s |
+| `eff.melee.beam_edge.t4` | 2.40 | 0.18 | 150 | 0.28 / 0.22 / 0.46 | 640 | `[0.10, 0, 0.15, 0.75, 0]` | 2800 | yes, 340/s |
+
+`eff.melee.ram_spike.t2` authors `swing_arc_deg = 0` and `min_closing_speed_mps = 4.0`: it does not swing at all, it is a fixed edge that damages what the Assembly drives into, which is exactly what a ram is. `eff.melee.rotor_blade.t4` authors a full 360° arc with no wind-up and no recovery — a continuously spinning edge, modelled as a swing that never stops. Both fall out of the same `MeleeProfile` fields with no special case in the solver, which is the test of whether the schema is the right shape.
 
 ### 10.6 Support Modules
 
@@ -729,10 +1040,12 @@ Resistance values are fractions in `[0.0, 0.85]`. The hard ceiling of `0.85` is 
 | `str.wedge.*` | 0.30 | 0.14 | 0.22 | 0.08 | 0.06 |
 | `str.frame.*` | 0.10 | 0.46 | 0.12 | 0.20 | 0.04 |
 | `str.bumper.*` | 0.20 | 0.16 | 0.58 | 0.06 | 0.06 |
+| `str.hub.*` | 0.26 | 0.10 | 0.44 | 0.10 | 0.06 |
 | `mot.wheeled.*` | 0.08 | 0.12 | 0.30 | 0.02 | 0.00 |
 | `mot.tracked.*` | 0.24 | 0.18 | 0.40 | 0.08 | 0.04 |
 | `mot.limb.*` | 0.16 | 0.14 | 0.26 | 0.06 | 0.02 |
 | `mot.repulsor.*` | 0.06 | 0.30 | 0.10 | 0.24 | 0.00 |
+| `mot.rotor.*` | 0.04 | 0.08 | 0.06 | 0.10 | 0.00 |
 | `pwr.combustion.*` | 0.10 | 0.05 | 0.15 | 0.30 | 0.02 |
 | `pwr.turbine.*` | 0.12 | 0.06 | 0.18 | 0.40 | 0.04 |
 | `pwr.cell.*` | 0.14 | 0.02 | 0.12 | 0.08 | 0.02 |
@@ -823,6 +1136,12 @@ Defined in `HEADLESS_NETWORK_SYNC.md` §5. `PART_DATA_SCHEMA.md` fixes only the 
 14. `visual_profile` references a mesh that carries any collision-generating flag.
 15. A `CORE_MODULE` definition has `mount_budget < 8` or `power_capacity_pu <= 0`.
 16. Any Effector Module has `yaw_limit_deg.x > yaw_limit_deg.y` or `pitch_limit_deg.x > pitch_limit_deg.y`.
+17. A Motive Assembly's family payload does not match its `kind`: `ROTOR_DISC` without a `rotor_profile`, `AMBULATORY_LIMB` without a `limb_profile`, `TRACKED_SEGMENT` without a `track_profile`, any other kind with any of the three non-null, or more than one non-null at once.
+18. A part carries an `AXLE` attachment node and is neither a `MOTIVE_ASSEMBLY` nor a `STRUCTURAL_COMPONENT` whose `AXLE` nodes restrict `accepts_classes` to `MOTIVE_ASSEMBLY` (§4.2).
+19. A `ROTOR_DISC` Motive Assembly has a non-zero `traction_coefficient`, `rolling_resistance`, `max_steer_angle_deg`, or any non-zero `suspension_*` field; or `rotor_profile.disc_radius_m <= 0.0`, `blade_count < 2`, `spin_sign` not in `{-1, +1}`, `nominal_rad_s <= 0.0`, `collective_limit_deg.x > collective_limit_deg.y`, or `torque_reaction_ratio` outside `[0.0, 1.0]`. Additionally, maximum thrust `C_T · ρ · π R² · (Ω R)²` must equal `rated_load_kg · GRAVITY_MPS2` within 1% — a rotor that cannot lift its own rating presents as an Assembly that silently refuses to fly.
+20. A melee Effector Module (`KINETIC_MELEE` or `ENERGY_MELEE`) has a null `melee_profile`, or a non-zero `muzzle_velocity_mps`, `cycle_time_s`, `recoil_impulse_ns`, `magazine_rounds`, or `spread_bloom_deg`; or a non-melee kind has a non-null `melee_profile`. Additionally `channel_mix` must have length `DAMAGE_CHANNEL_COUNT` and sum to `1.0` within `0.001`, `max_targets_per_swing` must be in `[1, 8]`, `swing_samples` in `[2, 16]`, and `reaction_ratio` in `[0.0, 1.0]`.
+21. An `AMBULATORY_LIMB` Motive Assembly has a non-zero `suspension_*` field; or `limb_profile.duty_factor` outside `(0.0, 1.0)`, `leg_length_m <= 0.0`, `stance_height_ratio` outside `(0.0, 1.0]`, `max_cadence_hz < nominal_cadence_hz`, or `max_step_length_m > 2 · leg_length_m` — a step longer than twice the leg cannot be taken with a foot on the ground at either end of it.
+22. A `TRACKED_SEGMENT` Motive Assembly has a non-zero `max_steer_angle_deg` — a track steers by differential drive, and one that angled its hub would be a wheel; or `track_profile.road_stations` outside `[1, MAX_ROAD_STATIONS]`, `patch_length_m <= 0.0`, `differential_authority` outside `[0.0, 1.0]`, `internal_loss` outside `[0.0, 1.0)`, or `lateral_grip_ratio <= 0.0`.
 
 The validator emits `res://.build/part_registry_report.md` summarising totals per class, mass histograms, integrity-per-kilogram outliers, and every exception note. This report is a required review artefact for any balance change.
 
@@ -835,9 +1154,9 @@ The validator emits `res://.build/part_registry_report.md` summarising totals pe
 | `GRID_SNAPPING_LOGIC.md` | `occupancy_cells`, `occupancy_bitset`, `attachment_nodes`, `bounds_*` |
 | `PART_FUSION_SHADER.md` | `fusion_profile`, `occupancy_cells`, `visual_profile` |
 | `DEPENDENCY_TREE_GRAPH.md` | `attachment_nodes.joint_strength_n`, `can_bear_load`, `mass_kg`, `load_capacity_kg` |
-| `DYNAMIC_MASS_PHYSICS.md` | `mass_kg`, `com_offset_m`, `inertia_box_half_extents_m`, `motive_profile`, `control_profile` |
+| `DYNAMIC_MASS_PHYSICS.md` | `mass_kg`, `com_offset_m`, `inertia_box_half_extents_m`, `motive_profile` and its `rotor_profile`/`limb_profile` payloads, `control_profile`, `AIR_DENSITY_KG_M3` |
 | `AUTO_ASSEMBLE_ALGORITHM.md` | Every field; the solver is a constraint search over the full schema |
-| `WEAPON_TARGETING_LOGIC.md` | `effector_profile`, `power_draw_pu`, `heat_generation_hu_s` |
+| `WEAPON_TARGETING_LOGIC.md` | `effector_profile` and its `melee_profile` payload, `power_draw_pu`, `heat_generation_hu_s` |
 | `COMPONENT_HEALTH_DAMAGE.md` | `integrity_max`, `resistance`, `armour_rating`, `occlusion`, band constants |
 | `TERRAIN_CRATER_DEFORMER.md` | Blast fields on `power_profile` and projectile definitions |
 | `PROCEDURAL_STRUCTURE_SLICING.md` | `collider_profile` conventions (shared with Static Volumes) |
