@@ -4,7 +4,7 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 6 (island conversion to debris: doc 04 §6).
+Last updated: session 7 (the Assembly directory, and the two-phase life of a wreck).
 
 ---
 
@@ -37,7 +37,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**31 files, 2641 checks, 0 failures.**
+**32 files, 2710 checks, 0 failures.**
 
 ---
 
@@ -45,10 +45,12 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 Every session verifies the suite by **planting faults one at a time and
 confirming something fails**. A test asserted only against correct code passes
-just as happily with its subject commented out. Roughly 170 faults have been
-planted across six sessions; the table below is the accumulated record, grouped
+just as happily with its subject commented out. Roughly 225 faults have been
+planted across seven sessions; the table below is the accumulated record, grouped
 by catcher rather than by session, because what matters to the next session is
-which test defends which behaviour.
+which test defends which behaviour. Session 7 planted fifty-three and caught
+fifty-three; the three that survived the first pass were dead code and were
+deleted (§2.1).
 
 | Test | Faults it has caught |
 |---|---|
@@ -65,24 +67,25 @@ which test defends which behaviour.
 | `test_build_budget_ledger` | ledger's remove forgets the mount weight |
 | `test_chassis_strain` | strain charges the part alone not its subtree; dynamic factor never applied; deposits not summed over the subtree; peak deposit replaced by the latest; candidate set only grows; dwell keyed on the ordered pair; dwell fires without waiting out the window |
 | `test_detachment_solver` | connectivity walks the tree in the solver; survivors never re-parented; seeds collected after removal; terminal component cap ignored; islands returned in traversal order |
-| `test_detachment_scheduler` | batching removed; pending cleared at the end rather than swapped first; assembly ids resolved in hash order; core loss falls through to the normal solver; unsupported orphan treated as a removed part; failed joint severs without checking other routes; core partitioned with the survivors; mass never announced dirty; island sink never called |
+| `test_detachment_scheduler` | pending work kept for a departed Assembly; batching removed; pending cleared at the end rather than swapped first; assembly ids resolved in hash order; core loss falls through to the normal solver; unsupported orphan treated as a removed part; failed joint severs without checking other routes; core partitioned with the survivors; mass never announced dirty; island sink never called |
 | `test_mass_solver` | parallel-axis term dropped; part tensor never rotated; box tensor uses half extents as full; authored half-extent override ignored; `zero()` returns the identity basis; `diagonal_of` reads a row; island tensor taken about the assembly origin; detached parts still counted; dead graph slots still counted; centre of mass divided by part count; tensor accumulated about the lattice origin; orientation dropped from the part centre of mass; snapshot omits the orientation; mass floor removed; inertia floor removed |
 | `test_assembly_runtime` | shapes parented under an intermediate node; shape transform ignores the part pose; shape transform composed in the wrong order; release removes the shape instead of disabling it; visual root parented under the body; decoupling walk does not recurse; adopt leaves the build proxies alive; shape map grows zero-filled |
-| `test_mass_recompute` | apply happens after the launch; dirty list admits duplicates; dirty list appended rather than ordered; events for unregistered assemblies queued; dirty list not cleared after capture; consumed batch never cleared; terminated assembly's result applied anyway |
-| `test_island_detachment` | `ω × r` term dropped; lever arm not rotated into world space; angular velocity not inherited; island centre of mass not mass-weighted; debris centre of mass left at the Assembly origin; island inertia taken about the Assembly origin; body transform composed the other way round; `FLAG_DETACHED` never set; reaper never scheduled; slot list never recorded; `island_detached` never emitted; mass counted per part rather than summed; total mass zeroed; mass properties never applied; hull shape left enabled after its island leaves; collider not rebased onto the island centre of mass; collider rebased with the wrong sign; minimum-parts guard removed |
-| `test_debris_pool` | exhaustion recycles the newest body; released body keeps its geometry; parked body still occupies a layer; acquired body not put back into the solver; acquired body keeps the last deadline; debris masked against debris; released body never rejoins the free list; damping left at the engine default; expiry comparison strictly greater; unscheduled bodies reaped; waking does not reset the sleep accumulator; freeze fires on the first sleeping tick; freeze never fires; freeze mode not static; lifetime measured in seconds not ticks; shape reset does not rewind the cursor; shape reset does not disable; reused node left disabled; reused node keeps the old transform; a new node built on every adopt |
+| `test_mass_recompute` | registration ignored; unregistered assemblies queued; queued work kept for a departed Assembly; apply happens after the launch; dirty list admits duplicates; dirty list appended rather than ordered; events for unregistered assemblies queued; dirty list not cleared after capture; consumed batch never cleared; terminated assembly's result applied anyway |
+| `test_island_detachment` | island sink resolves nothing; `ω × r` term dropped; lever arm not rotated into world space; angular velocity not inherited; island centre of mass not mass-weighted; debris centre of mass left at the Assembly origin; island inertia taken about the Assembly origin; body transform composed the other way round; `FLAG_DETACHED` never set; reaper never scheduled; slot list never recorded; `island_detached` never emitted; mass counted per part rather than summed; total mass zeroed; mass properties never applied; hull shape left enabled after its island leaves; collider not rebased onto the island centre of mass; collider rebased with the wrong sign; minimum-parts guard removed |
+| `test_debris_pool` | exhaustion recycles the newest body; eviction ignores retirement; released body keeps its geometry; quiesced body still occupies a layer; acquired body not put back into the solver; acquired body keeps the last lifetime deadline; acquired body keeps the last linger deadline; acquired body handed out still retired; debris masked against debris; released body never rejoins the free list; damping left at the engine default; retirement leaves the body in the simulation; retirement does not mark the body; retirement sets no linger deadline; simulated count includes retired bodies; the lifetime deletes rather than retires; a viewerless build lingers anyway; retired bodies swept as if simulated; a watched wreck recycled anyway; looking back does not reset the dwell; the linger cap never fires; the off-screen dwell never elapses; the off-screen dwell skipped entirely; expiry comparison strictly greater; unscheduled bodies reaped; waking does not reset the sleep accumulator; freeze fires on the first sleeping tick; settling freeze never fires; freeze mode not static; lifetime measured in seconds not ticks; notifier built regardless of the gate; entering the screen not recorded; leaving the screen not recorded; notifier never fitted to the island; bounds not cleared on reset; bounds never grow past the first shape; box bounded by one half-extent; `tracks_visibility` always true; shape reset does not rewind the cursor; shape reset does not disable; reused node left disabled; reused node keeps the old transform; a new node built on every adopt |
+| `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | debris body given its transform before its shapes — see §5 |
 
-### 2.1 What the last two sessions learned from a fault that was *not* caught
+### 2.1 What four sessions learned from faults that were *not* caught
 
 The question to ask first is never "how do I test this" — it is **"is this code
-dead?"** Across sessions 4, 5 and 6 that question deleted a depth sort, a
-duplicate batch clear, a redundant island guard and a redundant timer reset, and
-it saved a mass floor by finding the one state that reaches it. Reaching for
+dead?"** Across sessions 4 to 7 that question deleted a depth sort, a duplicate
+batch clear, a redundant island guard and three redundant state resets, and it
+saved a mass floor by finding the one state that reaches it. Reaching for
 "document the redundancy" before "delete it" is how untested code accumulates.
 
-The three patterns worth repeating:
+The four patterns worth repeating:
 
 - **A fixture that cannot distinguish the rule from its inverse is not a test.**
   Session 5's shape-transform test used a part at orientation 0, under which the
@@ -94,16 +97,30 @@ The three patterns worth repeating:
   sits on, so a lever arm that was never rotated into world space looked
   identical to one that was. Build fixtures where the rule under test and the
   thing it would fall back to disagree.
-- **Two owners of one invariant is worse than either alone.** Session 6 found
-  three: `IslandDetacher` tested its minimum-island size against both its
-  argument and its result, `DebrisPool` cleared a body's deadline both on the
-  way out and on the way back in, and it cleared the sleep accumulator in a
-  place the reaper already covers. The first two collapsed to one owner each and
-  are now caught; the third was genuinely dead and was deleted (§5).
-- **Some things this harness cannot assert at all.** See §3.28: a query against
-  the main world's physics space returns nothing in the suite, so nothing can be
-  asserted about a debris body by *hitting* it. That is why the transform-after-
-  shapes ordering has no catcher.
+- **Two owners of one invariant is worse than either alone.** Six found so far,
+  three of them in session 7 alone, and all three in `DebrisPool`: it cleared
+  `retired` and `linger_deadline_tick` both on release and on acquire, and it
+  cleared `offscreen_since_tick` in a place the reaper's own on-screen branch
+  already covers. The rule that came out of untangling them is worth keeping:
+  **`release` makes a body inert, `acquire` gives it a fresh life**, one owner
+  each, and a field that neither needs to touch is named at its declaration with
+  the reason (§5).
+- **A redundant check can hide a genuinely needed one.** `DetachmentScheduler`
+  drops an Assembly's pending work when it leaves the match, and the resolve path
+  separately guards against a null graph. Removing the first changed nothing
+  observable, because the second caught it — but they cover different cases (an
+  Assembly that left versus an id never registered), so the answer was a test for
+  the first rather than a deletion of it.
+- **Some things this harness cannot assert at all — and one it turned out it
+  could.** See §3.28: a query against the main world's physics space returns
+  nothing in the suite, so nothing can be asserted about a debris body by
+  *hitting* it, which is why the transform-after-shapes ordering still has no
+  catcher. Visibility looked like the same problem — nothing renders headless, so
+  `VisibleOnScreenNotifier3D.is_on_screen()` is always false — and was not.
+  Reading the notifier's enter/exit *signals* instead of polling it made the
+  state drivable from a test through the identical path the renderer uses, and is
+  the better design anyway (§3.31). When something looks untestable, check
+  whether the untestable part is the design rather than the harness.
 
 ---
 
@@ -286,6 +303,30 @@ All verified against 4.7.1 in this repo, not recalled.
     legal and runs once per instance. This is the way to keep a duration in
     seconds where the document states it and still compare integers.
 
+31. **`VisibleOnScreenNotifier3D.is_on_screen()` is always false headless, but
+    its signals are drivable.** Nothing renders under `--headless`, so the
+    renderer never sets the flag and never raises
+    `screen_entered`/`screen_exited` either. Emitting those signals from a test
+    reaches the same handler by the same path the renderer would use, so a class
+    that *caches* the flag from the signals is testable where one that polls
+    `is_on_screen()` is not. Cheaper too: the renderer knows the answer as a side
+    effect of culling and says so twice in a body's whole life, where polling asks
+    ninety-six times a tick. The notifier's `aabb` is in its own local space, so
+    as a direct child at identity it is in body space.
+
+32. **A `VisualInstance3D` under a `PhysicsBody3D` is not automatically an I-1
+    violation.** The invariant is about geometry and about visual transforms
+    driving physics. A notifier draws nothing, owns no geometry, and is read only
+    after the body has left the simulation. Doc 04 §6.2 records the reasoning;
+    do not extend it to meshes without the same argument.
+
+33. **A `Callable` bound to a `Node`'s method survives being reassigned around,
+    which is what makes the sink wiring one line.**
+    `scheduler.island_sink = pool.on_island_severed` is the whole production
+    wiring between doc 04 §5 and §6, and it is worth writing tests against that
+    exact expression rather than against a stand-in — the stand-in is where an
+    argument-order mistake hides.
+
 ---
 
 ## 4. Architecture changes, cumulatively
@@ -374,6 +415,34 @@ it is presentation and debris has no meshes to fade.
 
 `CLAUDE.md` §2 gained the three debris files under `src/assembly/runtime/`.
 
+**Session 7 — doc 04 §6 and §6.2; doc 08 §5.1; doc 12 §7.2 and §9.2.**
+
+- **`AssemblyRegistry` is an object, not a global** (doc 08 §5.1, doc 12 §7.2).
+  Both wrote `AssemblyRegistry.get(aid)`. A `static var` holding the same
+  dictionary is that global with less of the visibility that makes an autoload
+  reviewable, and §4's list of eight is frozen, so it is a `RefCounted` owned by
+  the match scene and handed to the systems that need it — the shape `DebrisPool`
+  took last session for the same reason. The method is `get_runtime`, because
+  `Object.get` already exists.
+- **Doc 04 §6, amendment 1 extended.** `DebrisPool` now holds the registry and
+  exposes `on_island_severed`, which is the production form of
+  `DetachmentScheduler.island_sink`. The seam between §5 and §6 was exactly one
+  lookup wide.
+- **Doc 04 §6.2: a wreck's lifetime ends in two events, not one.** The reasoning
+  is the whole point and is in the document: debris is an obstacle
+  (`MASK_ASSEMBLY_HULL` includes `LAYER_DEBRIS`, and doc 12 §9.3 has the
+  dedicated server spawning these bodies for that reason), so a wreck kept alive
+  by one player's camera would be a collision every other machine had stopped
+  simulating. Retirement — frozen, off every layer — happens on the scheduled
+  tick and is identical everywhere; the linger that follows is presentation, and
+  ends off-screen, or at a 30 s cap, or when the pool needs the slot. Exhaustion
+  evicts retired bodies first, so the deterministic set is never squeezed by
+  where anyone is looking.
+- **Doc 12 §9.2 gained `debris_visibility`.** The first tag whose absence
+  changes behaviour rather than merely omitting an object: with it disabled no
+  notifier is constructed and a body is recycled the instant it retires, which is
+  what §9.3 wants of a server and not a degradation of it.
+
 ---
 
 ## 5. Deliberate readings, and the redundancies
@@ -422,14 +491,36 @@ surviving clear now carries an `assert` in the launch path stating that the batc
 must already be empty, so the invariant is named where it is relied on rather
 than re-established.
 
-**`DebrisPool` does not clear `asleep_since_tick` when a body is parked**, and
-that is the third redundancy deletion. `acquire` sets `sleeping = false`, and the
-reaper's next sweep — which always lands before the body could have fallen asleep
-again, since debris is spawned in `tick_resolved` and swept at the following
-`tick_started` — resets the accumulator itself. The clear on the way out was
-therefore unreachable, and `acquire` carries a comment naming what it relies on.
-The deadline is a different matter: it is cleared in exactly one place, and
-removing it is caught.
+**`DebrisPool` splits its resets: `release` makes a body inert, `acquire` gives
+it a fresh life.** Release clears geometry, slots and identity and quiesces the
+body — all of which must be true *while* it sits in the free list. Acquire clears
+the three per-life tick fields. Neither does the other's job, and every one of
+those clears is caught by a planted fault. Two fields are deliberately outside
+that split. `asleep_since_tick` is reset by the first sweep that sees the body
+awake, and `offscreen_since_tick` by the first that sees it on a screen; both
+resets are load-bearing and tested, and clearing the fields on acquire as well
+would leave four owners of two invariants. The stale values are unobservable: a
+body cannot fall asleep before the sweep that follows its acquisition, and a
+stale off-screen dwell can only be read by a wreck that retires with nobody
+looking at it, where the difference it makes is that an unwatched wreck goes half
+a second early.
+
+**Nothing simulated may read `DebrisPool.retired_count`.** It is the one number
+in the debris system that legitimately differs between the server and a client,
+because it is a function of where people are looking. `simulated_count` is the
+one they agree on. The eviction order exists to keep that distinction true under
+pressure, and it is the single assumption the whole visibility mechanism rests
+on — if a future change lets a retired body outrank a simulated one for any
+purpose other than being sacrificed first, the determinism argument in doc 04
+§6.2 stops holding.
+
+**`DetachmentScheduler` drops pending work for an unregistered Assembly, and
+the resolve path separately guards against a null graph.** These look like the
+same check and are not: the first covers an Assembly that left the match with a
+destruction already queued, the second an id that was never registered at all —
+a garage context and a match Assembly share one `EventBus`. Removing either one
+alone leaves the suite green on the *other's* case, so both are tested
+separately.
 
 **`AssemblyRuntime` spawns colliders but not meshes.** Doc 13 §9's `spawn_visual`
 branches on `PartVisualProfile.Stage` into `ProxyMeshCache`, `GreyboxMaterial`,
@@ -472,15 +563,36 @@ the write and the wreck keeps reporting the old mass.
 - `src/assembly/mass/` — `MassSolver` (with `MassProperties` and `MassInput`),
   `InertiaSolver`, `MassRecomputeScheduler`.
 - `src/assembly/runtime/` — `AssemblyStats`, `AssemblyRuntime`, `ChassisBodyRef`,
-  `AssemblyInterpolator`, and **new in session 6**: `DebrisBodyRef`,
-  `DebrisPool`, `DebrisReaper`.
+  `AssemblyInterpolator`, `DebrisBodyRef`, `DebrisPool`, `DebrisReaper`, and
+  **new in session 7**: `AssemblyRegistry`.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `project.godot` — autoloads, physics/display settings, all 33 input actions.
 
 `ChassisGraph` covers doc 04 §2, §3, and §4 in full. `DetachmentSolver` and
 `DetachmentScheduler` cover §5 and §7.2. `IslandDetacher`, `DebrisPool` and
 `DebrisReaper` cover §6 and §6.2. `AssemblyRuntime` and the mass classes cover
-doc 05 §1–§4 and §10.2.
+doc 05 §1–§4 and §10.2. `AssemblyRegistry` is the lookup doc 08 §5.1 and §5.3 and
+doc 12 §7.2 resolve through.
+
+**The wiring the match scene will do**, in full, because it is now short enough
+to write down and there is still no scene to hold it:
+
+```gdscript
+var registry := AssemblyRegistry.new()
+
+var detachment := DetachmentScheduler.new()
+detachment.registry = registry
+
+var mass := MassRecomputeScheduler.new()
+mass.registry = registry
+
+var debris := DebrisPool.new()
+debris.registry = registry
+detachment.island_sink = debris.on_island_severed
+
+add_child(detachment); add_child(mass); add_child(debris)
+# then, per Assembly: runtime.adopt(ctx); registry.register(runtime)
+```
 
 ### Data
 | Path | Contents |
@@ -501,8 +613,9 @@ Arch: `test_autoload_set`, `test_input_actions`, `test_project_settings`,
 `test_no_polling`, `test_no_global_rng`, `test_no_forbidden_patterns`,
 `test_no_runtime_csg`, `test_visual_decoupling`, `test_scripts_parse`.
 
-Unit: `test_lattice_math`, `test_orientation_table`, `test_part_definition_bake`,
-`test_collider_profile_serialisation`, `test_lattice_occupancy`,
+Unit: `test_assembly_registry`, `test_lattice_math`, `test_orientation_table`,
+`test_part_definition_bake`, `test_collider_profile_serialisation`,
+`test_lattice_occupancy`,
 `test_footprint_solver`, `test_attachment_polarity`, `test_part_registry_validator`,
 `test_chassis_graph`, `test_mate_selector`, `test_build_budget_ledger`,
 `test_chassis_strain`, `test_detachment_solver`, `test_mass_solver`.
@@ -570,33 +683,38 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
 - **`assembly_terminated` reports `killer_id = 0`.** Attribution needs the damage
   layer; doc 04 §8.2 records 0 as "unattributed".
 
-### Debris (new in session 6)
-- **Nothing wires `DetachmentScheduler.island_sink` in production.** The sink
-  takes an assembly id, and turning that into the `AssemblyRuntime` that owns it
-  is exactly what `AssemblyRegistry` is for — see below. `test_island_detachment`
-  stands in for the match scene with a two-field object; that object is what the
-  match scene will be, once there is one.
+### Debris
 - **`DebrisPool`'s owner does not exist.** It is a `Node` that expects to be a
-  child of the match scene, and there are no scenes (see below).
+  child of the match scene, and there are no scenes (see below). The wiring it
+  needs is written out in §6 and is nine lines.
 - **Debris takes no damage and is not replicated.** §6 spawns the body and emits
   `island_detached`; doc 12's snapshot of it and doc 08's treatment of a debris
   hit are both unwritten. `DebrisBodyRef.slots` and `source_assembly_id` exist
   for exactly those two consumers.
 - **No visual half.** `detach_visual_to` and §6.2's 0.25 s recycle fade both need
-  meshes; see §4 and §5.
+  meshes; see §4 and §5. The fade in particular now has a precise home: the two
+  paths on which a wreck can vanish in view are the 30 s linger cap and pool
+  exhaustion, and nowhere else, because the off-screen path is by construction
+  unobserved.
+- **The visibility mechanism has never seen a camera.** Nothing renders in the
+  suite, so `VisibleOnScreenNotifier3D` is driven through its own signals
+  (§3.31). What is untested is whether the island bounds are the *right* bounds
+  in practice — they are a union of per-primitive spheres, deliberately
+  conservative — and whether the 0.5 s dwell feels right against a real camera.
+  Both want the first playable scene, not more unit tests.
 - **`AssemblyRuntime.release_part` and `restore_part` still have no production
   caller.** Their callers are doc 08 §9's `_destroy_part` and §11's repair path.
-  `detach_colliders_to` now has one.
+  `detach_colliders_to` has one.
 
 ### The runtime and mass
-- **There is still no `AssemblyRegistry`.** `CLAUDE.md` §2 lists
-  `src/assembly/runtime/assembly_registry.gd`, doc 08 §5.3 and doc 12 §7 both
-  call `AssemblyRegistry.get(aid)`, and the debris sink above needs the same
-  lookup. Two schedulers keep their own `assembly_id ->` map
-  (`DetachmentScheduler._graphs`, `MassRecomputeScheduler._targets`); when the
-  registry lands, `register` and `unregister` on both are the four calls to move.
-  It is **not** an autoload — §4's list of eight is frozen — so its ownership
-  needs deciding, most likely by the match scene.
+- **`AssemblyRegistry` has three consumers and two more waiting.** The two
+  schedulers and `DebrisPool` read it. Doc 08 §5.1's `DamageResolver` and doc 12
+  §7.2's `RewindScope` will, and neither exists; both documents now record the
+  instance form, so nothing is left to decide.
+- **Nothing unregisters an Assembly in production**, because nothing terminates
+  one — `assembly_terminated` is emitted and unhandled. The registry's departure
+  signal is wired into both schedulers and tested; the emitter is doc 04 §7.2's
+  consequence, which wants the match state of `src/world/match/`.
 - **Doc 05 §3.4's coupling torque is not implemented.** `MassProperties`
   carries `inertia_full` precisely so it can be, and `test_mass_solver` pins the
   off-diagonal terms it consumes, but applying it is per-tick work that belongs
@@ -637,20 +755,15 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
 4. ~~Strain (doc 04 §4) and the detachment solver (§5)~~ — **done, session 4.**
 5. ~~`AssemblyRuntime` and the mass solver (doc 05 §1–§4)~~ — **done, session 5.**
 6. ~~Island conversion to debris (doc 04 §6)~~ — **done, session 6.**
+7. ~~`AssemblyRegistry`, and visibility-aware debris retirement (§6.2)~~ —
+   **done, session 7.**
 
-7. **`AssemblyRegistry` — start here.** It is small, and it is now blocking five
-   call sites across three documents (§7 above), including the one seam that
-   stops the debris system from being wired the way a match will wire it.
-   Deciding its owner is most of the work; doc 12 §7, doc 08 §5.3 and doc 04 §6
-   all assume a global reachable by id, and `CLAUDE.md` §4 says it cannot be an
-   autoload. Landing it means moving four `register`/`unregister` calls off the
-   two schedulers, and `test_detachment_scheduler` currently registers a bare
-   `ChassisGraph` with no runtime behind it — deciding whether the registry holds
-   runtimes or something narrower is the real design question.
-
-8. **A first `mot.*` part.** It resolves the `AXLE` question, gives doc 02 §7.5 a
-   real user instead of a synthetic one, and is the prerequisite for anything in
-   doc 05 §6–§7.
+8. **A first `mot.*` part — start here.** It resolves the `AXLE` question, gives
+   doc 02 §7.5 a real user instead of a synthetic one, and is the prerequisite
+   for anything in doc 05 §6–§7. It is also the cheapest remaining way to make
+   several existing tests less synthetic: `test_island_detachment` reaches for
+   the Core Module's definition purely to get a second mass, and the Effector and
+   Motive class limits are exercised through the ledger rather than through parts.
 
 9. **Doc 05 §6–§9: suspension, traction, aerodynamics, and κ.** The largest
    remaining block, and the one that makes an Assembly move. It needs step 8, and
@@ -659,13 +772,20 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
    `tests/physics/` occupant. It is also the first thing that would let a physics
    step run inside a test, which would in turn make §5's uncaught fault testable.
 
-10. **A first `eff.*` part**, which forces the muzzle-offset question in §7 above
+10. **The match scene.** Everything the debris and mass systems need is now
+    written and none of it is owned by anything: the wiring in §6 is nine lines
+    with nowhere to put them, and `scenes/` is still empty. This is also what
+    would first let a camera exist, which is the one part of the visibility
+    mechanism that has never met one (§7). Doing it before step 9 is defensible;
+    doing it before step 8 is not, because an Assembly that cannot move is not
+    much of a scene.
+
+11. **A first `eff.*` part**, which forces the muzzle-offset question in §7 above
     and gives `deposit_recoil_force` its first caller.
 
-11. **A third `str.*` part at a different mass**, whenever balance work starts.
-    It also removes the one odd fixture in `test_island_detachment` (§7).
+12. **A third `str.*` part at a different mass**, whenever balance work starts.
 
-12. **A second tier of one shipped variant.** The cheapest way to make rule 13
+13. **A second tier of one shipped variant.** The cheapest way to make rule 13
     non-vacuous.
 
 ---
@@ -724,6 +844,12 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
   pose that is not authored yet.** A synthetic candidate is never committed —
   commit resolves through `PartRegistry`, and a fixture in the registry would
   change what every other test in the suite sees.
+- **Drive a subsystem through the signal its real producer raises.** Session 7's
+  visibility mechanism reads a `VisibleOnScreenNotifier3D`'s enter/exit signals
+  rather than polling it, which is both cheaper and the only reason the whole
+  linger phase is testable headless (§3.31). Where a class caches state from a
+  signal, a test can raise that signal; where it polls an engine object, it
+  cannot.
 - **A fixture that cannot distinguish the rule from its fallback is not a test.**
   Four examples, all found by fault injection: the depth tie-break test put the
   shallow mate on the lower slot index, so the next key down produced the same
@@ -752,4 +878,10 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
 - **Two owners of one invariant is worse than either alone.** If two places both
   enforce something, neither is load-bearing and either can be deleted silently.
   Pick one, and put an `assert` or a comment at the other naming what it relies
-  on.
+  on. When the state is a pooled object's, the split that has held up is
+  **release makes it inert, acquire gives it a fresh life** — and a field that
+  neither needs to touch gets a note at its declaration saying who does.
+- **Two checks that look alike may cover different cases.** Before deleting the
+  one whose removal changed nothing, write down the input each would catch. If
+  the two sentences differ, the answer is a test for the uncovered one, not a
+  deletion.
