@@ -23,6 +23,11 @@ const EVENT_DRIVEN_DIRS: Array[String] = [
 ## event-driven despite living on the same virtual-method list.
 const PER_FRAME_ALLOWLIST: Dictionary = {
 	"res://src/autoload/match_clock.gd": "defines the tick that everything else reacts to",
+	"res://src/assembly/runtime/assembly_interpolator.gd":
+	(
+		"doc 05 §10.2: physics_jitter_fix is 0, so the visual transform is "
+		+ "genuinely per-render-frame work"
+	),
 }
 
 
