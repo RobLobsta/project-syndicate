@@ -29,11 +29,10 @@ The costs of this choice, and their mitigations:
 
 ```
 AssemblyRuntime            (Node3D)
-├── ChassisBody            (RigidBody3D)      ← the ONLY physics body
-│   ├── ColliderRoot       (Node3D)           ← CollisionShape3D children, one per primitive
-│   │   ├── shape_s000_p0  (CollisionShape3D)
-│   │   ├── shape_s000_p1  (CollisionShape3D)
-│   │   └── ...
+├── ChassisBody            (ChassisBodyRef : RigidBody3D)  ← the ONLY physics body
+│   ├── shape_s000_p0      (CollisionShape3D)  ← one per authored primitive
+│   ├── shape_s000_p1      (CollisionShape3D)
+│   ├── ...
 │   └── MotiveProbes       (Node3D)           ← ShapeCast3D per Motive Assembly
 │       ├── probe_s014     (ShapeCast3D)
 │       └── ...
@@ -44,6 +43,10 @@ AssemblyRuntime            (Node3D)
 │   └── SkirtingMesh       (MeshInstance3D)
 └── AudioRoot              (Node3D)
 ```
+
+**Amendment.** This document originally grouped the shapes under a `ColliderRoot` node inside the body. Godot registers a `CollisionShape3D` only when it is a **direct child** of a `CollisionObject3D`; an intervening `Node3D` leaves every shape under it inert, with no error, no warning at runtime, and no shape on the body. Applied to an Assembly that is the worst available failure — Architectural Invariant I-1 makes these primitives the only collision geometry that exists, so the result is a vehicle nothing can hit, and it presents as a damage bug rather than as a tree bug. The shapes are therefore direct children of `ChassisBody` and `ColliderRoot` no longer exists. `MotiveProbes` is unaffected: a `ShapeCast3D` is not a shape owner and works anywhere in the tree.
+
+Shape indices are assigned in ascending slot order at spawn and **never move**. A part taken out of the simulation has its shapes disabled, not removed, because removing one renumbers every later index on the body and invalidates the shape-index to slot map of `COMPONENT_HEALTH_DAMAGE.md` §5.4 for every part placed after it.
 
 `VisualRoot` is **not** a child of `ChassisBody`. It is a sibling, and its transform is written by the interpolation system (§10.2) from the body's previous and current physics transforms. This is what makes rendering smooth at any framerate independent of the 60 Hz physics tick.
 
@@ -101,8 +104,8 @@ static func compute(states: Array, graph: ChassisGraph) -> MassProperties:
         weighted += p * def.mass_kg
         mp.part_count += 1
     mp.com_local = weighted / maxf(mp.total_mass, 0.001)
-    mp.inertia_full = _accumulate_inertia(states, graph, mp.com_local)
-    mp.inertia_diag = Vector3(mp.inertia_full.x.x, mp.inertia_full.y.y, mp.inertia_full.z.z)
+    mp.inertia_full = InertiaSolver.accumulate(states, graph, mp.com_local)
+    mp.inertia_diag = InertiaSolver.diagonal_of(mp.inertia_full)
     return mp
 
 static func part_com_local(st: PartInstanceState, def: PartDefinition) -> Vector3:
@@ -144,43 +147,54 @@ Summed over all live parts:
 I = Σ_s I_s
 ```
 
+**Amendment.** This section originally wrote the accumulation as a private `MassSolver._accumulate_inertia`. It lives on a separate `InertiaSolver` instead, which `CLAUDE.md` §2 already named a file for, because `DEPENDENCY_TREE_GRAPH.md` §6 needs the identical arithmetic over an island's slots rather than the Assembly's. `MassSolver` owns the mass and centre-of-mass reduction and calls in here per part; the sum is `MassSolver`'s, because it already holds each part's centre from the pass that produced `C` and re-deriving them would cost a basis multiply per part per solve.
+
 ```gdscript
-static func _accumulate_inertia(states: Array, graph: ChassisGraph,
-                                com: Vector3) -> Basis:
-    var acc := Basis(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
-    for slot in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
-        if graph.alive[slot] == 0:
-            continue
-        var st: PartInstanceState = states[slot]
-        if st == null or (st.flags & PartFlags.FLAG_DETACHED) != 0:
-            continue
-        var def := PartRegistry.definition(st.part_def_id)
-        var h := _half_extents(def)
-        var m := def.mass_kg
-        var local := Basis(
-            Vector3((m / 12.0) * (4.0*h.y*h.y + 4.0*h.z*h.z), 0.0, 0.0),
-            Vector3(0.0, (m / 12.0) * (4.0*h.x*h.x + 4.0*h.z*h.z), 0.0),
-            Vector3(0.0, 0.0, (m / 12.0) * (4.0*h.x*h.x + 4.0*h.y*h.y)))
-        var R := OrientationTable.basis_for(st.orientation_index)
-        var rotated := R * local * R.transposed()
-        var d := part_com_local(st, def) - com
-        var dd := d.dot(d)
-        var shift := Basis(
-            Vector3(m * (dd - d.x*d.x), m * (-d.x*d.y),     m * (-d.x*d.z)),
-            Vector3(m * (-d.y*d.x),     m * (dd - d.y*d.y), m * (-d.y*d.z)),
-            Vector3(m * (-d.z*d.x),     m * (-d.z*d.y),     m * (dd - d.z*d.z)))
-        acc = _basis_add(acc, _basis_add(rotated, shift))
-    return acc
+class_name InertiaSolver
 
-static func _basis_add(a: Basis, b: Basis) -> Basis:
-    return Basis(a.x + b.x, a.y + b.y, a.z + b.z)
+const BOX_TENSOR_DENOM := 12.0
 
-static func _half_extents(def: PartDefinition) -> Vector3:
+static func half_extents(def: PartDefinition) -> Vector3:
     if def.inertia_box_half_extents_m != Vector3.ZERO:
         return def.inertia_box_half_extents_m
-    var span := Vector3(def.bounds_max_cell - def.bounds_min_cell + Vector3i.ONE)
-    return span * SyndicateConstants.LATTICE_UNIT_M * 0.5
+    return Vector3(def.bounds_size_cells) * SyndicateConstants.LATTICE_UNIT_M * 0.5
+
+static func box_tensor(mass_kg: float, h: Vector3) -> Vector3:
+    var w := h + h                                   # full extents
+    var k := mass_kg / BOX_TENSOR_DENOM
+    return Vector3(k * (w.y*w.y + w.z*w.z),
+                   k * (w.x*w.x + w.z*w.z),
+                   k * (w.x*w.x + w.y*w.y))
+
+static func part_tensor(def: PartDefinition, orientation_index: int,
+                        offset: Vector3) -> Basis:
+    var diag := box_tensor(def.mass_kg, half_extents(def))
+    var r := OrientationTable.basis_for(orientation_index)
+    var local := Basis(Vector3(diag.x, 0.0, 0.0),
+                       Vector3(0.0, diag.y, 0.0),
+                       Vector3(0.0, 0.0, diag.z))
+    return add(r * local * r.transposed(), parallel_axis(def.mass_kg, offset))
+
+static func parallel_axis(mass_kg: float, d: Vector3) -> Basis:
+    var dd := d.dot(d)
+    return Basis(
+        Vector3(mass_kg * (dd - d.x*d.x), mass_kg * (-d.x*d.y),     mass_kg * (-d.x*d.z)),
+        Vector3(mass_kg * (-d.y*d.x),     mass_kg * (dd - d.y*d.y), mass_kg * (-d.y*d.z)),
+        Vector3(mass_kg * (-d.z*d.x),     mass_kg * (-d.z*d.y),     mass_kg * (dd - d.z*d.z)))
+
+static func add(a: Basis, b: Basis) -> Basis:
+    return Basis(a.x + b.x, a.y + b.y, a.z + b.z)
+
+## NOT Basis(), which is the identity matrix — accumulating onto it adds a unit
+## tensor to every Assembly in the game.
+static func zero() -> Basis:
+    return Basis(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+
+static func diagonal_of(t: Basis) -> Vector3:
+    return Vector3(t.x.x, t.y.y, t.z.z)
 ```
+
+`half_extents` reads the registry's baked `bounds_size_cells`, which is `bounds_max_cell − bounds_min_cell + 1` computed once at load rather than per solve.
 
 ### 3.4 Off-Diagonal Coupling Correction
 
@@ -270,27 +284,36 @@ The recompute runs on `WorkerThreadPool`. The result is applied at the **start o
 class_name MassRecomputeScheduler
 extends Node
 
-var _task: int = -1
-var _dirty: bool = false
-var _staged: MassSolver.MassProperties = null
+var _targets: Dictionary = {}                       # assembly_id -> AssemblyRuntime
+var _dirty: PackedInt32Array = PackedInt32Array()   # ascending, duplicate-free
+var _inputs: Array[MassSolver.MassInput] = []
+var _results: Array[MassSolver.MassProperties] = []
+var _task_id: int = -1
 
 func _ready() -> void:
-    EventBus.assembly_mass_dirty.connect(func(_id): _dirty = true)
+    MatchClock.tick_started.connect(_on_tick_started)
+    EventBus.assembly_mass_dirty.connect(_mark_dirty)
+    EventBus.consumable_mass_step.connect(_mark_dirty)
+    EventBus.part_attached.connect(_on_part_changed)
+    EventBus.part_removed.connect(_on_part_changed)
+    EventBus.island_detached.connect(_on_island_detached)
 
-func _physics_process(_dt: float) -> void:
-    # Apply first, so the tick's forces use the newest properties.
-    if _staged != null:
-        _apply(_staged)
-        _staged = null
-    if _dirty and _task == -1:
-        _dirty = false
-        _task = WorkerThreadPool.add_task(_recompute_task, true, "mass_recompute")
-    if _task != -1 and WorkerThreadPool.is_task_completed(_task):
-        WorkerThreadPool.wait_for_task_completion(_task)
-        _task = -1
+func _on_tick_started(tick: int) -> void:
+    _join_and_apply()      # apply first, so the tick's forces use the newest properties
+    _launch(tick)
 ```
 
-This is one of the few `_physics_process` implementations in the assembly subsystem, and it exists solely to schedule and apply — it never computes.
+**Three amendments**, all of them tightening this section rather than changing what it decides:
+
+1. **It runs on `MatchClock.tick_started`, not on a raw `_physics_process`.** §11 invariant 4 requires the result to land at the *start* of a tick, and `_physics_process` cannot promise that: a node's position among the other physics callbacks is scene-tree construction order, so the motion system could read last tick's mass for a whole tick and nothing would say so. `MatchClock` sets `process_physics_priority = -1000` and is first by definition. The scheduler therefore declares no per-frame callback at all, which also keeps it out of `tests/arch/test_no_polling.gd`'s allowlist.
+
+2. **The task is joined on the next tick unconditionally**, rather than polled with `is_task_completed` until it happens to be ready. A 255-part solve costs 0.29 ms against a 16.6 ms tick (§4.4), so the join has effectively nothing to wait for; in exchange the result lands a fixed one tick after the event on every machine instead of a variable number of ticks later, which the network layer's replay agreement depends on.
+
+3. **The worker reads a snapshot, not the live Assembly.** `MassSolver.capture` copies the live slot set — definition id, origin cell, orientation — into flat packed arrays on the main thread, and `MassSolver.compute_from` runs against that. Without it the solve races the tick that scheduled it: destruction, island severing, and re-parenting all mutate `ChassisGraph.alive` and the state array while the worker is reading them, and the symptom is a mass figure that is wrong for one tick and never reproduces. The snapshot is at most 255 entries of flat integer data and costs a fraction of the tensor accumulation it feeds. `PartDefinition` is not copied — Architectural Invariant I-11 makes it immutable, so the worker reads it directly.
+
+The batch arrays are emptied by the join that consumes them and nowhere else. Clearing them in both the join and the launch reads as prudence and is worse than either alone: with two owners neither is load-bearing, so the one that is actually required can be deleted without a single test noticing.
+
+This node schedules and applies; it never computes.
 
 ### 4.4 Cost
 

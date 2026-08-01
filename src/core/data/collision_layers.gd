@@ -24,6 +24,13 @@ const LAYER_AIM_TRACE: int = 1 << 9  # aim raycast targets
 ## physics tick combined.
 const MASK_DEBRIS: int = LAYER_GROUND | LAYER_STATIC_VOLUME
 
+## What one Assembly's chassis body collides with. Includes its own layer —
+## Assemblies ram each other, and that is the whole point — and includes debris,
+## so a wreck left in the road is an obstacle rather than a decoration.
+const MASK_ASSEMBLY_HULL: int = (
+	LAYER_ASSEMBLY_HULL | LAYER_GROUND | LAYER_STATIC_VOLUME | LAYER_DEBRIS
+)
+
 const MASK_GROUND: int = LAYER_GROUND
 const MASK_STATIC_VOLUME: int = LAYER_STATIC_VOLUME
 const MASK_PROJECTILE_TARGET: int = (

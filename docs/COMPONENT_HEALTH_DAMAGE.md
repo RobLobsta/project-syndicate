@@ -277,11 +277,15 @@ The mapping from a Godot collision shape index back to a part slot is maintained
 class_name ChassisBodyRef
 extends RigidBody3D
 
+var assembly_id: int = 0
 var _shape_to_slot: PackedByteArray = PackedByteArray()
 
 func register_shape(shape_index: int, slot: int) -> void:
-    if _shape_to_slot.size() <= shape_index:
-        _shape_to_slot.resize(shape_index + 1)
+    # Grown with INVALID_SLOT rather than a zero-filling resize: slot 0 is the
+    # Core Module, so an index left unassigned would otherwise report a hit on
+    # the one part whose loss terminates the Assembly.
+    while _shape_to_slot.size() <= shape_index:
+        _shape_to_slot.append(SyndicateConstants.INVALID_SLOT)
     _shape_to_slot[shape_index] = slot
 
 func slot_for_shape_index(shape_index: int) -> int:
@@ -289,6 +293,8 @@ func slot_for_shape_index(shape_index: int) -> int:
         return SyndicateConstants.INVALID_SLOT
     return _shape_to_slot[shape_index]
 ```
+
+Indices are assigned in ascending slot order when the Assembly spawns and never move afterwards, which is why the array can be flat. A part taken out of the simulation has its shapes **disabled**, not removed — see `DYNAMIC_MASS_PHYSICS.md` §2.
 
 This is a one-byte array lookup. It is the entire mechanism by which "which part did I hit" is answered, and it is O(1) precisely because colliders are authored primitives with stable indices rather than generated geometry.
 

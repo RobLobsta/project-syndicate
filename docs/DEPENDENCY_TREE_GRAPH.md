@@ -466,7 +466,7 @@ static func detach(assembly: AssemblyRuntime, island: PackedByteArray) -> RigidB
     body.mass = total_mass
     body.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
     body.center_of_mass = Vector3.ZERO          # already re-centred on the island COM
-    body.inertia = InertiaSolver.island_inertia(assembly, island, island_com_local)
+    body.inertia = InertiaSolver.island_inertia(assembly.states, island, island_com_local)
     body.collision_layer = CollisionLayers.LAYER_DEBRIS
     body.collision_mask = CollisionLayers.MASK_DEBRIS
     body.global_transform = assembly.body.global_transform \
@@ -482,6 +482,8 @@ static func detach(assembly: AssemblyRuntime, island: PackedByteArray) -> RigidB
     EventBus.island_detached.emit(assembly.assembly_id, island, body.get_instance_id())
     return body
 ```
+
+`island_inertia` takes the state array rather than the `AssemblyRuntime` this section originally passed it. It reads nothing else from the runtime, and taking the array keeps the mass layer independent of the runtime layer — the same reason `ChassisGraph.attach` takes a part's mass rather than reaching into `PartRegistry` for it. It is implemented in `DYNAMIC_MASS_PHYSICS.md` §3.3 and is the only part of this section that exists ahead of `DebrisPool`.
 
 The velocity inheritance term `ω × r` is essential. Without it, a panel shorn off a spinning Assembly drops straight down while the Assembly rotates away — a tell-tale artefact of naive detachment implementations. With it, the panel flies off tangentially, exactly as it should.
 

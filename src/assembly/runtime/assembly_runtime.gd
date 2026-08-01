@@ -1,0 +1,275 @@
+class_name AssemblyRuntime
+extends Node3D
+## One Assembly in a match: its single rigid body, its collision geometry, its
+## per-part state, and its Chassis Graph. The node structure is
+## [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] §2.
+##
+## [codeblock]
+## AssemblyRuntime      (this node)
+## ├── ChassisBody      (ChassisBodyRef)   the ONLY physics body
+## │   ├── shape_s000_p0 (CollisionShape3D)
+## │   ├── shape_s000_p1 (CollisionShape3D)
+## │   ├── ...
+## │   └── MotiveProbes (Node3D)           ShapeCast3D per Motive Assembly
+## ├── VisualRoot       (Node3D)           interpolated; never a physics parent
+## └── AudioRoot        (Node3D)
+## [/codeblock]
+##
+## [b]Amendment to §2.[/b] The document places the shapes under a
+## [code]ColliderRoot[/code] node inside the body. Godot registers a
+## [CollisionShape3D] only when it is a [i]direct[/i] child of a
+## [CollisionObject3D] — an intervening [Node3D] leaves it silently inert, with
+## no error and no shape on the body — so the shapes are direct children of
+## [code]ChassisBody[/code] and [code]ColliderRoot[/code] is gone. This is the
+## worst class of failure for Architectural Invariant I-1: an Assembly with no
+## collision geometry looks perfectly healthy until nothing can be shot.
+## [code]MotiveProbes[/code] stays, because a [ShapeCast3D] is not a shape owner
+## and works anywhere in the tree.
+##
+## Architectural Invariant I-1 in full: every shape here comes from an authored
+## [ColliderPrimitiveDef] and nothing else, colliders never change with damage
+## state or LOD, and no node under [member visual_root] is ever a physics parent.
+## [method visual_decoupling_violations] checks the second half at spawn.
+##
+## Architectural Invariant I-4: no [code]_process[/code] and no
+## [code]_physics_process[/code] here. Mass is recomputed by
+## [MassRecomputeScheduler] on the events of §4.1; the visual transform is
+## written by [AssemblyInterpolator]; this node holds the structure they act on.
+
+const MAX: int = SyndicateConstants.MAX_PARTS_PER_ASSEMBLY
+const INVALID: int = SyndicateConstants.INVALID_SLOT
+
+## Subsystem tag gating the interpolator. A dedicated server disables it and no
+## interpolator is constructed at all — §9.2 of doc 12 gates at construction, not
+## per frame.
+const TAG_INTERPOLATOR: StringName = &"assembly_interpolator"
+
+## Identifies this Assembly in every signal it takes part in.
+##
+## Stored on the body rather than duplicated here: a physics query hands back a
+## [ChassisBodyRef] and nothing else, so the body has to know its own id, and two
+## copies of it are two chances to disagree.
+var assembly_id: int:
+	get:
+		return body.assembly_id
+	set(value):
+		body.assembly_id = value
+
+var body: ChassisBodyRef = null
+var motive_probes: Node3D = null
+## Sibling of [member body], not a child of it (§11 invariant 2).
+var visual_root: Node3D = null
+var audio_root: Node3D = null
+var interpolator: AssemblyInterpolator = null
+
+## Slot -> its mutable state, or null for a free slot. Flat and indexed by slot,
+## so lookup is one index and iteration is cache-coherent.
+var states: Array[PartInstanceState] = []
+var graph: ChassisGraph = null
+
+## Last properties applied to [member body]. Read by the suspension retune of
+## §6.4 and by the stability metrics of §5.1; written only by
+## [method apply_mass_properties].
+var mass_properties: MassSolver.MassProperties = null
+
+## Shape index -> the [CollisionShape3D] holding it. The array index is the
+## body's shape index, which holds because shapes are only ever appended.
+var _shapes: Array[CollisionShape3D] = []
+
+
+func _init() -> void:
+	states.resize(MAX)
+	graph = ChassisGraph.new()
+
+	body = ChassisBodyRef.new()
+	body.name = "ChassisBody"
+	body.collision_layer = CollisionLayers.LAYER_ASSEMBLY_HULL
+	body.collision_mask = CollisionLayers.MASK_ASSEMBLY_HULL
+	add_child(body)
+
+	motive_probes = Node3D.new()
+	motive_probes.name = "MotiveProbes"
+	body.add_child(motive_probes)
+
+	visual_root = Node3D.new()
+	visual_root.name = "VisualRoot"
+	add_child(visual_root)
+
+	audio_root = Node3D.new()
+	audio_root.name = "AudioRoot"
+	add_child(audio_root)
+
+	if SubsystemGate.is_enabled(TAG_INTERPOLATOR):
+		interpolator = AssemblyInterpolator.new()
+		interpolator.name = "Interpolator"
+		interpolator.body = body
+		interpolator.visual_root = visual_root
+		add_child(interpolator)
+
+
+## Takes over a validated [BuildContext] and builds the physics geometry for
+## every part it committed.
+##
+## This is the one seam from the build lattice into a match. The garage, the
+## auto-assembler, blueprint loading, and server-side re-validation all produce a
+## context through the identical [PlacementValidator] chain (CLAUDE.md §10
+## rule 8), and every one of them arrives here. Nothing else may populate a
+## runtime, because nothing else has been through that chain.
+##
+## The context's build proxies are released as part of the transfer: they exist
+## to answer §7.7's interpenetration query during construction, and the real
+## body's shapes replace them.
+func adopt(ctx: BuildContext) -> void:
+	assert(ctx != null, "adopt of a null BuildContext")
+	assert(_shapes.is_empty(), "adopt into a runtime that already holds parts")
+	assembly_id = ctx.assembly_id
+	graph = ctx.graph
+	for slot in MAX:
+		states[slot] = ctx.states[slot]
+	# Ascending slot order, so the shape indices — and therefore the shape-index
+	# to slot map every damage query reads — are reproducible for a given
+	# blueprint on the server and on every client.
+	for slot in MAX:
+		if states[slot] != null:
+			attach_part(slot)
+		ctx.despawn_proxy(slot)
+	_assert_visual_decoupling()
+
+
+## Builds [param slot]'s authored collider primitives onto the chassis body.
+##
+## Architectural Invariant I-1: the primitives are the part's [ColliderProfile]
+## and nothing else. They are the same geometry the garage's build proxy used,
+## which is what makes the placement the player saw accepted the placement the
+## match simulates.
+func attach_part(slot: int) -> void:
+	var st := state(slot)
+	if st == null:
+		push_error("AssemblyRuntime: attach of empty slot %d" % slot)
+		return
+	var def := PartRegistry.definition(st.part_def_id)
+	var profile := def.collider_profile
+	if profile == null or profile.primitives.is_empty():
+		push_warning(
+			"AssemblyRuntime: '%s' at slot %d has no collider primitives"
+			% [def.part_key, slot]
+		)
+		return
+
+	var part_xform := Transform3D(
+		OrientationTable.basis_for(st.orientation_index),
+		LatticeMath.cell_to_local(st.origin_cell)
+	)
+	var indices := PackedInt32Array()
+	for p in profile.primitives.size():
+		var prim: ColliderPrimitiveDef = profile.primitives[p]
+		var shape := prim.build_shape()
+		if shape == null:
+			push_error(
+				"AssemblyRuntime: primitive %d of '%s' built no shape" % [p, def.part_key]
+			)
+			continue
+		var node := CollisionShape3D.new()
+		node.name = "shape_s%03d_p%d" % [slot, p]
+		node.shape = shape
+		node.transform = part_xform * prim.local_transform()
+		var index := _shapes.size()
+		_shapes.append(node)
+		indices.append(index)
+		body.add_child(node)
+		body.register_shape(index, slot)
+	st.collider_shape_ids = indices
+
+
+## Takes [param slot]'s collision geometry out of the simulation.
+##
+## The shapes are disabled rather than removed, and that is load-bearing.
+## Removing a shape renumbers every later index on the body, which would
+## invalidate the shape-index to slot map of doc 08 §5.4 for every part placed
+## after the one that died — turning one destroyed panel into mis-attributed hits
+## across the whole Assembly. Indices are assigned once and never move.
+##
+## The state slot is left populated: a destroyed part is still a part, with an
+## integrity of zero and a band of [code]DESTROYED[/code], until the detachment
+## solver decides whether it leaves as debris.
+func release_part(slot: int) -> void:
+	var st := state(slot)
+	if st == null:
+		return
+	for i in st.collider_shape_ids:
+		if i >= 0 and i < _shapes.size():
+			_shapes[i].disabled = true
+
+
+## Re-enables geometry that [method release_part] disabled, for the repair path
+## of doc 08 §11.
+func restore_part(slot: int) -> void:
+	var st := state(slot)
+	if st == null:
+		return
+	for i in st.collider_shape_ids:
+		if i >= 0 and i < _shapes.size():
+			_shapes[i].disabled = false
+
+
+func state(slot: int) -> PartInstanceState:
+	if slot < 0 or slot >= MAX:
+		return null
+	return states[slot]
+
+
+func definition_at(slot: int) -> PartDefinition:
+	var st := state(slot)
+	if st == null:
+		return null
+	return PartRegistry.definition(st.part_def_id)
+
+
+## §3.5. Writes solved mass properties onto the body and keeps them for the
+## systems that read them between recomputes.
+func apply_mass_properties(mp: MassSolver.MassProperties) -> void:
+	mass_properties = mp
+	MassSolver.apply_mass_properties(body, mp)
+
+
+## Total shapes ever added to the body, disabled or not. Diagnostics and tests.
+func shape_count() -> int:
+	return _shapes.size()
+
+
+## Node paths under [member visual_root] that violate §11 invariant 2, in tree
+## order. Empty is the only acceptable answer.
+##
+## Returned rather than asserted so that a test can inspect the list, and so that
+## the walk itself is not compiled out of a release build along with the assert
+## that consumes it.
+func visual_decoupling_violations() -> PackedStringArray:
+	var out := PackedStringArray()
+	_collect_violations(visual_root, out)
+	return out
+
+
+func _collect_violations(node: Node, out: PackedStringArray) -> void:
+	for child in node.get_children():
+		if child is CollisionObject3D:
+			var co := child as CollisionObject3D
+			out.append(
+				(
+					"%s is a CollisionObject3D under VisualRoot (layer %d, mask %d)"
+					% [get_path_to(child), co.collision_layer, co.collision_mask]
+				)
+			)
+		elif child is CollisionShape3D:
+			out.append("%s is a CollisionShape3D under VisualRoot" % get_path_to(child))
+		_collect_violations(child, out)
+
+
+## §2. Walks the visual subtree in debug builds; a violation is a programming
+## error, not a recoverable condition, because it means physics and presentation
+## have been coupled and every guarantee in Architectural Invariant I-1 is void.
+func _assert_visual_decoupling() -> void:
+	var violations := visual_decoupling_violations()
+	assert(
+		violations.is_empty(),
+		"Architectural Invariant I-1: %s" % "; ".join(violations)
+	)

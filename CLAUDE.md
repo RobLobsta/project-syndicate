@@ -317,6 +317,7 @@ Defined once in `src/core/data/collision_layers.gd`. Layer numbers are frozen.
 Common masks:
 
 ```gdscript
+const MASK_ASSEMBLY_HULL     := (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5)
 const MASK_GROUND            := 1 << 2                      # LAYER_GROUND
 const MASK_STATIC_VOLUME     := 1 << 3
 const MASK_DEBRIS            := (1 << 2) | (1 << 3)         # ground + volumes only
@@ -326,7 +327,7 @@ const MASK_AIM_TRACE         := (1 << 0) | (1 << 2) | (1 << 3)
 const MASK_BUILD_GHOST       := 1 << 7
 ```
 
-Note `MASK_DEBRIS` excludes `LAYER_DEBRIS` — debris never collides with debris.
+Note `MASK_DEBRIS` excludes `LAYER_DEBRIS` — debris never collides with debris. `MASK_ASSEMBLY_HULL` *includes* its own layer, because Assemblies ram each other, and includes `LAYER_DEBRIS` so a wreck left in the road is an obstacle rather than a decoration.
 
 ### 5.2 Render Layers
 
