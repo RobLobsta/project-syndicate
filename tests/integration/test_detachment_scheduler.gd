@@ -29,6 +29,7 @@ var _terminated: Array = []
 var _structure_changed: Array = []
 var _mass_dirty: Array = []
 var _schedulers: Array[DetachmentScheduler] = []
+var _runtimes: Array[AssemblyRuntime] = []
 
 
 func before_all() -> void:
@@ -42,6 +43,7 @@ func after_all() -> void:
 	EventBus.assembly_structure_changed.disconnect(_on_structure_changed)
 	EventBus.assembly_mass_dirty.disconnect(_on_mass_dirty)
 	_free_schedulers()
+	_free_runtimes()
 
 
 ## ===== BATCHING ========================================================
@@ -93,7 +95,7 @@ func test_assemblies_resolve_in_ascending_id_order() -> void:
 	var high := _chain(2)
 	var low := _chain(2)
 	var s := _scheduler(high)
-	s.register(OTHER_ASSEMBLY, low)
+	_register(s, OTHER_ASSEMBLY, low)
 
 	EventBus.part_destroyed.emit(ASSEMBLY, 1, 0)
 	EventBus.part_destroyed.emit(OTHER_ASSEMBLY, 1, 0)
@@ -104,6 +106,25 @@ func test_assemblies_resolve_in_ascending_id_order() -> void:
 		[OTHER_ASSEMBLY, ASSEMBLY],
 		"the lower assembly id resolves first regardless of emission order"
 	)
+
+
+func test_an_assembly_leaving_the_match_drops_its_pending_work() -> void:
+	# The graph belongs to the Assembly, and once it is unregistered nobody owns
+	# it. Resolving a destruction queued against it would walk a structure that
+	# has left the match — and the resolve path's own null guard covers a
+	# different case, an id that was never registered at all.
+	var g := _chain(3)
+	var s := _scheduler(g)
+
+	EventBus.part_destroyed.emit(ASSEMBLY, 1, 0)
+	check_eq(s.pending_for(ASSEMBLY), PackedByteArray([1]), "the death is queued")
+
+	s.registry.unregister(ASSEMBLY)
+	check_eq(s.pending_for(ASSEMBLY), PackedByteArray(), "and leaves with the Assembly")
+
+	EventBus.tick_resolved.emit()
+	check_true(g.is_alive(1), "so the resolve phase never touches the orphaned graph")
+	check_eq(_structure_changed.size(), 0, "and announces nothing for it")
 
 
 func test_an_idle_tick_announces_nothing() -> void:
@@ -324,13 +345,28 @@ func _scheduler(graph: ChassisGraph) -> DetachmentScheduler:
 	_free_schedulers()
 	_reset_recordings()
 	var s := DetachmentScheduler.new()
+	s.registry = AssemblyRegistry.new()
 	# A TestCase is a RefCounted and has no tree of its own. The scheduler has to
 	# actually enter one, because everything it does is set up in _ready.
 	EventBus.get_tree().root.add_child(s)
-	s.register(ASSEMBLY, graph)
+	_register(s, ASSEMBLY, graph)
 	s.island_severed.connect(_on_island_severed)
 	_schedulers.append(s)
 	return s
+
+
+## Puts [param graph] into [param s]'s registry under [param assembly_id].
+##
+## The registry holds [AssemblyRuntime]s, and these tests are about topology
+## alone, so the runtime is a bare one carrying nothing but the id and the graph.
+## Building a real one would drag a [BuildContext] and a physics space into every
+## test in this file for no assertion's benefit.
+func _register(s: DetachmentScheduler, assembly_id: int, graph: ChassisGraph) -> void:
+	var runtime := AssemblyRuntime.new()
+	runtime.assembly_id = assembly_id
+	runtime.graph = graph
+	_runtimes.append(runtime)
+	s.registry.register(runtime)
 
 
 func _free_schedulers() -> void:
@@ -339,6 +375,12 @@ func _free_schedulers() -> void:
 			s.get_parent().remove_child(s)
 			s.free()
 	_schedulers.clear()
+
+
+func _free_runtimes() -> void:
+	for runtime in _runtimes:
+		runtime.free()
+	_runtimes.clear()
 
 
 func _reset_recordings() -> void:

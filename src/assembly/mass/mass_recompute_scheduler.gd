@@ -42,13 +42,15 @@ extends Node
 ## was captured on so a consumer can tell a fresh solve from a superseded one.
 signal mass_applied(assembly_id: int, source_tick: int)
 
-## Assembly id -> [AssemblyRuntime]. Registered by whoever owns the Assembly.
+## The Assemblies this scheduler solves for. Assigned by the match scene before
+## the node enters the tree.
 ##
-## The same shape as [DetachmentScheduler]'s map and for the same reason:
-## CLAUDE.md §2 lists an [code]assembly_registry.gd[/code] that does not exist
-## yet, and registering directly avoids pre-empting its design. When it lands,
-## [method register] and [method unregister] are the two calls to move.
-var _targets: Dictionary = {}
+## [b]Was a private [code]assembly_id -> AssemblyRuntime[/code] map.[/b] It is
+## now [AssemblyRegistry], which is also what doc 08 §5.3 and doc 12 §7.2 resolve
+## a damage target and a rewind body through. Registration is observed rather
+## than performed: an Assembly entering the match needs its first mass solve, and
+## noticing that here is what stops the match scene having to remember to ask.
+var registry: AssemblyRegistry = null
 
 ## Assembly ids awaiting a solve. Ascending and duplicate-free, so a batch is
 ## captured in a reproducible order (Architectural Invariant I-9).
@@ -63,6 +65,9 @@ var _task_id: int = -1
 
 
 func _ready() -> void:
+	assert(registry != null, "MassRecomputeScheduler entered the tree with no AssemblyRegistry")
+	registry.assembly_registered.connect(_mark_dirty)
+	registry.assembly_unregistered.connect(_on_assembly_unregistered)
 	MatchClock.tick_started.connect(_on_tick_started)
 	EventBus.assembly_mass_dirty.connect(_mark_dirty)
 	EventBus.consumable_mass_step.connect(_mark_dirty)
@@ -72,6 +77,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	registry.assembly_registered.disconnect(_mark_dirty)
+	registry.assembly_unregistered.disconnect(_on_assembly_unregistered)
 	MatchClock.tick_started.disconnect(_on_tick_started)
 	EventBus.assembly_mass_dirty.disconnect(_mark_dirty)
 	EventBus.consumable_mass_step.disconnect(_mark_dirty)
@@ -83,15 +90,9 @@ func _exit_tree() -> void:
 	_join()
 
 
-## Registers the runtime whose body this scheduler writes for [param assembly_id].
-func register(assembly_id: int, runtime: AssemblyRuntime) -> void:
-	assert(not _targets.has(assembly_id), "assembly %d registered twice" % assembly_id)
-	_targets[assembly_id] = runtime
-	_mark_dirty(assembly_id)
-
-
-func unregister(assembly_id: int) -> void:
-	_targets.erase(assembly_id)
+## An Assembly that has left the match has no body left to write to, so a solve
+## queued for it is dropped rather than run against a freed node.
+func _on_assembly_unregistered(assembly_id: int) -> void:
 	var at := _dirty.find(assembly_id)
 	if at != -1:
 		_dirty.remove_at(at)
@@ -119,7 +120,7 @@ func _on_island_detached(assembly_id: int, _slots: PackedByteArray, _body_id: in
 ## always length one, and keeping it ordered at all times means the capture order
 ## never depends on which event arrived first.
 func _mark_dirty(assembly_id: int) -> void:
-	if not _targets.has(assembly_id):
+	if not registry.has(assembly_id):
 		return
 	for i in _dirty.size():
 		if _dirty[i] == assembly_id:
@@ -147,7 +148,7 @@ func _launch(tick: int) -> void:
 	# actually required can be deleted without a single test noticing.
 	assert(_inputs.is_empty() and _results.is_empty(), "a batch was never consumed")
 	for assembly_id in _dirty:
-		var runtime: AssemblyRuntime = _targets.get(assembly_id)
+		var runtime := registry.get_runtime(assembly_id)
 		if runtime == null:
 			continue
 		_inputs.append(
@@ -159,7 +160,7 @@ func _launch(tick: int) -> void:
 	_task_id = WorkerThreadPool.add_task(_solve_batch, true, "mass_recompute")
 
 
-## Runs on a worker thread. Reads its snapshots and the immutable registry, and
+## Runs on a worker thread. Reads its snapshots and the immutable [PartRegistry], and
 ## touches nothing else — no node, no signal, no [ChassisGraph].
 func _solve_batch() -> void:
 	for input in _inputs:
@@ -170,7 +171,7 @@ func _join_and_apply() -> void:
 	if not _join():
 		return
 	for mp in _results:
-		var runtime: AssemblyRuntime = _targets.get(mp.assembly_id)
+		var runtime := registry.get_runtime(mp.assembly_id)
 		# An Assembly terminated during the solve has no body left to write to.
 		# The result is discarded rather than re-queued: there is nothing to
 		# recompute for a wreck.

@@ -39,6 +39,15 @@ signal island_severed(assembly_id: int, slots: PackedByteArray)
 ## there is simply no debris body, which is presentation rather than structure.
 var island_sink: Callable = Callable()
 
+## The Assemblies this scheduler resolves for. Assigned by the match scene before
+## the node enters the tree.
+##
+## [b]Was a private [code]assembly_id -> ChassisGraph[/code] map.[/b] Two
+## schedulers each kept one, and doc 08 §5.3 and doc 12 §7.2 both assumed a third
+## that did not exist; [AssemblyRegistry] is that lookup, and this reads the graph
+## out of it rather than being told about one separately.
+var registry: AssemblyRegistry = null
+
 ## Assembly id -> [PackedByteArray] of slots destroyed since the last resolve.
 var _pending: Dictionary = {}
 ## Assembly id -> slots left parentless by a strain failure since the last
@@ -46,8 +55,6 @@ var _pending: Dictionary = {}
 ## a destroyed one: resolving it as destroyed would delete a part that may still
 ## be holding on through another edge.
 var _pending_orphans: Dictionary = {}
-## Assembly id -> [ChassisGraph], registered by whoever owns the Assembly.
-var _graphs: Dictionary = {}
 ## §5.6. Detaching an island can destroy further parts — a severed Power Plant
 ## detonates — and those deaths must land in the next tick's pending set rather
 ## than re-entering the pass that caused them.
@@ -55,26 +62,26 @@ var _reentrancy_guard: bool = false
 
 
 func _ready() -> void:
+	assert(registry != null, "DetachmentScheduler entered the tree with no AssemblyRegistry")
 	EventBus.part_destroyed.connect(_on_part_destroyed)
 	EventBus.joint_failed.connect(_on_joint_failed)
 	EventBus.connect_tick_resolved(_resolve_all, EventBusService.PRIORITY_DETACHMENT)
+	registry.assembly_unregistered.connect(_on_assembly_unregistered)
 
 
 func _exit_tree() -> void:
 	EventBus.part_destroyed.disconnect(_on_part_destroyed)
 	EventBus.joint_failed.disconnect(_on_joint_failed)
 	EventBus.disconnect_tick_resolved(_resolve_all)
+	registry.assembly_unregistered.disconnect(_on_assembly_unregistered)
 
 
-## Registers the graph this scheduler resolves for [param assembly_id].
-func register(assembly_id: int, graph: ChassisGraph) -> void:
-	assert(not _graphs.has(assembly_id), "assembly %d registered twice" % assembly_id)
-	_graphs[assembly_id] = graph
-
-
-func unregister(assembly_id: int) -> void:
-	_graphs.erase(assembly_id)
+## An Assembly that has left the match has nothing to resolve. Dropping the
+## pending set matters: a destruction queued in the tick it was removed would
+## otherwise resolve against a graph nobody owns any more.
+func _on_assembly_unregistered(assembly_id: int) -> void:
 	_pending.erase(assembly_id)
+	_pending_orphans.erase(assembly_id)
 
 
 ## Slots awaiting resolution for [param assembly_id]. Used by
@@ -96,7 +103,7 @@ func _on_part_destroyed(assembly_id: int, slot: int, _cause: int) -> void:
 ## joint: §5.3 searches from the neighbours of a removed part, and the part whose
 ## support was just cut is the one whose route to the Core Module is in doubt.
 func _on_joint_failed(assembly_id: int, slot_a: int, slot_b: int) -> void:
-	var graph: ChassisGraph = _graphs.get(assembly_id)
+	var graph := registry.graph_of(assembly_id)
 	if graph == null:
 		push_error("DetachmentScheduler: joint_failed for unregistered assembly %d" % assembly_id)
 		return
@@ -157,7 +164,7 @@ func _resolve_all() -> void:
 func _resolve_assembly(
 	assembly_id: int, destroyed: PackedByteArray, orphans: PackedByteArray
 ) -> void:
-	var graph: ChassisGraph = _graphs.get(assembly_id)
+	var graph := registry.graph_of(assembly_id)
 	if graph == null:
 		push_error("DetachmentScheduler: resolve for unregistered assembly %d" % assembly_id)
 		return

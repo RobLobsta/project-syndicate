@@ -496,7 +496,7 @@ The velocity inheritance term `ω × r` is essential. Without it, a panel shorn 
 
 **Six amendments**, none of which changes what this section decides:
 
-1. **`DebrisPool` and `DebrisReaper` are instances, passed in.** This section originally called them as globals. `CLAUDE.md` §4 freezes the autoload list at eight, so the pool is an ordinary `Node` owned by the match scene; it constructs and owns the reaper, because a reaper pointed at no pool is not a meaningful object.
+1. **`DebrisPool` and `DebrisReaper` are instances, passed in.** This section originally called them as globals. `CLAUDE.md` §4 freezes the autoload list at eight, so the pool is an ordinary `Node` owned by the match scene; it constructs and owns the reaper, because a reaper pointed at no pool is not a meaningful object. The pool also holds an `AssemblyRegistry` and exposes `on_island_severed`, which is the production form of `DetachmentScheduler.island_sink`: the seam between §5 and §6 is exactly one lookup wide, and assigning that method is the single line the match scene writes to connect the two halves of detachment.
 
 2. **The graph writes belong to §5.3, not here.** This section wrote `assembly.graph.alive[slot] = 0`, which `ChassisGraph.remove_node` has already done by the time an island is announced. Two owners of the one fact this whole subsystem turns on is worse than either alone: neither would be load-bearing, and either could be deleted silently. §6 asserts the slot is already dead instead.
 
@@ -527,13 +527,28 @@ body.angular_damp = 0.55
 
 `DebrisReaper` additionally freezes any debris body that has been asleep for more than 4 s (`freeze_mode = FREEZE_MODE_STATIC`), removing it from the solver entirely while keeping it visible until its lifetime expires.
 
-**Three amendments.**
+**Four amendments.**
 
-**Both deadlines are tick counts, not accumulated seconds.** 22 s is 1320 additions of `PHYSICS_DT`, which does not land on a round number, so a float countdown expires a tick early or late depending on how the additions happened to round. The tick a body disappears on is replicated (`HEADLESS_NETWORK_SYNC.md` §5), so the server and a client accumulating in a different order would disagree about it. `DebrisReaper` stores `expires_at_tick` and `asleep_since_tick` on the body and compares integers. The same reasoning produced §4.2's dwell epsilon; here the problem can be removed rather than tolerated.
+**A body's lifetime ends in two events, not one.** As written, `DEBRIS_LIFETIME_S` both removed the wreck from the simulation and deleted it. Watched, that is a wreck blinking out of the world in front of the player, and waiting for the player to look away is the obvious fix and the wrong one as a single event: debris is an obstacle — `CLAUDE.md` §5.1's `MASK_ASSEMBLY_HULL` includes `LAYER_DEBRIS`, and §9.3 of `HEADLESS_NETWORK_SYNC.md` has the dedicated server spawning these bodies for exactly that reason — so a wreck kept alive by one player's camera would be a collision every other machine had already stopped simulating.
+
+Splitting the event settles it:
+
+| Phase | Ends when | Deterministic? |
+|---|---|---|
+| Simulated | `expires_at_tick`, i.e. `DEBRIS_LIFETIME_S` after the island was severed | Yes — the same tick on the server and on every client |
+| Retired | off every screen for `OFFSCREEN_DWELL_S` (0.5 s), or `LINGER_MAX_S` (30 s) after retiring, or when the pool needs the slot | No, and nothing simulated may depend on it |
+
+Retirement is `DebrisPool.retire`: velocity zeroed, `freeze_mode = FREEZE_MODE_STATIC`, layer and mask cleared. It happens on the scheduled tick whatever any camera is pointing at, so the set of debris that is an obstacle stays identical everywhere. What follows is presentation, and is the only part a viewer influences.
+
+Two details make the split safe rather than merely well-intentioned. `DebrisPool.acquire` evicts a **retired** body before a simulated one, so the deterministic set is never squeezed by how long one player happened to look at a wreck — a live body is only taken when all 96 are live, and that condition is reached at the same moment on every machine. And the off-screen test is a dwell rather than an instant, because a camera shake that clips a wreck out of frame for two frames would otherwise recycle it, and the player who panned back would find it gone.
+
+Visibility comes from a `VisibleOnScreenNotifier3D` fitted to the island's collider bounds, gated on the `debris_visibility` subsystem tag (doc 12 §9.2). It is a `VisualInstance3D` under a `PhysicsBody3D`, which elsewhere would violate Architectural Invariant I-1; it does not here, because a notifier draws nothing, owns no geometry, is a query volume the renderer already evaluates while culling, and is consulted only after the body has stopped being an obstacle. A build with the tag disabled constructs no notifier, and its bodies are recycled at `expires_at_tick` exactly as this section originally said.
+
+**Both deadlines are tick counts, not accumulated seconds.** 22 s is 1320 additions of `PHYSICS_DT`, which does not land on a round number, so a float countdown expires a tick early or late depending on how the additions happened to round. The tick a body leaves the simulation is replicated (`HEADLESS_NETWORK_SYNC.md` §5), so the server and a client accumulating in a different order would disagree about it. `DebrisReaper` stores `expires_at_tick`, `linger_deadline_tick`, `offscreen_since_tick` and `asleep_since_tick` on the body and compares integers. The same reasoning produced §4.2's dwell epsilon; here the problem can be removed rather than tolerated.
 
 **Shape nodes are reused, never freed.** A body returning to the pool disables its `CollisionShape3D` children and rewinds a cursor; the next island overwrites them in place and appends only if it needs more. Freeing them would mean removing nodes from a body inside a physics callback — the reaper runs on `MatchClock.tick_started` — and, worse, `queue_free` would leave the recycling path above handing out a body still carrying the last island's geometry for the rest of the frame.
 
-**The 0.25 s recycle fade is not implemented.** It is presentation, and debris has no meshes to fade until `EXTENSION_PIPELINE.md` §9 lands. A recycled body currently disappears on the tick it is taken.
+**The 0.25 s recycle fade is not implemented.** It is presentation, and debris has no meshes to fade until `EXTENSION_PIPELINE.md` §9 lands. A recycled body currently disappears on the tick it is taken. Once meshes exist, the fade belongs on the two paths where a wreck can go while somebody is watching it — the `LINGER_MAX_S` cap and pool exhaustion — and nowhere else, because the off-screen path is by construction unobserved.
 
 ---
 

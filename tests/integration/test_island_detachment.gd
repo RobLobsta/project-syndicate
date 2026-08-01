@@ -84,10 +84,10 @@ func test_a_destroyed_part_sheds_its_island_as_a_debris_body() -> void:
 	var fixture := _stack()
 	EventBus.part_destroyed.emit(ASSEMBLY, 1, 0)
 
-	check_eq(fixture.pool.active_count(), 0, "nothing is spawned before the tick resolves")
+	check_eq(fixture.pool.in_flight_count(), 0, "nothing is spawned before the tick resolves")
 	EventBus.tick_resolved.emit()
 
-	check_eq(fixture.pool.active_count(), 1, "one island, one body")
+	check_eq(fixture.pool.in_flight_count(), 1, "one island, one body")
 	var body := fixture.body()
 	if not check_not_null(body, "the sink produced a debris body"):
 		return
@@ -120,7 +120,7 @@ func test_losing_the_core_module_turns_the_survivors_into_debris() -> void:
 	EventBus.part_destroyed.emit(ASSEMBLY, ChassisGraph.CORE, 0)
 	EventBus.tick_resolved.emit()
 
-	check_eq(fixture.pool.active_count(), 1, "one component, one body")
+	check_eq(fixture.pool.in_flight_count(), 1, "one component, one body")
 	var body := fixture.body()
 	if not check_not_null(body, "the survivors became debris"):
 		return
@@ -134,7 +134,7 @@ func test_an_empty_island_produces_no_body() -> void:
 	var fixture := _stack()
 	var body := IslandDetacher.detach(fixture.runtime, PackedByteArray(), fixture.pool)
 	check_null(body, "no body for an empty island")
-	check_eq(fixture.pool.active_count(), 0, "and nothing taken from the pool")
+	check_eq(fixture.pool.in_flight_count(), 0, "and nothing taken from the pool")
 
 
 ## ===== §6.1 COLLIDERS ==================================================
@@ -464,31 +464,31 @@ func _stack() -> Fixture:
 	fixture.runtime.adopt(ctx)
 	fixture.pool = _pool()
 
+	fixture.registry = AssemblyRegistry.new()
+	fixture.registry.register(fixture.runtime)
+	fixture.pool.registry = fixture.registry
+
 	var scheduler := DetachmentScheduler.new()
+	scheduler.registry = fixture.registry
 	_schedulers.append(scheduler)
 	EventBus.get_tree().root.add_child(scheduler)
-	scheduler.register(ASSEMBLY, fixture.runtime.graph)
-	scheduler.island_sink = fixture.take_island
+	# The production wiring, not a stand-in: this is the one assignment the match
+	# scene makes to connect the two halves of detachment.
+	scheduler.island_sink = fixture.pool.on_island_severed
 	fixture.scheduler = scheduler
 	return fixture
 
 
-## Stands in for the match scene: it is what resolves an assembly id to the
-## runtime that owns it and hands both to §6.
+## The three objects the match scene owns, held together so a test can reach
+## any of them.
 class Fixture:
 	extends RefCounted
 
 	var runtime: AssemblyRuntime = null
 	var pool: DebrisPool = null
+	var registry: AssemblyRegistry = null
 	var scheduler: DetachmentScheduler = null
-	var bodies: Array[DebrisBodyRef] = []
-
-	func take_island(assembly_id: int, island: PackedByteArray) -> void:
-		assert(assembly_id == runtime.assembly_id, "island for another Assembly")
-		var body := IslandDetacher.detach(runtime, island, pool)
-		if body != null:
-			bodies.append(body)
 
 	## The single body this fixture's one destruction produced, or null.
 	func body() -> DebrisBodyRef:
-		return null if bodies.size() != 1 else bodies[0]
+		return null if pool.in_flight_count() != 1 else pool.in_flight_bodies()[0]
