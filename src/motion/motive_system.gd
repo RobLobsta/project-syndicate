@@ -1,0 +1,665 @@
+class_name MotiveSystem
+extends Node
+## Locomotion dispatch for one Assembly, owned by
+## [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] §6.0.
+##
+## The single place in the project that branches on locomotion family, and it
+## does so by array index rather than by [enum PartEnums.MotiveKind] — one
+## [constant PartEnums.LOCOMOTION_OF_MOTIVE_KIND] lookup per part, cached at
+## registration. Adding a fifth family is an append to that array plus one
+## solver, not a new branch in every consumer.
+##
+## This node declares [code]_physics_process[/code], which Architectural
+## Invariant I-4 permits: it is a force integrator, not a reactor to structural
+## events, and §9's dynamic amplification factor is explicitly per-tick work.
+## What it must never do is recompute structural state — mass, connectivity, and
+## bands all arrive as cached values written by their owners on their own events.
+##
+## [method step] is the whole tick and [method _physics_process] does nothing but
+## call it. That split is not decoration: the suite never runs a physics frame,
+## so a test drives [method step] directly with contacts it constructed itself,
+## through the identical path the engine uses.
+
+## Rate at which the strain model's dynamic amplification factor is refreshed.
+## §9: 10 Hz, not per tick, because the graph re-evaluates strain against it and
+## a per-tick update would cost more than the factor is worth.
+const KAPPA_INTERVAL_S: float = 0.1
+
+## Weight on the angular term of the dynamic factor. Captures the centripetal
+## load on a part at the end of a long boom, which pure linear acceleration
+## misses.
+const KAPPA_ANGULAR_WEIGHT: float = 0.35
+
+## Assembly this system moves. Set once, before the node enters the tree.
+var runtime: AssemblyRuntime = null
+## Aggregated Power Plant totals. Recomputed on structural and band events by
+## the owner, never here.
+var power: PowerSystem = null
+## This tick's intent. Written by the control system, the AI driver, or the
+## network input channel; read by every family.
+var input: ControlInput = null
+
+## Slot -> locomotion family, cached at registration. The dispatch table.
+var _family: PackedByteArray = PackedByteArray()
+## Slot -> traction/thrust multiplier from the part's band. Written only by
+## [method on_band_changed]; read every tick by every family.
+var _traction_mult: PackedFloat32Array = PackedFloat32Array()
+var _rolling_mult: PackedFloat32Array = PackedFloat32Array()
+var _steer_mult: PackedFloat32Array = PackedFloat32Array()
+var _damp_mult: PackedFloat32Array = PackedFloat32Array()
+
+## Slots registered with this system, ascending. Iterated instead of the full
+## 255-slot array so that an Assembly with four Motive Assemblies costs four
+## iterations, not two hundred and fifty-five.
+var _motive_slots: PackedInt32Array = PackedInt32Array()
+
+## Per-family state, keyed by slot. Only the family that owns a slot ever reads
+## its entry.
+var _contacts: Dictionary = {}  # slot -> Array[MotiveContact]
+var _discs: Dictionary = {}  # slot -> RotorDiscState
+var _limbs: Dictionary = {}  # slot -> LimbState
+
+## Shared gait clock. One per Assembly, not one per limb: the limbs' phases are
+## offsets into this, which is what keeps them in a fixed relationship no matter
+## how the cadence changes.
+var _gait_clock: float = 0.0
+
+var _kappa_accum: float = 0.0
+var _prev_velocity: Vector3 = Vector3.ZERO
+
+
+func _ready() -> void:
+	_family.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_traction_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_rolling_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_steer_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_damp_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_traction_mult.fill(1.0)
+	_rolling_mult.fill(1.0)
+	_steer_mult.fill(1.0)
+	_damp_mult.fill(1.0)
+
+
+func _physics_process(dt: float) -> void:
+	step(dt)
+
+
+## Registers a Motive Assembly and builds its family state.
+##
+## Called on [signal EventBusService.part_attached] and on adoption of a build
+## context. A part registered twice would be solved twice and contribute double
+## force, so re-registration replaces rather than appends.
+##
+## [param state] supplies the lattice placement an ambulatory limb's hip is
+## derived from. It is optional because the garage registers a part before the
+## Assembly runtime exists; a limb registered without one keeps its hip at the
+## origin and is phased by slot order alone, which is still deterministic.
+func register(slot: int, def: PartDefinition, state: PartInstanceState = null) -> void:
+	if def == null or def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	# The class test above is the sole guard, and registry validator rule 6 is
+	# what makes that safe: it rejects a Motive Assembly with a null payload at
+	# build time, so a definition reaching here without one has bypassed the
+	# validator. A second check here would leave neither load-bearing — both
+	# return without registering, and nothing could tell them apart.
+	var mode := def.motive_profile.locomotion_mode()
+	var profile := def.motive_profile
+	_family[slot] = mode
+	if not _motive_slots.has(slot):
+		_motive_slots.push_back(slot)
+		_motive_slots.sort()
+
+	match mode:
+		PartEnums.LocomotionMode.ROTARY:
+			var disc := RotorDiscState.new()
+			disc.slot = slot
+			_discs[slot] = disc
+		PartEnums.LocomotionMode.AMBULATORY:
+			var limb := LimbState.new()
+			limb.slot = slot
+			limb.hip_local = _hip_local_of(def, state)
+			_limbs[slot] = limb
+			_contacts[slot] = [_new_contact(slot, 0)]
+		PartEnums.LocomotionMode.TRACKED:
+			var stations: Array[MotiveContact] = []
+			var count := 1
+			if profile.track_profile != null:
+				count = maxi(profile.track_profile.road_stations, 1)
+			for i: int in count:
+				stations.append(_new_contact(slot, i))
+			_contacts[slot] = stations
+		_:
+			_contacts[slot] = [_new_contact(slot, 0)]
+
+	_write_band_multipliers(slot, PartEnums.IntegrityBand.NOMINAL)
+
+
+## Drops a Motive Assembly that has been destroyed or detached.
+func unregister(slot: int) -> void:
+	var index := _motive_slots.find(slot)
+	if index >= 0:
+		_motive_slots.remove_at(index)
+	_contacts.erase(slot)
+	_discs.erase(slot)
+	_limbs.erase(slot)
+	# Phases are a function of the surviving limb set, so losing one re-phases
+	# the rest. A walker that loses a limb changes its gait; leaving the others
+	# on their old offsets would leave a hole in the cycle.
+	reassign_gait_phases()
+
+
+## Caches the band multipliers for [param slot].
+##
+## The whole of Architectural Invariant I-5 in this layer: the per-tick path
+## reads these four arrays and never touches integrity.
+func on_band_changed(slot: int, band: int) -> void:
+	_write_band_multipliers(slot, band)
+
+
+## Recomputes every limb's gait phase offset from the current limb set.
+##
+## Deterministic and identical on every machine (§11 invariant 16). Called on
+## structural change, never per tick.
+func reassign_gait_phases() -> void:
+	var slots := PackedInt32Array()
+	var hips := PackedVector3Array()
+	for slot: int in _motive_slots:
+		var limb: LimbState = _limbs.get(slot)
+		if limb == null:
+			continue
+		slots.push_back(slot)
+		hips.push_back(limb.hip_local)
+	var offsets := GaitSolver.assign_phase_offsets(hips, slots)
+	for i: int in slots.size():
+		var limb: LimbState = _limbs[slots[i]]
+		limb.phase_offset = offsets[i]
+
+
+## One tick of locomotion.
+##
+## Gathers contacts, dispatches each Motive Assembly to its family, and refreshes
+## the dynamic amplification factor. Every force reaches the body through
+## [member AssemblyRuntime.body], and no family touches anything else (§11
+## invariant 11).
+func step(dt: float) -> void:
+	if runtime == null or runtime.body == null or input == null:
+		return
+	_gather_contacts()
+
+	var speed := runtime.body.linear_velocity.length()
+	_gait_clock = GaitSolver.advance_clock(_gait_clock, _assembly_cadence_hz(), dt)
+
+	for slot: int in _motive_slots:
+		match _family[slot]:
+			PartEnums.LocomotionMode.GROUND:
+				_solve_ground(slot, dt, speed)
+			PartEnums.LocomotionMode.TRACKED:
+				_solve_tracked(slot, dt, speed)
+			PartEnums.LocomotionMode.ROTARY:
+				_solve_rotary(slot, dt)
+			PartEnums.LocomotionMode.AMBULATORY:
+				_solve_ambulatory(slot, dt)
+
+	_update_kappa(dt)
+
+
+## ===== INSPECTION ======================================================
+## Read-only accessors over the flat state above. They exist so that tests, the
+## garage stat panel, and the diagnostics overlay can read this system without
+## any of them reaching into its arrays — which would make every one of them
+## break the next time the layout changes.
+
+
+## The locomotion family solving [param slot].
+func family_of(slot: int) -> int:
+	return _family[slot]
+
+
+## Slots this system solves, ascending.
+##
+## Returned directly rather than duplicated. A `Packed*Array` copies on
+## assignment (HANDOFF §3.9), so a caller writing `var slots := sys.motive_slots()`
+## already has its own; the `duplicate()` this used to carry was dead, and fault
+## injection said so. Note that the same is [i]not[/i] true of a plain `Array` —
+## `AssemblyRegistry.ids()` does need its copy.
+func motive_slots() -> PackedInt32Array:
+	return _motive_slots
+
+
+func motive_slot_count() -> int:
+	return _motive_slots.size()
+
+
+## Ground contacts belonging to [param slot]. One for most families, one per road
+## station for a track, and none at all for a disc.
+func contact_count(slot: int) -> int:
+	var contacts: Array = _contacts.get(slot, [])
+	return contacts.size()
+
+
+func contact_at(slot: int, index: int) -> MotiveContact:
+	var contacts: Array = _contacts.get(slot, [])
+	if index < 0 or index >= contacts.size():
+		return null
+	return contacts[index]
+
+
+func disc_state(slot: int) -> RotorDiscState:
+	return _discs.get(slot)
+
+
+func limb_state(slot: int) -> LimbState:
+	return _limbs.get(slot)
+
+
+func traction_multiplier(slot: int) -> float:
+	return _traction_mult[slot]
+
+
+func rolling_multiplier(slot: int) -> float:
+	return _rolling_mult[slot]
+
+
+func steer_multiplier(slot: int) -> float:
+	return _steer_mult[slot]
+
+
+func damp_multiplier(slot: int) -> float:
+	return _damp_mult[slot]
+
+
+## ===== FAMILY SOLVERS ==================================================
+
+
+func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
+	var def := _definition(slot)
+	if def == null:
+		return
+	var profile := def.motive_profile
+	var contacts: Array = _contacts.get(slot, [])
+	for c: MotiveContact in contacts:
+		if not c.grounded:
+			c.prev_compression_m = 0.0
+			continue
+		var x := SuspensionSolver.compression(profile, c)
+		var rate := SuspensionSolver.compression_rate(c, x, dt)
+		c.prev_compression_m = x
+		var tuned := SuspensionSolver.retune(profile, _static_load_n(slot))
+		c.normal_force_n = SuspensionSolver.force(
+			tuned.x, tuned.y, profile.suspension_travel_limit_m, x, rate, _damp_mult[slot], chassis_speed
+		)
+		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
+		_apply_traction(slot, profile, c, dt, 1.0)
+
+
+func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
+	var def := _definition(slot)
+	if def == null:
+		return
+	var profile := def.motive_profile
+	var track := profile.track_profile
+	if track == null:
+		return
+	var contacts: Array = _contacts.get(slot, [])
+	var normal_total := 0.0
+	for c: MotiveContact in contacts:
+		if not c.grounded:
+			c.prev_compression_m = 0.0
+			continue
+		var x := SuspensionSolver.compression(profile, c)
+		var rate := SuspensionSolver.compression_rate(c, x, dt)
+		c.prev_compression_m = x
+		var tuned := SuspensionSolver.retune(
+			profile, TrackSolver.station_static_load_n(profile, track)
+		)
+		c.normal_force_n = SuspensionSolver.force(
+			tuned.x, tuned.y, profile.suspension_travel_limit_m, x, rate, _damp_mult[slot], chassis_speed
+		)
+		normal_total += c.normal_force_n
+		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
+		_apply_traction(slot, profile, c, dt, track.lateral_grip_ratio)
+
+	var yaw_rate := runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y)
+	var slew := TrackSolver.slew_torque_nm(track, normal_total, yaw_rate)
+	if not is_zero_approx(slew):
+		runtime.body.apply_torque(runtime.body.global_transform.basis.y * slew)
+
+
+func _solve_rotary(slot: int, dt: float) -> void:
+	var def := _definition(slot)
+	if def == null:
+		return
+	var rotor := def.motive_profile.rotor_profile
+	var disc: RotorDiscState = _discs.get(slot)
+	if rotor == null or disc == null:
+		return
+
+	var fraction := 1.0 if power == null else power.available_fraction()
+	var command := RotorSolver.commanded_omega(rotor, absf(input.throttle), fraction)
+	disc.omega_rad_s = RotorSolver.spool(
+		disc.omega_rad_s, command, RotorSolver.spool_tau_s(rotor, disc.omega_rad_s, command), dt
+	)
+	disc.collective_deg = RotorSolver.step_collective(
+		rotor, disc.collective_deg, _collective_command_deg(rotor), dt
+	)
+	disc.cyclic_deg = RotorSolver.step_cyclic(
+		rotor, disc.cyclic_deg, input.cyclic * rotor.cyclic_limit_deg, dt
+	)
+
+	var st: PartInstanceState = runtime.states[slot]
+	var band := 0 if st == null else int(st.integrity_band)
+	var velocity := runtime.body.linear_velocity
+	disc.last_thrust_n = RotorSolver.effective_thrust_n(
+		rotor,
+		disc.omega_rad_s,
+		disc.collective_deg,
+		_height_above_ground_m(),
+		Vector2(velocity.x, velocity.z).length(),
+		maxf(0.0, -velocity.y),
+		band
+	)
+	disc.last_shaft_w = RotorSolver.shaft_power_w(rotor, disc.omega_rad_s)
+
+	var axis_local := RotorSolver.thrust_direction(
+		st.orientation_index if st != null else 0, disc.cyclic_deg, rotor.cyclic_limit_deg
+	)
+	var basis := runtime.body.global_transform.basis
+	var axis_world := basis * axis_local
+	_apply_at(_part_world_position(slot), axis_world * disc.last_thrust_n)
+
+	var spin_axis := basis * (OrientationTable.basis_for(
+		st.orientation_index if st != null else 0
+	) * Vector3.UP)
+	var torque := disc.reaction_torque_nm(rotor) + input.yaw * rotor.yaw_authority_nm
+	if not is_zero_approx(torque):
+		runtime.body.apply_torque(spin_axis * torque)
+
+
+func _solve_ambulatory(slot: int, dt: float) -> void:
+	var def := _definition(slot)
+	if def == null:
+		return
+	var profile := def.motive_profile
+	var limb_profile := profile.limb_profile
+	var limb: LimbState = _limbs.get(slot)
+	var contacts: Array = _contacts.get(slot, [])
+	if limb_profile == null or limb == null or contacts.is_empty():
+		return
+	var contact: MotiveContact = contacts[0]
+
+	var basis := runtime.body.global_transform.basis
+	var cadence := GaitSolver.cadence_hz(limb_profile, _commanded_speed_mps())
+	var was_stance := limb.in_stance(limb_profile)
+	limb.phase = GaitSolver.phase_of(_gait_clock, limb.phase_offset)
+	var now_stance := limb.in_stance(limb_profile)
+
+	var hip_world := runtime.body.global_transform * limb.hip_local
+
+	# Touchdown: the one moment the placement law runs. Planting every tick would
+	# make the foot chase the body and the Assembly would never take a step.
+	if now_stance and not was_stance:
+		limb.foot_world = GaitSolver.foot_target(
+			limb_profile,
+			hip_world,
+			contact.point_world.y if contact.grounded else hip_world.y - limb_profile.leg_length_m,
+			runtime.body.linear_velocity,
+			input.desired_velocity(-basis.z, basis.x, _speed_cap_mps()),
+			cadence,
+			input.steer
+		)
+		limb.prev_length_m = (hip_world - limb.foot_world).length()
+	limb.planted = now_stance
+
+	if not now_stance:
+		limb.slipping = false
+		return
+
+	var to_hip := hip_world - limb.foot_world
+	var length := to_hip.length()
+	if length < SyndicateConstants.EPSILON_LINEAR:
+		return
+	var axial := GaitSolver.stance_axial_force_n(limb_profile, length, limb.prev_length_m, dt)
+	limb.prev_length_m = length
+
+	var st: PartInstanceState = runtime.states[slot]
+	var band := 0 if st == null else int(st.integrity_band)
+	var mu := GaitSolver.foot_mu(profile, band, _surface_multiplier(contact))
+	var raw := to_hip.normalized() * axial
+	var normal := contact.normal_world if contact.grounded else Vector3.UP
+	limb.slipping = GaitSolver.would_slip(raw, normal, mu)
+	var force := GaitSolver.limit_by_friction(raw, normal, mu)
+
+	# A slipping foot slides by the shear it could not hold, which is what makes
+	# a walker lose its footing progressively rather than in one frame.
+	if limb.slipping:
+		limb.foot_world += (raw - force) / maxf(limb_profile.stance_stiffness_n_m, 1.0)
+	_apply_at(hip_world, force)
+
+
+## ===== SHARED ==========================================================
+
+
+func _apply_traction(
+	slot: int, profile: MotiveAssemblyProfile, c: MotiveContact, dt: float, lateral_ratio: float
+) -> void:
+	if c.normal_force_n <= 0.0:
+		return
+	var st: PartInstanceState = runtime.states[slot]
+	var band := 0 if st == null else int(st.integrity_band)
+	var v_long := c.velocity_world.dot(c.forward)
+	var v_lat := c.velocity_world.dot(c.lateral)
+	var kappa := TractionSolver.slip_ratio(c.contact_omega, profile.contact_radius_m, v_long)
+	var tan_alpha := TractionSolver.slip_angle_tan(v_lat, v_long)
+	var mu := TractionSolver.effective_mu(
+		profile, c.normal_force_n, band, _surface_multiplier(c)
+	)
+	var forces := TractionSolver.combined_forces(
+		kappa, tan_alpha, mu, c.normal_force_n, lateral_ratio
+	)
+	_apply_at(c.point_world, c.forward * forces.x + c.lateral * forces.y)
+
+	var drive := 0.0
+	if profile.driven and power != null:
+		drive = power.throttle_torque_nm(input.throttle) / maxf(float(_driven_count()), 1.0)
+	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0)
+	c.contact_omega = TractionSolver.integrate_contact(
+		c.contact_omega,
+		TractionSolver.contact_inertia(_definition(slot).mass_kg, profile.contact_radius_m),
+		drive,
+		brake,
+		forces.x,
+		profile.contact_radius_m,
+		dt
+	)
+
+
+func _apply_at(point_world: Vector3, force: Vector3) -> void:
+	if force.is_zero_approx():
+		return
+	runtime.body.apply_force(force, point_world - runtime.body.global_position)
+
+
+## §9's dynamic amplification factor, refreshed at 10 Hz.
+##
+## The angular term captures the centripetal load on a part at the end of a long
+## boom, proportional to omega squared times r, which pure linear acceleration
+## misses entirely.
+func _update_kappa(dt: float) -> void:
+	var velocity := runtime.body.linear_velocity
+	var accel := Vector3.ZERO
+	if dt > 0.0:
+		accel = (velocity - _prev_velocity) / dt
+	_prev_velocity = velocity
+	_kappa_accum += dt
+	if _kappa_accum < KAPPA_INTERVAL_S:
+		return
+	_kappa_accum = 0.0
+	var a := (
+		accel.length()
+		+ runtime.body.angular_velocity.length_squared() * KAPPA_ANGULAR_WEIGHT
+	)
+	if runtime.graph != null:
+		runtime.graph.update_dynamic_factor(a)
+
+
+func _write_band_multipliers(slot: int, band: int) -> void:
+	_traction_mult[slot] = DegradationTable.multiplier(DegradationTable.MOTIVE_TRACTION, band)
+	_rolling_mult[slot] = DegradationTable.multiplier(DegradationTable.MOTIVE_ROLLING, band)
+	_steer_mult[slot] = DegradationTable.multiplier(DegradationTable.MOTIVE_STEER, band)
+	_damp_mult[slot] = DegradationTable.multiplier(DegradationTable.MOTIVE_SUSP_DAMP, band)
+
+
+func _new_contact(slot: int, station_index: int) -> MotiveContact:
+	var c := MotiveContact.new()
+	c.slot = slot
+	c.station_index = station_index
+	return c
+
+
+## Populates this tick's probe results.
+##
+## The one part of the motion layer the suite cannot exercise: a query against
+## the main world's space answers nothing without a physics step, and the runner
+## never lets one run. It is therefore kept as thin as it can be — a loop over
+## already-built [ShapeCast3D] nodes copying four fields — with every derived
+## quantity computed by a pure solver that a test can reach.
+func _gather_contacts() -> void:
+	var xform := runtime.body.global_transform
+	for slot: int in _motive_slots:
+		var contacts: Array = _contacts.get(slot, [])
+		for c: MotiveContact in contacts:
+			var probe := _probe_for(c)
+			c.clear_probe()
+			if probe == null or not probe.is_colliding():
+				continue
+			c.grounded = true
+			c.point_world = probe.get_collision_point(0)
+			c.normal_world = probe.get_collision_normal(0)
+			c.distance_m = probe.global_position.distance_to(c.point_world)
+			c.forward = -xform.basis.z
+			c.lateral = xform.basis.x
+			c.velocity_world = _point_velocity(c.point_world)
+
+
+func _point_velocity(point_world: Vector3) -> Vector3:
+	var r := point_world - runtime.body.global_position
+	return runtime.body.linear_velocity + runtime.body.angular_velocity.cross(r)
+
+
+func _probe_for(c: MotiveContact) -> ShapeCast3D:
+	var name_hint := "probe_s%03d_%d" % [c.slot, c.station_index]
+	if runtime.motive_probes == null:
+		return null
+	return runtime.motive_probes.get_node_or_null(NodePath(name_hint)) as ShapeCast3D
+
+
+## The definition at [param slot], or null when there is nothing there.
+##
+## Null-safe on [member runtime] because registration happens before the system
+## is wired to an Assembly: the garage registers parts as they are placed, and
+## [method reassign_gait_phases] runs on that path. [method step] guards
+## separately and earlier, so nothing per-tick reaches here unwired.
+func _definition(slot: int) -> PartDefinition:
+	if runtime == null:
+		return null
+	var st: PartInstanceState = runtime.states[slot]
+	if st == null:
+		return null
+	return PartRegistry.definition(st.part_def_id)
+
+
+## The hip's position in assembly-local space, from the part's placement.
+##
+## The pivot cell's centre plus the authored offset under the part's orientation
+## basis — the pivot rather than the centre of mass, because §7.2.2 defines
+## [member LimbProfile.hip_offset_m] relative to the pivot cell and a limb's
+## pivot is the cell it mounts through.
+static func _hip_local_of(def: PartDefinition, state: PartInstanceState) -> Vector3:
+	if state == null:
+		return Vector3.ZERO
+	var offset := def.motive_profile.limb_profile.hip_offset_m
+	return (
+		LatticeMath.cell_to_local(state.origin_cell)
+		+ OrientationTable.basis_for(state.orientation_index) * offset
+	)
+
+
+func _part_world_position(slot: int) -> Vector3:
+	var st: PartInstanceState = runtime.states[slot]
+	if st == null:
+		return runtime.body.global_position
+	var def := PartRegistry.definition(st.part_def_id)
+	return runtime.body.global_transform * MassSolver.part_com_local(st, def)
+
+
+func _static_load_n(slot: int) -> float:
+	var def := _definition(slot)
+	if def == null:
+		return 0.0
+	return def.motive_profile.rated_load_kg * SyndicateConstants.GRAVITY_MPS2
+
+
+func _driven_count() -> int:
+	var count := 0
+	for slot: int in _motive_slots:
+		var def := _definition(slot)
+		if def != null and def.motive_profile.driven:
+			count += 1
+	return count
+
+
+func _assembly_cadence_hz() -> float:
+	var best := 0.0
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.AMBULATORY:
+			continue
+		var def := _definition(slot)
+		if def == null or def.motive_profile.limb_profile == null:
+			continue
+		best = maxf(best, GaitSolver.cadence_hz(def.motive_profile.limb_profile, _commanded_speed_mps()))
+	return best
+
+
+func _commanded_speed_mps() -> float:
+	return absf(input.throttle) * _speed_cap_mps()
+
+
+func _speed_cap_mps() -> float:
+	var core: PartInstanceState = runtime.states[SyndicateConstants.CORE_SLOT]
+	if core == null:
+		return 0.0
+	var def := PartRegistry.definition(core.part_def_id)
+	if def == null or def.core_profile == null:
+		return 0.0
+	return def.core_profile.speed_cap_mps
+
+
+func _collective_command_deg(rotor: RotorProfile) -> float:
+	var t := clampf(input.collective, -1.0, 1.0)
+	if t >= 0.0:
+		return rotor.collective_limit_deg.y * t
+	return -rotor.collective_limit_deg.x * t
+
+
+## Height of the lowest rotary contribution above the surface.
+##
+## Ground effect needs a height and a rotary Assembly runs no probe, so this is
+## the one place the family reaches outside itself. Returns a height beyond any
+## profile's ground-effect span when nothing is known, which makes the
+## multiplier exactly 1.0 rather than an arbitrary boost.
+func _height_above_ground_m() -> float:
+	for slot: int in _motive_slots:
+		var contacts: Array = _contacts.get(slot, [])
+		for c: MotiveContact in contacts:
+			if c.grounded:
+				return maxf(0.0, runtime.body.global_position.y - c.point_world.y)
+	return INF
+
+
+## Surface friction multiplier for a contact.
+##
+## Constant until the Ground Array of document 09 exists to answer it. Named and
+## routed through one function so that landing that document is a single edit
+## rather than a search for every place a surface was assumed.
+func _surface_multiplier(_contact: MotiveContact) -> float:
+	return 1.0

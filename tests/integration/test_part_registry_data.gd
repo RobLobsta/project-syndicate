@@ -79,37 +79,105 @@ func test_validator_sees_every_manifest_entry() -> void:
 
 ## ===== REGISTRY WIRING =================================================
 
-func test_registry_publishes_both_parts() -> void:
-	check_eq(PartRegistry.part_count(), 2, "two parts are authored")
-	check_true(PartRegistry.has_key(CORE_KEY), "the Core Module is registered")
-	check_true(PartRegistry.has_key(PANEL_KEY), "the Structural Component is registered")
+## Every key the registry ships, in manifest order. Asserted as a list rather
+## than a count: a count catches a part that vanished, and only the list catches
+## a part that was reordered, which is the failure that reinterprets every
+## blueprint ever written (§5.2).
+const SHIPPED_KEYS: Array[String] = [
+	"core.command.compact.t2",
+	"str.panel.medium.t2",
+	"str.hub.axle_station.t2",
+	"mot.wheeled.allroad.t2",
+	"mot.tracked.short_bogie.t2",
+	"mot.rotor.coaxial_mid.t3",
+	"mot.limb.strider.t4",
+	"pwr.combustion.standard.t2",
+	"eff.melee.beam_edge.t4",
+]
+
+
+func test_registry_publishes_every_shipped_part() -> void:
+	check_eq(PartRegistry.part_count(), SHIPPED_KEYS.size(), "every shipped part is registered")
+	for i: int in SHIPPED_KEYS.size():
+		var key := StringName(SHIPPED_KEYS[i])
+		if not check_true(PartRegistry.has_key(key), "%s is registered" % key):
+			continue
+		# §5.2: part_def_id is the manifest index plus one. Asserting the id
+		# against the position in this list is what makes an append-only
+		# manifest testable — a reorder moves an id and this fails.
+		check_eq(
+			PartRegistry.definition_by_key(key).runtime_id,
+			i + 1,
+			"%s is manifest entry %d, so id %d" % [key, i, i + 1]
+		)
 
 
 ## §5.2: part_def_id is the manifest index plus one, and index 0 is reserved.
 ## These ids go into save data and network packets, so a shift here silently
 ## reinterprets every blueprint ever written.
-func test_part_ids_follow_manifest_order() -> void:
+## The reserved id and the reverse direction of the id map.
+##
+## The forward direction — key to id — is owned by
+## [code]test_registry_publishes_every_shipped_part[/code], which walks the whole
+## manifest. This asserts only what that one does not: that id 0 stays reserved,
+## and that an id resolves back to the definition it was taken from. Splitting
+## them this way keeps one owner per invariant; asserting the forward map here as
+## well would leave neither test load-bearing.
+func test_part_ids_reverse_resolve() -> void:
 	check_null(PartRegistry.definition(PartManifest.INVALID_PART_ID), "id 0 is INVALID_PART")
-	var core := PartRegistry.definition_by_key(CORE_KEY)
-	var panel := PartRegistry.definition_by_key(PANEL_KEY)
-	if not check_not_null(core, "core resolves by key") or not check_not_null(panel, "panel too"):
-		return
-	check_eq(core.runtime_id, 1, "the Core Module is manifest entry 0, so id 1")
-	check_eq(panel.runtime_id, 2, "the panel is manifest entry 1, so id 2")
-	check_eq(PartRegistry.definition(1), core, "id 1 resolves back to the Core Module")
-	check_eq(PartRegistry.definition(2), panel, "id 2 resolves back to the panel")
+	for key_text: String in SHIPPED_KEYS:
+		var def := PartRegistry.definition_by_key(StringName(key_text))
+		if not check_not_null(def, "%s resolves by key" % key_text):
+			continue
+		check_eq(
+			PartRegistry.definition(def.runtime_id),
+			def,
+			"id %d resolves back to %s" % [def.runtime_id, key_text]
+		)
 
 
 func test_class_buckets_are_populated() -> void:
-	var cores := PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE)
-	var structural := PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT)
-	check_eq(cores.size(), 1, "one Core Module")
-	check_eq(structural.size(), 1, "one Structural Component")
+	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(), 1, "one Core")
 	check_eq(
-		PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(),
-		0,
-		"no Effector Modules are authored yet, and an empty bucket is not an error"
+		PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT).size(),
+		2,
+		"the panel and the AXLE station"
 	)
+	check_eq(
+		PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY).size(),
+		4,
+		"one Motive Assembly per locomotion family"
+	)
+	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.POWER_PLANT).size(), 1, "one plant")
+	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(), 1, "one edge")
+	check_eq(
+		PartRegistry.ids_of_class(PartEnums.PartClass.SUPPORT_MODULE).size(),
+		0,
+		"no Support Modules are authored yet, and an empty bucket is not an error"
+	)
+	# The bucket sizes must account for every registered part, or a definition is
+	# reaching the registry without landing in a class bucket at all.
+	var total := 0
+	for c: int in PartEnums.PART_CLASS_COUNT:
+		total += PartRegistry.ids_of_class(c).size()
+	check_eq(total, PartRegistry.part_count(), "every part lands in exactly one class bucket")
+
+
+## Every locomotion family has a real part behind it, so nothing in the motion
+## layer is exercised only by a synthetic fixture.
+func test_every_locomotion_family_has_a_shipped_part() -> void:
+	var seen := {}
+	for id: int in PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY):
+		var profile := PartRegistry.definition(id).motive_profile
+		if check_not_null(profile, "a Motive Assembly carries a motive_profile"):
+			seen[profile.locomotion_mode()] = true
+	for mode: int in [
+		PartEnums.LocomotionMode.GROUND,
+		PartEnums.LocomotionMode.TRACKED,
+		PartEnums.LocomotionMode.ROTARY,
+		PartEnums.LocomotionMode.AMBULATORY,
+	]:
+		check_true(seen.has(mode), "locomotion family %d has a shipped part" % mode)
 
 
 func test_manifest_hash_is_order_sensitive_and_non_zero() -> void:
@@ -118,13 +186,15 @@ func test_manifest_hash_is_order_sensitive_and_non_zero() -> void:
 	# The handshake must reject a peer whose manifest lists the same keys in a
 	# different order: every part_def_id would disagree.
 	var forward := PartManifest.new()
-	forward.keys = PackedStringArray([String(CORE_KEY), String(PANEL_KEY)])
+	forward.keys = PackedStringArray(SHIPPED_KEYS)
 	var reversed := PartManifest.new()
-	reversed.keys = PackedStringArray([String(PANEL_KEY), String(CORE_KEY)])
+	var backwards := SHIPPED_KEYS.duplicate()
+	backwards.reverse()
+	reversed.keys = PackedStringArray(backwards)
 	check_eq(
 		forward.compute_content_hash(),
 		PartRegistry.manifest_hash(),
-		"the shipped manifest is core then panel"
+		"the shipped manifest is SHIPPED_KEYS in that order"
 	)
 	check_ne(
 		reversed.compute_content_hash(),

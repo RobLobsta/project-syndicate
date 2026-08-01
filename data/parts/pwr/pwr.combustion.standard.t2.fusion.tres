@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="FusionProfile" format=3 uid="uid://cg1rcj6cwxenv"]
+
+[ext_resource type="Script" path="res://src/core/data/fusion_profile.gd" id="1_u2asj"]
+
+[resource]
+script = ExtResource("1_u2asj")
+accepts_skirting = false

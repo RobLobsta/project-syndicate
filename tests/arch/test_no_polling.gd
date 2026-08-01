@@ -28,6 +28,12 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		"doc 05 §10.2: physics_jitter_fix is 0, so the visual transform is "
 		+ "genuinely per-render-frame work"
 	),
+	"res://src/motion/motive_system.gd":
+	(
+		"doc 05 §6.0: a force integrator, not a reactor to structural events. "
+		+ "It reads cached band multipliers and never structural state, and "
+		+ "§9's dynamic factor is explicitly per-tick work"
+	),
 }
 
 

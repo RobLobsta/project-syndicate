@@ -507,6 +507,394 @@ func test_ordered_limits_are_accepted() -> void:
 	)
 
 
+## ===== RULE 17 — MOTIVE FAMILY PAYLOAD =================================
+
+func test_a_kind_that_needs_a_family_payload_is_rejected_without_one() -> void:
+	for kind: int in [
+		PartEnums.MotiveKind.ROTOR_DISC,
+		PartEnums.MotiveKind.AMBULATORY_LIMB,
+		PartEnums.MotiveKind.TRACKED_SEGMENT,
+	]:
+		var def := _make_motive(kind)
+		def.motive_profile.rotor_profile = null
+		def.motive_profile.limb_profile = null
+		def.motive_profile.track_profile = null
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_MOTIVE_FAMILY_PAYLOAD),
+			"kind %d needs a family payload and carrying none is a data error" % kind
+		)
+
+
+func test_a_ground_kind_carrying_a_family_payload_is_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.WHEELED_STEERED)
+	def.motive_profile.rotor_profile = RotorProfile.new()
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_MOTIVE_FAMILY_PAYLOAD),
+		"a wheel with a RotorProfile is a part nothing would read correctly"
+	)
+
+
+func test_two_family_payloads_at_once_are_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+	def.motive_profile.limb_profile = LimbProfile.new()
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_MOTIVE_FAMILY_PAYLOAD),
+		"exactly one payload matches the kind, mirroring the class payload rule"
+	)
+
+
+func test_a_correctly_paired_family_payload_passes() -> void:
+	for kind: int in [
+		PartEnums.MotiveKind.WHEELED_STEERED,
+		PartEnums.MotiveKind.ROTOR_DISC,
+		PartEnums.MotiveKind.AMBULATORY_LIMB,
+		PartEnums.MotiveKind.TRACKED_SEGMENT,
+	]:
+		check_false(
+			_rules_broken_by(_make_motive(kind)).has(
+				PartRegistryValidator.RULE_MOTIVE_FAMILY_PAYLOAD
+			),
+			"kind %d with its matching payload is legal" % kind
+		)
+
+
+## ===== RULE 18 — AXLE KEYING ===========================================
+
+func test_an_unkeyed_axle_station_is_rejected() -> void:
+	var def := _make_panel()
+	def.attachment_nodes[0].polarity = PartEnums.AttachmentPolarity.AXLE
+	def.attachment_nodes[0].accepts_classes = PackedInt32Array()
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_AXLE_KEYING),
+		"a drive station that accepts anything makes AXLE a slower FACE_NEUTRAL"
+	)
+
+
+func test_an_axle_station_keyed_to_the_wrong_class_is_rejected() -> void:
+	var def := _make_panel()
+	def.attachment_nodes[0].polarity = PartEnums.AttachmentPolarity.AXLE
+	def.attachment_nodes[0].accepts_classes = PackedInt32Array(
+		[PartEnums.PartClass.EFFECTOR_MODULE]
+	)
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_AXLE_KEYING),
+		"an Effector Module has no business on a drive station"
+	)
+
+
+func test_a_correctly_keyed_axle_station_passes() -> void:
+	var def := _make_panel()
+	def.attachment_nodes[0].polarity = PartEnums.AttachmentPolarity.AXLE
+	def.attachment_nodes[0].accepts_classes = PackedInt32Array(
+		[PartEnums.PartClass.MOTIVE_ASSEMBLY]
+	)
+	check_false(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_AXLE_KEYING),
+		"the shipping station's own arrangement is legal"
+	)
+
+
+## A Motive Assembly's own drive face needs no restriction: the station it mates
+## with already carries it, and requiring it on both ends would be two owners of
+## one invariant.
+func test_a_motive_assemblys_own_axle_face_needs_no_restriction() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.WHEELED_STEERED)
+	def.attachment_nodes[0].polarity = PartEnums.AttachmentPolarity.AXLE
+	def.attachment_nodes[0].accepts_classes = PackedInt32Array()
+	check_false(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_AXLE_KEYING),
+		"the drive face of a Motive Assembly is the mating half, not the station"
+	)
+
+
+func test_an_axle_node_on_a_class_that_may_not_carry_one_is_rejected() -> void:
+	var def := _make_effector()
+	def.attachment_nodes[0].polarity = PartEnums.AttachmentPolarity.AXLE
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_AXLE_KEYING),
+		"only Motive Assemblies and Structural Components may carry an AXLE node"
+	)
+
+
+## ===== RULE 19 — ROTOR =================================================
+
+## The relationship the shipping coefficients are solved from. A disc that
+## cannot lift its rating presents as an Assembly that silently refuses to fly.
+func test_a_disc_that_cannot_lift_its_rating_is_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+	def.motive_profile.rated_load_kg *= 2.0
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_ROTOR),
+		"doubling the rating without touching the coefficients must fail"
+	)
+
+
+func test_a_disc_that_overshoots_its_rating_is_also_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+	def.motive_profile.rotor_profile.thrust_coefficient *= 1.5
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_ROTOR),
+		"the check is two-sided; a disc must not be quietly stronger than its row either"
+	)
+
+
+func test_a_disc_carrying_ground_fields_is_rejected() -> void:
+	for field: String in [
+		"traction_coefficient",
+		"rolling_resistance",
+		"max_steer_angle_deg",
+		"suspension_stiffness_n_m",
+		"suspension_rest_length_m",
+		"suspension_damping_ns_m",
+		"suspension_travel_limit_m",
+	]:
+		var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+		def.motive_profile.set(field, 1.0)
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_ROTOR),
+			"'%s' on a disc is a plausible value no code reads" % field
+		)
+
+
+func test_malformed_rotor_geometry_is_rejected() -> void:
+	var cases := {
+		"disc_radius_m": 0.0,
+		"blade_count": 1,
+		"spin_sign": 0,
+		"nominal_rad_s": 0.0,
+		"torque_reaction_ratio": 1.5,
+	}
+	for field: String in cases:
+		var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+		def.motive_profile.rotor_profile.set(field, cases[field])
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_ROTOR),
+			"'%s' of %s is not a disc that can be simulated" % [field, cases[field]]
+		)
+
+
+func test_inverted_collective_limits_are_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.ROTOR_DISC)
+	def.motive_profile.rotor_profile.collective_limit_deg = Vector2(14.0, -4.0)
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_ROTOR),
+		"a collective range whose minimum exceeds its maximum has no valid pitch"
+	)
+
+
+func test_a_well_formed_disc_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_motive(PartEnums.MotiveKind.ROTOR_DISC)).has(
+			PartRegistryValidator.RULE_ROTOR
+		),
+		"the fixture disc is solved from its own rating and must validate"
+	)
+
+
+## ===== RULE 20 — MELEE =================================================
+
+func test_a_melee_module_without_a_melee_profile_is_rejected() -> void:
+	var def := _make_melee()
+	def.effector_profile.melee_profile = null
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_MELEE),
+		"a melee kind with no melee payload describes nothing"
+	)
+
+
+func test_a_non_melee_module_carrying_a_melee_profile_is_rejected() -> void:
+	var def := _make_effector()
+	def.effector_profile.melee_profile = MeleeProfile.new()
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_MELEE),
+		"a ballistic module has no swing to describe"
+	)
+
+
+func test_a_melee_module_carrying_emission_fields_is_rejected() -> void:
+	var emission: Array[String] = [
+		"muzzle_velocity_mps",
+		"cycle_time_s",
+		"recoil_impulse_ns",
+		"spread_bloom_deg",
+	]
+	for field: String in emission:
+		var def := _make_melee()
+		def.effector_profile.set(field, 5.0)
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_MELEE),
+			"'%s' on a module that emits nothing must be zero, not ignored" % field
+		)
+	var mag := _make_melee()
+	mag.effector_profile.magazine_rounds = 30
+	check_true(
+		_rules_broken_by(mag).has(PartRegistryValidator.RULE_MELEE),
+		"and a melee module consumes no ammunition"
+	)
+
+
+## A mix that does not sum to one silently scales every strike the part ever
+## lands, in a direction nothing reports.
+func test_a_channel_mix_that_does_not_sum_to_one_is_rejected() -> void:
+	var high := _make_melee()
+	high.effector_profile.melee_profile.channel_mix = PackedFloat32Array([0.5, 0, 0.5, 0.5, 0])
+	check_true(
+		_rules_broken_by(high).has(PartRegistryValidator.RULE_MELEE),
+		"a mix summing to 1.5 makes every strike half again as strong as its row"
+	)
+	var low := _make_melee()
+	low.effector_profile.melee_profile.channel_mix = PackedFloat32Array([0.1, 0, 0.1, 0.1, 0])
+	check_true(
+		_rules_broken_by(low).has(PartRegistryValidator.RULE_MELEE),
+		"and one summing to 0.3 quietly makes it a third as strong"
+	)
+
+
+func test_a_channel_mix_of_the_wrong_length_is_rejected() -> void:
+	var def := _make_melee()
+	def.effector_profile.melee_profile.channel_mix = PackedFloat32Array([0.5, 0.5])
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_MELEE),
+		"a mix shorter than the channel count reads past its end"
+	)
+
+
+func test_melee_bounds_are_enforced() -> void:
+	var cases := {
+		"max_targets_per_swing": 0,
+		"swing_samples": 1,
+		"reaction_ratio": 1.4,
+	}
+	for field: String in cases:
+		var def := _make_melee()
+		def.effector_profile.melee_profile.set(field, cases[field])
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_MELEE),
+			"'%s' of %s is outside the bound CLAUDE.md §6 I-12 sets" % [field, cases[field]]
+		)
+	var over := _make_melee()
+	over.effector_profile.melee_profile.max_targets_per_swing = 99
+	check_true(
+		_rules_broken_by(over).has(PartRegistryValidator.RULE_MELEE),
+		"and the target budget has an upper bound too"
+	)
+
+
+func test_a_well_formed_melee_module_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_melee()).has(PartRegistryValidator.RULE_MELEE),
+		"the fixture edge is the shipping arrangement and must validate"
+	)
+
+
+## ===== RULE 21 — LIMB ==================================================
+
+func test_a_limb_carrying_suspension_fields_is_rejected() -> void:
+	for field: String in [
+		"suspension_stiffness_n_m",
+		"suspension_rest_length_m",
+		"suspension_damping_ns_m",
+		"suspension_travel_limit_m",
+	]:
+		var def := _make_motive(PartEnums.MotiveKind.AMBULATORY_LIMB)
+		def.motive_profile.set(field, 1.0)
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_LIMB),
+			"'%s' on a limb: its compliance is commanded, not passive" % field
+		)
+
+
+func test_malformed_gait_parameters_are_rejected() -> void:
+	var cases := {
+		"duty_factor": 0.0,
+		"leg_length_m": 0.0,
+		"stance_height_ratio": 1.4,
+	}
+	for field: String in cases:
+		var def := _make_motive(PartEnums.MotiveKind.AMBULATORY_LIMB)
+		def.motive_profile.limb_profile.set(field, cases[field])
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_LIMB),
+			"'%s' of %s is not a gait that can be walked" % [field, cases[field]]
+		)
+
+
+func test_a_cadence_ceiling_below_its_floor_is_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.AMBULATORY_LIMB)
+	def.motive_profile.limb_profile.max_cadence_hz = 0.5
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_LIMB),
+		"a maximum below the nominal makes the cadence clamp invert"
+	)
+
+
+func test_a_step_longer_than_twice_the_leg_is_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.AMBULATORY_LIMB)
+	def.motive_profile.limb_profile.max_step_length_m = (
+		2.1 * def.motive_profile.limb_profile.leg_length_m
+	)
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_LIMB),
+		"such a step cannot be taken with a foot on the ground at either end of it"
+	)
+
+
+func test_a_well_formed_limb_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_motive(PartEnums.MotiveKind.AMBULATORY_LIMB)).has(
+			PartRegistryValidator.RULE_LIMB
+		),
+		"the fixture limb must validate"
+	)
+
+
+## ===== RULE 22 — TRACK =================================================
+
+## A track that steered by angling its hub would be a wheel.
+func test_a_track_with_a_steer_angle_is_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.TRACKED_SEGMENT)
+	def.motive_profile.max_steer_angle_deg = 20.0
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_TRACK),
+		"a track steers by differential drive alone"
+	)
+
+
+func test_malformed_track_parameters_are_rejected() -> void:
+	var cases := {
+		"road_stations": 0,
+		"patch_length_m": 0.0,
+		"differential_authority": 1.6,
+		"internal_loss": 1.0,
+		"lateral_grip_ratio": 0.0,
+	}
+	for field: String in cases:
+		var def := _make_motive(PartEnums.MotiveKind.TRACKED_SEGMENT)
+		def.motive_profile.track_profile.set(field, cases[field])
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_TRACK),
+			"'%s' of %s is not a patch that can be simulated" % [field, cases[field]]
+		)
+
+
+func test_too_many_road_stations_are_rejected() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.TRACKED_SEGMENT)
+	def.motive_profile.track_profile.road_stations = TrackProfile.MAX_ROAD_STATIONS + 1
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_TRACK),
+		"the station count is the per-tick cost multiplier and is capped"
+	)
+
+
+func test_a_well_formed_track_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_motive(PartEnums.MotiveKind.TRACKED_SEGMENT)).has(
+			PartRegistryValidator.RULE_TRACK
+		),
+		"the fixture track must validate"
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 ## The rules that [param def] breaks. Each call gets a fresh validator so no
@@ -565,6 +953,74 @@ func _make_effector() -> PartDefinition:
 	def.part_key = &"eff.ballistic.autocannon_30.t2"
 	def.part_class = PartEnums.PartClass.EFFECTOR_MODULE
 	def.effector_profile = EffectorModuleProfile.new()
+	return def
+
+
+## A melee Effector Module that passes every rule, arranged the way
+## `eff.melee.beam_edge.t4` is: no emission fields, a mix summing to one.
+func _make_melee() -> PartDefinition:
+	var def := _make_panel()
+	def.part_key = &"eff.melee.beam_edge.t4"
+	def.part_class = PartEnums.PartClass.EFFECTOR_MODULE
+	def.tier = PartEnums.TierGrade.PROTOTYPE
+
+	var profile := EffectorModuleProfile.new()
+	profile.kind = PartEnums.EffectorKind.ENERGY_MELEE
+	profile.muzzle_velocity_mps = 0.0
+	profile.cycle_time_s = 0.0
+	profile.recoil_impulse_ns = 0.0
+	profile.spread_base_deg = 0.0
+	profile.spread_bloom_deg = 0.0
+	profile.magazine_rounds = 0
+
+	var melee := MeleeProfile.new()
+	melee.channel_mix = PackedFloat32Array([0.10, 0.0, 0.15, 0.75, 0.0])
+	melee.max_targets_per_swing = 3
+	melee.swing_samples = 6
+	melee.reaction_ratio = 0.35
+	profile.melee_profile = melee
+
+	def.effector_profile = profile
+	return def
+
+
+## A Motive Assembly of [param kind], carrying exactly the family payload that
+## kind requires and nothing else.
+##
+## The rotary case solves its own rated load from its coefficients rather than
+## quoting a number, so the fixture cannot drift out of rule 19's tolerance when
+## a coefficient default changes — and a test that plants a fault against it is
+## asserting against the rule rather than against a stale constant.
+func _make_motive(kind: int) -> PartDefinition:
+	var def := _make_panel()
+	def.part_key = &"mot.wheeled.allroad.t2"
+	def.part_class = PartEnums.PartClass.MOTIVE_ASSEMBLY
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = kind
+	match kind:
+		PartEnums.MotiveKind.ROTOR_DISC:
+			var rotor := RotorProfile.new()
+			profile.rotor_profile = rotor
+			profile.rated_load_kg = rotor.max_thrust_n() / SyndicateConstants.GRAVITY_MPS2
+			profile.traction_coefficient = 0.0
+			profile.rolling_resistance = 0.0
+			profile.max_steer_angle_deg = 0.0
+			profile.suspension_rest_length_m = 0.0
+			profile.suspension_stiffness_n_m = 0.0
+			profile.suspension_damping_ns_m = 0.0
+			profile.suspension_travel_limit_m = 0.0
+		PartEnums.MotiveKind.AMBULATORY_LIMB:
+			profile.limb_profile = LimbProfile.new()
+			profile.suspension_rest_length_m = 0.0
+			profile.suspension_stiffness_n_m = 0.0
+			profile.suspension_damping_ns_m = 0.0
+			profile.suspension_travel_limit_m = 0.0
+		PartEnums.MotiveKind.TRACKED_SEGMENT:
+			profile.track_profile = TrackProfile.new()
+			profile.max_steer_angle_deg = 0.0
+
+	def.motive_profile = profile
 	return def
 
 

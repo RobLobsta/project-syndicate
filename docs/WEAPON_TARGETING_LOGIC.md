@@ -799,3 +799,181 @@ Reference target, 16-player match, 12 firing Assemblies, ~340 live projectiles:
 9. Projectiles inherit the firing chassis's velocity.
 10. Spread is sampled uniformly over solid angle, with a per-shot seed reproducible on client and server.
 11. Recoil is applied as an impulse at the muzzle offset and is deposited into the strain model.
+12. A melee Effector Module emits no projectile and consumes no ammunition. It resolves by swept shape query, on the server only, bounded by `max_targets_per_swing` and `swing_samples` (§15).
+13. A melee strike is never client-predicted as damage. The client predicts the swing animation and the wielder's own reaction impulse; the hit is the server's.
+
+---
+
+## 15. Melee Effectors
+
+`KINETIC_MELEE` and `ENERGY_MELEE` share every mechanism in this section and
+differ only in their authored `channel_mix` and power model. Neither spawns a
+projectile, so §12's pool, §5's lead solving, §7.4's spread, and §9.2's ammunition
+ledger are all inapplicable, and §14 invariant 12 requires the corresponding
+`EffectorModuleProfile` fields to be zero rather than merely ignored.
+
+### 15.1 Why Not a Very Short Projectile
+
+The obvious cheap implementation is a projectile with a two-metre life. It is
+wrong for three reasons, and they are worth recording because the shortcut looks
+attractive every time.
+
+A projectile is a **ray** between two positions (§12.2), and an edge is a
+**volume** swept along an arc. A ray sweeps between two adjacent parts of a
+lattice-built Assembly and reports a clean miss where an edge would have cut
+both. Second, a projectile resolves once; an edge held against a target must keep
+resolving, which is what `sustained` describes and a projectile cannot express.
+Third, a swing is a *continuous* geometric event that must deliver its impulse
+along the edge's travel direction, and a projectile carries only its own
+velocity — a blade swung across a target would knock it backwards instead of
+sideways.
+
+### 15.2 Strike State
+
+Melee reuses `HardpointState` for aiming — an edge on a two-DOF mount tracks the
+aim point exactly as a barrel does — and adds one record per melee slot:
+
+```gdscript
+class_name MeleeStrikeState
+extends RefCounted
+
+enum Stage { READY = 0, WIND_UP = 1, SWINGING = 2, RECOVERING = 3 }
+
+var slot: int = SyndicateConstants.INVALID_SLOT
+var stage: Stage = Stage.READY
+var stage_timer_s: float = 0.0
+## Progress through the swing arc, [0, 1]. Only meaningful in SWINGING.
+var swing_t: float = 0.0
+## Assembly ids struck by the current swing; cleared on entering WIND_UP.
+var struck_this_swing: PackedInt32Array = PackedInt32Array()
+## True while a sustained edge is energised and drawing power.
+var energised: bool = false
+```
+
+The stage machine advances on the emission loop of §7, in place of the cycle
+timer. `READY → WIND_UP` on trigger, `WIND_UP → SWINGING` after `wind_up_s`,
+`SWINGING → RECOVERING` after `swing_duration_s`, `RECOVERING → READY` after
+`recovery_s`. A profile authoring `swing_arc_deg = 0` — the ram spike — skips
+`SWINGING`'s arc entirely and resolves one sweep along the Assembly's own motion,
+which is what a ram is.
+
+### 15.3 The Sweep
+
+While `SWINGING`, the edge's transform is interpolated across the arc and the
+volume between consecutive samples is queried:
+
+```gdscript
+const MELEE_MASK := CollisionLayers.MASK_PROJECTILE_TARGET
+
+func _sweep_segment(st: MeleeStrikeState, mp: MeleeProfile,
+                    from_x: Transform3D, to_x: Transform3D,
+                    space: PhysicsDirectSpaceState3D) -> void:
+    var shape := CapsuleShape3D.new()
+    shape.radius = mp.edge_radius_m
+    shape.height = mp.reach_m
+    var params := PhysicsShapeQueryParameters3D.new()
+    params.shape = shape
+    params.transform = from_x
+    params.motion = to_x.origin - from_x.origin
+    params.collision_mask = MELEE_MASK
+    params.exclude = [_own_body_rid]
+    for hit in space.intersect_shape(params, mp.max_targets_per_swing):
+        _resolve_strike(st, mp, hit, to_x.origin - from_x.origin)
+```
+
+`swing_samples` fixes the number of segments, so the query cost of a swing is
+constant and authored rather than a function of how fast the arc happens to be
+travelling. Six samples across a 150° arc is a 25° step, and at `edge_radius_m`
+of 0.18 m the swept capsules overlap at every radius the reach covers — there is
+no gap for a target to sit in.
+
+`struck_this_swing` is what makes the sample count invisible to balance: an
+Assembly already struck by this swing is skipped, so a six-sample swing and a
+sixteen-sample swing deal the same damage. Without it, `swing_samples` would
+silently be a damage multiplier and the profile field would be unauthorable.
+
+### 15.4 Resolution
+
+```gdscript
+func _resolve_strike(st: MeleeStrikeState, mp: MeleeProfile,
+                     hit: Dictionary, travel: Vector3) -> void:
+    if st.struck_this_swing.size() >= mp.max_targets_per_swing:
+        return
+    var target_id := _assembly_id_of(hit.collider)
+    if st.struck_this_swing.has(target_id):
+        return
+    if mp.min_closing_speed_mps > 0.0 \
+            and _closing_speed(hit.collider) < mp.min_closing_speed_mps:
+        return
+    st.struck_this_swing.push_back(target_id)
+
+    var dir := travel.normalized()
+    for channel in PartEnums.DAMAGE_CHANNEL_COUNT:
+        var share := mp.channel_mix[channel]
+        if share <= 0.0:
+            continue
+        DamageResolver.submit_impact(ImpactRecord.new(
+            hit.point, -dir, dir * mp.strike_damage * share, ...))
+    _target_body(hit).apply_impulse(dir * mp.strike_impulse_ns, ...)
+    _body.apply_impulse(-dir * mp.strike_impulse_ns * mp.reaction_ratio, ...)
+```
+
+The reaction impulse is what stops a melee Assembly being a free weapon. A
+2800 N·s strike at `reaction_ratio = 0.35` shoves the wielder back with 980 N·s,
+which on a light build is a real loss of position and on a heavy one is nothing —
+so melee rewards mass, which is the correct incentive for a weapon whose whole
+premise is closing to contact.
+
+`channel_mix` is iterated in channel order, and one `DamagePacket` is submitted
+per non-zero share rather than one packet carrying a blend. Doc 08's resolver
+applies resistance per channel, and a blended packet would need a second
+resistance path that does not exist.
+
+### 15.5 Sustained Contact
+
+A `sustained` edge damages while held against a target, at
+`sustained_damage_s`, split by the same `channel_mix`. It is evaluated on the
+same sweep — a `SWINGING` stage that does not advance — and is what a powered
+edge does when the trigger is held after the swing lands. `struck_this_swing` is
+cleared each tick in the sustained case rather than each swing, so the same
+target keeps taking damage. That is the one place the two paths differ and it is
+one line.
+
+`energised_draw_pu` is added to the Assembly's draw while `energised`, on top of
+`power_draw_pu`. A powered edge on an Assembly that cannot afford it is not
+refused; `FLAG_POWER_STARVED` is set and §7's emission loop already skips a
+starved module. Bringing an edge up therefore browns out the rest of the
+Assembly, which is a decision the player makes and feels rather than a message
+they read.
+
+### 15.6 Degradation
+
+Melee indexes the same `DegradationTable` rows the ballistic path does, with one
+substitution: `EFF_CYCLE` scales the total of `wind_up_s + swing_duration_s +
+recovery_s`, so a `CRITICAL` edge swings at `1/1.60` of its rate. `EFF_SPREAD`
+has no meaning for a swept volume and is not read. `EFF_JAM` **is** read: a
+`CRITICAL` melee module has the same 0.18 chance of seizing mid-swing, which
+aborts the stage machine into `RECOVERING` without resolving a sweep. A jammed
+blade that has already committed to a swing and delivers nothing is exactly as
+punishing as a jammed autocannon, and needed no new mechanism.
+
+### 15.7 Authority
+
+Melee is server-only, and this is stricter than the ballistic path. §11.1 lets a
+client predict a projectile spawn as a cosmetic tracer because a tracer that
+turns out not to have hit costs nothing. A predicted *melee hit* is a predicted
+impulse on another player's Assembly, and a mispredicted one shoves a target that
+the server never moved.
+
+| Quantity | Server | Local client | Remote client |
+|---|---|---|---|
+| Stage machine and swing animation | Authoritative | Predicted | Interpolated |
+| Sweep query and target set | Authoritative | **Not evaluated** | — |
+| Damage packets | Authoritative | — | — |
+| Impulse on the target | Authoritative | — | — |
+| Reaction impulse on the wielder | Authoritative | Predicted | — |
+| `energised` and its power draw | Authoritative | Predicted | — |
+
+The wielder's own reaction impulse is predicted because it is a force on the
+Assembly the client already owns and predicts, and omitting it would make a
+local melee swing feel weightless for a full round trip.

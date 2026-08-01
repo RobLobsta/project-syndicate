@@ -41,6 +41,15 @@ const MAX_MOTIVE_PER_ASSEMBLY: int = 24
 ## that touches no code.
 const GRAVITY_MPS2: float = 9.81
 
+## Density of the atmosphere every aerodynamic force is computed in, in kg/m^3.
+##
+## Here for the same reason as [constant GRAVITY_MPS2]: the Control Surface
+## solver's dynamic pressure and the rotor solver's momentum-theory thrust must
+## agree exactly, or an Assembly carrying both generates its lift and its drag
+## in two different airs. Document 05 owns every other aerodynamic constant; it
+## owns only the use of this one.
+const AIR_DENSITY_KG_M3: float = 1.225
+
 const PHYSICS_HZ: int = 60
 const PHYSICS_DT: float = 1.0 / 60.0
 const NET_SNAPSHOT_HZ: int = 30

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ColliderProfile" format=3 uid="uid://cycy0qkvqr5tg"]
+
+[ext_resource type="Script" path="res://src/core/data/collider_primitive_def.gd" id="1_eqjta"]
+[ext_resource type="Script" path="res://src/core/data/collider_profile.gd" id="2_n48gh"]
+
+[sub_resource type="Resource" id="Resource_fqn6t"]
+script = ExtResource("1_eqjta")
+half_extents_m = Vector3(0.375, 0.375, 1)
+local_offset_m = Vector3(0, 0, -0.875)
+
+[resource]
+script = ExtResource("2_n48gh")
+primitives = Array[ExtResource("1_eqjta")]([SubResource("Resource_fqn6t")])
