@@ -11,6 +11,10 @@
 /build/
 /export/
 
+# Tool output: validator reports, promotion contact sheets. Regenerated on
+# every CI run; see docs/PART_DATA_SCHEMA.md §14 and docs/EXTENSION_PIPELINE.md §8.
+/.build/
+
 # DCC scratch that escaped art_src/
 *.blend1
 *.blend2

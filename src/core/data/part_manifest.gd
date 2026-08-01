@@ -11,6 +11,9 @@ extends Resource
 ## Reserved id meaning "no part". Never assigned to a definition.
 const INVALID_PART_ID: int = 0
 
+## Directory holding every part `.tres` and its profile side-cars.
+const PARTS_DIR: String = "res://data/parts"
+
 @export var keys: PackedStringArray = PackedStringArray()
 
 
@@ -30,3 +33,13 @@ func compute_content_hash() -> int:
 func id_for_key(key: StringName) -> int:
 	var idx := keys.find(String(key))
 	return INVALID_PART_ID if idx < 0 else idx + 1
+
+
+## On-disk path of a definition, per [code]docs/EXTENSION_PIPELINE.md[/code] §4.1.
+##
+## Static, and here rather than on the registry, because the tools validate the
+## data on disk without an autoload in the tree. The key-to-path conversion is
+## mechanical and every caller shares this one so the two forms cannot drift.
+static func definition_path(key: StringName) -> String:
+	var segments := String(key).split(".")
+	return "%s/%s/%s.tres" % [PARTS_DIR, segments[0], String(key)]

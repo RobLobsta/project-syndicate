@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="PartManifest" load_steps=2 format=3 uid="uid://bqmn5ky1w0syd"]
+[gd_resource type="Resource" script_class="PartManifest" format=3 uid="uid://bqmn5ky1w0syd"]
 
 [ext_resource type="Script" path="res://src/core/data/part_manifest.gd" id="1_manifest"]
 
 [resource]
 script = ExtResource("1_manifest")
-keys = PackedStringArray()
+keys = PackedStringArray("core.command.compact.t2", "str.panel.medium.t2")

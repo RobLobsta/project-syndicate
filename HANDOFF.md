@@ -4,7 +4,7 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 1 (environment bootstrap, core data/math foundation, lattice occupancy).
+Last updated: session 2 (first two part definitions, registry validator, polarity fix).
 
 ---
 
@@ -37,7 +37,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**16 files, 1000 checks, 0 failures.** Verified to actually fail on planted
+**19 files, 1673 checks, 0 failures.** Verified to actually fail on planted
 faults, not merely to pass:
 
 | Planted fault | Caught by |
@@ -48,8 +48,22 @@ faults, not merely to pass:
 | transposed rotation matrix | `test_orientation_table` (32 failures) |
 | dropped origin offset in `resolve` | `test_footprint_solver` (30 failures) |
 | `out` buffer not shrunk on reuse | `test_footprint_solver` |
+| definition on disk absent from the manifest | `validate_part_registry` R02 |
+| duplicated manifest key | `validate_part_registry` R02 |
+| manifest naming a definition that does not exist | `validate_part_registry` R02 |
+| collider shrunk to 60% coverage | `validate_part_registry` R08 |
+| resistance above the 0.85 ceiling | `validate_part_registry` R07 |
+| manifest order swapped | `test_part_registry_data` (5 failures) |
+| four attachment nodes dropped from a `.tres` | `test_part_registry_data` (2 failures) |
 
 Each reports file, line, and the invariant, and the runner exits 1.
+
+Note the last two rows. **The validator does not catch a dropped attachment
+node and cannot** — §14 has no rule about how many nodes a part should have, so
+there is nothing for it to compare against. Only the integration test, which
+knows a 4×1×4 solid box exposes 48 cell faces, sees it. That is the division of
+labour to preserve when adding parts: the validator checks what the schema can
+decide, the integration test checks what the data is supposed to say.
 
 ---
 
@@ -111,9 +125,27 @@ These are all verified against 4.7.1 in this repo, not recalled.
     *effective* values through `ProjectSettings`, never by grepping the text.
     Do not "restore" those lines — they will vanish again on the next save.
 
+11. **`ResourceSaver.save` neither writes a uid nor sets `resource_path` on the
+    object it wrote.** Two consequences, both silent. A re-save *strips* the uid
+    an existing file already carried, breaking every `uid://` reference to it —
+    capture `ResourceLoader.get_resource_uid(path)` before the write and put it
+    back with `ResourceSaver.set_uid(path, uid)` after, minting a
+    `ResourceUID.create_id()` only when there was none. And a sub-resource
+    assigned from memory rather than reloaded from its path serialises as an
+    *inlined copy*: `def.collider_profile = collider` wrote the whole profile
+    into the definition and left the `.collider.tres` file dead, which would
+    have let a definition's collider diverge from the file doc 13 §7 hashes for
+    the balance-review gate. `tools/author_first_parts.gd` reloads each side-car
+    through `CACHE_MODE_REPLACE` for exactly this reason.
+
+12. **`PackedFloat32Array` round-trips 0.85 as 0.85000002.** An inclusive
+    ceiling tested with a bare `>` rejects the exact value the balance tables
+    are written to. `resistance` is float32; compare with `is_equal_approx`.
+    `tests/unit/test_part_registry_validator.gd` caught this on the first run.
+
 ---
 
-## 3. Architecture change made this session
+## 3. Architecture changed once, in session 1
 
 **`docs/PART_DATA_SCHEMA.md` §6.2 was amended, and `docs/EXTENSION_PIPELINE.md`
 updated to match.**
@@ -135,6 +167,34 @@ Nothing else in the thirteen documents was changed.
 
 ---
 
+## 3a. Code corrected against the documents, in session 2
+
+No document changed. One piece of session-1 code contradicted one, and was
+fixed to match rather than the other way round.
+
+**`AttachmentNodeDef.accepts_polarity` had `DECK` mating only with `DECK`.**
+`docs/GRID_SNAPPING_LOGIC.md` §7.3 gives the matrix explicitly: `DECK` accepts
+`FACE_MALE` and `FACE_NEUTRAL`, refuses `FACE_FEMALE`, and refuses another
+`DECK` — two decks facing each other describe no physical joint. `FACE_MALE`
+and `FACE_NEUTRAL` accept `DECK` in return, which the old code also omitted.
+
+This surfaced while authoring the Core Module's upward face. Under the old rule
+that face would have refused every part in the game, and the failure would have
+looked like a data problem rather than a code one. The matrix is now a flat
+`POLARITY_MATRIX` lookup on `AttachmentNodeDef`, asserted cell by cell against
+the document by `tests/unit/test_attachment_polarity.gd`, which also asserts the
+symmetry §7.3 claims the matrix has by construction.
+
+When `PlacementValidator` lands, its `polarity_compatible` must call this one.
+§7.3 sketches a second copy of the table on the validator; a second copy is how
+the first one went wrong.
+
+**`CLAUDE.md` §2 gained `.build/`.** Doc 01 §14 and doc 13 §8 both require tool
+output there, and §2 forbade top-level directories it did not list. It is
+declared as generated output and gitignored.
+
+---
+
 ## 4. What exists now
 
 ### Environment and CI
@@ -144,7 +204,7 @@ Nothing else in the thirteen documents was changed.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless test runner |
-| `.gitignore` | Ignores `.tooling/`, `.godot/`, exports |
+| `.gitignore` | Ignores `.tooling/`, `.godot/`, `.build/`, exports |
 
 ### Source
 - `src/core/data/` — `SyndicateConstants`, `PartEnums`, `CollisionLayers`,
@@ -158,7 +218,48 @@ Nothing else in the thirteen documents was changed.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `src/net/net_channels.gd`, `src/assembly/runtime/assembly_stats.gd`.
 - `project.godot` — autoloads, physics/display settings, all 33 input actions.
-- `data/parts/registry_manifest.tres` — valid and **empty**; no parts exist yet.
+
+### Data
+| Path | Contents |
+|---|---|
+| `data/parts/registry_manifest.tres` | Two keys, in this order. **Append only.** |
+| `data/parts/core/core.command.compact.t2.*` | Core Module: definition + visual/collider/fusion |
+| `data/parts/str/str.panel.medium.t2.*` | Structural Component, same four files |
+
+Both are straight from doc 01 §10.1, §10.2 and §11. Two values §10 does not
+publish were chosen and are commented where they are set:
+`load_capacity_kg = 3600` on the Core Module (it carries structurally what
+§10.1's `mass_tolerance_kg` says it tolerates dynamically), and the Tier-2
+`build_cost` baselines, 900 and 60, which §12 will scale every other tier of
+those two variants from.
+
+Both ship at `STAGE_PROXY` with **empty** `proxy_primitives`, so doc 13 §2.1
+mirrors the `ColliderProfile` and the greybox renders exactly what it collides
+as. Each is one solid box under a single `BOX` primitive at 100% of the §6.2
+coverage band, with one attachment node per exposed cell face — 94 on the Core
+Module, 48 on the panel.
+
+Per-cell node coverage is not padding. Doc 02 §6.4 disambiguates between
+"several nodes sharing the required face", and doc 06 enumerates mount cells as
+"every free cell adjacent to an occupied cell with an upward-facing node". A
+part with one node per face would only ever snap at its own centre.
+
+`tools/author_first_parts.gd` derives all of it — cells, nodes, collider
+extents, centre of mass — from the documented cell dimensions. It is committed,
+idempotent, and is the worked example to copy for the next part. Hand-typing 94
+node records is a transcription error waiting to happen.
+
+### Tools
+| Path | Purpose |
+|---|---|
+| `tools/part_registry_validator.gd` | `PartRegistryValidator`: the 16 rules of doc 01 §14 |
+| `tools/validate_part_registry.gd` | CI entry point; writes `.build/part_registry_report.md` |
+| `tools/author_first_parts.gd` | Derives and writes the two parts and the manifest append |
+
+The rules live in the `RefCounted` class and the `SceneTree` script is a thin
+shell, because CLAUDE.md §11 fixes the `--script` path and a script cannot be
+both. Findings carry their rule number (`[R08] str.panel.medium.t2: ...`), which
+is what the unit tests assert on.
 
 ### Tests
 `tests/test_case.gd` (assertion base, dependency-free) and
@@ -172,17 +273,47 @@ Conformance tests present: `test_autoload_set`, `test_input_actions`,
 
 Unit/integration: `test_lattice_math`, `test_orientation_table`,
 `test_part_definition_bake`, `test_collider_profile_serialisation`,
-`test_lattice_occupancy`, `test_footprint_solver`, `test_tick_ordering`.
+`test_lattice_occupancy`, `test_footprint_solver`, `test_attachment_polarity`,
+`test_part_registry_validator`, `test_tick_ordering`,
+`test_part_registry_data`.
+
+The last two are a deliberate pair. `test_part_registry_validator` plants one
+fault at a time in a synthetic definition and asserts the rule that should catch
+it does — a validator asserted only against valid data passes just as happily
+with its checks commented out. `test_part_registry_data` then runs the real
+validator over the real `data/parts/` and re-asserts every published number from
+§10 after the round trip through `.tres`.
 
 ---
 
 ## 5. Known gaps — deliberate, not oversights
 
-- **No parts exist.** `registry_manifest.tres` is empty. `PartRegistry` handles
-  that correctly (registry of size 0, `manifest_hash` over an empty list). The
-  next real milestone is authoring one Core Module and one Structural Component
-  end-to-end, because that is what forces `tools/validate_part_registry.gd` into
-  existence.
+- **Rule 2's reorder half is not implemented, and cannot be from data alone.**
+  §14 rule 2 is "`part_key` is absent from `registry_manifest.tres`, or the
+  manifest order changed". Absence, duplication, a manifest entry with no file,
+  and a file with no manifest entry are all checked and all verified to fail.
+  *Order changed* is only meaningful against a prior, and the validator has
+  none. Nothing has shipped yet, so there is no history to protect and the gap
+  costs nothing today. Before the first release it needs a recorded baseline of
+  shipped ids — the same shape as the `ColliderBaseline` doc 13 §7 describes —
+  and the check becomes "the baseline is a prefix of the manifest". Faking it
+  now, against a baseline the validator itself writes, would assert nothing.
+- **No motive parts, so `AXLE` polarity has no user yet — and there is a
+  decision waiting there.** Rule 11 makes a cell face carry exactly one node, so
+  a face is *either* `FACE_NEUTRAL` *or* `AXLE`, never both, and `AXLE` mates
+  only with `AXLE`. Every face on both shipped parts is neutral (bar the Core
+  Module's deck). So either Motive Assemblies mate through `FACE_MALE`/
+  `FACE_NEUTRAL` and `AXLE` is reserved for dedicated axle-mount structural
+  parts, or chassis parts must give up specific faces to `AXLE`. Doc 01 §4 says
+  only "motive assemblies only". Flagged rather than guessed at; resolve it when
+  the first `mot.*` part is authored, and record the decision in doc 01 §4.
+- **Rule 13 (tier scaling) has never fired.** It needs two tiers of one
+  `class.family.variant` and there is one tier of two variants. The check is
+  written and grouped correctly; it is simply vacuous. Worth knowing before
+  trusting it: several §10 rows would **fail** it as documented —
+  `str.bumper.impact` t2→t4 is −22% on integrity and −26% on armour, and
+  `str.wedge.forward` t2→t3 is +8.2% on integrity. Authoring those parts will
+  force a choice between `balance_exception_note` on each and amending §12.
 - **No scenes, and no main scene set in `project.godot`.** `godot --path .` runs
   and does nothing. `test_no_runtime_csg` and `test_visual_decoupling` parse an
   empty scene set today and pass vacuously — they are written to bite the moment
@@ -206,29 +337,38 @@ Unit/integration: `test_lattice_math`, `test_orientation_table`,
 
 ## 6. Suggested next steps, in dependency order
 
-1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done this session.**
+1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done in session 1.**
    `LatticeOccupancy` stores per-slot cell lists in a flat array indexed by slot
    rather than the dictionary sketched in doc 02 §3. The public interface is
    unchanged; a flat array drops the hashing and makes `slots_in_use()`
    ascending by construction, which I-9 needs. Not an architecture change, so
    doc 02 was left alone.
-2. **First two part definitions and `tools/validate_part_registry.gd`.** The
-   validator's rules are fully written out in doc 01 §6.2 and §5.1; the
-   `ColliderProfile` coverage-band check (82–118%) already has the volume maths
-   it needs on `ColliderPrimitiveDef.volume_m3()` and
-   `PartDefinition.occupancy_volume_m3()`.
-3. **`PlacementValidator`** (doc 02 §7) — everything in the garage, the
-   auto-assembler, and server-side blueprint validation routes through it, so it
-   is the highest-leverage next system. The pieces it composes now exist:
+2. ~~First two part definitions and `tools/validate_part_registry.gd`~~ —
+   **done in session 2.**
+3. **`PlacementValidator`** (doc 02 §7) — **start here.** Everything in the
+   garage, the auto-assembler, and server-side blueprint validation routes
+   through it, so it is the highest-leverage next system, and it now has real
+   parts to validate against instead of fixtures. The pieces it composes exist:
    `FootprintSolver.all_in_bounds` and `LatticeOccupancy.is_footprint_free` are
    deliberately separate because the two rejections carry different `Reject`
-   codes, and `ResolvedNode.opposes` holds the mating rule.
+   codes, and `ResolvedNode.opposes` holds the mating rule and now reads the
+   corrected polarity matrix. Two cautions: §7.3 sketches a second copy of
+   `_POLARITY_MATRIX` on the validator — call `AttachmentNodeDef` instead — and
+   §7.4's budget checks need `mount_weight` summed against
+   `core_profile.mount_budget`, which the Core Module deliberately sets to 0 for
+   itself.
 4. **`ChassisGraph`** (doc 04), which `test_no_polling` is already configured to
    police.
+5. **A second tier of one of the two shipped variants**, whenever balance work
+   starts. It is the cheapest way to make rule 13 non-vacuous, and it will
+   immediately expose whether §12's scaling model survives contact with §10's
+   own tables (see §5 above — twice, it does not).
 
 ---
 
-## 7. Conventions this session established
+## 7. Conventions — follow these when adding to the suite
+
+Established in session 1:
 
 - Test methods are `test_*` with no arguments; the runner sorts them, so no test
   may depend on another's ordering. Assertions record rather than halt, so one
@@ -239,3 +379,19 @@ Unit/integration: `test_lattice_math`, `test_orientation_table`,
 - Arch tests that currently scan an empty set still call `check_true(true, ...)`
   with a description, so a vacuous pass is visible in the check count rather than
   indistinguishable from a real one.
+
+Added in session 2:
+
+- **A validator is tested by breaking things, one at a time.** Every rule in
+  `test_part_registry_validator` starts from a definition that passes cleanly and
+  plants exactly one fault. The fixture is synthetic rather than the shipped
+  panel: a fixture that loads real data fails for reasons a fault test cannot
+  distinguish from the fault it planted.
+- **Validator findings carry their rule number.** `[R08] key: message`, and the
+  message names the invariant and the number that broke it — "collider covers
+  60.0% of the 0.2500 m³ occupancy; §6.2 requires 82%–118%", not "invalid
+  collider".
+- **Generated data files are derived, not typed.** Committed alongside a
+  committed generator, so the derivation is reviewable next to the data.
+- **The report carries no timestamp**, so two runs over the same data are
+  byte-identical and it diffs as cleanly as the data it describes.

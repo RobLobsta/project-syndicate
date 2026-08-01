@@ -71,6 +71,14 @@ extends Resource
 ## Counts against the Core Module's mount budget.
 @export var mount_weight: int = 1
 
+## ===== BALANCE =========================================================
+## Justification for a deliberate departure from the tier scaling model of
+## [code]docs/PART_DATA_SCHEMA.md[/code] §12. Empty means the part is expected to
+## track its family's Tier-2 baseline within ±8%; the registry validator fails
+## the build on an unexplained deviation and prints every note it finds in its
+## report, so an exception is reviewable rather than invisible.
+@export var balance_exception_note: String = ""
+
 ## ===== DERIVED (baked by the registry, never serialised) ===============
 var runtime_id: int = 0
 var bounds_min_cell: Vector3i = Vector3i.ZERO
