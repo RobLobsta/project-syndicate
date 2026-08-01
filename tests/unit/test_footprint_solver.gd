@@ -149,6 +149,34 @@ func test_opposing_nodes_mate_and_parallel_ones_do_not() -> void:
 	check_false(upward.opposes(too_far), "nodes two cells apart do not mate")
 
 
+func test_two_way_adjacency_already_implies_opposing_faces() -> void:
+	# [method ResolvedNode.is_face_paired] tests adjacency in both directions and
+	# then tests that the faces oppose. The second test is provably redundant:
+	# a.cell + a.face == b.cell and b.cell + b.face == a.cell together give
+	# a.face == -b.face. It is kept because §7.3 states the rule and a reader
+	# should not have to derive it — but it is kept knowingly, not because it
+	# rejects anything the adjacency test admits, and this exhaustive sweep over
+	# all thirty-six face pairings is what says so.
+	var unopposed_but_adjacent := 0
+	for a_face: Vector3i in AttachmentNodeDef.AXIS_NORMALS:
+		for b_face: Vector3i in AttachmentNodeDef.AXIS_NORMALS:
+			var a := _node(Vector3i(10, 10, 10), a_face, PartEnums.AttachmentPolarity.FACE_NEUTRAL)
+			var b := _node(
+				Vector3i(10, 10, 10) + a_face, b_face, PartEnums.AttachmentPolarity.FACE_NEUTRAL
+			)
+			var two_way := b.cell == a.mating_cell() and a.cell == b.mating_cell()
+			if two_way and a_face != -b_face:
+				unopposed_but_adjacent += 1
+			check_eq(
+				a.is_face_paired(b), two_way and a_face == -b_face,
+				"faces %v and %v pair iff adjacent both ways and opposed" % [a_face, b_face]
+			)
+	check_eq(
+		unopposed_but_adjacent, 0,
+		"no face pairing is adjacent in both directions without also opposing"
+	)
+
+
 func test_incompatible_polarities_do_not_mate() -> void:
 	var male_a := _node(Vector3i(0, 0, 0), Vector3i(0, 1, 0), PartEnums.AttachmentPolarity.FACE_MALE)
 	var male_b := _node(Vector3i(0, 1, 0), Vector3i(0, -1, 0), PartEnums.AttachmentPolarity.FACE_MALE)

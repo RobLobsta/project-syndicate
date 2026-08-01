@@ -26,14 +26,31 @@ func mating_cell() -> Vector3i:
 	return cell + face
 
 
+## True when [param other] is physically adjacent and facing this node: each
+## one's [method mating_cell] is the other's [member cell], and the faces
+## oppose.
+##
+## The geometric half of the mating rule on its own, because
+## [code]PlacementValidator[/code] needs to separate a placement that found no
+## adjacent face at all from one that found the right face and the wrong
+## polarity — the two carry different [code]Reject[/code] codes and the garage
+## phrases them differently. Splitting it here rather than restating the
+## adjacency test inside the validator keeps one implementation of what
+## "adjacent and facing" means.
+func is_face_paired(other: ResolvedNode) -> bool:
+	if other == null:
+		return false
+	if other.cell != mating_cell() or cell != other.mating_cell():
+		return false
+	return face == -other.face
+
+
 ## True when [param other] sits on the opposing face of the adjacent cell and
 ## its polarity accepts this node's. Class restrictions are checked separately
 ## by the validator, which knows the candidate's part class.
 func opposes(other: ResolvedNode) -> bool:
 	if other == null or source == null or other.source == null:
 		return false
-	if other.cell != mating_cell() or cell != other.mating_cell():
-		return false
-	if face != -other.face:
+	if not is_face_paired(other):
 		return false
 	return source.accepts_polarity(other.source.polarity)

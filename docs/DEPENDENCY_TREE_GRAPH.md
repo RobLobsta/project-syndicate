@@ -55,6 +55,7 @@ var edge_strength: Array = []                          # slot -> PackedFloat32Ar
 var edge_strain: Array = []                            # slot -> PackedFloat32Array
 
 ## --- Cached aggregates ------------------------------------------------
+var mass_kg: PackedFloat32Array = PackedFloat32Array()  # slot -> its own mass
 var subtree_mass: PackedFloat32Array = PackedFloat32Array()
 var alive: PackedByteArray = PackedByteArray()         # 1 = participating in structure
 
@@ -82,6 +83,8 @@ func _init() -> void:
 ```
 
 Every array is fixed-size and preallocated at construction. The graph performs **no heap allocation during a match** except when growing a per-slot adjacency list at attach time, which only happens in the garage.
+
+`mass_kg` was added to the cached aggregates after the fact. §3.1 calls `m_mass_of(slot)` to compute the delta it propagates, and this section originally declared no field to hold it — leaving the graph unable to compute a value its own attach path depends on. Storing it here follows the precedent of the other aggregates and keeps the graph free of a `PartRegistry` dependency, so it stays constructible in a unit test with no autoloads. `attach` therefore takes the part's mass as its final argument, and `m_mass_of(slot)` is `mass_kg[slot]`.
 
 ### 2.2 The Visit Stamp Trick
 
@@ -138,6 +141,10 @@ func _add_edge(a: int, b: int, strength: float) -> void:
 ```
 
 Edges are stored twice (once per endpoint) so neighbour iteration is a single contiguous read with no indirection. The `edge_strain` value is kept in sync across both copies by `_set_edge_strain`, which updates both endpoints.
+
+A `MateRecord`'s `joint_strength_n` is the **weaker** of the two mating nodes' declared strengths. A joint is a pair of mating faces and fails at whichever face yields first, so rating it by the stronger end — or by the arriving part's end — would let a part advertise a strength its partner cannot honour, and §3.2 would then select that joint as primary parent on the strength of a number describing only one side of it. `MateRecord.create` is the single place this is decided.
+
+`_add_edge` is idempotent per pair. A wide part meeting a wide part mates across several faces, which is one physical joint; adding an edge per mating face would double-count it in every strain and connectivity sum.
 
 ### 3.2 Primary Parent Selection
 
