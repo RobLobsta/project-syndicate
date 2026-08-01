@@ -118,7 +118,14 @@ These are all verified against 4.7.1 in this repo, not recalled.
    whether or not the project declares it. To read what the project actually
    declares, parse the `[input]` section of `project.godot`.
 
-10a. **`ResourceSaver.save` neither writes a uid nor sets `resource_path` on the
+10. **Godot rewrites `project.godot` and drops any setting equal to the engine
+    default.** `physics_ticks_per_second=60`, `stretch/scale_mode="fractional"`,
+    and `renderer/rendering_method="forward_plus"` are all in force but absent
+    from the file. `tests/arch/test_project_settings.gd` therefore asserts
+    *effective* values through `ProjectSettings`, never by grepping the text.
+    Do not "restore" those lines — they will vanish again on the next save.
+
+11. **`ResourceSaver.save` neither writes a uid nor sets `resource_path` on the
     object it wrote.** Two consequences, both silent. A re-save *strips* the uid
     an existing file already carried, breaking every `uid://` reference to it —
     capture `ResourceLoader.get_resource_uid(path)` before the write and put it
@@ -131,21 +138,14 @@ These are all verified against 4.7.1 in this repo, not recalled.
     the balance-review gate. `tools/author_first_parts.gd` reloads each side-car
     through `CACHE_MODE_REPLACE` for exactly this reason.
 
-10b. **`PackedFloat32Array` round-trips 0.85 as 0.85000002.** An inclusive
+12. **`PackedFloat32Array` round-trips 0.85 as 0.85000002.** An inclusive
     ceiling tested with a bare `>` rejects the exact value the balance tables
     are written to. `resistance` is float32; compare with `is_equal_approx`.
     `tests/unit/test_part_registry_validator.gd` caught this on the first run.
 
-10. **Godot rewrites `project.godot` and drops any setting equal to the engine
-    default.** `physics_ticks_per_second=60`, `stretch/scale_mode="fractional"`,
-    and `renderer/rendering_method="forward_plus"` are all in force but absent
-    from the file. `tests/arch/test_project_settings.gd` therefore asserts
-    *effective* values through `ProjectSettings`, never by grepping the text.
-    Do not "restore" those lines — they will vanish again on the next save.
-
 ---
 
-## 3. Architecture change made this session
+## 3. Architecture changed once, in session 1
 
 **`docs/PART_DATA_SCHEMA.md` §6.2 was amended, and `docs/EXTENSION_PIPELINE.md`
 updated to match.**
@@ -167,7 +167,7 @@ Nothing else in the thirteen documents was changed.
 
 ---
 
-## 3a. Code corrected against the documents this session
+## 3a. Code corrected against the documents, in session 2
 
 No document changed. One piece of session-1 code contradicted one, and was
 fixed to match rather than the other way round.
@@ -204,7 +204,7 @@ declared as generated output and gitignored.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless test runner |
-| `.gitignore` | Ignores `.tooling/`, `.godot/`, exports |
+| `.gitignore` | Ignores `.tooling/`, `.godot/`, `.build/`, exports |
 
 ### Source
 - `src/core/data/` — `SyndicateConstants`, `PartEnums`, `CollisionLayers`,
@@ -337,18 +337,18 @@ validator over the real `data/parts/` and re-asserts every published number from
 
 ## 6. Suggested next steps, in dependency order
 
-1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done this session.**
+1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done in session 1.**
    `LatticeOccupancy` stores per-slot cell lists in a flat array indexed by slot
    rather than the dictionary sketched in doc 02 §3. The public interface is
    unchanged; a flat array drops the hashing and makes `slots_in_use()`
    ascending by construction, which I-9 needs. Not an architecture change, so
    doc 02 was left alone.
 2. ~~First two part definitions and `tools/validate_part_registry.gd`~~ —
-   **done this session.**
-3. **`PlacementValidator`** (doc 02 §7) — everything in the garage, the
-   auto-assembler, and server-side blueprint validation routes through it, so it
-   is the highest-leverage next system, and it now has real parts to validate
-   against instead of fixtures. The pieces it composes exist:
+   **done in session 2.**
+3. **`PlacementValidator`** (doc 02 §7) — **start here.** Everything in the
+   garage, the auto-assembler, and server-side blueprint validation routes
+   through it, so it is the highest-leverage next system, and it now has real
+   parts to validate against instead of fixtures. The pieces it composes exist:
    `FootprintSolver.all_in_bounds` and `LatticeOccupancy.is_footprint_free` are
    deliberately separate because the two rejections carry different `Reject`
    codes, and `ResolvedNode.opposes` holds the mating rule and now reads the
@@ -366,7 +366,9 @@ validator over the real `data/parts/` and re-asserts every published number from
 
 ---
 
-## 7. Conventions this session established
+## 7. Conventions — follow these when adding to the suite
+
+Established in session 1:
 
 - Test methods are `test_*` with no arguments; the runner sorts them, so no test
   may depend on another's ordering. Assertions record rather than halt, so one
@@ -378,7 +380,7 @@ validator over the real `data/parts/` and re-asserts every published number from
   with a description, so a vacuous pass is visible in the check count rather than
   indistinguishable from a real one.
 
-Added this session:
+Added in session 2:
 
 - **A validator is tested by breaking things, one at a time.** Every rule in
   `test_part_registry_validator` starts from a definition that passes cleanly and
