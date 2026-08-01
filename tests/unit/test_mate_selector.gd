@@ -167,7 +167,92 @@ func test_a_joint_bears_load_only_when_both_ends_do() -> void:
 	)
 
 
+## ===== THE SUPPORT-EDGE ENTRY POINT ====================================
+## [method MateSelector.choose_support_parent] ranks a survivor's remaining
+## joints after a destruction, where there are no [MateRecord]s left to read.
+## It must reach the same verdict the placement path would have.
+
+
+func test_support_parent_applies_the_same_four_keys() -> void:
+	# Slot 3 touches slot 1 through a weak load-bearing joint and slot 2 through
+	# a strong one that refuses load. Key 1 outranks key 2, so slot 1 wins —
+	# the same answer choose_primary gives on the equivalent mate records.
+	var g := _fork_graph(WEAK, true, STRONG, false)
+	check_eq(MateSelector.choose_support_parent(g, 3), 1, "the load-bearing joint wins")
+
+	var records: Array[MateRecord] = [_mate(1, WEAK, true), _mate(2, STRONG, false)]
+	check_eq(
+		MateSelector.choose_primary_slot(records, g),
+		1,
+		"and the placement path agrees, which is the whole point of sharing the ordering"
+	)
+
+
+func test_support_parent_prefers_the_stronger_joint_when_both_bear_load() -> void:
+	var g := _fork_graph(WEAK, true, STRONG, true)
+	check_eq(MateSelector.choose_support_parent(g, 3), 2, "the stronger of two supports")
+
+
+func test_support_parent_refuses_a_neighbour_that_is_itself_severed() -> void:
+	# A candidate that cannot reach the Core Module is a floating fragment, and
+	# re-parenting onto one would leave the graph claiming a connection the
+	# Assembly does not have — a part reported as attached while hanging off
+	# debris.
+	#
+	# The fixture has to float the whole component to reach this. A connected
+	# part's live neighbours are connected through it by definition, so the only
+	# arrangement in which the check changes an answer is one where every
+	# candidate is floating.
+	var g := _chain_graph()
+	g.sever_edge(3, 2)
+	check_false(g.is_connected_to_core(4), "fixture: slot 4 is adrift with slot 3")
+	check_true(g.is_alive(3), "fixture: its neighbour is still live, just unreachable")
+	check_eq(
+		MateSelector.choose_support_parent(g, 4),
+		INVALID,
+		"no parent is taken, rather than one that reaches nothing"
+	)
+
+
+func test_support_parent_refuses_its_own_descendant() -> void:
+	# A part cannot be held up by something it holds up. Accepting one would
+	# cycle the primary tree, and §3.3's mass walk to the root would not return.
+	var g := _chain_graph()
+	check_eq(
+		MateSelector.choose_support_parent(g, 2),
+		1,
+		"slot 2 takes its ancestor, never the child hanging off it"
+	)
+
+
+func test_support_parent_reports_no_candidate_when_there_is_none() -> void:
+	var g := _chain_graph()
+	g.sever_edge(4, 3)
+	check_eq(
+		MateSelector.choose_support_parent(g, 4),
+		INVALID,
+		"a part with no surviving joint has no parent to take"
+	)
+
+
 ## ===== HELPERS =========================================================
+
+
+## Slots 1 and 2 side by side under the Core Module, with slot 3 hanging off
+## slot 1 and also touching slot 2. Both candidates sit at the same depth, so
+## keys 1 and 2 are the only ones that can decide between them.
+func _fork_graph(
+	strength_one: float, bears_one: bool, strength_two: float, bears_two: bool
+) -> ChassisGraph:
+	var g := ChassisGraph.new()
+	g.attach(CORE, INVALID, [] as Array[MateRecord], 100.0)
+	g.attach(1, CORE, [_mate(CORE, STRONG, true)] as Array[MateRecord], 10.0)
+	g.attach(2, CORE, [_mate(CORE, STRONG, true)] as Array[MateRecord], 10.0)
+	var mates: Array[MateRecord] = [
+		_mate(1, strength_one, bears_one), _mate(2, strength_two, bears_two)
+	]
+	g.attach(3, 1, mates, 10.0)
+	return g
 
 
 ## Core -> 1 -> 2 -> 3 -> 4, so every slot has a distinct depth.

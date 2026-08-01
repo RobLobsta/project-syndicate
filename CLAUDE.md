@@ -417,6 +417,7 @@ Every system that can be triggered repeatedly has an explicit bound:
 | System | Bound |
 |---|---|
 | Damage chain reactions | depth 3 |
+| Terminal debris components | 8 per Assembly |
 | Collapse cascades | 6 ticks per trigger |
 | Fragment slicing | 3 slices per fragment |
 | Auto-assemble backtracking | 6 attempts |

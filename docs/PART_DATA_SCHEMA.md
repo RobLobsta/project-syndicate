@@ -62,6 +62,7 @@ const MAX_EFFECTORS_PER_ASSEMBLY: int = 16
 const MAX_MOTIVE_PER_ASSEMBLY: int = 24
 
 ## --- Simulation cadence ------------------------------------------------
+const GRAVITY_MPS2: float = 9.81
 const PHYSICS_HZ: int = 60
 const PHYSICS_DT: float = 1.0 / 60.0
 const NET_SNAPSHOT_HZ: int = 30
@@ -79,6 +80,8 @@ const EPSILON_ANGULAR: float = 0.00017453  # ~0.01 degrees in radians
 ```
 
 `LATTICE_UNIT_M` is `0.25`. Every dimension in every part table below is expressed in **cells**, never metres. Metre values are derived at load time by multiplication. This guarantees that a future rescale of the lattice is a one-constant change.
+
+`GRAVITY_MPS2` is declared here rather than read from `ProjectSettings` because the strain model (`DEPENDENCY_TREE_GRAPH.md` §4.1), the suspension load split (`DYNAMIC_MASS_PHYSICS.md` §6), and the ballistic solver (`WEAPON_TARGETING_LOGIC.md` §5) must all agree on it exactly, and a project setting can be changed by an editor action that touches no code. It was added when the strain model became the first system to need it as a named value; the documents above previously each wrote the literal.
 
 ---
 

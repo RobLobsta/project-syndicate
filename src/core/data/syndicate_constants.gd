@@ -33,6 +33,14 @@ const MAX_MOTIVE_PER_ASSEMBLY: int = 24
 
 ## ===== SIMULATION CADENCE =============================================
 
+## Gravitational acceleration used by every simulated system, in m/s^2.
+##
+## Declared here rather than read from [code]ProjectSettings[/code] because the
+## strain model, the suspension load split, and the ballistic solver must all
+## agree on it exactly, and a project setting can be changed by an editor action
+## that touches no code.
+const GRAVITY_MPS2: float = 9.81
+
 const PHYSICS_HZ: int = 60
 const PHYSICS_DT: float = 1.0 / 60.0
 const NET_SNAPSHOT_HZ: int = 30

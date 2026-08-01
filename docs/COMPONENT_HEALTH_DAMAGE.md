@@ -351,7 +351,7 @@ func _submit_impact_damage(body: ChassisBodyRef, contact: ContactRecord,
     # ... construct and apply the packet
 ```
 
-Also, `deposit_impact_force` feeds the `F_impact(s)` term of the strain model (`DEPENDENCY_TREE_GRAPH.md` §4.1) with an exponentially decaying value:
+Also, `deposit_impact_force` feeds the `F_impact(s)` term of the strain model (`DEPENDENCY_TREE_GRAPH.md` §4.1) with an exponentially decaying value. `IMPACT_DECAY_TAU_S` is `0.9` — a little over half a second to fall to a third, so a ram loads the joints it went through for about as long as the collision is still visible, and no longer. The deposit lives on the `ChassisGraph` alongside the recoil deposit, is decayed by the same `decay_deposits(dt)` call, and is dropped from the active set below `DEPOSIT_FLOOR_N = 1.0` newton, which is far under the resolution of any joint strength in the part tables:
 
 ```gdscript
 func deposit_impact_force(slot: int, newtons: float) -> void:

@@ -537,7 +537,7 @@ func _apply_recoil(hp: HardpointState, st: PartInstanceState, def: PartDefinitio
     hp.recoil_visual_offset = p.recoil_impulse_ns * RECOIL_VISUAL_SCALE
 ```
 
-`deposit_recoil_force` supplies the `F_recoil(s)` term in `DEPENDENCY_TREE_GRAPH.md` §4.1. A heavy Effector Module bolted to a thin panel will progressively strain its joint and eventually shear off from its own recoil — which is correct engineering behaviour and a genuinely instructive failure for the player.
+`deposit_recoil_force` supplies the `F_recoil(s)` term in `DEPENDENCY_TREE_GRAPH.md` §4.1. It records a **peak**, not a running total: a second discharge inside the decay window is the same sustained load continuing, not a second load added to it. The deposit decays over `RECOIL_DECAY_TAU_S = 0.6` — roughly the cycle time of a slow Effector Module, so a module that keeps firing keeps its joint loaded and one that stops sheds the load over about a second. Without that decay a single shot would load the mounting joint for the rest of the match. A heavy Effector Module bolted to a thin panel will progressively strain its joint and eventually shear off from its own recoil — which is correct engineering behaviour and a genuinely instructive failure for the player.
 
 ---
 
