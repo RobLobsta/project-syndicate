@@ -88,6 +88,16 @@ The lessons worth carrying:
   survived**, including the entire §7.6 yaw loop being disconnected from the
   contacts. Four green sessions had passed over it. Finish the sweep in the
   session that plants it.
+
+  **Session 14 did not follow its own rule, and the reason is worth knowing.**
+  It planted 37 faults over the combat layer and ran four of them before running
+  out of session. The four all passed; the remaining 33 are listed and ready in
+  `sweep4.py` (see §8 item 0). What made it unaffordable was arithmetic nobody
+  had done: the suite grew a duel that steps 700 physics ticks, a sweep run went
+  from 2.5 minutes to about 6, and 37 × 6 is three and a half hours. **Cost the
+  sweep before writing it.** A sweep you cannot afford to finish is worse than a
+  smaller one you can, because it leaves the same false confidence behind and
+  takes longer to do it.
 - **A new subsystem written with its sweep in mind is cheap to defend.** Session
   13's fourteen faults over `ControlSystem` and the reverse path were **all
   caught first time** — no gap to close afterwards. The difference from §4.8 is
@@ -867,6 +877,7 @@ build one.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
+| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37 planted faults; 33 unrun — §8 item 0 |
 
 ### Source
 - `src/core/data/` — `SyndicateConstants`, `PartEnums`, `CollisionLayers`,
@@ -1182,6 +1193,17 @@ ground, real rounds, one winner.
 1–10. ~~Lattice, parts, validator, graph, strain, detachment, runtime, mass,
    debris, registry, the motion layer, four locomotion families, a physics step
    inside the suite~~ — **done, sessions 1–10.**
+
+0. **Run the rest of session 14's fault sweep, before anything else.** The
+    script is committed at `tools/ci/sweeps/combat_layer_sweep.py`; 4 of
+    its 37 faults ran and were caught (`cos-floor-removed`, `pen-defeat-removed`,
+    `partial-ramp-linear`, `surplus-uncapped`). The other 33 cover the ricochet
+    gate, the blast exponent, the impact threshold and cap, the band boundaries,
+    the armour band multiplier, resistance, destruction, the aim signs, the fire
+    gate, the swept ray, self-immunity, and §8.4's new band dispatch. **Until
+    they run, treat every one of those behaviours as untested** — §4.8 is what
+    that assumption cost the last time it was made. Budget three to four hours of
+    wall time, run it detached, and do not `git add -A` while it is going (§2).
 
 11. ~~`ControlSystem`, and the input map into it~~ — **done, session 13.** Doc 05
     §15 owns the mapping, doc 11 §7.1 gained four tilt actions for the rotary
