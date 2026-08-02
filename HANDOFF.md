@@ -62,22 +62,27 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 **56 files, 4341 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
-on recorded assertion failures (§3.34). A run takes **about 5 minutes**, up
-from 100 s before session 15, because `tests/physics/` waits on real ticks at
-60 Hz and three of its files now run multi-Assembly engagements — see §3.36 and
-§3.44 before adding to it. Build a fixture once in `before_all` and reset it per
-test; four tests that each spawn an Assembly spawn them on top of each other.
+on recorded assertion failures (§3.34).
 
-**A full fault sweep therefore costs about four and a half minutes per fault**,
-against 2.5 before session 14 and 6 during it. That is the single most important
-number for planning a session: six faults is twenty-seven minutes, thirty is most
-of an afternoon. **Cost the sweep before writing it**, plant fewer and better
-ones scoped to the code that changed, and start it before writing the
-documentation rather than after. Run it in the background and do documentation
-work while it goes, but do **not** add or remove a test file, and do not commit,
-while a sweep is running — the sweep compares check counts against a baseline, a
-new file reads as every remaining fault being caught, and a commit mid-sweep
-captures a planted fault.
+**A full run takes about 24 seconds, and a fault sweep about 24 seconds per
+fault.** Both were roughly 5 minutes until session 16 found why — see §3.50. The
+short version: headless Godot paces its main loop against the wall clock, so
+`tests/physics/` was paying one real second for every sixty ticks it waited on.
+`--fixed-fps 60` disables that synchronisation without touching the physics
+delta, and `tools/ci/run_all_checks.sh` now passes it. Results are byte-identical
+either way, down to the tick each Assembly dies on.
+
+**This changes how to plan a session.** The old advice was to cost a sweep before
+writing it and plant six faults instead of thirty. That constraint is gone:
+twelve faults is five minutes, and thirty is a coffee. Plant the thorough sweep.
+The remaining rules still hold — do **not** add or remove a test file, and do not
+commit, while a sweep is running, because it compares check counts against a
+baseline, a new file reads as every remaining fault being caught, and a commit
+mid-sweep captures a planted fault.
+
+Still true regardless of speed: build a fixture once in `before_all` and reset it
+per test; four tests that each spawn an Assembly spawn them on top of each other.
+See §3.36 and §3.44 before adding to `tests/physics/`.
 
 ---
 
@@ -197,12 +202,22 @@ restarted every tick |
 ### 2.0 The sweeps of sessions 15 and 16
 
 Session 15 planted six faults over the paths the new engagement files rest on;
-session 16 planted twelve, keeping four of the six that were still meaningful and
-adding eight against the code that session wrote. The script is committed at
+session 16 grew that to fourteen, keeping the six and adding eight against the
+code this session wrote. The script is committed at
 `tools/ci/sweeps/engagement_sweep.py` and names what each one is defending. **The
 survivals are worth more than the catches and are recorded first.**
 
-#### The three that survived, and what was done about each
+The whole fourteen now runs in **about six minutes** (§3.50). It cost an hour
+before `--fixed-fps`, which is why session 15 planted six rather than thirty and
+why §2's "cost the sweep before writing it" advice existed. That constraint is
+gone; the sweep was re-run end to end after the speedup and reproduces every
+result below exactly.
+
+#### Survivals on the first run, and what each one bought
+
+Three faults got through the sweep as it was first run. Two of them were
+defects in the tests rather than in the sweep, and both are now fixed; the
+third was accepted with reasons.
 
 | Fault | Result |
 |---|---|
@@ -210,7 +225,18 @@ survivals are worth more than the catches and are recorded first.**
 | `penetration-budget-removed` — §12.2.2's bound deleted outright | **SURVIVED, and it found two defects.** Nothing in the suite ever *reached* four penetrations: a round crossing one hull gets through two or three parts and stops for want of anything else to hit, so a bound of four and no bound at all are the same bound. Chasing that turned up the second and worse one — `resolved` was a local initialised to `0` at the top of every sweep, so **both the budget and the strike record restarted every tick**, while doc 07 §12.2.1 and §12.2.2 both scope them to the round's life. A round crossing two hulls on two consecutive ticks could resolve eight packets against a bound of four. **Fixed**: `_strikes[index]` persists the count across ticks, written through on every strike because three of the loop's four exits are a release. Doc 07 §12.2.1 and §12.2.2 now state the scope and the asymmetry — damage is a property of the round, work is a property of the tick — and `test_overpenetration_bounds.gd` fires one round down a file of three hulls, six parts on the line, and asserts four parts over more than one tick. |
 | `no-assembly-terminated` — doc 04 §8.2's signal never emitted | **SURVIVED, and the assertion was the problem.** Two duels checked `check_ne(d.killer_of_loser, "")`, and `killer_of_loser` came from `arena.name_of(arena.kills.get(loser, 0))` — but `name_of` answers `"#0"` for an id it has never seen. The check could not fail. **Fixed**: the lookup is now guarded on `kills.has()`, so an unattributed kill leaves the field empty, and the assertion compares it against the survivor's callsign derived independently from the roster. It is now an equality against a name rather than an inequality against nothing. |
 
-#### The nine that were caught
+#### Where the sweep stands after the fixes
+
+Re-run end to end once the fixes landed: **fourteen faults, eleven caught, three
+survivors** — and the three are not the same three.
+
+| Still surviving | Why, and what closes it |
+|---|---|
+| `self-immunity-zero` | Accepted. The nose mount clears every hull, so §12.3 is not load-bearing for these builds. Closes when a module ships with its muzzle overhanging its own hull. |
+| `same-part-twice-allowed` | **A coverage regression this session caused.** It was caught before §4.24 and is not caught after. See below, and §5. Closes when a part ships with two collider primitives along one axis. |
+| `cyclic-not-cone-clamped` | Accepted, session 15's finding. Two 14° deflections clamped per axis compose to 19.8° of tilt and the hover simply asks for less next tick — a closed loop absorbing a fault in the quantity it closes over. Closes with a unit test of `RotorSolver.thrust_direction`, where the demand is open-loop. |
+
+#### The eleven that were caught
 
 | Fault | Failures | What noticed |
 |---|---|---|
@@ -644,6 +670,44 @@ All verified against 4.7.1 in this repo, not recalled.
     only for a target dead astern. Everything else in `(-PI, PI)` round-trips to
     within 1e-9. It is a one-value hole and it is the kind that surfaces once a
     year in a bug report nobody can reproduce.
+
+50. **Headless Godot still paces its main loop against the wall clock, and
+    `Engine.time_scale` will not fix it.** This is the single most expensive
+    engine fact in the file, because it silently cost every session before this
+    one a factor of twelve on every suite run and every fault sweep.
+
+    Measured on 4.7.1 in this repo, with a probe that does nothing but
+    `await physics_frame`:
+
+    | Configuration | 600 bare frames | Effective rate |
+    |---|---|---|
+    | default headless | 9876 ms | 60.8 fps |
+    | `Engine.time_scale = 20` | 10003 ms | 60.0 fps |
+    | `--fixed-fps 60` | 4 ms | 152 000 fps |
+    | `--fixed-fps 60 --disable-render-loop` | 3 ms | 184 000 fps |
+
+    So `tests/physics/` was never compute-bound. Its wall time was tick count
+    divided by sixty — a 900-tick engagement cost fifteen real seconds no matter
+    how little work was in it.
+
+    **`Engine.time_scale` is the trap.** It is the obvious answer and it is wrong
+    twice: it produced *no* speedup at all, and the delta handed to
+    `_physics_process` went from 0.016667 s to **0.333333 s**. It scales the
+    delta, not the frame count. At that step a 940 m/s round advances 313 m per
+    tick, every spring in doc 05 integrates to nonsense, and Invariant I-9's
+    determinism is gone. Anything that changes `delta` is disqualified here on
+    principle, not just on measurement.
+
+    **`--fixed-fps 60` is the right lever precisely because it changes nothing
+    the simulation can observe.** It disables real-time synchronisation and lets
+    the loop advance as fast as the CPU allows; the physics step stays exactly
+    1/60. Verified rather than assumed: a full real-time run and a full
+    `--fixed-fps` run produce 4342 checks each and byte-identical engagement
+    output — same 207 / 900 / 291 tick duels, same 684-tick brawl, same kill
+    order, same pool peak. `tools/ci/run_all_checks.sh` passes it, so the sweeps
+    inherit it.
+
+    `--disable-render-loop` adds nothing worth having on top of it in headless.
 
 ---
 
