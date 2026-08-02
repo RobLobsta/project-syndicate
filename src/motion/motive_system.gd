@@ -38,8 +38,8 @@ const COUPLING_TORQUE_LIMIT_NM: float = 24000.0
 
 ## Assembly this system moves. Set once, before the node enters the tree.
 var runtime: AssemblyRuntime = null
-## Aggregated Power Plant totals. Recomputed on structural and band events by
-## the owner, never here.
+## Aggregated Prime Mover and Energy Cell totals. Recomputed on structural and
+## band events by the owner, never here.
 var power: PowerSystem = null
 ## This tick's intent. Written by the control system, the AI driver, or the
 ## network input channel; read by every family.

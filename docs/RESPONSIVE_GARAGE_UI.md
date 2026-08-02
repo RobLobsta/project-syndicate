@@ -476,10 +476,28 @@ These action names are normative and are duplicated in `CLAUDE.md` §7. Adding a
 | `veh_brake` | `S` | Left Trigger | Right thumb pad, down |
 | `veh_steer_left` / `veh_steer_right` | `A` / `D` | Left Stick X | Left thumb stick |
 | `veh_handbrake` | `Space` | A / Cross | Dedicated button |
+| `veh_boost` | `Shift` | B / Circle | Dedicated button |
+| `veh_pitch_forward` / `veh_pitch_back` | `Up` / `Down` | Left Stick Y | Left thumb stick, vertical |
+| `veh_roll_left` / `veh_roll_right` | `Left` / `Right` | D-Pad Left / Right | Roll buttons, lower left |
 | `effector_fire_primary` | Left Mouse | Right Trigger | Right screen half tap |
 | `effector_fire_secondary` | Right Mouse | Left Trigger | Secondary button |
 | `effector_fire_tertiary` | `Q` | Right Bumper | Tertiary button |
 | `hud_toggle_stats` | `Tab` | Select / Share | Two-finger tap |
+
+**The table spans two contexts and a binding may appear in both.** `cam_orbit`
+is the right stick in the garage and the match camera is the same stick; the
+D-pad pans in the garage and rolls a rotary Assembly in a match. Bindings
+collide only within a context, and the four `veh_pitch_*` / `veh_roll_*` actions
+were placed against what a *match* leaves free: the left stick's vertical axis
+and the D-pad's horizontal one. The bumpers were not available — `effector_cycle_group`
+and `effector_fire_tertiary` hold both in a match.
+
+**The four tilt actions are the rotary family's cyclic**, and `DYNAMIC_MASS_PHYSICS.md`
+§15.2 owns what they map onto. They are `veh_`-prefixed rather than given a
+family prefix of their own because §7.1's grammar groups by domain and not by
+part class: an Assembly is an Assembly whether it rolls or flies, and a control
+scheme that changed its action names when a rotor was bolted on would need a
+rebind screen per locomotion family.
 
 ### 7.2 Input Method Detection
 

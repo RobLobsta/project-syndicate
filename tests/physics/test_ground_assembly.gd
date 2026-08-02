@@ -431,6 +431,26 @@ func test_part_throttle_drives_the_assembly_forward_in_a_straight_line() -> void
 	)
 
 
+func test_a_negative_throttle_backs_it_out() -> void:
+	# §15.5's other end. `ControlSystem` produces a negative throttle from the
+	# brake action rather than entering a reverse *state*, and this is the half
+	# of that arrangement the input layer cannot assert: a drive torque that
+	# refused to go negative would leave a build with no way off a wall, and
+	# would look identical to a correct one in every forward test in this file.
+	await _at_rest()
+	_motion.input.throttle = -PART_THROTTLE
+	await physics_frames(DRIVE_TICKS)
+	var along := _forward_speed()
+	var sideways := _runtime.body.linear_velocity.dot(_runtime.body.global_transform.basis.x)
+	_motion.input.throttle = 0.0
+
+	check_true(along < -1.0, "a negative throttle moves it backwards at a real speed")
+	check_true(
+		absf(sideways) < absf(along) * 0.1,
+		"and straight back rather than off to one side"
+	)
+
+
 func test_the_brake_stops_it() -> void:
 	await _at_rest()
 	_motion.input.throttle = PART_THROTTLE

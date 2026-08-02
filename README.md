@@ -170,7 +170,8 @@ Project Syndicate uses generic engineering nomenclature throughout, in code and 
 | **Core Module** | The command module. Root of every machine. Lose it, lose the vehicle. |
 | **Structural Component** | Panels, beams, wedges, frames — the armour and skeleton. |
 | **Motive Assembly** | Wheels, tracks, legs, repulsors. Whatever puts you in motion. |
-| **Power Plant** | Combustion units, turbines, static cells. Torque and power. |
+| **Prime Mover** | Combustion units, turbines, reaction drives. Shaft torque. |
+| **Energy Cell** | Static cells and reservoirs. Power supply, and no torque at all. |
 | **Effector Module** | Weapons. Ballistic, arced, beam, guided, melee. |
 | **Support Module** | Heat sinks, magazine stores, integrity fields, repair emitters. |
 | **Control Surface** | Spoilers, vanes, diffusers. Downforce and drag. |

@@ -1498,3 +1498,121 @@ A four-station tracked Motive Assembly costs about four times a wheeled one.
 The shipping budget of §10.5 assumes tracked builds run fewer Motive Assemblies
 — two long bogies replace six wheels — so the totals land within a few percent
 of each other.
+
+---
+
+## 15. Control Input
+
+Every locomotion family reads one `ControlInput` and none of them knows where it
+came from. That is the whole point of §6.0's contract: the record is eight
+normalised numbers, and a keyboard, a stick, a bot, and a replayed packet are
+indistinguishable to the solvers.
+
+There are three producers. `ControlSystem` is the local player's, and it is the
+one this section owns. The AI driver (`src/ai/ai_driver.gd`) is the second and
+the network input channel of `HEADLESS_NETWORK_SYNC.md` §5 is the third; both
+write the same fields and neither is permitted a field of its own.
+
+### 15.1 Where It Runs
+
+`ControlSystem` connects to `MatchClock.tick_started` and declares no per-frame
+callback of its own.
+
+`MatchClock` runs at `process_physics_priority = -1000`, so `tick_started` fires
+before every other `_physics_process` in the tree — `MotiveSystem`'s included.
+Sampling there guarantees that the intent a family reads was captured on the
+tick it is being solved for, and it makes that ordering a property of the clock
+rather than of scene-construction order. A `ControlSystem` that declared
+`_physics_process` would sample before or after the motion layer depending on
+where the match scene happened to add it, which is exactly the class of bug that
+presents as one frame of input lag on some builds and not others.
+
+The system is constructed only on a client that is driving something. There is
+no runtime gate and no feature tag: `SubsystemGate` is queried at construction
+(`HEADLESS_NETWORK_SYNC.md` §9.2), and the dedicated server's bootstrap never
+builds one, so no branch is needed at the sampling site.
+
+### 15.2 The Mapping
+
+| `ControlInput` field | Actions |
+|---|---|
+| `throttle` | `veh_throttle` − `veh_brake` |
+| `brake` | `veh_brake` |
+| `steer` | `veh_steer_right` − `veh_steer_left` |
+| `collective` | `veh_throttle` − `veh_brake` |
+| `yaw` | `veh_steer_right` − `veh_steer_left` |
+| `cyclic.x` | `veh_pitch_back` − `veh_pitch_forward` |
+| `cyclic.y` | `veh_roll_left` − `veh_roll_right` |
+| `handbrake` | `veh_handbrake` pressed |
+| `boost` | `veh_boost` pressed |
+| `traction_control` | not an action; see §15.5 |
+
+Every analogue action goes through `Input.get_action_strength`, so a trigger, a
+stick, and a key produce the same number without a special case, and the
+deadzone that `project.godot` declares per action is the only deadzone in the
+chain.
+
+### 15.3 One Axis Serves Several Families
+
+`throttle` and `collective` are the same axis, and so are `steer` and `yaw`.
+This is deliberate and it is what lets one control layout drive four locomotion
+families without a mode switch.
+
+On a wheeled or tracked Assembly, `veh_throttle` is drive and `veh_steer_*` is
+steering. On a rotary one the same two axes are the collective and the pedals:
+holding throttle spools the disc *and* pitches it to climb (§12.2), and the
+steer axis is the yaw authority of §12.4. On an ambulatory one both feed
+`desired_velocity` and the gait's turn command (§13.5).
+
+A family reads the fields it uses and ignores the rest. Nothing branches on
+locomotion mode in the input layer, which matters because a build may carry more
+than one family at once — a walker with a lift rotor is a legal Assembly, and it
+gets a coherent control scheme out of this table rather than out of a priority
+rule.
+
+### 15.4 The Cyclic Sign
+
+§12.3 builds the thrust direction by rotating the disc axis about `+X` by
+`cyclic.x` and about `+Z` by `cyclic.y`. Under that rotation order a **positive**
+`cyclic.x` carries the thrust vector toward `+Z`, which is *backwards*, and a
+positive `cyclic.y` carries it toward `−X`, which is *left*.
+
+So the mapping inverts both: a demand to pitch forward is a negative `cyclic.x`
+and a demand to roll right is a negative `cyclic.y`. The inversion is real, it
+belongs here rather than in the solver — §12.3's rotation order is the physics,
+and this is the mapping onto it — and it is the reason
+`tests/unit/test_control_system.gd` asserts the composition of the two rather
+than the sign of either alone. A test that only checked `cyclic.x < 0` would
+pass against a solver that tilted the other way.
+
+### 15.5 Reverse Is Not a Mode
+
+`veh_brake` produces both the brake demand and a negative throttle. Above a
+walking pace the brake torque dominates and the Assembly slows; at rest the
+negative drive torque backs it out. §7.2's brake zero-crossing guard is what
+makes the two coexist — the brake may not drive a contact through zero, so it
+cannot reverse anything, and only the drive term can.
+
+The alternative was a reverse *state* entered when the Assembly is stopped and
+the brake is held, which needs the input layer to know the Assembly's speed and
+produces the familiar failure where a build rolling backwards down a slope
+refuses to brake. One subtraction is cheaper and has no state to get wrong.
+
+### 15.6 What It Does Not Do
+
+**No smoothing and no rate limiting.** A keyboard produces a step from 0 to 1
+and it stays a step. `MotiveSystem` already rate-limits the *steer angle* from
+the part's authored `steer_rate_deg_s` (§7.0), and a Prime Mover's throttle
+response is §7.5's; a ramp here would be a second owner of both, and would make
+the authored numbers mean less than they say.
+
+**No aid authority of its own.** `traction_control` is a driver setting, not an
+intent: it is carried on `ControlSystem` as a property the settings screen
+writes, defaulting to full, and copied onto the record each tick. §7.6's
+authority is a dial and this is where the dial's position lives until
+`RESPONSIVE_GARAGE_UI.md` gives it a control.
+
+**No knowledge of which Assembly it drives.** One `ControlSystem` writes one
+`ControlInput`. Which Assembly reads that record is the match scene's wiring
+(§6 of the handoff's assembly recipe), and a spectator or a dead player is a
+`ControlSystem` that was never constructed rather than a flag tested per tick.

@@ -51,6 +51,7 @@ When a value appears in more than one place, exactly one document **owns** it an
 | Rotor thrust, tilt, spool, and shaft-power constants | 05 |
 | Gait phase, cadence, foot placement, and stance constants | 05 |
 | Road station, differential drive, and slew constants | 05 |
+| Input action → `ControlInput` mapping | 05 |
 | Archetype weights and budget ratios | 06 |
 | Effector timing, spread, recoil, jam constants | 07 |
 | Melee reach, arc, sweep, and reaction constants | 07 |
@@ -461,6 +462,8 @@ Action names are normative. The full table with per-device bindings is in `docs/
 ```
 veh_throttle            veh_brake              veh_steer_left
 veh_steer_right         veh_handbrake          veh_boost
+veh_pitch_forward       veh_pitch_back         veh_roll_left
+veh_roll_right
 
 effector_fire_primary   effector_fire_secondary effector_fire_tertiary
 effector_cycle_group

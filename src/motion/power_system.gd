@@ -8,7 +8,7 @@ extends RefCounted
 ## (Architectural Invariant I-4). The per-tick path reads the three cached
 ## scalars this class produces and does no arithmetic over the part set.
 ##
-## Both totals index [DegradationTable], so a damaged Power Plant reduces the
+## Both totals index [DegradationTable], so a damaged Prime Mover reduces the
 ## Assembly's drive torque and its power supply by different amounts — torque
 ## falls faster, which is what makes a battered Assembly sluggish before it
 ## browns out.

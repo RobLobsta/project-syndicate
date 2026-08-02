@@ -11,7 +11,7 @@ extends SceneTree
 ##
 ## The set is deliberately one part per thing the motion layer needs to be
 ## exercised by something real: an AXLE station to resolve §4.2, one Motive
-## Assembly of each of the four locomotion families, a Power Plant so drive
+## Assembly of each of the four locomotion families, a Prime Mover so drive
 ## torque has a source, and a powered edge so melee has one. Together they take
 ## the shipping registry from two definitions to nine.
 ##

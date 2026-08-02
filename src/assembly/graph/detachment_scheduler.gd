@@ -55,7 +55,7 @@ var _pending: Dictionary = {}
 ## a destroyed one: resolving it as destroyed would delete a part that may still
 ## be holding on through another edge.
 var _pending_orphans: Dictionary = {}
-## §5.6. Detaching an island can destroy further parts — a severed Power Plant
+## §5.6. Detaching an island can destroy further parts — a severed Prime Mover
 ## detonates — and those deaths must land in the next tick's pending set rather
 ## than re-entering the pass that caused them.
 var _reentrancy_guard: bool = false
