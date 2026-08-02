@@ -359,6 +359,23 @@ func definition_at(slot: int) -> PartDefinition:
 	return PartRegistry.definition(st.part_def_id)
 
 
+## World position of [param slot]'s centre of mass.
+##
+## The one place the answer to "where is that part" lives. A blast epicentre, a
+## muzzle origin, and a rotor's thrust application point are all this, and having
+## three callers derive it three ways is how they end up disagreeing by the
+## quarter-cell that an even-sized footprint's centre sits at.
+##
+## Falls back to the body origin for a slot with no state, because every caller
+## is asking in order to place something in the world and none of them has a
+## sensible thing to do with a failure.
+func part_world_position(slot: int) -> Vector3:
+	var st := state(slot)
+	if st == null:
+		return body.global_position
+	return body.global_transform * MassSolver.part_com_local(st, PartRegistry.definition(st.part_def_id))
+
+
 ## §3.5. Writes solved mass properties onto the body and keeps them for the
 ## systems that read them between recomputes.
 func apply_mass_properties(mp: MassSolver.MassProperties) -> void:

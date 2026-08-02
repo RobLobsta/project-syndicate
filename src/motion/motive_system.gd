@@ -933,11 +933,7 @@ static func hip_local_of(def: PartDefinition, state: PartInstanceState) -> Vecto
 
 
 func _part_world_position(slot: int) -> Vector3:
-	var st: PartInstanceState = runtime.states[slot]
-	if st == null:
-		return runtime.body.global_position
-	var def := PartRegistry.definition(st.part_def_id)
-	return runtime.body.global_transform * MassSolver.part_com_local(st, def)
+	return runtime.part_world_position(slot)
 
 
 func _static_load_n(slot: int) -> float:

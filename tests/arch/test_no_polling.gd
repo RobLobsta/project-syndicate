@@ -28,6 +28,18 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		"doc 05 §10.2: physics_jitter_fix is 0, so the visual transform is "
 		+ "genuinely per-render-frame work"
 	),
+	"res://src/combat/effectors/effector_system.gd":
+	(
+		"doc 07 §7: the emission loop is per-tick by definition — mounts slew, "
+		+ "timers run down, and spread decays every tick. It reads cached band "
+		+ "multipliers and never integrity"
+	),
+	"res://src/combat/projectiles/projectile_system.gd":
+	(
+		"doc 07 §12.2: integrates flight and sweeps for hits every tick. A "
+		+ "round covers 15.7 m per tick at muzzle velocity, so there is no "
+		+ "event to react to instead"
+	),
 	"res://src/motion/motive_system.gd":
 	(
 		"doc 05 §6.0: a force integrator, not a reactor to structural events. "
