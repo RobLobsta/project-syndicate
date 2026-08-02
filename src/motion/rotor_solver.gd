@@ -13,7 +13,7 @@ extends RefCounted
 ##
 ## 4500 is not arbitrary: it is the value at which
 ## [code]mot.rotor.coaxial_mid.t3[/code] at full collective draws exactly 150 PU,
-## the supply of one [code]pwr.combustion.standard.t2[/code]. The intended
+## the supply of one [code]pmv.combustion.standard.t2[/code]. The intended
 ## reading of a rotary Assembly's power line is therefore "one standard Power
 ## Plant per mid disc", legible in the garage without arithmetic.
 const ROTOR_W_PER_PU: float = 4500.0

@@ -24,7 +24,7 @@ extends TestCase
 ## is under test is that the number reaches the body.
 
 const CORE_KEY := &"core.command.compact.t2"
-const POWER_KEY := &"pwr.combustion.standard.t2"
+const POWER_KEY := &"pmv.combustion.standard.t2"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
@@ -35,7 +35,7 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 const POWER_ORIGIN := Vector3i(21, 1, 20)
 const ROTOR_ORIGIN := Vector3i(20, 4, 21)
 
-## 380 kg Core Module, 355 kg Power Plant, 65 kg disc.
+## 380 kg Core Module, 355 kg Prime Mover, 65 kg disc.
 const EXPECTED_MASS_KG: float = 800.0
 
 var _ctx: BuildContext = null
@@ -106,7 +106,7 @@ func test_the_fixture_is_a_rotary_assembly_with_power_to_spin_it() -> void:
 		0,
 		"a disc touches nothing, so it sweeps no probe"
 	)
-	check_approx(_motion.power.available_fraction(), 1.0, "the Power Plant covers the draw")
+	check_approx(_motion.power.available_fraction(), 1.0, "the Prime Mover covers the draw")
 	check_approx(_runtime.mass_properties.total_mass, EXPECTED_MASS_KG, "the solved mass")
 
 

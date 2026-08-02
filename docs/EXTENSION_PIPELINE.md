@@ -276,7 +276,7 @@ Animation export is disabled. Part visuals are never skeletally animated; hardpo
 | `STRUCTURAL_COMPONENT` | 400 | 180 | 80 | 24 |
 | `CONTROL_SURFACE` | 500 | 220 | 90 | 24 |
 | `SUPPORT_MODULE` | 900 | 400 | 160 | 40 |
-| `POWER_PLANT` | 1 400 | 600 | 240 | 60 |
+| `PRIME_MOVER` | 1 400 | 600 | 240 | 60 |
 | `MOTIVE_ASSEMBLY` | 1 600 | 700 | 280 | 70 |
 | `EFFECTOR_MODULE` | 3 200 | 1 300 | 500 | 120 |
 | `CORE_MODULE` | 4 800 | 2 000 | 800 | 180 |
@@ -462,7 +462,7 @@ Check 8 in `_validate_shared` is the enforcement mechanism for the whole documen
 |---|---|
 | `EFFECTOR_MODULE` | `SOCKET_yaw`, `SOCKET_pitch`, `SOCKET_muzzle_0` … `SOCKET_muzzle_(n−1)` matching `muzzle_offsets_m.size()` |
 | `MOTIVE_ASSEMBLY` | `SOCKET_contact` |
-| `POWER_PLANT` | `SOCKET_vfx_exhaust` (at least one) |
+| `PRIME_MOVER` | `SOCKET_vfx_exhaust` (at least one) |
 | Others | none |
 
 Socket positions are validated against the corresponding profile values with a `0.04 m` tolerance. A mismatch is a failure, not a warning: a muzzle socket 20 cm from where `muzzle_offsets_m` says it is produces projectiles visibly emerging from the wrong place.

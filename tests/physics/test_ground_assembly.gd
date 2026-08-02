@@ -30,7 +30,7 @@ const CORE_KEY := &"core.command.compact.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
 const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
-const POWER_KEY := &"pwr.combustion.standard.t2"
+const POWER_KEY := &"pmv.combustion.standard.t2"
 
 ## On the Core Module's roof, on the centreline, so it does not bias the build.
 const POWER_ORIGIN := Vector3i(24, 7, 24)
@@ -66,7 +66,7 @@ const WHEEL_ORIGINS: Array[Vector3i] = [
 ## Pivot Z below which a wheel is on the front axle and steers.
 const FRONT_AXLE_Z: int = 24
 
-## 380 kg Core Module, 355 kg Power Plant, four 29 kg stations, two 68 kg steered
+## 380 kg Core Module, 355 kg Prime Mover, four 29 kg stations, two 68 kg steered
 ## discs and two 62 kg fixed ones.
 const EXPECTED_MASS_KG: float = 911.0
 
@@ -79,7 +79,7 @@ const EXPECTED_MASS_KG: float = 911.0
 ## asserted against the assertion.
 const DOC_PROBE_RADIUS_RATIO: float = 0.85
 
-## Core, Power Plant, four stations, four discs.
+## Core, Prime Mover, four stations, four discs.
 const EXPECTED_PART_COUNT: int = 10
 
 ## Ticks to fall two metres and settle onto the contact.
@@ -95,6 +95,10 @@ const PART_THROTTLE: float = 0.25
 ## Ticks to sample the steer sweep at. Chosen so the wheels are part-way to the
 ## stop: 140 deg/s reaches a 32 degree lock in 0.23 s, and this is 0.1 s.
 const STEER_SAMPLE_TICKS: int = 6
+
+## A short launch — under a second — so that the comparison is about getting off
+## the mark rather than about terminal speed, which the two runs share.
+const LAUNCH_TICKS: int = 45
 
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
@@ -167,7 +171,7 @@ func test_every_placement_was_accepted() -> void:
 	check_eq(
 		_ctx.committed_definitions().size(),
 		EXPECTED_PART_COUNT,
-		"a Core Module, a Power Plant, four AXLE stations and four Motive Assemblies"
+		"a Core Module, a Prime Mover, four AXLE stations and four Motive Assemblies"
 	)
 	check_eq(_motion.motive_slot_count(), WHEEL_ORIGINS.size(), "all four discs registered")
 	check_approx(
@@ -493,7 +497,7 @@ func test_a_rear_wheel_does_not_steer_at_all() -> void:
 func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	# Two emergent behaviours, neither of them written anywhere as a feature.
 	#
-	# The drive torque this Power Plant makes is more than the contact patches
+	# The drive torque this Prime Mover makes is more than the contact patches
 	# can hold at a standstill, so the wheels accelerate past the peak of the
 	# friction curve and settle on its falling side: a burnout. And because
 	# traction is applied at the contact and the centre of mass is above it, the
@@ -502,6 +506,10 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	# forces that produce brake dive.
 	await _at_rest()
 	var resting_front := _motion.contact_at(_motion.motive_slots()[0], 0).normal_force_n
+	# The aid off, which is the only way to see either of these. With it on the
+	# limiter holds the patch inside its allowance and there is no burnout to
+	# have — that is `test_traction_control_stops_the_wheels_running_away`.
+	_motion.input.traction_control = 0.0
 	_motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 
@@ -513,6 +521,7 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	)
 	var front_load := _motion.contact_at(_motion.motive_slots()[0], 0).normal_force_n
 	_motion.input.throttle = 0.0
+	_motion.input.traction_control = 1.0
 
 	check_true(
 		patch_speed > road_speed * 1.5,
@@ -522,7 +531,7 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	# not a scripted state here and does not need to be — the nose comes up
 	# because the tractive force acts at the ground while the centre of mass is
 	# most of a metre above it, and the same offset-force model makes braking
-	# dive. A lighter Assembly on the same Power Plant lifts the axle outright.
+	# dive. A lighter Assembly on the same Prime Mover lifts the axle outright.
 	check_true(
 		front_load < resting_front * 0.5,
 		"and the nose has lightened sharply: load transferred off the front axle"
@@ -539,6 +548,7 @@ func _at_rest() -> void:
 	_motion.input.throttle = 0.0
 	_motion.input.steer = 0.0
 	_motion.input.brake = 0.0
+	_motion.input.traction_control = 1.0
 	# The contacts' angular rates are integrated across ticks and survive a
 	# teleport. A wheel left spinning at 90 rad/s by the burnout test would drive
 	# the next one off the mark before it began.
@@ -546,6 +556,178 @@ func _at_rest() -> void:
 		for i: int in _motion.contact_count(slot):
 			_motion.contact_at(slot, i).contact_omega = 0.0
 	await physics_frames(SETTLE_TICKS)
+
+
+## ===== TRACTION CONTROL (doc 05 §7.6) ==================================
+
+
+func test_traction_control_stops_the_wheels_running_away() -> void:
+	# The same full-throttle launch as the burnout test, with the aid on. The
+	# limiter is the whole difference between the two, and the pair of them is
+	# the assertion: neither one alone shows that the aid is doing anything
+	# rather than the Assembly simply not having the torque to spin its wheels.
+	await _at_rest()
+	_motion.input.traction_control = 1.0
+	_motion.input.throttle = 1.0
+	await physics_frames(DRIVE_TICKS)
+
+	var wheel := PartRegistry.definition_by_key(WHEEL_KEY).motive_profile
+	var forward := -_runtime.body.global_transform.basis.z
+	var road := _runtime.body.linear_velocity.dot(forward)
+	var patch := (
+		_motion.contact_at(_motion.motive_slots()[0], 0).contact_omega * wheel.contact_radius_m
+	)
+	_motion.input.throttle = 0.0
+
+	check_true(road > 2.0, "the Assembly still gets going")
+	check_true(
+		patch - road < TractionControl.TARGET_SLIP_RATIO * road + 2.0,
+		"and the patch stays inside its slip allowance instead of running away"
+	)
+
+
+func test_traction_control_keeps_full_throttle_pointing_straight() -> void:
+	# The wander, which is what the aid was asked for. Deep slip is unstable by
+	# construction — past the friction peak more slip means less force — so once
+	# one flank hooks up before the other the Assembly yaws away. Holding both
+	# patches inside the allowance is what stops that, and the yaw controller
+	# trims what is left.
+	await _at_rest()
+	var straight := -_runtime.body.global_transform.basis.z
+	_motion.input.traction_control = 1.0
+	_motion.input.throttle = 1.0
+	await physics_frames(DRIVE_TICKS)
+	var drifted := rad_to_deg(
+		absf(straight.signed_angle_to(-_runtime.body.global_transform.basis.z, Vector3.UP))
+	)
+	_motion.input.throttle = 0.0
+
+	check_true(drifted < 8.0, "full throttle holds a heading with the aid on")
+
+
+func test_the_aid_can_be_turned_off() -> void:
+	# Same launch, same ticks, aid off. Asserted against the managed run above
+	# rather than against a number, because what matters is that the two differ:
+	# a test that only measured the unmanaged case would pass with the whole of
+	# §7.6 deleted.
+	await _at_rest()
+	_motion.input.traction_control = 1.0
+	_motion.input.throttle = 1.0
+	await physics_frames(DRIVE_TICKS)
+	var managed := _peak_slip()
+
+	await _at_rest()
+	_motion.input.traction_control = 0.0
+	_motion.input.throttle = 1.0
+	await physics_frames(DRIVE_TICKS)
+	var unmanaged := _peak_slip()
+	_motion.input.throttle = 0.0
+	_motion.input.traction_control = 1.0
+
+	check_true(
+		unmanaged > managed * 2.0,
+		"the driver gets every newton-metre and the wheels show it"
+	)
+
+
+func test_the_aid_does_not_cost_the_launch() -> void:
+	# The other half of §7.6's launch floor, and the reason it exists. A slip
+	# *ratio* is meaningless at a standstill, so a limiter that believed it would
+	# throttle a stopped Assembly to a crawl and take several seconds to get
+	# going. Asserted against the unmanaged run rather than against a speed: the
+	# aid may cost some acceleration and may not cost most of it, and removing
+	# the floor from the allowance costs most of it.
+	await _at_rest()
+	_motion.input.traction_control = 0.0
+	_motion.input.throttle = 1.0
+	await physics_frames(LAUNCH_TICKS)
+	var open_loop := _forward_speed()
+
+	await _at_rest()
+	_motion.input.traction_control = 1.0
+	_motion.input.throttle = 1.0
+	await physics_frames(LAUNCH_TICKS)
+	var managed := _forward_speed()
+	_motion.input.throttle = 0.0
+
+	check_true(open_loop > 1.0, "the unmanaged launch is a launch")
+	check_true(
+		managed > open_loop * 0.6,
+		"and the managed one keeps most of it rather than bogging down"
+	)
+
+
+## Speed along the Assembly's own forward axis, in m/s.
+func _forward_speed() -> float:
+	return _runtime.body.linear_velocity.dot(-_runtime.body.global_transform.basis.z)
+
+
+func test_the_yaw_controller_brakes_the_flank_that_opposes_the_error() -> void:
+	# §7.6's sign, isolated from the physics. Braking the left flank yaws the
+	# Assembly left, so an Assembly rotating right harder than it was asked to is
+	# corrected on the left — and a controller that braked the other side would
+	# add to the spin it is supposed to be trimming, which no test of "does it
+	# drive straight" reliably distinguishes from a controller that is off.
+	check_eq(
+		TractionControl.brake_side(-1.0), -1, "yawing right too fast brakes the left flank"
+	)
+	check_eq(TractionControl.brake_side(1.0), 1, "and yawing left too fast brakes the right")
+
+	# Positive steer is right, and right is a negative yaw rate.
+	var target := TractionControl.target_yaw_rate_rad_s(10.0, deg_to_rad(20.0), 2.5)
+	check_true(target < 0.0, "a right-hand lock asks for a right-hand yaw")
+	check_approx(
+		target, -10.0 * tan(deg_to_rad(20.0)) / 2.5, "at the bicycle model's rate"
+	)
+
+
+func test_the_yaw_controller_leaves_a_straight_run_alone() -> void:
+	# The deadband. An aid that trimmed continuously would have the brakes on
+	# every tick of every straight, and the Assembly would be slower for it with
+	# nothing to show.
+	check_approx(
+		TractionControl.yaw_error_rad_s(
+			TractionControl.YAW_DEADBAND_RAD_S * 0.5, 0.0, INF
+		),
+		0.0,
+		"an error inside the deadband is no error"
+	)
+	check_true(
+		absf(TractionControl.yaw_error_rad_s(1.0, 0.0, INF)) > 0.0,
+		"and one outside it is"
+	)
+	# The grip clamp: a lock the contacts could never follow is not chased.
+	check_approx(
+		TractionControl.yaw_error_rad_s(0.0, -9.0, 1.0),
+		1.0 - TractionControl.YAW_DEADBAND_RAD_S,
+		"a yaw target past the grip limit is clamped to it before the error is taken"
+	)
+
+
+func test_the_wheelbase_is_derived_from_where_the_contacts_are() -> void:
+	# The bicycle model needs one, and it is a property of the build. Four cells
+	# of Z between the axles on this fixture, which is 1.5 m.
+	var probes := PackedFloat32Array()
+	for slot: int in _motion.motive_slots():
+		probes.append(_runtime.motive_probes_of(slot)[0].position.z)
+	probes.sort()
+	check_approx(
+		_motion.wheelbase_m(),
+		probes[probes.size() - 1] - probes[0],
+		"the wheelbase spans the outermost contacts"
+	)
+	check_true(_motion.wheelbase_m() > 0.5, "and is a real distance rather than zero")
+
+
+## Highest patch overspeed seen on the front-left contact, in m/s.
+func _peak_slip() -> float:
+	var wheel := PartRegistry.definition_by_key(WHEEL_KEY).motive_profile
+	var contact := _motion.contact_at(_motion.motive_slots()[0], 0)
+	var forward := -_runtime.body.global_transform.basis.z
+	return (
+		contact.contact_omega * wheel.contact_radius_m
+		- _runtime.body.linear_velocity.dot(forward)
+	)
 
 
 ## ===== FIXTURES ========================================================

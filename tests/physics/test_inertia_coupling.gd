@@ -35,7 +35,7 @@ extends TestCase
 ## like a symmetric one.
 
 const CORE_KEY := &"core.command.compact.t2"
-const POWER_KEY := &"pwr.combustion.standard.t2"
+const POWER_KEY := &"pmv.combustion.standard.t2"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)

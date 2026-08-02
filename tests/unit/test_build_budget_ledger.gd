@@ -42,11 +42,11 @@ func test_core_publishes_the_ceilings() -> void:
 
 
 func test_power_plants_add_to_available_supply() -> void:
-	# §7.4's inequality is draw <= core capacity + Σ supply, so a Power Plant
+	# §7.4's inequality is draw <= core capacity + Σ supply, so a Prime Mover
 	# raises the ceiling rather than lowering the draw.
 	var led := BuildBudgetLedger.new()
 	led.add(_core())
-	led.add(_part(PartEnums.PartClass.POWER_PLANT, 0, 0.0, 120.0))
+	led.add(_part(PartEnums.PartClass.PRIME_MOVER, 0, 0.0, 120.0))
 	check_approx(
 		led.power_available_pu(), POWER_CAPACITY + 120.0, "supply adds to the core capacity"
 	)

@@ -242,7 +242,7 @@ func test_power_budget_boundary() -> void:
 
 func test_a_part_carrying_its_own_supply_pays_for_itself() -> void:
 	var ctx := _context_with_core()
-	var plant := _synthetic(PartEnums.PartClass.POWER_PLANT, PartEnums.AttachmentPolarity.FACE_NEUTRAL)
+	var plant := _synthetic(PartEnums.PartClass.PRIME_MOVER, PartEnums.AttachmentPolarity.FACE_NEUTRAL)
 	plant.power_draw_pu = CORE_POWER_CAPACITY * 2.0
 	plant.power_supply_pu = CORE_POWER_CAPACITY * 2.0
 	check_eq(

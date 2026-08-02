@@ -25,7 +25,8 @@ Project Syndicate uses generic engineering nomenclature throughout code, data, a
 | Core Module | `CORE_MODULE` | cabin, cockpit, cab |
 | Structural Component | `STRUCTURAL_COMPONENT` | armor plate, armour, panel-armor |
 | Motive Assembly | `MOTIVE_ASSEMBLY` | wheel, track, leg, hover |
-| Power Plant | `POWER_PLANT` | engine, generator, motor |
+| Prime Mover | `PRIME_MOVER` | engine, powerplant, generator, motor |
+| Energy Cell | `ENERGY_CELL` | battery, capacitor, fuel tank |
 | Effector Module | `EFFECTOR_MODULE` | weapon, gun, cannon |
 | Support Module | `SUPPORT_MODULE` | radiator, ammo pack, cloak |
 | Control Surface | `CONTROL_SURFACE` | spoiler, wing, aero |
@@ -100,7 +101,7 @@ enum PartClass {
     CORE_MODULE           = 0,
     STRUCTURAL_COMPONENT  = 1,
     MOTIVE_ASSEMBLY       = 2,
-    POWER_PLANT           = 3,
+    PRIME_MOVER           = 3,
     EFFECTOR_MODULE       = 4,
     SUPPORT_MODULE        = 5,
     CONTROL_SURFACE       = 6,
@@ -235,7 +236,7 @@ Every part definition carries two identifiers:
 
 ```
 part_key   := class_tag "." family "." variant "." tier_tag
-class_tag  := "core" | "str" | "mot" | "pwr" | "eff" | "sup" | "ctl"
+class_tag  := "core" | "str" | "mot" | "pmv" | "eff" | "sup" | "ctl" | "cel"
 family     := [a-z][a-z0-9_]{2,23}
 variant    := [a-z][a-z0-9_]{1,23}
 tier_tag   := "t1" | "t2" | "t3" | "t4" | "t5"
@@ -352,7 +353,7 @@ var bounds_max_cell: Vector3i = Vector3i.ZERO
 ## Exactly one of these is non-null, matching part_class. Enforced by validator.
 @export var core_profile: CoreModuleProfile = null
 @export var motive_profile: MotiveAssemblyProfile = null
-@export var power_profile: PowerPlantProfile = null
+@export var prime_mover_profile: PrimeMoverProfile = null
 @export var effector_profile: EffectorModuleProfile = null
 @export var support_profile: SupportModuleProfile = null
 @export var control_profile: ControlSurfaceProfile = null
@@ -677,10 +678,12 @@ const MAX_ROAD_STATIONS: int = 8
 
 `differential_authority` and `pivot_taper_mps` together are what make a tracked Assembly feel tracked. At rest, authority is full and the two sides can counter-rotate, so the Assembly pivots on the spot. At `pivot_taper_mps` authority is zero and steering is whatever the lateral friction of the patch allows, which is very little — so a tracked build at speed turns in a long, deliberate arc. Nothing switches; the taper is linear and continuous, and both behaviours are the same expression evaluated at different speeds.
 
-### 7.3 `PowerPlantProfile`
+### 7.3 `PrimeMoverProfile`
+
+A Prime Mover converts stored energy into shaft torque, and it is the only class that produces `drive_torque_nm`. An Assembly with none of them supplies its modules and drives nowhere.
 
 ```gdscript
-class_name PowerPlantProfile
+class_name PrimeMoverProfile
 extends Resource
 
 @export var drive_torque_nm: float = 3200.0
@@ -692,6 +695,8 @@ extends Resource
 @export var detonation_blast_radius_m: float = 4.2
 @export var detonation_blast_damage: float = 380.0
 ```
+
+The class was `PRIME_MOVER` and carried both this role and the supply role §7.7 now owns. See §10.4 for why they split, and CLAUDE.md §8 for why the replacement is not called an engine.
 
 ### 7.4 `EffectorModuleProfile`
 
@@ -809,6 +814,25 @@ extends Resource
 
 ---
 
+### 7.7 `EnergyCellProfile`
+
+An Energy Cell stores and supplies power and produces no shaft torque at all. `power_supply_pu` on the definition carries the sustained figure, as it does for every class; the profile adds the reserve that separates a cell from a part that merely happens to supply something.
+
+```gdscript
+class_name EnergyCellProfile
+extends Resource
+
+@export var discharge_limit_pu: float = 260.0   # sustained draw it can cover
+@export var capacity_pu_s: float = 900.0        # reserve, in PU-seconds
+@export var recharge_pu_s: float = 45.0         # refill rate when supply > draw
+@export var thermal_throttle_start_hu: float = 540.0
+@export var thermal_shutdown_hu: float = 820.0
+@export var detonation_blast_radius_m: float = 3.4
+@export var detonation_blast_damage: float = 300.0
+```
+
+`capacity_pu_s` and `recharge_pu_s` have no consumer yet. `PowerSystem` reads the sustained figures and `available_fraction` gates a rotor's spool; the reserve is what will cover a transient overdraw — a salvo and a spool in the same tick — and it belongs with the brownout handling of `COMPONENT_HEALTH_DAMAGE.md`, which is unwritten. They are authored now because §10.4 publishes them and because a cell with no reserve is a supply figure with extra steps.
+
 ## 8. Runtime Instance State
 
 `PartDefinition` is immutable; every mutable per-part value lives in a tightly packed `PartInstanceState`. Assemblies own a contiguous `Array[PartInstanceState]` indexed by slot, so iteration is cache-coherent and slot lookup is a single array index.
@@ -860,7 +884,7 @@ Derived attributes are computed exactly once per relevant event — never per fr
 | Assembly total mass | `Σ mass_kg` over live slots | Part attach, part detach, part destroy |
 | Assembly centre of mass | `Σ (mass_i · p_i) / Σ mass_i` | Same as above |
 | Assembly inertia tensor | Parallel-axis sum of per-part box tensors | Same as above |
-| Power balance | `Σ power_supply_pu − Σ power_draw_pu` | Part attach/detach/destroy, Power Plant band change |
+| Power balance | `Σ power_supply_pu − Σ power_draw_pu` | Part attach/detach/destroy, Prime Mover or Energy Cell band change |
 | Mount usage | `Σ mount_weight` | Part attach/detach |
 | Effective traction (per motive) | `traction_coefficient · band_mult · load_mult` | Band change, mass recompute, surface change |
 | Heat capacity | `Σ heat_dissipation_hu_s` | Part attach/detach/destroy, Support Module band change |
@@ -971,16 +995,25 @@ Ambulatory rows carry the ground columns because a foot genuinely has a friction
 
 A `duty_factor` above `0.5` means more than half the gait cycle is spent in stance, so a two-limbed Assembly always has at least one foot planted and never leaves the ground. This is what makes a biped tractable under Invariant I-3: the chassis is one rigid body held up by whichever feet are currently in stance, and there is never a tick with no support. Duty factors below `0.5` describe a run with a flight phase and are outside the shipping set — not because the solver cannot express one, but because a flight phase makes support intermittent and the tuning is a separate piece of work.
 
-### 10.4 Power Plants
+### 10.4 Prime Movers and Energy Cells
 
 | `part_key` | Cells | Mass (kg) | Integrity | Torque (N·m) | Peak RPM | Supply (PU) | Heat (HU/s) | Blast R (m) | Blast Dmg |
 |---|---|---|---|---|---|---|---|---|---|
-| `pwr.combustion.compact.t1` | 3×3×4 | 95 | 260 | 1900 | 4600 | 90 | 5.2 | 3.0 | 210 |
-| `pwr.combustion.standard.t2` | 4×3×5 | 155 | 420 | 3200 | 5200 | 150 | 7.4 | 4.2 | 380 |
-| `pwr.combustion.forced.t3` | 5×4×6 | 240 | 610 | 5100 | 6100 | 215 | 11.8 | 5.4 | 620 |
-| `pwr.turbine.axial.t4` | 5×4×7 | 285 | 700 | 6800 | 8800 | 300 | 16.5 | 6.1 | 880 |
-| `pwr.cell.static.t3` | 4×3×4 | 175 | 540 | 0 | 0 | 260 | 1.1 | 3.4 | 300 |
-| `pwr.cell.static.t5` | 4×3×4 | 205 | 780 | 0 | 0 | 420 | 0.7 | 4.0 | 460 |
+| `pmv.combustion.compact.t1` | 3×3×4 | 95 | 260 | 1900 | 4600 | 90 | 5.2 | 3.0 | 210 |
+| `pmv.combustion.standard.t2` | 4×3×5 | 155 | 420 | 3200 | 5200 | 150 | 7.4 | 4.2 | 380 |
+| `pmv.combustion.forced.t3` | 5×4×6 | 240 | 610 | 5100 | 6100 | 215 | 11.8 | 5.4 | 620 |
+| `pmv.turbine.axial.t4` | 5×4×7 | 285 | 700 | 6800 | 8800 | 300 | 16.5 | 6.1 | 880 |
+
+Energy Cells make no torque and have no shaft, so the torque and RPM columns are gone rather than zeroed:
+
+| `part_key` | Cells | Mass (kg) | Integrity | Supply (PU) | Reserve (PU·s) | Recharge (PU/s) | Heat (HU/s) | Blast R (m) | Blast Dmg |
+|---|---|---|---|---|---|---|---|---|---|
+| `cel.static.standard.t3` | 4×3×4 | 175 | 540 | 260 | 900 | 45 | 1.1 | 3.4 | 300 |
+| `cel.static.dense.t5` | 4×3×4 | 205 | 780 | 420 | 1600 | 62 | 0.7 | 4.0 | 460 |
+
+**Why these are two classes and not one with a zero column.** They were one — `PRIME_MOVER` — and the two cell rows above carried a `0` in the torque column, which is a class distinction written as a magic value. Nothing stopped a cell being authored with torque, nothing told the garage that the two parts answer different questions, and the name covered both jobs badly. §14 rule 24 now enforces the split: a Prime Mover with no torque is an Energy Cell in the wrong class, and a cell with no supply is ballast with a detonation radius.
+
+The trade is legible from the two tables. At tier 3 a cell carries 260 PU against a standard Prime Mover's 150, for 20 kg more, and runs at 1.1 HU/s against 7.4 — but makes no torque at all. A rotary Assembly is gated by `PowerSystem.available_fraction`, which scales a disc's spool, so it wants cells and does not care about torque. A wheeled or tracked one is gated by torque and needs only enough supply to keep its modules alive. An Assembly that wants both pays for both, in mass and in mounts.
 
 ### 10.5 Effector Modules
 
@@ -1054,9 +1087,9 @@ Resistance values are fractions in `[0.0, 0.85]`. The hard ceiling of `0.85` is 
 | `mot.limb.*` | 0.16 | 0.14 | 0.26 | 0.06 | 0.02 |
 | `mot.repulsor.*` | 0.06 | 0.30 | 0.10 | 0.24 | 0.00 |
 | `mot.rotor.*` | 0.04 | 0.08 | 0.06 | 0.10 | 0.00 |
-| `pwr.combustion.*` | 0.10 | 0.05 | 0.15 | 0.30 | 0.02 |
-| `pwr.turbine.*` | 0.12 | 0.06 | 0.18 | 0.40 | 0.04 |
-| `pwr.cell.*` | 0.14 | 0.02 | 0.12 | 0.08 | 0.02 |
+| `pmv.combustion.*` | 0.10 | 0.05 | 0.15 | 0.30 | 0.02 |
+| `pmv.turbine.*` | 0.12 | 0.06 | 0.18 | 0.40 | 0.04 |
+| `cel.static.*` | 0.22 | 0.14 | 0.06 | 0.08 | 0.10 |
 | `eff.ballistic.*` | 0.12 | 0.10 | 0.18 | 0.14 | 0.06 |
 | `eff.arced.*` | 0.14 | 0.12 | 0.20 | 0.12 | 0.06 |
 | `eff.beam.*` | 0.08 | 0.14 | 0.12 | 0.44 | 0.10 |
@@ -1151,6 +1184,8 @@ Defined in `HEADLESS_NETWORK_SYNC.md` §5. `PART_DATA_SCHEMA.md` fixes only the 
 21. An `AMBULATORY_LIMB` Motive Assembly has a non-zero `suspension_*` field; or `limb_profile.duty_factor` outside `(0.0, 1.0)`, `leg_length_m <= 0.0`, `stance_height_ratio` outside `(0.0, 1.0]`, `max_cadence_hz < nominal_cadence_hz`, or `max_step_length_m > 2 · leg_length_m` — a step longer than twice the leg cannot be taken with a foot on the ground at either end of it.
 22. A `TRACKED_SEGMENT` Motive Assembly has a non-zero `max_steer_angle_deg` — a track steers by differential drive, and one that angled its hub would be a wheel; or `track_profile.road_stations` outside `[1, MAX_ROAD_STATIONS]`, `patch_length_m <= 0.0`, `differential_authority` outside `[0.0, 1.0]`, `internal_loss` outside `[0.0, 1.0)`, or `lateral_grip_ratio <= 0.0`.
 
+24. A `PRIME_MOVER` has `prime_mover_profile.drive_torque_nm <= 0.0` — a Prime Mover that makes no torque is an Energy Cell in the wrong class — or an `ENERGY_CELL` has `power_supply_pu <= 0.0` or `energy_cell_profile.discharge_limit_pu <= 0.0`, supply being the whole of what a cell contributes, or negative `capacity_pu_s` or `recharge_pu_s`.
+
 The validator emits `res://.build/part_registry_report.md` summarising totals per class, mass histograms, integrity-per-kilogram outliers, and every exception note. This report is a required review artefact for any balance change.
 
 ---
@@ -1166,7 +1201,7 @@ The validator emits `res://.build/part_registry_report.md` summarising totals pe
 | `AUTO_ASSEMBLE_ALGORITHM.md` | Every field; the solver is a constraint search over the full schema |
 | `WEAPON_TARGETING_LOGIC.md` | `effector_profile` and its `melee_profile` payload, `power_draw_pu`, `heat_generation_hu_s` |
 | `COMPONENT_HEALTH_DAMAGE.md` | `integrity_max`, `resistance`, `armour_rating`, `occlusion`, band constants |
-| `TERRAIN_CRATER_DEFORMER.md` | Blast fields on `power_profile` and projectile definitions |
+| `TERRAIN_CRATER_DEFORMER.md` | Blast fields on `prime_mover_profile` and projectile definitions |
 | `PROCEDURAL_STRUCTURE_SLICING.md` | `collider_profile` conventions (shared with Static Volumes) |
 | `RESPONSIVE_GARAGE_UI.md` | `display_name_key`, `tier`, `build_cost`, `mount_weight`, all stat fields |
 | `HEADLESS_NETWORK_SYNC.md` | `part_def_id`, quantisation rules, `manifest_hash()` |

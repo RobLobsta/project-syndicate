@@ -65,7 +65,8 @@ func _run() -> bool:
 	keys.append(_author_tracked_short_bogie())
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
-	keys.append(_author_power_combustion_standard())
+	keys.append(_author_prime_mover_combustion_standard())
+	keys.append(_author_energy_cell_static_standard())
 	keys.append(_author_melee_beam_edge())
 	for key: String in keys:
 		if key.is_empty():
@@ -469,16 +470,18 @@ func _author_limb_strider() -> String:
 	)
 
 
-## §10.4: `pwr.combustion.standard.t2`, 4x3x5, 155 kg, 420 integrity,
+## §10.4: `pmv.combustion.standard.t2`, 4x3x5, 155 kg, 420 integrity,
 ## 3200 N.m, 5200 RPM, 150 PU, 7.4 HU/s, 4.2 m blast, 380 damage.
-## §11: the `pwr.combustion.*` row.
+## §11: the `pmv.combustion.*` row.
 ##
 ## 150 PU is exactly one `mot.rotor.coaxial_mid.t3` at full collective, which is
-## the balance point §12.5 chose ROTOR_W_PER_PU to produce.
-func _author_power_combustion_standard() -> String:
+## the balance point §12.5 chose ROTOR_W_PER_PU to produce. That is a Prime
+## Mover only barely covering a single disc, and it is the reason the Energy Cell
+## below exists: a rotary build wants supply, not torque.
+func _author_prime_mover_combustion_standard() -> String:
 	var lo := Vector3i(-2, 0, -2)
 	var hi := Vector3i(1, 2, 2)
-	var def := _base(&"pwr.combustion.standard.t2", PartEnums.PartClass.POWER_PLANT)
+	var def := _base(&"pmv.combustion.standard.t2", PartEnums.PartClass.PRIME_MOVER)
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
@@ -491,20 +494,64 @@ func _author_power_combustion_standard() -> String:
 	def.power_supply_pu = 150.0
 	def.heat_generation_hu_s = 7.4
 
-	var power := PowerPlantProfile.new()
-	power.drive_torque_nm = 3200.0
-	power.peak_angular_rpm = 5200.0
-	power.throttle_response_s = 0.18
-	power.thermal_throttle_start_hu = 620.0
-	power.thermal_shutdown_hu = 900.0
-	power.detonation_blast_radius_m = 4.2
-	power.detonation_blast_damage = 380.0
-	def.power_profile = power
+	var mover := PrimeMoverProfile.new()
+	mover.drive_torque_nm = 3200.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
 
 	def.build_cost = 480
 	def.mount_weight = 3
 	return PartAuthoring.save_part(
-		def, "pwr", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `cel.static.standard.t3`, 4x3x4, 175 kg, 540 integrity, no torque,
+## 260 PU, 1.1 HU/s, 3.4 m blast, 300 damage. §11: the `cel.static.*` row.
+##
+## The other half of the §7.3 split, and the first part in the registry whose
+## whole contribution is supply. It carries 260 PU against the Prime Mover's 150
+## for 20 kg more, makes no torque at all, and runs cold — 1.1 HU/s against 7.4.
+## A rotary Assembly built on cells flies further and cannot drive; one built on
+## movers drives and cannot spin a second disc. That trade is the reason the two
+## are separate classes rather than one class with a zero in the torque column.
+func _author_energy_cell_static_standard() -> String:
+	var lo := Vector3i(-2, 0, -2)
+	var hi := Vector3i(1, 2, 1)
+	var def := _base(&"cel.static.standard.t3", PartEnums.PartClass.ENERGY_CELL)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 175.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 540.0
+	# Softer to thermal and to corrosive than a Prime Mover, and harder to
+	# kinetic: a cell is a sealed block rather than a machine with moving parts.
+	def.resistance = PackedFloat32Array([0.22, 0.14, 0.06, 0.08, 0.10])
+	def.armour_rating = 16.0
+	def.load_capacity_kg = 800.0
+	def.power_supply_pu = 260.0
+	def.heat_generation_hu_s = 1.1
+
+	var cell := EnergyCellProfile.new()
+	cell.discharge_limit_pu = 260.0
+	cell.capacity_pu_s = 900.0
+	cell.recharge_pu_s = 45.0
+	cell.thermal_throttle_start_hu = 540.0
+	cell.thermal_shutdown_hu = 820.0
+	cell.detonation_blast_radius_m = 3.4
+	cell.detonation_blast_damage = 300.0
+	def.energy_cell_profile = cell
+
+	def.build_cost = 520
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "cel", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
 	)
 
 

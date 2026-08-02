@@ -742,13 +742,55 @@ The zero-crossing guard on braking is what prevents the contact from oscillating
 
 ### 7.5 Torque Distribution
 
-Available drive torque is the sum over live Power Plants, scaled by the throttle curve and thermal state, divided among live driven Motive Assemblies weighted by normal load:
+Available drive torque is the sum over live Prime Movers, scaled by the throttle curve and thermal state, divided among live driven Motive Assemblies weighted by normal load:
 
 ```
 τ_slot = τ_total · N_slot / Σ N_driven
 ```
 
-Load weighting means an unloaded wheel receives little torque, which naturally suppresses the wheelspin-on-airborne-wheel behaviour without a traction-control hack. A destroyed Power Plant simply reduces `τ_total`; a destroyed wheel simply leaves the denominator.
+Load weighting means an unloaded wheel receives little torque, which naturally suppresses the wheelspin-on-airborne-wheel behaviour without a traction-control hack. A destroyed Prime Mover simply reduces `τ_total`; a destroyed wheel simply leaves the denominator.
+
+---
+
+### 7.6 Traction Control
+
+Two loops, both acting **through the contacts**. Neither applies a force of its own.
+
+```
+# Slip limiting, per driven contact
+allowed = TARGET_SLIP_RATIO · max(|v_long|, LAUNCH_REFERENCE_MPS)
+excess  = max(|ω·r − v_long| − allowed, 0)
+scale   = lerp(1, 1 / (1 + excess · SLIP_GAIN), authority)
+τ_drive ← τ_drive · scale
+
+# Yaw control, per Assembly
+ω_target = −v_long · tan(δ) / wheelbase          # bicycle model
+ω_target = clamp(ω_target, ±GRIP_YAW_MARGIN · μ · g / |v|)
+error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
+τ_brake  = min(|error| · YAW_GAIN_NM_PER_RAD_S · authority,
+               brake_torque_nm · MAX_BRAKE_FRACTION)   on the flank sign(error)
+```
+
+| Constant | Value |
+|---|---|
+| `TARGET_SLIP_RATIO` | 0.14 |
+| `LAUNCH_REFERENCE_MPS` | 5.0 |
+| `SLIP_GAIN` | 1.2 |
+| `YAW_GAIN_NM_PER_RAD_S` | 2600.0 |
+| `YAW_DEADBAND_RAD_S` | 0.10 |
+| `MAX_BRAKE_FRACTION` | 0.55 |
+| `MIN_YAW_CONTROL_SPEED_MPS` | 1.5 |
+| `GRIP_YAW_MARGIN` | 0.95 |
+
+**An electronic aid may not apply a force the tyres could not.** A yaw controller that called `apply_torque` would turn an Assembly just as briskly on ice, on a slope, or with two wheels in the air, and would keep working after the contacts it is managing had stopped touching anything. Modulating one flank's brakes produces the same yaw moment through the same patches the driver is using, so it fades out exactly when grip does. This is what a real stability system does and it costs one extra term in §7.2's brake torque.
+
+**The allowance is a slip velocity at low speed and a slip ratio once rolling.** §7.1 divides by `max(|v|, V_REF)`, so at a standstill any rotation at all reads as enormous slip; a limiter that believed the ratio would cut a stationary Assembly's torque to nothing and it would never move. Flooring the road speed at `LAUNCH_REFERENCE_MPS` turns the law into launch control below 5 m/s and into ordinary slip limiting above it, in one `maxf` rather than a second mode.
+
+**The aid is an authority in `[0, 1]`, not a flag**, carried on `ControlInput` beside the throttle. The limiter is a `lerp` toward the managed torque, so 0.5 is a real intermediate state. At 0.0 the driver gets every newton-metre the Prime Movers make, wheelspin included — which is the only way to get a burnout out of a build with this much torque, and `tests/physics/test_ground_assembly.gd` asserts both sides of that switch against each other rather than either alone.
+
+**GROUND only, deliberately.** A tracked Assembly steers *by* making its flanks disagree (§14.2), so a yaw controller that removed the disagreement would remove its steering. A rotary or ambulatory Assembly has no slip ratio to limit. The boundary is recorded here rather than left to be rediscovered by whoever notices a tracked build that will not pivot.
+
+**What it fixes.** Deep slip is unstable by construction: past the peak of the §7.2 friction curve, more slip means less force, so once one flank hooks up before the other the Assembly yaws away and keeps yawing. Holding both patches inside the allowance is what stops the pull; the yaw loop trims what is left. Measured on the four-contact fixture, full throttle wandered about 20° in two and a half seconds with the aid off and holds inside 8° with it on.
 
 ---
 
@@ -1079,11 +1121,11 @@ draw_pu = P / ROTOR_W_PER_PU        ROTOR_W_PER_PU = 4500.0
 genuinely needs and the abstract Power Unit the rest of the schema budgets in.
 It is `4500` because that is the value at which `mot.rotor.coaxial_mid.t3` at
 full collective draws **150 PU** — precisely the supply of one
-`pwr.combustion.standard.t2`. The intended reading of a rotorcraft's power line
-is therefore "one standard Power Plant per mid disc", which is legible in the
+`pmv.combustion.standard.t2`. The intended reading of a rotorcraft's power line
+is therefore "one standard Prime Mover per mid disc", which is legible in the
 garage without arithmetic.
 
-When supply falls short, the Power Plant layer scales the **commanded angular
+When supply falls short, the Prime Mover layer scales the **commanded angular
 rate**, not the thrust:
 
 ```
@@ -1093,7 +1135,7 @@ omega_command = nominal_rad_s · throttle · power_available_fraction
 Scaling Ω rather than T is the honest model and the better feel. Thrust falls as
 `Ω²`, so a 10% power shortfall costs 19% of lift; the disc audibly and visibly
 slows; and because Ω is behind the spool filter of §12.6, the loss arrives over
-seconds rather than instantly. A rotorcraft losing a Power Plant sinks. It does
+seconds rather than instantly. A rotorcraft losing a Prime Mover sinks. It does
 not switch off.
 
 ### 12.6 Spool

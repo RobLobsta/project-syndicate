@@ -82,6 +82,11 @@ var _axle_pairs: Array[MotiveContact] = []
 ## [constant DegradationTable.MOTIVE_STEER].
 var _steer_deg: PackedFloat32Array = PackedFloat32Array()
 
+## Longitudinal spread of the ground contacts, in metres. §7.6's yaw target is a
+## bicycle model and needs a wheelbase; it is where the builder put the Motive
+## Assemblies, so it is derived on registration and never per tick.
+var _wheelbase_m: float = 0.0
+
 var _kappa_accum: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 
@@ -153,6 +158,7 @@ func register(slot: int, def: PartDefinition, state: PartInstanceState = null) -
 	_write_band_multipliers(slot, PartEnums.IntegrityBand.NOMINAL)
 	_bind_probes(slot)
 	_rebuild_axle_pairs()
+	_rebuild_wheelbase()
 
 
 ## Drops a Motive Assembly that has been destroyed or detached.
@@ -166,6 +172,7 @@ func unregister(slot: int) -> void:
 	# Anti-roll couples two surviving probes. Losing one end of an axle leaves
 	# the other unpaired rather than pushing against a probe that has left.
 	_rebuild_axle_pairs()
+	_rebuild_wheelbase()
 	# Phases are a function of the surviving limb set, so losing one re-phases
 	# the rest. A walker that loses a limb changes its gait; leaving the others
 	# on their old offsets would leave a hole in the cycle.
@@ -312,6 +319,9 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 		return
 	var profile := def.motive_profile
 	var contacts: Array = _contacts.get(slot, [])
+	# §7.6. One yaw error for the whole Assembly, evaluated before any contact is
+	# solved, so every wheel this tick is corrected against the same heading.
+	var yaw_error := _yaw_error(profile, chassis_speed)
 	for c: MotiveContact in contacts:
 		if not c.grounded:
 			c.prev_compression_m = 0.0
@@ -325,7 +335,19 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 		)
 		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
 		_steer_contact(slot, profile, c)
-		_apply_traction(slot, profile, c, dt, 1.0, _ground_drive_share(profile))
+		_apply_traction(
+			slot,
+			profile,
+			c,
+			dt,
+			1.0,
+			_ground_drive_share(profile) * TractionControl.drive_scale(
+				c.contact_omega * profile.contact_radius_m,
+				c.velocity_world.dot(c.forward),
+				input.traction_control
+			),
+			_yaw_brake_nm(slot, profile, yaw_error)
+		)
 
 
 func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
@@ -521,6 +543,70 @@ func _steer_contact(slot: int, profile: MotiveAssemblyProfile, c: MotiveContact)
 	c.lateral = turn * c.lateral
 
 
+## §7.6's yaw error for this tick, in rad/s, or zero when the aid is off, the
+## Assembly is too slow for the model to mean anything, or it is already going
+## where it was pointed.
+func _yaw_error(profile: MotiveAssemblyProfile, chassis_speed: float) -> float:
+	if input.traction_control <= 0.0 or chassis_speed < TractionControl.MIN_YAW_CONTROL_SPEED_MPS:
+		return 0.0
+	var forward := -runtime.body.global_transform.basis.z
+	var along := runtime.body.linear_velocity.dot(forward)
+	var target := TractionControl.target_yaw_rate_rad_s(
+		along, deg_to_rad(_commanded_steer_deg()), _wheelbase_m
+	)
+	return TractionControl.yaw_error_rad_s(
+		runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y),
+		target,
+		TractionControl.grip_limited_yaw_rate_rad_s(chassis_speed, profile.traction_coefficient)
+	)
+
+
+## The corrective brake for [param slot], applied only to the flank that opposes
+## the error. Braking both flanks would slow the Assembly and turn it nowhere.
+func _yaw_brake_nm(slot: int, profile: MotiveAssemblyProfile, yaw_error: float) -> float:
+	if is_zero_approx(yaw_error):
+		return 0.0
+	if TrackSolver.side_of(_part_local_position(slot)) != TractionControl.brake_side(yaw_error):
+		return 0.0
+	return TractionControl.yaw_brake_nm(
+		yaw_error, profile.brake_torque_nm, input.traction_control
+	)
+
+
+## The steer angle the driver is asking for, in degrees, taken from the widest
+## authored lock on the Assembly. The yaw target is a property of the build, not
+## of one wheel, and a build with no steered axle asks for no yaw at all.
+func _commanded_steer_deg() -> float:
+	var widest := 0.0
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.GROUND:
+			continue
+		var def := _definition(slot)
+		if def != null:
+			widest = maxf(widest, def.motive_profile.max_steer_angle_deg)
+	return clampf(input.steer, -1.0, 1.0) * widest
+
+
+## Longitudinal spread of the ground contacts, in metres.
+func _rebuild_wheelbase() -> void:
+	var lo := INF
+	var hi := -INF
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.GROUND:
+			continue
+		for c: MotiveContact in _contacts.get(slot, []):
+			if c.probe == null:
+				continue
+			lo = minf(lo, c.probe.position.z)
+			hi = maxf(hi, c.probe.position.z)
+	_wheelbase_m = 0.0 if lo > hi else hi - lo
+
+
+## The wheelbase §7.6's yaw target is taken against. Diagnostics and tests.
+func wheelbase_m() -> float:
+	return _wheelbase_m
+
+
 ## Current steer angle at [param slot], in degrees, positive to the right.
 func steer_angle_deg(slot: int) -> float:
 	return _steer_deg[slot]
@@ -532,7 +618,8 @@ func _apply_traction(
 	c: MotiveContact,
 	dt: float,
 	lateral_ratio: float,
-	drive_nm: float
+	drive_nm: float,
+	extra_brake_nm: float = 0.0
 ) -> void:
 	if c.normal_force_n <= 0.0:
 		return
@@ -551,7 +638,7 @@ func _apply_traction(
 	_apply_at(c.point_world, c.forward * forces.x + c.lateral * forces.y)
 
 	var drive := drive_nm
-	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0)
+	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0) + extra_brake_nm
 	c.contact_omega = TractionSolver.integrate_contact(
 		c.contact_omega,
 		TractionSolver.contact_inertia(_definition(slot).mass_kg, profile.contact_radius_m),

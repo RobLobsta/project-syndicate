@@ -41,15 +41,16 @@ const RULE_MELEE: int = 20
 const RULE_LIMB: int = 21
 const RULE_TRACK: int = 22
 const RULE_SUSPENSION_REACH: int = 23
+const RULE_POWER_SPLIT: int = 24
 
 ## ===== RULE CONSTANTS ==================================================
 
 ## §5.1 key grammar. The class tags are the seven directory names under
 ## [code]data/parts/[/code], in [enum PartEnums.PartClass] order.
-const CLASS_TAGS: Array[String] = ["core", "str", "mot", "pwr", "eff", "sup", "ctl"]
+const CLASS_TAGS: Array[String] = ["core", "str", "mot", "pmv", "eff", "sup", "ctl", "cel"]
 
 const KEY_PATTERN: String = (
-	"^(core|str|mot|pwr|eff|sup|ctl)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
+	"^(core|str|mot|pmv|eff|sup|ctl|cel)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
 )
 
 ## §14 rule 5. A part larger than this in any axis would not fit the lattice
@@ -172,6 +173,7 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_limb(def)
 	_check_track(def)
 	_check_suspension_reach(def)
+	_check_power_split(def)
 
 
 func failures() -> PackedStringArray:
@@ -381,8 +383,10 @@ func _check_class_payload(def: PartDefinition) -> void:
 		present.push_back("core_profile")
 	if def.motive_profile != null:
 		present.push_back("motive_profile")
-	if def.power_profile != null:
-		present.push_back("power_profile")
+	if def.prime_mover_profile != null:
+		present.push_back("prime_mover_profile")
+	if def.energy_cell_profile != null:
+		present.push_back("energy_cell_profile")
 	if def.effector_profile != null:
 		present.push_back("effector_profile")
 	if def.support_profile != null:
@@ -1364,3 +1368,56 @@ func _check_suspension_reach(def: PartDefinition) -> void:
 		+ "Doc 05 §6.1 recommends radius + travel_limit, which is %.3f here"
 		% (profile.contact_radius_m + profile.suspension_travel_limit_m)
 	)
+
+
+## ===== RULE 24 — PRIME MOVER / ENERGY CELL SPLIT =======================
+
+## §14 rule 24, and §7.3's split: a Prime Mover makes torque and a cell does not.
+##
+## The two classes were one until §10.4 published two rows with a zero in the
+## torque column, which is a class distinction written as a magic value: nothing
+## stopped a "cell" being authored with torque, and nothing told the garage that
+## the two parts answer different questions. Splitting them puts the difference
+## in the type system, and this rule is what keeps it there.
+##
+## A cell supplying nothing is the other half. It is the only thing a cell does,
+## so a cell with no supply is a 175 kg block of ballast with a detonation
+## radius, which is never what the author meant.
+func _check_power_split(def: PartDefinition) -> void:
+	if def.part_class == PartEnums.PartClass.PRIME_MOVER:
+		var mover := def.prime_mover_profile
+		if mover == null:
+			return  # Rule 6 has already reported it.
+		if mover.drive_torque_nm <= 0.0:
+			_fail(
+				RULE_POWER_SPLIT,
+				def.part_key,
+				(
+					"drive_torque_nm is %.1f; a Prime Mover that makes no torque is an "
+					% mover.drive_torque_nm
+				)
+				+ "Energy Cell and belongs in that class"
+			)
+		return
+
+	if def.part_class != PartEnums.PartClass.ENERGY_CELL:
+		return
+	var cell := def.energy_cell_profile
+	if cell == null:
+		return  # Rule 6 has already reported it.
+	if def.power_supply_pu <= 0.0 or cell.discharge_limit_pu <= 0.0:
+		_fail(
+			RULE_POWER_SPLIT,
+			def.part_key,
+			(
+				"power_supply_pu is %.1f and discharge_limit_pu is %.1f; supply is the "
+				% [def.power_supply_pu, cell.discharge_limit_pu]
+			)
+			+ "whole of what an Energy Cell contributes"
+		)
+	if cell.capacity_pu_s < 0.0 or cell.recharge_pu_s < 0.0:
+		_fail(
+			RULE_POWER_SPLIT,
+			def.part_key,
+			"capacity_pu_s and recharge_pu_s may not be negative"
+		)

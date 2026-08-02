@@ -26,7 +26,7 @@ extends TestCase
 ## exactly, to the newton, against synthetic inputs nothing ever fed them.
 
 const CORE_KEY := &"core.command.compact.t2"
-const POWER_KEY := &"pwr.combustion.standard.t2"
+const POWER_KEY := &"pmv.combustion.standard.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const TRACK_KEY := &"mot.tracked.short_bogie.t2"
 const LIMB_KEY := &"mot.limb.strider.t4"
@@ -297,7 +297,7 @@ func test_a_walker_spreads_its_limbs_around_the_gait_cycle() -> void:
 ## ===== FIXTURES ========================================================
 
 
-## A two-bogie tracked Assembly with a Power Plant, built through the validator.
+## A two-bogie tracked Assembly with a Prime Mover, built through the validator.
 func _build_tracked() -> Array:
 	var ctx := BuildContext.with_physics(31)
 	_contexts.append(ctx)

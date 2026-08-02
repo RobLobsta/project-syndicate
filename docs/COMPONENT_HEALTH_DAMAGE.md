@@ -203,7 +203,7 @@ func _generate_spall(packet: DamagePacket, effective: float,
         apply(p)
 ```
 
-Spall is what makes interior layout meaningful: a Power Plant tucked directly behind thin frontal armour takes spall damage from hits that never actually reach it.
+Spall is what makes interior layout meaningful: a Prime Mover tucked directly behind thin frontal armour takes spall damage from hits that never actually reach it.
 
 ---
 
@@ -394,7 +394,7 @@ damage_per_second = raw_amount · (1 − resist_THERMAL)
 heat_per_second   = raw_amount · THERMAL_HEAT_RATIO      THERMAL_HEAT_RATIO = 0.55
 ```
 
-A part whose heat exceeds `THERMAL_IGNITION_HU = 480` gains `FLAG_OVERHEATED` and begins self-damaging at `4.0 damage/s` until heat drops below `320` — a hysteresis band that prevents flicker. Power Plants ignite at their `thermal_shutdown_hu` and stop producing torque entirely.
+A part whose heat exceeds `THERMAL_IGNITION_HU = 480` gains `FLAG_OVERHEATED` and begins self-damaging at `4.0 damage/s` until heat drops below `320` — a hysteresis band that prevents flicker. Prime Movers ignite at their `thermal_shutdown_hu` and stop producing torque entirely.
 
 ### 7.2 Corrosive
 
@@ -471,7 +471,7 @@ This is the canonical table. Every subsystem indexes it by band. No subsystem de
 | | Cycle time multiplier | 1.00 | 1.06 | 1.22 | 1.60 |
 | | Spread multiplier | 1.00 | 1.15 | 1.45 | 2.10 |
 | | Jam chance per shot | 0.00 | 0.00 | 0.00 | **0.18** |
-| `POWER_PLANT` | Torque multiplier | 1.00 | 0.90 | 0.68 | 0.38 |
+| `PRIME_MOVER` | Torque multiplier | 1.00 | 0.90 | 0.68 | 0.38 |
 | | Power supply multiplier | 1.00 | 0.94 | 0.75 | 0.45 |
 | | Heat generation multiplier | 1.00 | 1.12 | 1.38 | 1.85 |
 | | Smoke VFX | off | light | heavy | flame |
@@ -532,7 +532,7 @@ func _on_band_transition(assembly: AssemblyRuntime, st: PartInstanceState,
             assembly.motive_system.on_band_changed(st.slot, after)
         PartEnums.PartClass.EFFECTOR_MODULE:
             assembly.effector_system.on_band_changed(st.slot, after)
-        PartEnums.PartClass.POWER_PLANT:
+        PartEnums.PartClass.PRIME_MOVER:
             assembly.power_system.on_band_changed(st.slot, after)
         PartEnums.PartClass.SUPPORT_MODULE:
             assembly.support_system.on_band_changed(st.slot, after)
@@ -577,9 +577,9 @@ func _destroy_part(assembly: AssemblyRuntime, st: PartInstanceState,
     st.flags |= PartFlags.FLAG_DESTROYED
     st.integrity = 0.0
 
-    # Volatile modules and Power Plants detonate on destruction.
-    if def.part_class == PartEnums.PartClass.POWER_PLANT:
-        var pp := def.power_profile
+    # Volatile modules and Prime Movers detonate on destruction.
+    if def.part_class == PartEnums.PartClass.PRIME_MOVER:
+        var pp := def.prime_mover_profile
         _queue_detonation(assembly, st, pp.detonation_blast_radius_m,
                           pp.detonation_blast_damage, packet.chain_depth + 1)
     elif def.part_class == PartEnums.PartClass.SUPPORT_MODULE \
@@ -609,7 +609,7 @@ func _flush_detonations() -> void:      # called from EventBus tick_resolved, PR
         resolve_blast(d.centre, d.radius, d.damage, d.assembly, d.slot, d.chain_depth)
 ```
 
-`MAX_CHAIN_DEPTH = 3` bounds chain reactions. A magazine detonating a Power Plant detonating a second magazine is spectacular; unbounded recursion is a server hang.
+`MAX_CHAIN_DEPTH = 3` bounds chain reactions. A magazine detonating a Prime Mover detonating a second magazine is spectacular; unbounded recursion is a server hang.
 
 ---
 
@@ -684,9 +684,9 @@ VFX are attached and detached at band transitions only, never evaluated per fram
 |---|---|
 | Motive `IMPAIRED` | Contact spark emitter, 12 particles/s, tied to contact point |
 | Motive `CRITICAL` | Contact spark emitter, 34 particles/s, plus intermittent smoke puff |
-| Power Plant `STRESSED` | Light smoke column, 0.4 opacity |
-| Power Plant `IMPAIRED` | Heavy smoke column, 0.8 opacity |
-| Power Plant `CRITICAL` | Flame jet plus heavy smoke; audible alarm loop |
+| Prime Mover `STRESSED` | Light smoke column, 0.4 opacity |
+| Prime Mover `IMPAIRED` | Heavy smoke column, 0.8 opacity |
+| Prime Mover `CRITICAL` | Flame jet plus heavy smoke; audible alarm loop |
 | Effector `CRITICAL` | Sparking at the breech on each fire attempt |
 | Any part `DESTROYED` | One-shot debris burst; emitter released to pool |
 | `FLAG_OVERHEATED` set | Heat shimmer distortion quad |

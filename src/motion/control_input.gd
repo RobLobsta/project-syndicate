@@ -23,6 +23,13 @@ var steer: float = 0.0
 var brake: float = 0.0
 var handbrake: bool = false
 var boost: bool = false
+## Traction-control authority, [0, 1]. 1.0 is the aid at full effect; 0.0 hands
+## the driver every newton-metre the Prime Movers make, wheelspin included.
+##
+## A scalar rather than a flag because the interesting settings are between the
+## two: doc 05 §7.6's limiter is a lerp toward the managed torque, so 0.5 is a
+## real intermediate state and not an average of two behaviours.
+var traction_control: float = 1.0
 
 ## ===== ROTARY =========================================================
 
