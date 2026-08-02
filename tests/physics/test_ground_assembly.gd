@@ -8,19 +8,32 @@ extends TestCase
 ## check exists to reject — until this file neither had ever been exercised by a
 ## placement, only by a unit test against synthetic candidates.
 ##
-## [b]It found two things.[/b] The first was a data defect and is fixed: all four
-## `mot.*` parts carried the AXLE [i]station's[/i] `accepts_classes` restriction
-## on their own drive face, and since [code]_check_mating[/code] tests the
-## restriction in both directions, every Motive Assembly in the registry rejected
-## the only part §4.2 lets it mount on. Nothing could be built with locomotion at
-## all. The second is recorded by
-## [method test_the_suspension_carries_no_load_on_shipped_data] below and is
-## [i]not[/i] fixed here, because resolving it is a balance decision under
-## CLAUDE.md §12 rather than a defect with one correct answer.
+## [b]It found three things, and all three are now fixed.[/b]
+##
+## [enum]
+## [*] All four `mot.*` parts carried the AXLE [i]station's[/i] `accepts_classes`
+##     restriction on their own drive face, and since [code]_check_mating[/code]
+##     tests the restriction in both directions, every Motive Assembly in the
+##     registry rejected the only class §4.2 lets it mount on. Nothing with
+##     locomotion could be built at all.
+## [*] `suspension_rest_length_m` was authored below `contact_radius_m`, so the
+##     probe could never register compression, no normal force reached the
+##     contact, and full throttle moved the Assembly exactly nothing. Doc 05 §6.1
+##     now states the relationship and §14 rule 23 enforces it.
+## [*] Every wheel steered, which is not a steering system — four contact patches
+##     pointing the same way translate the Assembly sideways with its nose still
+##     forward. `mot.wheeled.fixed_rear.t2` is the rear axle, and the difference
+##     between the two rows is one authored number.
+## [/enum]
 
 const CORE_KEY := &"core.command.compact.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
+const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
+const POWER_KEY := &"pwr.combustion.standard.t2"
+
+## On the Core Module's roof, on the centreline, so it does not bias the build.
+const POWER_ORIGIN := Vector3i(24, 7, 24)
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Hub stations under the Core Module's four lower corners. They mate to its
@@ -40,12 +53,22 @@ const HUB_ORIGINS: Array[Vector3i] = [
 ## `test_each_axle_pair_straddles_the_centreline` moving. Fault injection made
 ## exactly that deletion and the test passed. Both left discs first means the
 ## naive pairing produces a same-side pair, which is the thing the rule forbids.
+## The right-hand pivots sit one cell forward of the left-hand ones, and that is
+## a correction rather than a slip. A disc's authored centre of mass is the
+## centre of an even-sized footprint, so the two mirrored orientations put it a
+## quarter-cell apart on Z; matching the cells would leave the two flanks'
+## contact patches 0.25 m out of line, which loads them unevenly and makes the
+## Assembly veer under power. Matching the *probes* is what makes it a mirror.
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 22), Vector3i(28, 3, 28)
+	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
 ]
 
-## 380 kg Core Module, four 29 kg stations, four 68 kg discs.
-const EXPECTED_MASS_KG: float = 768.0
+## Pivot Z below which a wheel is on the front axle and steers.
+const FRONT_AXLE_Z: int = 24
+
+## 380 kg Core Module, 355 kg Power Plant, four 29 kg stations, two 68 kg steered
+## discs and two 62 kg fixed ones.
+const EXPECTED_MASS_KG: float = 911.0
 
 ## Doc 05 §6.1's probe radius ratio, quoted rather than imported.
 ##
@@ -55,10 +78,23 @@ const EXPECTED_MASS_KG: float = 768.0
 ## A published constant is asserted against the document, once, and the code is
 ## asserted against the assertion.
 const DOC_PROBE_RADIUS_RATIO: float = 0.85
-const EXPECTED_PART_COUNT: int = 9
+
+## Core, Power Plant, four stations, four discs.
+const EXPECTED_PART_COUNT: int = 10
 
 ## Ticks to fall two metres and settle onto the contact.
 const SETTLE_TICKS: int = 260
+
+## A second of driving: long enough to reach a real speed, short enough that a
+## file with six driving tests in it still runs in seconds.
+const DRIVE_TICKS: int = 150
+
+## Enough throttle to move cleanly, well below the wheelspin threshold.
+const PART_THROTTLE: float = 0.25
+
+## Ticks to sample the steer sweep at. Chosen so the wheels are part-way to the
+## stop: 140 deg/s reaches a 32 degree lock in 0.23 s, and this is 0.1 s.
+const STEER_SAMPLE_TICKS: int = 6
 
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
@@ -79,13 +115,19 @@ func before_all() -> void:
 	var hub := PartRegistry.definition_by_key(HUB_KEY)
 	var wheel := PartRegistry.definition_by_key(WHEEL_KEY)
 
+	var rear := PartRegistry.definition_by_key(REAR_KEY)
 	_ctx = BuildContext.with_physics(1)
 	PlacementValidator.commit(_ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+	PlacementValidator.commit(
+		_ctx,
+		PlacementCandidate.create(PartRegistry.definition_by_key(POWER_KEY), POWER_ORIGIN, 0)
+	)
 	for cell: Vector3i in HUB_ORIGINS:
 		PlacementValidator.commit(_ctx, PlacementCandidate.create(hub, cell, 0))
 	for cell: Vector3i in WHEEL_ORIGINS:
+		var def := wheel if cell.z < FRONT_AXLE_Z else rear
 		PlacementValidator.commit(
-			_ctx, PlacementCandidate.create(wheel, cell, _wheel_orientation_for(cell))
+			_ctx, PlacementCandidate.create(def, cell, _wheel_orientation_for(cell))
 		)
 
 	_runtime = AssemblyRuntime.new()
@@ -125,7 +167,7 @@ func test_every_placement_was_accepted() -> void:
 	check_eq(
 		_ctx.committed_definitions().size(),
 		EXPECTED_PART_COUNT,
-		"a Core Module, four AXLE stations and four Motive Assemblies committed"
+		"a Core Module, a Power Plant, four AXLE stations and four Motive Assemblies"
 	)
 	check_eq(_motion.motive_slot_count(), WHEEL_ORIGINS.size(), "all four discs registered")
 	check_approx(
@@ -269,40 +311,51 @@ func test_each_axle_pair_straddles_the_centreline() -> void:
 
 
 func test_the_assembly_settles_level_on_its_contacts() -> void:
-	await physics_frames(SETTLE_TICKS)
+	await _at_rest()
 
 	check_true(
 		_runtime.body.global_transform.basis.y.dot(Vector3.UP) > 0.999,
 		"a symmetric four-contact build settles upright rather than tipping"
 	)
+	# A four-spring Assembly on a flat slab never goes exactly still — the
+	# suspension keeps a residual oscillation that §10.3's settle scaling damps
+	# rather than kills. What matters is that it is settling rather than driving
+	# away, so the assertion is on the scale of the motion, not on zero.
 	check_true(
-		_runtime.body.linear_velocity.length() < 0.01, "and comes to rest rather than drifting"
+		_runtime.body.linear_velocity.length() < 0.25,
+		"and is settling in place rather than drifting off"
 	)
-	# Ride height is the contact radius plus the probe's height above the disc
-	# centre, less the solver's contact slop. Derived rather than recorded, so a
-	# change to either authored number moves the expectation with it.
-	var wheel := PartRegistry.definition_by_key(WHEEL_KEY)
-	var expected := wheel.motive_profile.contact_radius_m - _probe_local_y
+	# Ride height is where the springs settle: the probe sits its own local height
+	# below the body, and the surface is one contact distance below that. Derived
+	# from what the probes actually report rather than recorded, because the sag
+	# depends on the build's weight and this fixture's weight will change.
+	var contact := _motion.contact_at(_motion.motive_slots()[0], 0)
 	check_approx(
 		_runtime.body.global_position.y,
-		expected,
-		"and rests one rolling radius above the surface",
-		0.02
+		contact.distance_m - _probe_local_y,
+		"and rests on its springs at the height they settled to",
+		0.05
 	)
 
 
 func test_every_probe_finds_the_ground_beneath_its_wheel() -> void:
-	await physics_frames(SETTLE_TICKS)
+	await _at_rest()
 	var wheel := PartRegistry.definition_by_key(WHEEL_KEY)
 	for slot: int in _motion.motive_slots():
 		var contact := _motion.contact_at(slot, 0)
 		if not check_true(contact.grounded, "slot %d found the surface" % slot):
 			continue
-		check_approx(
-			contact.distance_m,
-			wheel.motive_profile.contact_radius_m,
-			"at one rolling radius below the disc centre",
-			0.02
+		# Between the rolling radius and the full rest length: closer than the
+		# rest length means the spring is compressed and carrying load, and no
+		# closer than the radius means the disc is not inside the ground.
+		var profile := wheel.motive_profile
+		check_true(
+			contact.distance_m > profile.contact_radius_m,
+			"the disc is above the surface rather than buried in it"
+		)
+		check_true(
+			contact.distance_m < profile.suspension_rest_length_m,
+			"and inside its rest length, so the spring is carrying"
 		)
 		check_true(
 			contact.normal_world.dot(Vector3.UP) > 0.99, "with the surface normal upward"
@@ -312,54 +365,187 @@ func test_every_probe_finds_the_ground_beneath_its_wheel() -> void:
 ## ===== THE FINDING =====================================================
 
 
-func test_the_suspension_carries_no_load_on_shipped_data() -> void:
-	# Not an assertion that this is correct. It is a measurement, written down so
-	# that the next session inherits the number instead of the argument.
-	#
-	# §6.1 puts the probe origin at the disc's centre of mass and §6.2 reads
-	# compression as `rest_length - distance`. A disc resting on its own authored
-	# collider puts that distance at one rolling radius, so compression is
-	# positive only while `suspension_rest_length_m > contact_radius_m`. Shipped,
-	# they are 0.32 m and 0.50 m: compression clamps to zero on every contact,
-	# the normal force is zero, `_apply_traction` returns before it applies
-	# anything, and a ground Assembly at full throttle does not move.
-	#
-	# The resolution is a balance change to doc 01 §10.3 — a rest length longer
-	# than the rolling radius by the intended static sag, which also turns the
-	# disc's collider into the bump stop it should be. It is deliberately not
-	# made here: it changes how every ground build in the game feels, and
-	# CLAUDE.md §12 puts that behind a balance review rather than inside a test.
-	await physics_frames(SETTLE_TICKS)
+func test_the_suspension_carries_the_whole_build() -> void:
+	await _at_rest()
+	# The inversion of the measurement this file used to record. Doc 05 §6.1 now
+	# requires `suspension_rest_length_m > contact_radius_m`; below it the probe
+	# can never register compression and every number downstream is zero.
 	var wheel := PartRegistry.definition_by_key(WHEEL_KEY)
 	var profile := wheel.motive_profile
 	check_true(
-		profile.suspension_rest_length_m < profile.contact_radius_m,
-		"the authored rest length is shorter than the rolling radius"
+		profile.suspension_rest_length_m > profile.contact_radius_m,
+		"the authored rest length reaches past the rolling radius"
 	)
+
+	var carried := 0.0
 	for slot: int in _motion.motive_slots():
 		var contact := _motion.contact_at(slot, 0)
-		check_approx(
-			SuspensionSolver.compression(profile, contact),
-			0.0,
-			"so slot %d consumes no travel" % slot
+		var def := _runtime.definition_at(slot)
+		check_true(
+			SuspensionSolver.compression(def.motive_profile, contact) > 0.0,
+			"slot %d consumes travel" % slot
 		)
-		check_approx(contact.normal_force_n, 0.0, "and carries no normal force")
-
-
-func test_full_throttle_moves_nothing_while_the_contacts_carry_no_load() -> void:
-	# The consequence, stated as behaviour rather than as arithmetic. This test
-	# is expected to be *inverted* by whoever resolves the rest length: it should
-	# become "full throttle accelerates the Assembly forward", and the fact that
-	# it cannot be written that way today is the whole point of keeping it.
-	await physics_frames(SETTLE_TICKS)
-	var start := _runtime.body.global_position
-	_motion.input.throttle = 1.0
-	await physics_frames(60)
-	_motion.input.throttle = 0.0
-	check_true(
-		start.distance_to(_runtime.body.global_position) < 0.01,
-		"a second of full throttle moves an Assembly whose contacts carry nothing"
+		check_true(contact.normal_force_n > 0.0, "and carries load")
+		carried += contact.normal_force_n
+	# The springs hold the Assembly up and nothing else does. Asserted against
+	# the weight rather than against a recorded number, so a change to any part's
+	# mass moves the expectation with it.
+	check_approx(
+		carried,
+		EXPECTED_MASS_KG * SyndicateConstants.GRAVITY_MPS2,
+		"and between them they carry the build's whole weight",
+		EXPECTED_MASS_KG * SyndicateConstants.GRAVITY_MPS2 * 0.10
 	)
+
+
+func test_part_throttle_drives_the_assembly_forward_in_a_straight_line() -> void:
+	await _at_rest()
+	_motion.input.throttle = PART_THROTTLE
+	await physics_frames(DRIVE_TICKS)
+	var forward := -_runtime.body.global_transform.basis.z
+	var speed := _runtime.body.linear_velocity.dot(forward)
+	var sideways := _runtime.body.linear_velocity.dot(_runtime.body.global_transform.basis.x)
+	_motion.input.throttle = 0.0
+
+	check_true(speed > 2.0, "a quarter throttle moves it forward at a real speed")
+	check_true(
+		absf(sideways) < speed * 0.1,
+		"and it goes where it is pointing rather than sliding across the ground"
+	)
+
+
+func test_the_brake_stops_it() -> void:
+	await _at_rest()
+	_motion.input.throttle = PART_THROTTLE
+	await physics_frames(DRIVE_TICKS)
+	var rolling := _runtime.body.linear_velocity.length()
+	_motion.input.throttle = 0.0
+	_motion.input.brake = 1.0
+	await physics_frames(DRIVE_TICKS)
+	var braked := _runtime.body.linear_velocity.length()
+	_motion.input.brake = 0.0
+
+	check_true(rolling > 2.0, "it was moving")
+	check_true(braked < rolling * 0.5, "and the brake took most of it off")
+
+
+func test_steering_yaws_the_assembly_toward_the_side_it_is_asked_for() -> void:
+	# §7.1's contact frame doing its job. Positive steer is right on every input
+	# device (doc 11 §7.2), and a positive rotation about the surface normal
+	# carries the forward axis *left*, so the sign here is the whole assertion:
+	# a steering model that turned the wrong way would pass every other test in
+	# this file.
+	await _at_rest()
+	_motion.input.throttle = PART_THROTTLE
+	_motion.input.steer = 1.0
+	await physics_frames(DRIVE_TICKS)
+	var yaw_rate := _runtime.body.angular_velocity.y
+	var front := _motion.motive_slots()[0]
+	var steer := _motion.steer_angle_deg(front)
+	_motion.input.throttle = 0.0
+	_motion.input.steer = 0.0
+
+	var profile := PartRegistry.definition_by_key(WHEEL_KEY).motive_profile
+	check_approx(steer, profile.max_steer_angle_deg, "the front wheels reach full lock", 0.5)
+	# Forward is -Z and right is +X, so turning right is a *negative* rotation
+	# about +Y under the right-hand rule.
+	check_true(yaw_rate < -0.2, "and a right-hand lock yaws the Assembly to the right")
+
+
+func test_the_wheels_take_time_to_reach_full_lock() -> void:
+	# `steer_rate_deg_s` is what stops an Assembly changing direction instantly,
+	# and a test that waits for the lock to settle cannot tell a rate limit from
+	# an assignment. Sampled part-way through the sweep instead, against the
+	# authored rate: at 140 deg/s a 32 degree lock takes 0.23 s, so a tenth of a
+	# second in the wheels should be about two thirds of the way there and
+	# certainly not at the stop.
+	await _at_rest()
+	var profile := PartRegistry.definition_by_key(WHEEL_KEY).motive_profile
+	var front := _motion.motive_slots()[0]
+	_motion.input.steer = 1.0
+	await physics_frames(STEER_SAMPLE_TICKS)
+	var part_way := _motion.steer_angle_deg(front)
+	_motion.input.steer = 0.0
+
+	var elapsed := float(STEER_SAMPLE_TICKS) * SyndicateConstants.PHYSICS_DT
+	check_approx(
+		part_way,
+		profile.steer_rate_deg_s * elapsed,
+		"the lock advances at the authored rate rather than arriving at once",
+		1.0
+	)
+	check_true(part_way < profile.max_steer_angle_deg, "and is not at the stop yet")
+
+
+func test_a_rear_wheel_does_not_steer_at_all() -> void:
+	await _at_rest()
+	_motion.input.steer = 1.0
+	await physics_frames(DRIVE_TICKS)
+	_motion.input.steer = 0.0
+	for slot: int in _motion.motive_slots():
+		var def := _runtime.definition_at(slot)
+		if def.part_key == REAR_KEY:
+			check_approx(
+				_motion.steer_angle_deg(slot), 0.0, "the fixed rear axle stays straight"
+			)
+
+
+func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
+	# Two emergent behaviours, neither of them written anywhere as a feature.
+	#
+	# The drive torque this Power Plant makes is more than the contact patches
+	# can hold at a standstill, so the wheels accelerate past the peak of the
+	# friction curve and settle on its falling side: a burnout. And because
+	# traction is applied at the contact and the centre of mass is above it, the
+	# couple pitches the Assembly nose-up and unloads the front axle — the first
+	# part of a wheelie, arriving from the same rigid body and the same offset
+	# forces that produce brake dive.
+	await _at_rest()
+	var resting_front := _motion.contact_at(_motion.motive_slots()[0], 0).normal_force_n
+	_motion.input.throttle = 1.0
+	await physics_frames(DRIVE_TICKS)
+
+	var wheel := PartRegistry.definition_by_key(WHEEL_KEY).motive_profile
+	var forward := -_runtime.body.global_transform.basis.z
+	var road_speed := _runtime.body.linear_velocity.dot(forward)
+	var patch_speed := (
+		_motion.contact_at(_motion.motive_slots()[0], 0).contact_omega * wheel.contact_radius_m
+	)
+	var front_load := _motion.contact_at(_motion.motive_slots()[0], 0).normal_force_n
+	_motion.input.throttle = 0.0
+
+	check_true(
+		patch_speed > road_speed * 1.5,
+		"the contact patch is outrunning the road, which is what a burnout is"
+	)
+	# Down to about a third of its resting load on this build. A full wheelie is
+	# not a scripted state here and does not need to be — the nose comes up
+	# because the tractive force acts at the ground while the centre of mass is
+	# most of a metre above it, and the same offset-force model makes braking
+	# dive. A lighter Assembly on the same Power Plant lifts the axle outright.
+	check_true(
+		front_load < resting_front * 0.5,
+		"and the nose has lightened sharply: load transferred off the front axle"
+	)
+
+
+## Puts the Assembly back on the spot, at rest, so that a drive test starts from
+## a known state whatever the test before it did. Test methods run in sorted
+## order and must not depend on each other.
+func _at_rest() -> void:
+	_runtime.body.global_transform = Transform3D(Basis(), Vector3(0.0, 1.0, 0.0))
+	_runtime.body.linear_velocity = Vector3.ZERO
+	_runtime.body.angular_velocity = Vector3.ZERO
+	_motion.input.throttle = 0.0
+	_motion.input.steer = 0.0
+	_motion.input.brake = 0.0
+	# The contacts' angular rates are integrated across ticks and survive a
+	# teleport. A wheel left spinning at 90 rad/s by the burnout test would drive
+	# the next one off the mark before it began.
+	for slot: int in _motion.motive_slots():
+		for i: int in _motion.contact_count(slot):
+			_motion.contact_at(slot, i).contact_omega = 0.0
+	await physics_frames(SETTLE_TICKS)
 
 
 ## ===== FIXTURES ========================================================

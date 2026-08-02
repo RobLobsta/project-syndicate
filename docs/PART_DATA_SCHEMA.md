@@ -922,12 +922,12 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 210 | 900 | 2100 | 1.34 | 0 | 88000 | 7600 |
 | `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 12×4×3 | 320 | 1420 | 3400 | 1.41 | 0 | 112000 | 9800 |
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
-| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×8×3 | 185 | 720 | 1400 | 1.22 | 45 | 96000 | 12000 |
+| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×5×3 | 185 | 720 | 1400 | 1.22 | 45 | 96000 | 12000 |
 | `mot.repulsor.pad.t5` | `REPULSOR_PAD` | 5×2×5 | 140 | 480 | 1600 | 0.72 | 0 | 26000 | 8800 |
 | `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 265 | 690 | 2600 | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.coaxial_heavy.t4` | `ROTOR_DISC` | 5×7×5 | 410 | 1010 | 4400 | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.main_single.t3` | `ROTOR_DISC` | 4×6×4 | 210 | 620 | 2200 | 0.00 | 0 | 0 | 0 |
-| `mot.limb.strider.t3` | `AMBULATORY_LIMB` | 3×7×3 | 132 | 500 | 980 | 1.18 | 42 | 68000 | 8600 |
+| `mot.limb.strider.t3` | `AMBULATORY_LIMB` | 3×4×3 | 132 | 500 | 980 | 1.18 | 42 | 68000 | 8600 |
 
 The four zero columns on the rotary rows are not omissions. A `ROTOR_DISC` has no traction coefficient, no steer angle, and no suspension, and the validator requires those four fields to be exactly zero on it (§14 rule 19) rather than leaving a plausible-looking value that no code reads. Its actual parameters are in `RotorProfile`, tabulated separately below because they share no columns with a ground contact:
 
@@ -946,6 +946,10 @@ Working the mid disc through: `A = π(2.6)² = 21.24 m²`, tip speed `ΩR = 85 �
 The `Draw (PU)` column is `shaft_power / ROTOR_W_PER_PU` at full collective, with the constant owned by doc 05 §12.5. It is stored on the definition's `power_draw_pu` as the **full-collective** figure so that the garage's power budget is conservative: an Assembly that balances on paper can always hover.
 
 `mot.rotor.main_single.t3` is the deliberate hard case: `torque_reaction_ratio = 1.00` and `yaw_authority_nm = 0`, so a build carrying one of them and nothing else spins under its own reaction torque and cannot stop. It is flyable only in a pair with opposed `spin_sign`, or with a second station mounted to produce anti-torque. That is real rotorcraft engineering surfaced as a build constraint, and the garage reports it: an Assembly whose net `Σ torque_reaction_ratio · spin_sign` is non-zero and whose `Σ yaw_authority_nm` cannot cover it fails the stability line in the stat panel. A coaxial disc is the forgiving option and costs mass for the privilege — 265 kg against 210 kg at the same tier.
+
+**The `Cells` column on an ambulatory row is the hip and thigh, not the leg.** A limb's reach is `leg_length_m` and its occupancy is the structure that reach hangs from — the same split the rotary rows already make between a mast and a disc, and for the same reason: `DYNAMIC_MASS_PHYSICS.md` §13.1 puts the articulation under `VisualRoot`, and Invariant I-1 will not let a collider follow it. A footprint spanning the extended leg bakes a collider longer than the machine is tall and the Assembly rests on its shins with the stance spring never loading.
+
+**Ground and tracked rows do not publish `suspension_rest_length_m` here, and it is derived rather than free.** `DYNAMIC_MASS_PHYSICS.md` §6.1 sets it to `contact_radius_m + suspension_travel_limit_m`, which puts full droop one travel above the surface and makes the part's own collider the bump stop. §14 rule 23 enforces the hard half of that — rest length strictly greater than contact radius — because below it the probe can never register compression, no normal force reaches the contact, and the Assembly cannot drive at all.
 
 Tracked rows carry the ground columns, and their `Steer (°)` of zero is required rather than incidental (§14 rule 22): a track that steered by angling its hub would be a wheel. Their remaining parameters:
 

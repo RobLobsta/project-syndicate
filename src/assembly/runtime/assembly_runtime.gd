@@ -302,14 +302,23 @@ func _build_motive_probes(slot: int, def: PartDefinition, st: PartInstanceState)
 
 	var part_local := MassSolver.part_com_local(st, def)
 	var origins := PackedVector3Array([part_local])
-	if profile.track_profile != null:
+	# A wheel's or a station's sweep is its suspension travel; a limb's is its
+	# leg. Rule 21 requires every `suspension_*` field on an ambulatory row to be
+	# zero — a leg is a spring-loaded inverted pendulum, not a strut — so reading
+	# the suspension reach on one gives a zero-length cast that finds nothing,
+	# the contact never grounds, the foot is never planted, and the Assembly
+	# stands still with a perfectly healthy-looking gait clock running.
+	var reach := profile.suspension_rest_length_m + profile.suspension_travel_limit_m
+	if profile.limb_profile != null:
+		origins = PackedVector3Array([MotiveSystem.hip_local_of(def, st)])
+		reach = profile.limb_profile.leg_length_m
+	elif profile.track_profile != null:
 		origins = TrackSolver.station_positions(
 			profile.track_profile,
 			part_local,
 			OrientationTable.basis_for(st.orientation_index) * ROLLING_AXIS_LOCAL
 		)
 
-	var reach := profile.suspension_rest_length_m + profile.suspension_travel_limit_m
 	for station: int in origins.size():
 		var probe := ShapeCast3D.new()
 		probe.name = "probe_s%03d_%d" % [slot, station]

@@ -61,6 +61,17 @@ const TUMBLE_THRESHOLD_RAD_S: float = 0.5
 ## torque.
 const CLAMP_PROBE_RAD_S: float = 60.0
 
+## How much rotational energy the correction may *lose* over the soak, and how
+## little it may gain. Invariant 10 forbids injection, not dissipation: a
+## correction that bleeds energy cannot destabilise an Assembly, and one that
+## adds it spins a wreck up out of nothing. Explicit Euler added 16%; evaluating
+## at the midpoint turns that into a 3% loss.
+const ENERGY_LOSS_TOLERANCE: float = 0.08
+const ENERGY_GAIN_TOLERANCE: float = 0.005
+
+## Fractional drift allowed in the conserved angular momentum over the soak.
+const MOMENTUM_TOLERANCE: float = 0.05
+
 var _ctx: BuildContext = null
 var _runtime: AssemblyRuntime = null
 var _motion: MotiveSystem = null
@@ -153,6 +164,32 @@ func test_the_correction_tumbles_an_asymmetric_assembly() -> void:
 	)
 
 
+func test_the_correction_conserves_angular_momentum_in_the_world_frame() -> void:
+	# The sign test, and the only one that catches it. A free rigid body's
+	# angular momentum `L = R · I_full · ω` is constant in world space, whatever
+	# its tensor is doing in body space — that is the whole content of torque-free
+	# motion. Both signs of the correction tumble the Assembly and both leave the
+	# energy roughly where it was, so a flipped `−ω × (I ω)` passes every other
+	# assertion in this file; it does not conserve L, because it drives the body
+	# the wrong way round its own momentum vector.
+	_spin(_intermediate_axis())
+	var before := _world_angular_momentum()
+
+	await physics_frames(SOAK_TICKS)
+
+	var after := _world_angular_momentum()
+	check_approx(
+		after.length(),
+		before.length(),
+		"the magnitude of the angular momentum is unchanged",
+		before.length() * MOMENTUM_TOLERANCE
+	)
+	check_true(
+		after.normalized().dot(before.normalized()) > 1.0 - MOMENTUM_TOLERANCE,
+		"and so is its direction, which is what torque-free motion means"
+	)
+
+
 func test_the_correction_is_bounded_by_its_ceiling() -> void:
 	# §11 invariant 10's clamp. The torque the server received is recoverable
 	# from the change in angular momentum it produced, because nothing else
@@ -174,13 +211,15 @@ func test_the_correction_is_bounded_by_its_ceiling() -> void:
 	)
 
 
-func test_the_correction_is_not_energy_neutral_in_practice() -> void:
-	# A measurement, not an endorsement. §11 invariant 10 requires that this
-	# never injects net energy; explicit Euler at 60 Hz on a fast spin does.
-	# Recorded so the next session inherits the number, and deliberately asserted
-	# as an inequality that will fail loudly if someone fixes it — at which point
-	# this test should be replaced by the conservation assertion the invariant
-	# actually wants.
+func test_the_correction_never_injects_rotational_energy() -> void:
+	# §11 invariant 10, and it is now something the code can be held to.
+	#
+	# The continuous torque is perpendicular to omega and does no work, but
+	# sampling it at the tick boundary and holding it across the step does:
+	# evaluated explicitly this added about 16% of the rotational energy over
+	# five seconds, which is a correction that spins an Assembly up out of
+	# nothing. `_apply_coupling_torque` takes the midpoint instead, for the cost
+	# of one extra cross product, and the drift is what this asserts.
 	_spin(_intermediate_axis())
 	var before := _rotational_energy()
 
@@ -188,12 +227,12 @@ func test_the_correction_is_not_energy_neutral_in_practice() -> void:
 
 	var after := _rotational_energy()
 	check_true(
-		after > before * 1.05,
-		"five seconds of correction adds rotational energy the invariant forbids"
+		after <= before * (1.0 + ENERGY_GAIN_TOLERANCE),
+		"five seconds of correction adds no rotational energy; §11 invariant 10"
 	)
 	check_true(
-		after < before * 1.40,
-		"though the clamp keeps the divergence bounded rather than explosive"
+		after >= before * (1.0 - ENERGY_LOSS_TOLERANCE),
+		"and bleeds little enough that the tumble is still the tensor's, not the integrator's"
 	)
 
 
@@ -226,6 +265,13 @@ func _body_frame_omega() -> Vector3:
 	return (
 		_runtime.body.global_transform.basis.inverse() * _runtime.body.angular_velocity
 	)
+
+
+## Angular momentum in world space, against the true tensor. Conserved exactly
+## under torque-free motion, and the quantity a sign error destroys.
+func _world_angular_momentum() -> Vector3:
+	var basis := _runtime.body.global_transform.basis
+	return basis * (_runtime.mass_properties.inertia_full * _body_frame_omega())
 
 
 ## Rotational energy against the true tensor, which is the quantity the

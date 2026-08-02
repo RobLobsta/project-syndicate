@@ -61,6 +61,7 @@ func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_hub_axle_station())
 	keys.append(_author_wheeled_allroad())
+	keys.append(_author_wheeled_fixed_rear())
 	keys.append(_author_tracked_short_bogie())
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
@@ -150,7 +151,11 @@ func _author_wheeled_allroad() -> String:
 	# the rolling radius, and the occupancy describing one object.
 	profile.contact_radius_m = 0.50
 	profile.contact_width_m = 0.50
-	profile.suspension_rest_length_m = 0.32
+	# Rolling radius plus full travel, per doc 05 §6.1. The probe sweeps from the
+	# disc's centre, so a rest length below the radius can never register
+	# compression; setting it to radius + travel puts full droop one travel above
+	# the ground and makes the disc's own collider the bump stop.
+	profile.suspension_rest_length_m = 0.74
 	profile.suspension_stiffness_n_m = 42000.0
 	profile.suspension_damping_ns_m = 3400.0
 	profile.suspension_travel_limit_m = 0.24
@@ -164,6 +169,70 @@ func _author_wheeled_allroad() -> String:
 	def.motive_profile = profile
 
 	def.build_cost = 220
+	def.mount_weight = 2
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.cylinder_z_collider(lo, hi), &"tread_std"
+	)
+
+
+## §10.3: `mot.wheeled.fixed_rear.t2`, WHEELED_FIXED, 4x4x2, 62 kg, 355
+## integrity, 680 kg rated, 1.09 traction, 0 steer, 44000 N/m, 3500 Ns/m.
+##
+## The unsteered half of a steering system, and it is not an optimisation. Four
+## wheels that all steer the same way do not turn an Assembly — they translate
+## it, because every contact patch points the same direction and there is no
+## couple about the vertical axis. It crabs sideways down the road with its nose
+## still pointing forward, which is exactly what the first steering test measured
+## before this part existed. A yaw needs the axles to disagree, so a steering
+## build is `WHEELED_STEERED` at the front and `WHEELED_FIXED` at the back, and
+## the difference is one authored number rather than a line of code: the steer
+## solver reads `max_steer_angle_deg`, and zero falls through it unchanged.
+##
+## Slightly heavier-duty than the steered row at the same tier — more rated load
+## and more grip, less mass — because it carries no steering mechanism. That is
+## §10.3's own trade and it makes the rear axle the one to drive.
+func _author_wheeled_fixed_rear() -> String:
+	var lo := Vector3i(-2, -2, -1)
+	var hi := Vector3i(1, 1, 0)
+	var cells := PartAuthoring.disc_cells(lo, hi)
+	var def := _base(&"mot.wheeled.fixed_rear.t2", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.STANDARD
+	def.occupancy_cells = cells
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
+	)
+	def.mass_kg = 62.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 355.0
+	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
+	def.armour_rating = 10.0
+	def.load_capacity_kg = 200.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.WHEELED_FIXED
+	profile.contact_radius_m = 0.50
+	profile.contact_width_m = 0.50
+	# §6.1's rule, identical to the steered row: the two share a footprint and a
+	# travel, so they share a rest length.
+	profile.suspension_rest_length_m = 0.74
+	profile.suspension_stiffness_n_m = 44000.0
+	profile.suspension_damping_ns_m = 3500.0
+	profile.suspension_travel_limit_m = 0.24
+	# Zero, and load-bearing: this is the whole difference between the two rows.
+	profile.max_steer_angle_deg = 0.0
+	profile.steer_rate_deg_s = 0.0
+	profile.rated_load_kg = 680.0
+	profile.traction_coefficient = 1.09
+	profile.rolling_resistance = 0.014
+	profile.brake_torque_nm = 2600.0
+	profile.driven = true
+	def.motive_profile = profile
+
+	def.build_cost = 205
 	def.mount_weight = 2
 	return PartAuthoring.save_part(
 		def, "mot", PartAuthoring.cylinder_z_collider(lo, hi), &"tread_std"
@@ -196,7 +265,9 @@ func _author_tracked_short_bogie() -> String:
 	profile.kind = PartEnums.MotiveKind.TRACKED_SEGMENT
 	profile.contact_radius_m = 0.50
 	profile.contact_width_m = 0.75
-	profile.suspension_rest_length_m = 0.32
+	# Hub radius plus full travel; §6.1's rule, and the same arithmetic as the
+	# wheel because a road station's spring is §6.2 unchanged.
+	profile.suspension_rest_length_m = 0.74
 	profile.suspension_stiffness_n_m = 88000.0
 	profile.suspension_damping_ns_m = 7600.0
 	profile.suspension_travel_limit_m = 0.24
@@ -326,7 +397,16 @@ func _author_rotor_coaxial_mid() -> String:
 ## passive: its spring is [member LimbProfile.stance_stiffness_n_m], which is a
 ## controller gain. §14 rule 21 requires the distinction.
 func _author_limb_strider() -> String:
-	var lo := Vector3i(-1, -7, -1)
+	# The hip housing and thigh, not the whole extended leg. A limb's reach is
+	# `leg_length_m` and its occupancy is the structure that reach hangs from —
+	# exactly as `mot.rotor.*` occupies its mast and not its 2.6 m disc, and for
+	# the same reason. Doc 05 §13.1 puts the visible articulation under
+	# `VisualRoot` as inverse kinematics; Invariant I-1 forbids a collider that
+	# follows it. A footprint spanning the fully extended leg therefore bakes a
+	# 2.0 m collider around a limb that stands 1.63 m tall, and the Assembly
+	# rests on its own shins with the stance spring never compressing at all —
+	# measured, before this was shortened, at 0.23 m of unreachable travel.
+	var lo := Vector3i(-1, -4, -1)
 	var hi := Vector3i(1, 0, 1)
 	var def := _base(&"mot.limb.strider.t4", PartEnums.PartClass.MOTIVE_ASSEMBLY)
 	def.tier = PartEnums.TierGrade.PROTOTYPE

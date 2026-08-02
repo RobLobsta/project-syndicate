@@ -93,6 +93,12 @@ const SHIPPED_KEYS: Array[String] = [
 	"mot.limb.strider.t4",
 	"pwr.combustion.standard.t2",
 	"eff.melee.beam_edge.t4",
+	# Appended, never inserted. `part_def_id` is the manifest index plus one and
+	# is serialised into save data and network packets, so a key that moved
+	# reinterprets every blueprint ever written (§5.2). A wheeled part belongs
+	# next to the other wheeled part in a catalogue and at the end of this list,
+	# and those are different orderings on purpose.
+	"mot.wheeled.fixed_rear.t2",
 ]
 
 
@@ -145,8 +151,8 @@ func test_class_buckets_are_populated() -> void:
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY).size(),
-		4,
-		"one Motive Assembly per locomotion family"
+		5,
+		"one Motive Assembly per locomotion family, and a second wheeled kind"
 	)
 	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.POWER_PLANT).size(), 1, "one plant")
 	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(), 1, "one edge")

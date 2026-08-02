@@ -40,6 +40,7 @@ const RULE_ROTOR: int = 19
 const RULE_MELEE: int = 20
 const RULE_LIMB: int = 21
 const RULE_TRACK: int = 22
+const RULE_SUSPENSION_REACH: int = 23
 
 ## ===== RULE CONSTANTS ==================================================
 
@@ -170,6 +171,7 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_melee(def)
 	_check_limb(def)
 	_check_track(def)
+	_check_suspension_reach(def)
 
 
 func failures() -> PackedStringArray:
@@ -1318,3 +1320,47 @@ static func _class_label(part_class: int) -> String:
 static func _channel_name(channel: int) -> String:
 	var names := PartEnums.DamageChannel.keys()
 	return String(names[channel]) if channel >= 0 and channel < names.size() else "?"
+
+
+## ===== RULE 23 — SUSPENSION REACH ======================================
+
+## §14 rule 23, and doc 05 §6.1: a ground contact's rest length must exceed its
+## contact radius, or its suspension can never carry load.
+##
+## The probe sweeps from the part's centre of mass and §6.2 reads compression as
+## `rest_length - distance`. A Motive Assembly standing on its own authored
+## collider puts that distance at one `contact_radius_m`, so a rest length at or
+## below the radius clamps compression to zero on every tick the part is on the
+## ground. The consequences run the whole length of the layer: no normal force,
+## so no traction, so no drive force, so an Assembly at full throttle that does
+## not move — and nothing in the logs, because every one of those zeroes is a
+## legal value that some airborne contact produces legitimately.
+##
+## Both shipped ground rows were authored below the radius and this rule is why
+## the next one will not be. The convention §6.1 recommends is
+## `radius + travel_limit`, which puts full droop exactly one travel above the
+## surface and makes the part's own collider the bump stop; the rule enforces
+## only the hard requirement, because a shorter travel is a legitimate tuning
+## choice and an inert spring is not.
+func _check_suspension_reach(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null:
+		return
+	var mode := profile.locomotion_mode()
+	if mode != PartEnums.LocomotionMode.GROUND and mode != PartEnums.LocomotionMode.TRACKED:
+		return
+	if profile.suspension_rest_length_m > profile.contact_radius_m:
+		return
+	_fail(
+		RULE_SUSPENSION_REACH,
+		def.part_key,
+		(
+			"suspension_rest_length_m is %.3f against a contact_radius_m of %.3f; "
+			% [profile.suspension_rest_length_m, profile.contact_radius_m]
+		)
+		+ "the probe can never register compression and the part cannot drive. "
+		+ "Doc 05 §6.1 recommends radius + travel_limit, which is %.3f here"
+		% (profile.contact_radius_m + profile.suspension_travel_limit_m)
+	)

@@ -406,6 +406,7 @@ accepts_classes = PackedInt32Array(1)
 script = ExtResource("4_fdl5e")
 contact_radius_m = 0.5
 contact_width_m = 0.5
+suspension_rest_length_m = 0.74
 
 [resource]
 script = ExtResource("5_drnkp")

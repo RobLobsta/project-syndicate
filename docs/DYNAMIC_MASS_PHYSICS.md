@@ -228,16 +228,31 @@ func _apply_coupling_torque(body: RigidBody3D, mp: MassSolver.MassProperties) ->
 
 This reproduces the steady-state coupling exactly and the transient response to within a few percent, because it omits the `(I_diag − I_full) ω̇` term. That omission is bounded and stable: `ω̇` is itself limited by the torque budget, and the clamp on `τ_couple` guarantees the correction can never inject energy faster than the solver removes it. `tests/physics/test_inertia_coupling.gd` verifies that an asymmetric Assembly spun about its intermediate axis exhibits the expected tumbling within 5% of the analytic solution over 10 seconds.
 
-> **Amendment — the premise above is measurably false, and the section is left standing until it is decided what replaces it.**
+> **Amendment — resolved. The premise above was false and the formula is replaced.**
 >
 > "Godot solves this with `I_diag`" asserts that the server integrates `I ω̇ + ω × (I ω) = τ` with the diagonal tensor. It does not. `tests/physics/test_inertia_coupling.gd::test_the_server_applies_no_gyroscopic_term_of_its_own` puts an Assembly whose three principal moments differ by 15% into a spin about its **intermediate** axis — the configuration that tumbles fastest in reality — and measures the angular velocity unchanged to seven significant figures after five simulated seconds. A free rigid body cannot do that. The server integrates `I_diag ω̇ = τ` and applies no gyroscopic term at all.
 >
-> Two things follow, and neither is settled here.
+> The `+ ω × (I_diag ω)` half of the difference was therefore cancelling a term nothing produced. The whole gyroscopic term has to be supplied instead:
 >
-> 1. **The `+ ω × (I_diag ω)` half corrects for a term nothing applies.** For a server that applies none, the minimal faithful correction is `τ = − ω × (I_full ω)`; the more accurate one premultiplies it by `I_diag I_full⁻¹`, which is what actually maps the desired `ω̇` onto the torque the server will divide by `I_diag`.
-> 2. **§11 invariant 10 does not hold under explicit Euler.** Both forms are power-neutral in the continuous limit — `(ω × X) · ω` is identically zero — and neither is when the torque is evaluated at the start of a 60 Hz tick. Measured on a 6 rad/s spin, both add roughly 16% of the rotational energy over five seconds. The clamp bounds the divergence; it does not remove it. A form that satisfies the invariant needs the correction evaluated implicitly, or the angular momentum renormalised each tick.
+> ```
+> τ_couple = − ω × (I_full ω)
+> ```
 >
-> `MotiveSystem._apply_coupling_torque` implements the block above verbatim rather than a corrected form, because choosing between the two is an architecture decision and CLAUDE.md §0 puts that in front of a reviewer rather than inside an implementation. The measurements are in the test file, asserted, so the choice cannot be made from memory.
+> **Evaluated at the midpoint, not at the tick boundary.** The continuous torque is perpendicular to `ω` and does no work, but sampling it once per tick and holding it across the step does: measured on a 6 rad/s spin, explicit Euler added about **16%** of the rotational energy over five seconds, which §11 invariant 10 forbids outright. Stepping `ω` half a tick along `ω̇ = I_diag⁻¹ τ` and re-evaluating there costs one extra cross product and turns that into a **3% loss** over the same soak. A correction that bleeds a little energy cannot destabilise an Assembly; one that adds it spins a wreck up out of nothing, so the asymmetry is the right way round and the test asserts the gain bound tightly and the loss bound loosely.
+>
+> ```gdscript
+> func _apply_coupling_torque(dt: float) -> void:
+>     var mp := runtime.mass_properties
+>     if mp == null:
+>         return
+>     var b := runtime.body.global_transform.basis
+>     var w := b.inverse() * runtime.body.angular_velocity
+>     var half := w + _angular_accel(mp, w) * (dt * 0.5)
+>     var tau := _gyroscopic_torque(mp, half).limit_length(COUPLING_TORQUE_LIMIT_NM)
+>     runtime.body.apply_torque(b * tau)
+> ```
+>
+> The omission of the `(I_diag − I_full) ω̇` term stands: the server divides by the diagonal tensor whatever is handed to it, and correcting for that too would need the torque premultiplied by `I_diag I_full⁻¹`. The steady-state coupling is exact without it and the transient is within a few percent, which is what the paragraph above this block already claimed.
 
 ### 3.5 Application to the Body
 
@@ -441,7 +456,9 @@ The mask deliberately excludes `LAYER_ASSEMBLY_HULL` and `LAYER_DEBRIS`. Wheels 
 
 **Rest length is measured from the probe origin, and the probe origin is the contact centre.** §6.2 reads compression as `rest_length − distance`, and `distance` is from `part_com_local` down to the surface. A Motive Assembly resting on its own authored collider puts that distance at one `contact_radius_m`. **`suspension_rest_length_m` must therefore exceed `contact_radius_m`**, by the static sag the build is meant to settle at, or compression clamps to zero on every contact, the normal force is zero, `_apply_traction` returns before applying anything, and the Assembly rests on its colliders with the suspension inert and no drive force reaching the ground at all.
 
-> **This is not true of the rows shipped in §10.3 of document 01.** `mot.wheeled.allroad.t2` pairs a 0.32 m rest length with a 0.50 m rolling radius, and `mot.tracked.short_bogie.t2` a 0.32 m rest length with a 0.50 m radius. `tests/physics/test_ground_assembly.gd` builds a four-contact Assembly from shipped data, settles it on real ground, and measures zero compression and zero normal force on all four contacts, and a full-throttle displacement of zero. The correction is a balance change to §10.3 — a rest length longer than the radius, which also makes the part's own collider the bump stop it should be — and CLAUDE.md §12 puts a balance change behind a review rather than inside a session's test pass, so it is flagged rather than made.
+**Resolved: `suspension_rest_length_m = contact_radius_m + suspension_travel_limit_m`.** Both shipped ground rows were authored at 0.32 m against a 0.50 m rolling radius, and `tests/physics/test_ground_assembly.gd` measured the consequence on a four-contact Assembly settled on real ground: zero compression and zero normal force on every contact, and a full-throttle displacement of zero. The rows are now 0.74 m. The convention places full droop exactly one travel above the surface and makes the part's own collider the bump stop, so the two authored numbers determine the third and there is no third number to get wrong. §14 rule 23 of document 01 enforces the hard requirement — rest length strictly greater than contact radius — rather than the convention, because a shorter travel is a legitimate tuning choice and an inert spring is not.
+
+> **The same trap has an ambulatory form and §13 carries it.** A limb's `suspension_*` fields are all zero by rule 21, so sizing its sweep from them gives a zero-length cast: the contact never grounds, the foot is never planted, and the Assembly stands still with a healthy-looking gait clock running. An ambulatory probe sweeps `leg_length_m` from the hip instead. Neither case announces itself — every intermediate value is a legal number that some airborne contact produces legitimately.
 
 ### 6.2 Spring-Damper Force
 
@@ -533,6 +550,26 @@ Pairing is derived automatically at spawn: probes whose local `z` coordinates ar
 ---
 
 ## 7. Traction
+
+### 7.0 Steer Angle
+
+The contact frame of §7.1 is the **wheel's**, not the chassis's, and a steered wheel's rolling direction is not the hull centreline. `MotiveSystem` carries one steer angle per slot, advances it toward the commanded lock at the authored rate, and rotates that slot's contact frame about the contact normal before the friction solve:
+
+```
+target = clamp(steer_command, −1, +1) · max_steer_angle_deg
+angle  = move_toward(angle, target, steer_rate_deg_s · band_multiplier · dt)
+x̂, ẑ  = rotate(x̂, ẑ) about the contact normal by −angle
+```
+
+Three things follow, and each is why it is done here rather than as a yaw torque.
+
+1. **The lateral force stays a genuine slip-angle force.** The wheel is pointed somewhere, the patch slides, and the Assembly turns because of what that slide produces. A model that applied yaw directly would turn just as well on ice.
+2. **`DegradationTable.MOTIVE_STEER` finally has a consumer.** It scales the rate, so a Motive Assembly at `CRITICAL` turns at half speed and the Assembly understeers rather than failing outright.
+3. **`WHEELED_FIXED` needs no second code path.** It authors `max_steer_angle_deg = 0` and falls through unchanged.
+
+The rotation is about the **contact normal** rather than the chassis up, so a wheel on a camber steers in the plane it is standing on. It is negated because a positive rotation about the surface normal carries the forward axis to the left, and `RESPONSIVE_GARAGE_UI.md` §7.2 fixes positive steer as right on every input device.
+
+**An Assembly on which every wheel steers does not turn — it crabs.** Four contact patches pointing the same way translate the hull sideways with its nose still forward, and there is no couple about the vertical axis at all. A yaw needs the axles to disagree, which is what `mot.wheeled.fixed_rear.t2` is for: a steering build is `WHEELED_STEERED` at the front and `WHEELED_FIXED` at the back, and the difference between the two rows is one authored number. `tests/physics/test_ground_assembly.gd` measured the crab before that part existed.
 
 ### 7.1 Slip Quantities
 
@@ -1131,6 +1168,8 @@ visible shin and hits the authored `ColliderProfile` box, which is the same
 trade doc 07 §2 makes for a turret barrel and is the correct one for the same
 reasons.
 
+**A limb occupies its hip and thigh, not its extended leg.** §13.1 puts the visible articulation under `VisualRoot` as inverse kinematics, and Invariant I-1 forbids a collider that follows it — so a footprint spanning the fully extended leg bakes a fixed collider around a shape the limb only ever has at full droop. On `mot.limb.strider.t4` that was a 2.0 m collider on a machine whose stance height is `0.86 × 1.90 = 1.63 m`, and the Assembly stood on its own shins with the stance spring never compressing: measured at 0.23 m of travel it could not reach. The row is now 3×5×3 and its reach is `leg_length_m`, exactly as `mot.rotor.*` occupies its mast and not its 2.6 m disc, for exactly the same reason.
+
 ### 13.2 Limb State
 
 ```gdscript
@@ -1340,9 +1379,12 @@ by the sign of each part's lateral position in assembly-local space:
 ```
 authority = differential_authority · (1 − clamp(|v| / pivot_taper_mps, 0, 1))
 bias      = steer_command · authority                    ∈ [−1, 1]
-τ_left    = τ_share · (1 + bias) · (1 − internal_loss)
-τ_right   = τ_share · (1 − bias) · (1 − internal_loss)
+τ_share   = ½ · drive_torque · (1 − internal_loss)
+τ_left    = τ_share · clamp(throttle + bias, −1, +1)
+τ_right   = τ_share · clamp(throttle − bias, −1, +1)
 ```
+
+**Amendment.** This block previously read `τ_left = τ_share · (1 + bias)` and `τ_right = τ_share · (1 − bias)`, with `τ_share` scaled by the throttle. That formula cannot produce the behaviour the paragraph below it describes and always did. With `bias` bounded at 1 it never drives a side backwards — at full lock it gives one track everything and the other exactly zero, which pivots about the *stationary track* rather than about the Assembly — and because the whole expression scaled with the throttle, a stopped tracked Assembly received nothing on either side and could not turn at all under any input. Making throttle and steer additive terms is the standard skid-steer mixer and is what the prose already asked for. The consequence is that steering into a full throttle costs total drive, because the outer side is already at its limit and the only way to make a difference is to take torque off the inner one; that is correct and is why a tracked Assembly slows in a turn.
 
 At rest `authority` is full, so `bias = ±1` drives one side forward and the
 other backward and the Assembly counter-rotates on the spot. At

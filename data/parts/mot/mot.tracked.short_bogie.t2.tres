@@ -977,6 +977,7 @@ script = ExtResource("4_paclv")
 kind = 2
 contact_radius_m = 0.5
 contact_width_m = 0.75
+suspension_rest_length_m = 0.74
 suspension_stiffness_n_m = 88000.0
 suspension_damping_ns_m = 7600.0
 max_steer_angle_deg = 0.0

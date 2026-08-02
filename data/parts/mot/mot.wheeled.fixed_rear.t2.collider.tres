@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ColliderProfile" format=3 uid="uid://yow4mhs7y8ux"]
+
+[ext_resource type="Script" path="res://src/core/data/collider_primitive_def.gd" id="1_4cnik"]
+[ext_resource type="Script" path="res://src/core/data/collider_profile.gd" id="2_svwvl"]
+
+[sub_resource type="Resource" id="Resource_4cnik"]
+script = ExtResource("1_4cnik")
+kind = 1
+radius_m = 0.5
+height_m = 0.5
+local_offset_m = Vector3(-0.125, -0.125, -0.125)
+local_basis_euler_deg = Vector3(90, 0, 0)
+
+[resource]
+script = ExtResource("2_svwvl")
+primitives = Array[ExtResource("1_4cnik")]([SubResource("Resource_4cnik")])

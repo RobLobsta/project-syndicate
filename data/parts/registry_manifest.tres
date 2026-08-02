@@ -4,4 +4,4 @@
 
 [resource]
 script = ExtResource("1_manifest")
-keys = PackedStringArray("core.command.compact.t2", "str.panel.medium.t2", "str.hub.axle_station.t2", "mot.wheeled.allroad.t2", "mot.tracked.short_bogie.t2", "mot.rotor.coaxial_mid.t3", "mot.limb.strider.t4", "pwr.combustion.standard.t2", "eff.melee.beam_edge.t4")
+keys = PackedStringArray("core.command.compact.t2", "str.panel.medium.t2", "str.hub.axle_station.t2", "mot.wheeled.allroad.t2", "mot.tracked.short_bogie.t2", "mot.rotor.coaxial_mid.t3", "mot.limb.strider.t4", "pwr.combustion.standard.t2", "eff.melee.beam_edge.t4", "mot.wheeled.fixed_rear.t2")
