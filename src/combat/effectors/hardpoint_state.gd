@@ -21,13 +21,24 @@ var slot: int = SyndicateConstants.INVALID_SLOT
 ## Current mount angles, within the profile's limits.
 var yaw_rad: float = 0.0
 var pitch_rad: float = 0.0
-## Commanded angles, from §4's aim solve.
+## Commanded angles, from §4's aim solve. [b]Clamped[/b] to the module's authored
+## limits, which is why [member solution_in_arc] exists.
 var yaw_target_rad: float = 0.0
 var pitch_target_rad: float = 0.0
-## True when the mount is within convergence tolerance of its command. The fire
-## gate reads this and nothing else about aim: a module that has not arrived
-## does not shoot, which is what stops a turret spraying rounds across the
-## arena while it slews.
+## True when the bearing §4.2 solved was inside the module's arc before the
+## clamp touched it. §4.3.1.
+##
+## Without it a mount asked for more depression than it has converges perfectly
+## on its own stop, reports itself on target, and fires over the enemy for as
+## long as the geometry stays outside its arc — while every diagnostic it offers
+## says it is aiming correctly. The mount still slews to the stop, because a
+## turret tracking a target that dives below its depression should sit pointed as
+## close as it can rather than snap back to centre. What it does not do is shoot.
+var solution_in_arc: bool = false
+## True when the mount is within convergence tolerance of its command [i]and[/i]
+## that command was reachable. The fire gate reads this and nothing else about
+## aim: a module that has not arrived does not shoot, which is what stops a
+## turret spraying rounds across the arena while it slews.
 var on_target: bool = false
 
 ## ===== FIRING ==========================================================
@@ -59,6 +70,7 @@ func reset(profile: EffectorModuleProfile) -> void:
 	pitch_rad = 0.0
 	yaw_target_rad = 0.0
 	pitch_target_rad = 0.0
+	solution_in_arc = false
 	on_target = false
 	cycle_timer_s = 0.0
 	burst_recovery_s = 0.0

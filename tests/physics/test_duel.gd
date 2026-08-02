@@ -50,11 +50,27 @@ const ROUND_KEY := &"proj.kinetic.ap_30"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 const POWER_ORIGIN := Vector3i(24, 7, 24)
-## On the Prime Mover's roof — the Core Module's own roof is entirely taken by
-## the Prime Mover, which is a real constraint of the build and not an accident
-## of this fixture. The barrel runs along the Assembly's -Z, which doc 07 §7.2
-## fixes as forward.
-const GUN_ORIGIN := Vector3i(24, 10, 26)
+## On the nose, at the Core Module's own height — and it was on the Prime Mover's
+## roof until session 16 measured what that costs.
+##
+## A roof mount puts this muzzle about four metres above the Core Module of
+## something standing on the same ground. The module authors 8° of depression
+## (doc 01 §10.5); at the 26 m this duel is fought over, the solution is 9.5°,
+## which is **outside its own arc**. It fired anyway, because doc 07 §4.3 tested
+## convergence against the *clamped* angles: the mount sat on its stop, reported
+## itself on target, and put thirty rounds over the enemy's roof. The fight still
+## resolved, because the unbounded overpenetration of doc 07 §12.2 made any round
+## that did connect lethal on its own. Two defects cancelling, and fixing either
+## one exposes the geometry.
+##
+## Both are fixed now (§4.3.1 and §12.2.2), so the geometry has to be right. On
+## the nose the muzzle sits a quarter of a metre above this Assembly's centre of
+## mass and the solution onto a target at 26 m is under a degree — the middle of
+## the arc rather than two degrees off a stop, which is what a fixture whose
+## subject is *everything downstream of the muzzle* needs it to be.
+##
+## The barrel runs along the Assembly's -Z, which doc 07 §7.2 fixes as forward.
+const GUN_ORIGIN := Vector3i(24, 6, 21)
 const HUB_ORIGINS: Array[Vector3i] = [
 	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
 ]

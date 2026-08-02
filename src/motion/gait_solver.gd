@@ -92,6 +92,25 @@ static func assign_phase_offsets(
 ## length per stance, so a cadence that did not track commanded speed would
 ## slide the planted foot across the ground every stride — which reads as ice
 ## and is the single most common failure of procedural walk cycles.
+## The fastest this gait can actually carry an Assembly, in m/s.
+##
+## §13.4 derives cadence from `speed / max_step_length_m` and clamps it at
+## `max_cadence_hz`, so the gait covers at most one maximum step per half cycle
+## at the maximum rate: `max_cadence_hz · max_step_length_m` and not a metre per
+## second more. The shipped strider tops out at 2.42 m/s.
+##
+## It exists because §13.5's placement law needs it. The correction term chases
+## `v_desired`, and handing it the Core Module's chassis speed cap — 24 m/s on
+## the shipped Core Module, ten times what any gait can deliver — saturates that
+## term permanently: every foot lands at the maximum step behind neutral, on
+## every stride, whatever the throttle says. The Assembly then walks with its
+## legs perpetually reaching backwards for a speed it cannot have, and pitches
+## progressively nose-down doing it. Clamping the demand to what the family can
+## produce is what makes the correction a correction again.
+static func top_speed_mps(profile: LimbProfile) -> float:
+	return profile.max_cadence_hz * profile.max_step_length_m
+
+
 static func cadence_hz(profile: LimbProfile, speed_command_mps: float) -> float:
 	var speed := absf(speed_command_mps)
 	if speed < STANDING_SPEED_MPS:
@@ -148,7 +167,19 @@ static func foot_target(
 	var offset := v_flat * (stance_s * 0.5) + (v_flat - desired_flat) * profile.placement_gain_s
 
 	if not is_zero_approx(turn_command):
-		var yaw := deg_to_rad(profile.turn_rate_deg_s * turn_command * stance_s)
+		# Negated, and the sign is the whole line. [ControlInput.steer] is
+		# documented as positive-is-right and every other family obeys it: doc 05
+		# §7.1 rotates a wheeled contact frame right on a positive demand and
+		# §14.2 drives the right track slower. A right turn is a [b]negative[/b]
+		# rotation about the world up, so rotating the plant target by a positive
+		# angle on a positive demand walks the Assembly left — which is what this
+		# did, and it made an ambulatory Assembly the only thing in the game that
+		# steered backwards.
+		#
+		# The old test could not see it. It asserted that a turn command moved the
+		# foot and not which way it moved it, which is a fault a sign flip
+		# satisfies exactly.
+		var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)
 		offset = offset.rotated(Vector3.UP, yaw)
 
 	# Clamped twice, in this order: the step first, then the reach. A leg cannot

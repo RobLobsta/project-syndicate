@@ -27,7 +27,30 @@ echo "== test suite =="
 SUITE_LOG="$(mktemp)"
 trap 'rm -f "$SUITE_LOG"' EXIT
 set +e
-"$GODOT" --headless --path "$REPO_ROOT" --script res://tools/ci/run_all_checks.gd 2>&1 \
+# --fixed-fps 60 is what makes this suite affordable, and it is the *only*
+# accelerant that is safe here.
+#
+# Headless Godot still paces its main loop against the wall clock: measured on
+# 4.7.1 in this repo, 600 bare physics frames take 9.88 s — 60.8 fps — with no
+# work in them at all. `tests/physics/` waits on real ticks, so its wall time was
+# tick count divided by sixty and nothing else. --fixed-fps disables that
+# real-time synchronisation and lets the loop advance as fast as the CPU allows;
+# the same 600 frames then take 4 ms.
+#
+# It is safe because it changes *pacing* and not `delta`. The physics step stays
+# 1/60 exactly, so every measurement, every integration and Invariant I-9's
+# determinism are untouched — verified by diffing a full real-time run against a
+# full --fixed-fps run: 4342 checks both ways and byte-identical engagement
+# outcomes, down to the tick each Assembly died on.
+#
+# Do NOT reach for `Engine.time_scale` instead. It is the obvious-looking answer
+# and it is wrong twice over: measured here it gives *no* speedup whatsoever
+# (600 frames in 10.00 s at time_scale 20, still 60 fps, because it scales delta
+# rather than the frame count), and the delta it hands `_physics_process` becomes
+# 0.333 s — at which point a 940 m/s round advances 313 m per step and every
+# spring in doc 05 explodes.
+"$GODOT" --headless --path "$REPO_ROOT" --fixed-fps 60 \
+	--script res://tools/ci/run_all_checks.gd 2>&1 \
 	| tee "$SUITE_LOG"
 SUITE_STATUS="${PIPESTATUS[0]}"
 set -e

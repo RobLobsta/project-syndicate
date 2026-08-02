@@ -1031,6 +1031,27 @@ The trade is legible from the two tables. At tier 3 a cell carries 260 PU agains
 
 ### 10.5 Effector Modules
 
+**A note on `pitch_limit_deg`, which §7.4 defaults to `(-8, 34)`.** Eight degrees
+of depression is a turret-ring figure, and it is a real constraint on where a
+module may be mounted rather than a formality. Measured: a module on the hull
+roof of the reference wheeled build sits about four metres above the Core Module
+of a target standing on the same ground, and at 26 m that is **9.5° of
+depression** — outside the arc. `tests/physics/test_duel.gd` is fought at 40 m
+for exactly that reason and says so.
+
+Nobody noticed for two sessions because `WEAPON_TARGETING_LOGIC.md` §4.3 tested
+convergence against the *clamped* angles: the mount sat on its stop, reported
+itself on target, and fired over the enemy at the heat-limited rate. §4.3.1
+closed that, and closing it turned a silent geometry problem into an Assembly
+that visibly declines to shoot.
+
+**The number has been left alone.** Widening it to 15° was tried and measured:
+it fixes the roof mount and it makes every engagement in
+`tests/physics/test_family_duels.gd` stop resolving — 900-tick timeouts in place
+of decisions at 239 and 291. Whatever couples them is not understood yet, and a
+balance change nobody can explain the second-order effects of is not a balance
+change worth shipping. The finding is recorded; the decision is open.
+
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Draw (PU) | Cycle (s) | Muzzle (m/s) | Recoil (N·s) | Heat/shot |
 |---|---|---|---|---|---|---|---|---|---|
 | `eff.ballistic.autocannon_20.t2` | `BALLISTIC_DIRECT` | 4×3×7 | 118 | 340 | 42 | 0.11 | 880 | 980 | 5.4 |

@@ -110,10 +110,32 @@ func _physics_process(dt: float) -> void:
 
 func _enter_tree() -> void:
 	EventBus.part_band_changed.connect(_on_part_band_changed)
+	EventBus.part_destroyed.connect(_on_part_destroyed)
 
 
 func _exit_tree() -> void:
 	EventBus.part_band_changed.disconnect(_on_part_band_changed)
+	EventBus.part_destroyed.disconnect(_on_part_destroyed)
+
+
+## A destroyed part changes what this Assembly can supply and what it draws, so
+## the power budget is re-solved — once, on the event, never per tick.
+##
+## This is [PowerSystem]'s only production caller. Doc 05 §7.5 makes the supply a
+## property of the surviving Prime Movers and Energy Cells and the draw a
+## property of the surviving consumers, and until something recomputed it on a
+## structural event an Assembly kept the budget it spawned with: shoot the Prime
+## Mover off a rotorcraft and its discs went on turning at full rate, indefinitely,
+## on power that no longer existed.
+##
+## Band changes deliberately do [i]not[/i] trigger it. A degraded Prime Mover
+## still supplies its rated figure — doc 08's tables scale traction, slew, cycle
+## and spread, and none of them scales supply — so recomputing on every band
+## transition would be work with no result.
+func _on_part_destroyed(assembly_id: int, _slot: int, _cause: int) -> void:
+	if runtime == null or power == null or assembly_id != runtime.assembly_id:
+		return
+	power.recompute(runtime.states, runtime.graph.alive)
 
 
 ## Doc 08 §8.4's dispatch, arriving as a signal rather than as a direct call.
@@ -486,22 +508,59 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	var contact: MotiveContact = contacts[0]
 
 	var basis := runtime.body.global_transform.basis
-	var cadence := GaitSolver.cadence_hz(limb_profile, _commanded_speed_mps())
-	var was_stance := limb.in_stance(limb_profile)
+	# The gait's own ceiling, not the chassis's. See [method GaitSolver.top_speed_mps].
+	var gait_cap := _ambulatory_speed_cap_mps(limb_profile)
+	var cadence := GaitSolver.cadence_hz(limb_profile, absf(input.throttle) * gait_cap)
+	var was_planted := limb.planted
 	limb.phase = GaitSolver.phase_of(_gait_clock, limb.phase_offset)
-	var now_stance := limb.in_stance(limb_profile)
+
+	# §13.4: "gait is frozen, every foot planted". Every foot — not the 62% of
+	# the cycle that happened to be in stance when the clock stopped. The
+	# document calls the standing state "the only state in which every limb
+	# contributes stance force simultaneously, which is what makes a stationary
+	# walker rock-solid", and that is only true if the limbs frozen mid-swing are
+	# put down.
+	#
+	# Reading the previous tick's [member LimbState.planted] rather than
+	# recomputing last tick's stance is what makes the transition work in both
+	# directions, and it closes a second hole on the way: a limb that has never
+	# been in stance has never run the placement law, so its `foot_world` is
+	# whatever it was constructed with. An Assembly commanded to stand from spawn
+	# never planted a foot at all — it sank until its own thigh colliders reached
+	# the ground and sat there with a perfectly healthy gait clock running.
+	var standing := is_zero_approx(cadence)
+	var now_stance := true if standing else limb.in_stance(limb_profile)
 
 	var hip_world := runtime.body.global_transform * limb.hip_local
 
-	# Touchdown: the one moment the placement law runs. Planting every tick would
-	# make the foot chase the body and the Assembly would never take a step.
-	if now_stance and not was_stance:
+	# Touchdown: the one moment the placement law runs [i]while walking[/i].
+	# Planting every tick would make the foot chase the body and the Assembly
+	# would never take a step.
+	#
+	# Standing needs one exception, and exactly one. A single plant on entry
+	# cannot do the job: the Assembly is usually still falling onto its feet at
+	# that moment, the probe has not found ground, and the foot is planted at
+	# full extension in mid-air. §13.6's spring cannot pull, so that leg then
+	# carries nothing for as long as the Assembly stands there — it settles onto
+	# its own thigh colliders and stays down, which is where a walker commanded
+	# to stand from spawn spent every engagement before this.
+	#
+	# The exception is bounded by [b]slack[/b] rather than by the standing state
+	# alone. A planted foot is a fixed world anchor and that is most of what it
+	# is for: it is what the friction cone in §13.6 acts through, and a foot
+	# re-planted under the hip every tick anchors nothing, so the Assembly slides
+	# on a frictionless stand and tips over the first time anything nudges it. A
+	# leg longer than its rest length is producing no force and anchoring nothing
+	# either, so re-planting that one costs nothing and is the only case that
+	# needs it.
+	var slack := (hip_world - limb.foot_world).length() >= limb_profile.stance_rest_length_m()
+	if now_stance and (not was_planted or (standing and slack)):
 		limb.foot_world = GaitSolver.foot_target(
 			limb_profile,
 			hip_world,
 			contact.point_world.y if contact.grounded else hip_world.y - limb_profile.leg_length_m,
 			runtime.body.linear_velocity,
-			input.desired_velocity(-basis.z, basis.x, _speed_cap_mps()),
+			input.desired_velocity(-basis.z, basis.x, gait_cap),
 			cadence,
 			input.steer
 		)
@@ -1014,8 +1073,20 @@ func _assembly_cadence_hz() -> float:
 		var def := _definition(slot)
 		if def == null or def.motive_profile.limb_profile == null:
 			continue
-		best = maxf(best, GaitSolver.cadence_hz(def.motive_profile.limb_profile, _commanded_speed_mps()))
+		var limb_profile := def.motive_profile.limb_profile
+		best = maxf(
+			best,
+			GaitSolver.cadence_hz(
+				limb_profile, absf(input.throttle) * _ambulatory_speed_cap_mps(limb_profile)
+			)
+		)
 	return best
+
+
+## The speed an ambulatory demand is measured against: the lesser of the Core
+## Module's chassis cap and what this gait can actually deliver.
+func _ambulatory_speed_cap_mps(profile: LimbProfile) -> float:
+	return minf(_speed_cap_mps(), GaitSolver.top_speed_mps(profile))
 
 
 func _commanded_speed_mps() -> float:

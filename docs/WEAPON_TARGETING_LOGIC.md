@@ -41,6 +41,7 @@ var yaw_rad: float = 0.0          # current, within limits
 var pitch_rad: float = 0.0
 var yaw_target_rad: float = 0.0   # commanded
 var pitch_target_rad: float = 0.0
+var solution_in_arc: bool = false # the unclamped bearing was inside the limits
 var on_target: bool = false       # within convergence tolerance AND arc-clear
 var blocked_sectors: PackedByteArray = PackedByteArray()   # 24 bits, 15deg each
 var cycle_timer_s: float = 0.0
@@ -197,10 +198,41 @@ func _update_on_target(hp: HardpointState) -> void:
     var pitch_err := absf(hp.pitch_target_rad - hp.pitch_rad)
     hp.on_target = yaw_err <= AIM_TOLERANCE_RAD \
                 and pitch_err <= AIM_TOLERANCE_RAD \
+                and hp.solution_in_arc \
                 and not _is_blocked(hp, hp.yaw_rad) \
                 and hp.jam_timer_s <= 0.0 \
                 and hp.reload_timer_s <= 0.0
 ```
+
+#### 4.3.1 `solution_in_arc`, and why convergence alone is not enough
+
+`hp.yaw_target_rad` and `hp.pitch_target_rad` are the **clamped** angles — §4.2
+solves the bearing to the aim point and then puts it through `clamp_yaw` and
+`clamp_pitch` against the module's authored limits. A mount asked for more
+depression than it has therefore converges perfectly on its own stop and, on the
+convergence test alone, reports itself on target. §7.1's fire gate opens on that
+flag. The Assembly then fires over its enemy, at the heat-limited rate, for as
+long as the geometry stays outside its arc — and every diagnostic it offers says
+it is aiming correctly.
+
+`solution_in_arc` is written by §4.2 alongside the targets and is true when the
+clamp changed nothing:
+
+```gdscript
+hp.solution_in_arc = is_equal_approx(clamped_yaw, solved_yaw) \
+                 and is_equal_approx(clamped_pitch, solved_pitch)
+```
+
+The mount still slews to the stop, and that is deliberate — a turret tracking a
+target that dives below its depression should sit on the stop pointed as close as
+it can, not snap back to centre, because the target will usually come back. What
+it does not do is shoot.
+
+This is the difference between *pointed where it was told* and *pointed at the
+target*, and the two are the same thing only inside the arc. A module whose whole
+job is a fixed forward mount authored `(-25, 25)` depends on the distinction
+completely: without it, such a module fires continuously at anything anywhere,
+because its clamped target is always reachable by definition.
 
 ---
 
@@ -733,23 +765,112 @@ func _physics_process(dt: float) -> void:
 Hit detection is a **swept ray** from `_prev_position` to `_position`, never a point test. At 940 m/s a projectile travels 15.7 m per tick; a point test would tunnel through every Assembly in the game.
 
 ```gdscript
+const MAX_PENETRATIONS := 4          # Architectural Invariant I-12
+const MAX_SWEEP_SEGMENTS := 8        # Architectural Invariant I-12
+const PENETRATION_STEP_M := 0.02
+
 func _sweep_and_resolve(i: int, def: ProjectileDefinition,
                         space: PhysicsDirectSpaceState3D) -> void:
-    var params := PhysicsRayQueryParameters3D.create(_prev_position[i], _position[i])
-    params.collision_mask = CollisionLayers.MASK_PROJECTILE_TARGET
-    params.exclude = _self_exclusion(i)
-    params.hit_from_inside = false
-    var hit := space.intersect_ray(params)
-    if hit.is_empty():
-        return
-    DamageResolver.submit_impact(ImpactRecord.new(
-        hit.position, hit.normal, _velocity[i], def, _owner_assembly[i],
-        _owner_slot[i], hit.collider, hit.shape))
-    if def.penetrates_after_hit and _penetration_budget(i, def, hit) > 0.0:
-        _position[i] = hit.position + _velocity[i].normalized() * 0.02
-        return                                     # continue through the target
-    _expire(i, def)
+    var from := _prev_position[i]
+    var to := _position[i]
+    # Carried from the round's earlier ticks, not restarted here. See §12.2.2.
+    var resolved := _strikes[i]
+
+    # The whole tick's travel is swept, not the first hit in it. A 940 m/s round
+    # covers 15.7 m in a tick and a hull is three metres thick, so a round that
+    # penetrates has to keep going *inside the same tick* or it does not travel.
+    for segment in MAX_SWEEP_SEGMENTS:
+        var params := PhysicsRayQueryParameters3D.create(from, to)
+        params.collision_mask = CollisionLayers.MASK_PROJECTILE_TARGET
+        params.exclude = _self_exclusion(i)
+        params.hit_from_inside = false
+        var hit := space.intersect_ray(params)
+        if hit.is_empty():
+            return                                  # out the other side, still flying
+
+        from = hit.position + _velocity[i].normalized() * PENETRATION_STEP_M
+        if _already_struck(i, hit):
+            continue                                # §12.2.1: never twice on one part
+
+        if not _resolve_hit(i, def, hit):
+            _expire(i, def)                         # stopped by what it hit
+            return
+        _record_strike(i, hit, resolved)
+        resolved += 1
+        _strikes[i] = resolved                      # written through: three of the
+                                                    # four exits below are a release
+        if resolved >= _penetration_budget(def):
+            _expire(i, def)                         # §12.2.2: budget spent
+            return
+    _expire(i, def)                                 # ran out of segments inside geometry
 ```
+
+#### 12.2.1 One part, one packet
+
+**A round never resolves twice against the same `(assembly_id, slot)`.** Every
+multiplier in `COMPONENT_HEALTH_DAMAGE.md` §4 — the penetration ratio, the
+ricochet gate, the surplus bonus, the spall cone — is written for a single
+impact, and there is no reading of any of them under which one projectile
+strikes one Structural Component twice.
+
+The rule is not defensive tidiness. Without it the sweep can re-enter geometry it
+has already left: a hit reports the entry point, the two-centimetre step along
+the velocity does not always clear the surface it grazed, and the next query
+finds the same shape again. Each of those is a full-damage packet. Measured
+before the rule existed: a round reporting 938 m/s advancing 0.040 m per tick for
+nine consecutive ticks, taking a Core Module rated 1450 to zero on a round rated
+120. A strike record of `MAX_PENETRATIONS` entries per live round costs
+`POOL_SIZE × MAX_PENETRATIONS` int32s — 32 KB for the whole pool — and is checked
+with a linear scan of at most four entries.
+
+**The record's scope is the round, not the tick.** It is cleared by `spawn` and
+by nothing else, and it is written at `_strikes[i]` — the round's running strike
+count — rather than at a counter that restarts with each sweep. A per-tick
+counter would overwrite the first tick's entries with the second tick's and make
+"never twice" mean "never twice within one tick", which is a weaker rule than
+this section states and a rule the geometry can defeat: 15.7 m of travel per tick
+against a 3 m hull means a round *usually* crosses in one tick, and the case that
+matters is the one where it does not.
+
+#### 12.2.2 The penetration budget
+
+```gdscript
+static func _penetration_budget(def: ProjectileDefinition) -> int:
+    if not def.penetrates_after_hit:
+        return 1
+    return MAX_PENETRATIONS
+```
+
+`MAX_PENETRATIONS` is **4** and `MAX_SWEEP_SEGMENTS` is **8**. Both are
+Architectural Invariant I-12 bounds and both are listed in its table.
+
+**`MAX_PENETRATIONS` is spent over the round's life; `MAX_SWEEP_SEGMENTS` is
+spent per tick.** The asymmetry is deliberate and it follows from what each one
+bounds. Damage is a property of the round — four parts is four parts whether it
+crossed them in one tick or in three — so its counter persists in `_strikes[i]`
+and only `spawn` resets it. Work is a property of the tick, because the frame
+budget it protects is a per-tick budget, so its counter is the loop variable.
+
+A round crossing a file of Assemblies is what separates them: three hulls 13 m
+apart put six parts on one line and span 26 m, which is more than one tick of
+travel. Under a per-tick damage counter that round resolves four packets on the
+first tick and four more on the second, against a bound that reads 4.
+`tests/physics/test_overpenetration_bounds.gd` fires exactly that shot and
+asserts both halves — four parts, and more than one tick to reach them.
+
+The budget is a count and not an energy model, deliberately. An energy budget —
+armour thickness debited from a remaining-penetration figure — is the physically
+richer answer and it needs a thickness that `ColliderProfile` does not carry and
+Invariant I-1 will not let the simulation derive from a mesh. A count says the
+thing that actually has to be true: an armour-piercing round goes through a few
+parts and then stops, and a non-penetrator stops at the first.
+
+The two bounds are separate because they answer different questions.
+`MAX_PENETRATIONS` bounds how much *damage* one round may do; `MAX_SWEEP_SEGMENTS`
+bounds how much *work* one round may cost, including the segments spent skipping
+a part it has already struck. A round that exhausts its segments inside geometry
+is expired rather than carried, because a projectile that has queried eight times
+in one tick without leaving is in a state no legitimate trajectory produces.
 
 ### 12.3 Self-Exclusion
 

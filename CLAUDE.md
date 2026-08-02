@@ -72,6 +72,9 @@ This layout is normative. Do not create top-level directories not listed here wi
 ```
 project-syndicate/
 ├── CLAUDE.md                       ← this file
+├── HANDOFF.md                      ← session state; see Section 10 rule 1
+├── JULES.md                        ← read-only review charter for an external
+│                                     analyst agent. Claude ignores it.
 ├── README.md                       ← user-facing overview
 ├── project.godot
 ├── export_presets.cfg
@@ -431,6 +434,8 @@ Every system that can be triggered repeatedly has an explicit bound:
 | System | Bound |
 |---|---|
 | Damage chain reactions | depth 3 |
+| Projectile penetrations | 4 per round |
+| Projectile sweep segments | 8 per round per tick |
 | Terminal debris components | 8 per Assembly |
 | Collapse cascades | 6 ticks per trigger |
 | Fragment slicing | 3 slices per fragment |
@@ -553,35 +558,44 @@ New systems ship with unit tests for their pure logic and at least one integrati
 
 Any AI session producing code for this repository must obey the following. These are not stylistic preferences; they exist because this architecture's performance and correctness properties are structural and are easily destroyed by a plausible-looking shortcut.
 
-1. **Read the relevant `/docs/` document before writing code that touches its subsystem.** Do not infer the design from surrounding code alone.
+1. **The Session Lifecycle Contract.** Every AI session works this loop, in this order, and none of the four steps is optional.
 
-2. **Never introduce a per-frame poll of structural state.** If you find yourself writing a loop over parts inside `_process` or `_physics_process` that reads integrity, connectivity, or attachment, stop. The correct implementation is an `EventBus` connection plus a cached array.
+   - **Initialisation.** Read `HANDOFF.md` before taking any other action — before reading source, before running the suite, before answering. It carries what the last session measured, what it decided and why, which findings are open, and which engine facts cost somebody an afternoon. A session that skips it re-derives all of that at full price and usually re-derives it wrong.
+   - **Execution.** Do the work, under every rule in this file and every document in Section 1.
+   - **Consolidation.** Before reporting, rewrite `HANDOFF.md` so it describes the repository as it now stands. **Consolidate; do not append.** A finding that has been fixed becomes a struck-through line in the record of what was fixed, not a live item; a next-step that has been taken leaves the queue. The file is a working state, not a changelog — if it only ever grows, it has failed.
+   - **Reporting.** The final message to the user is a plain-language description of what was built and what comes next. Not a diff summary, not a list of file paths, and not the commit message again.
 
-3. **Never generate collision from a mesh.** No `create_trimesh_collision()`, no `create_convex_collision()`, no `-col` import suffix, no `CollisionShape3D` parented under a visual node. Colliders come from `ColliderProfile` and nowhere else.
+   `HANDOFF.md` is the only memory that survives a context window. Treat a stale or inflated one as a defect of the same order as a stale document under Section 1, because the next session's first hour is spent believing it.
 
-4. **Never add a joint between Assembly parts.** If a task seems to require flex, the answer is a Chassis Graph event or a visual-only effect.
+2. **Read the relevant `/docs/` document before writing code that touches its subsystem.** Do not infer the design from surrounding code alone.
 
-5. **Never duplicate a constant.** Look it up in the Section 1.1 ownership table and import it.
+3. **Never introduce a per-frame poll of structural state.** If you find yourself writing a loop over parts inside `_process` or `_physics_process` that reads integrity, connectivity, or attachment, stop. The correct implementation is an `EventBus` connection plus a cached array.
 
-6. **Never use the global RNG in gameplay code.** Every stochastic system owns a seeded generator.
+4. **Never generate collision from a mesh.** No `create_trimesh_collision()`, no `create_convex_collision()`, no `-col` import suffix, no `CollisionShape3D` parented under a visual node. Colliders come from `ColliderProfile` and nowhere else.
 
-7. **Never write a literal user-facing string.** Use a `tr()` key.
+5. **Never add a joint between Assembly parts.** If a task seems to require flex, the answer is a Chassis Graph event or a visual-only effect.
 
-8. **Never bypass `PlacementValidator`.** The garage, the auto-assembler, blueprint loading, and server-side blueprint validation all use the identical chain.
+6. **Never duplicate a constant.** Look it up in the Section 1.1 ownership table and import it.
 
-9. **Never write `PartInstanceState.integrity` outside `DamageResolver`.** Repair routes through the same band-transition path.
+7. **Never use the global RNG in gameplay code.** Every stochastic system owns a seeded generator.
 
-10. **Never add an autoload** without updating Section 4 and the architecture documents.
+8. **Never write a literal user-facing string.** Use a `tr()` key.
 
-11. **Never add a top-level directory** not listed in Section 2.
+9. **Never bypass `PlacementValidator`.** The garage, the auto-assembler, blueprint loading, and server-side blueprint validation all use the identical chain.
 
-12. **When adding a new part**, add it to `registry_manifest.tres` by appending only. Never reorder, never remove — `part_def_id` values are serialised in save data and network packets.
+10. **Never write `PartInstanceState.integrity` outside `DamageResolver`.** Repair routes through the same band-transition path.
 
-13. **When a task conflicts with a document**, raise the conflict rather than implementing around it. Then, if the architecture genuinely must change, update the document and the conformance tests in the same change.
+11. **Never add an autoload** without updating Section 4 and the architecture documents.
 
-14. **Match the surrounding code.** Comment density, naming, and idiom should be indistinguishable from the files around the change.
+12. **Never add a top-level directory** not listed in Section 2.
 
-15. **Do not stub.** Code committed to this repository is complete. `TODO`, `FIXME`, `implement later`, and `pass  # placeholder` are not acceptable in `src/`. If the full implementation is not yet possible, do not commit the partial one.
+13. **When adding a new part**, add it to `registry_manifest.tres` by appending only. Never reorder, never remove — `part_def_id` values are serialised in save data and network packets.
+
+14. **When a task conflicts with a document**, raise the conflict rather than implementing around it. Then, if the architecture genuinely must change, update the document and the conformance tests in the same change.
+
+15. **Match the surrounding code.** Comment density, naming, and idiom should be indistinguishable from the files around the change.
+
+16. **Do not stub.** Code committed to this repository is complete. `TODO`, `FIXME`, `implement later`, and `pass  # placeholder` are not acceptable in `src/`. If the full implementation is not yet possible, do not commit the partial one.
 
 ---
 
@@ -598,8 +612,22 @@ godot --path .
 godot --headless --path . --main-scene res://scenes/net/dedicated_server.tscn \
       -- --port=27015 --max-players=16 --map=arena_basin --tickrate=60
 
-# Full validation suite (run before any commit touching src/ or data/)
-godot --headless --path . --script tools/ci/run_all_checks.gd
+# Full validation suite (run before any commit touching src/ or data/).
+# Use the wrapper, not the runner: it reimports first, and it fails on engine
+# errors the runner's exit code cannot see.
+tools/ci/run_all_checks.sh                       # ~24 s
+
+# The runner directly, when you want the raw output. --fixed-fps is not optional
+# for anything that touches tests/physics/: headless Godot paces its main loop
+# against the wall clock, so without it a 900-tick engagement costs 15 real
+# seconds and the suite costs five minutes instead of seventeen seconds. It
+# changes pacing only — the physics delta stays 1/60 — so Invariant I-9 holds and
+# results are byte-identical either way.
+#
+# Never substitute Engine.time_scale. It scales delta rather than the frame
+# count: measured on 4.7.1 it yields no speedup at all and hands
+# _physics_process a 0.333 s step.
+godot --headless --path . --fixed-fps 60 --script tools/ci/run_all_checks.gd
 
 # Individual validators
 godot --headless --path . --script tools/validate_part_registry.gd

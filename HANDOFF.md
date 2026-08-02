@@ -4,8 +4,29 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 14 (the damage layer, direct-fire effectors, and the first
-duel between two Assemblies).
+Last updated: session 16 (fixing everything session 15's fights found, and
+re-fighting them).
+
+| § | What is in it |
+|---|---|
+| 1 | Getting a working environment, and what a suite run costs |
+| 2 | The fault record: what each test has caught, and the lessons |
+| 3 | 46 engine facts that cost time — **read before writing code** |
+| 4 | What the physics and engagement tests found, and what was decided |
+| 5 | Deliberate readings: why things are the way they are |
+| 6 | What exists now — source, data, tests, and the wiring a scene must do |
+| 7 | Known gaps, deliberate ones |
+| 8 | Suggested next steps, in dependency order |
+| 9 | Conventions for adding to the suite |
+
+**If you read three things:** §2's opening paragraph for what a sweep costs now,
+§4.13–§4.22 for what session 16 fixed and what it found doing it, and §9 for how
+to write a test here.
+
+There is also a `JULES.md` at the repository root. It is the operating charter
+for a **read-only review agent** (Google Jules) and it grants no authority: it
+constrains one agent's behaviour and defers to `CLAUDE.md` and `/docs/` on
+everything else. Nothing in this file or in `CLAUDE.md` depends on it.
 
 ---
 
@@ -38,21 +59,30 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**51 files, 4241 checks, 0 failures.**
+**56 files, 4341 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
-on recorded assertion failures (§3.34). A run takes about 100 s, because
-`tests/physics/` waits on real ticks at 60 Hz — see §3.36 before adding to it.
-Build a fixture once in `before_all` and reset it per test; four tests that each
-spawn an Assembly spawn them on top of each other.
+on recorded assertion failures (§3.34).
 
-**A full fault sweep costs about two and a half minutes per fault**, because
-each one reimports and re-runs everything. Budget for it: a fourteen-fault sweep
-is thirty-five minutes of wall time and it is still the cheapest defect-finding
-in this repository. Run it in the background and do documentation work while it
-goes, but do **not** add or remove a test file while a sweep is running — the
-sweep compares check counts against a baseline and a new file reads as every
-remaining fault being caught.
+**A full run takes about 24 seconds, and a fault sweep about 24 seconds per
+fault.** Both were roughly 5 minutes until session 16 found why — see §3.50. The
+short version: headless Godot paces its main loop against the wall clock, so
+`tests/physics/` was paying one real second for every sixty ticks it waited on.
+`--fixed-fps 60` disables that synchronisation without touching the physics
+delta, and `tools/ci/run_all_checks.sh` now passes it. Results are byte-identical
+either way, down to the tick each Assembly dies on.
+
+**This changes how to plan a session.** The old advice was to cost a sweep before
+writing it and plant six faults instead of thirty. That constraint is gone:
+twelve faults is five minutes, and thirty is a coffee. Plant the thorough sweep.
+The remaining rules still hold — do **not** add or remove a test file, and do not
+commit, while a sweep is running, because it compares check counts against a
+baseline, a new file reads as every remaining fault being caught, and a commit
+mid-sweep captures a planted fault.
+
+Still true regardless of speed: build a fixture once in `before_all` and reset it
+per test; four tests that each spawn an Assembly spawn them on top of each other.
+See §3.36 and §3.44 before adding to `tests/physics/`.
 
 ---
 
@@ -60,12 +90,15 @@ remaining fault being caught.
 
 Every session verifies the suite by **planting faults one at a time and
 confirming something fails**. A test asserted only against correct code passes
-just as happily with its subject commented out. About 430 faults have been
-planted across thirteen working sessions; the table below is the accumulated
+just as happily with its subject commented out. About 440 faults have been
+planted across fifteen working sessions; the table below is the accumulated
 record, grouped by catcher rather than by session, because what matters to the
-next session is which test defends which behaviour.
+next session is which test defends which behaviour. Session 15's six are broken
+out in §2.0, because two of them survived and the survivals are the interesting
+part.
 
-The lessons worth carrying:
+The lessons worth carrying, consolidated across fifteen sessions rather than
+listed per session:
 
 - **A test that reads the same constant the source does asserts nothing.** The
   probe-radius check imported `AssemblyRuntime.PROBE_RADIUS_RATIO`, so a probe
@@ -76,34 +109,45 @@ The lessons worth carrying:
 - **Pick the assertion that the wrong sign cannot satisfy.** A flipped coupling
   torque tumbles the Assembly and leaves the energy roughly alone; only
   world-frame angular momentum tells the two apart. Same shape of question for
-  the steering sign and session 9's traction sign.
+  the steering sign and session 9's traction sign. Session 15's version is a
+  pigeonhole: two tick counts drawn from the same window that sum to more than
+  the window prove the two states overlapped, which no single count can.
 - **A count is not a pairing, and a fixture can hide even the fixed test.**
   `axle_pair_count() == 2` passes whether four probes were matched across the
   Assembly or down one flank.
+- **A fixture that cannot distinguish the rule from its inverse is not a test.**
+  Session 5's shape-transform test used a part at orientation 0, under which the
+  two composition orders differ by an addition that commutes. Session 9's was a
+  four-limb gait phase test asserting only "the offsets are all different", which
+  passes against an ordering with the right side *not* reversed. Session 10's
+  `test_inertia_coupling` spins the Assembly about its **intermediate** principal
+  axis, because a spin about the largest or the smallest is stable and would sit
+  still for a correct correction and a broken one alike. Session 13's was the yaw
+  controller measured over a third of a second, by which time the contacts' own
+  lateral grip has taken the whole spin.
+- **Isolate the loop you are testing from the loop you are not.** §7.6 has two
+  and both are gated on the same authority; comparing aid-on against aid-off
+  under throttle compares two Assemblies at *different speeds*. Releasing the
+  throttle first turned an unmeasurable effect into a factor of two and a half.
 - **Sweeps confirm; integration finds.** Not one of §4's findings came from a
   fault sweep. Every one came from the first test that assembled the real pieces
-  and asked for a real behaviour.
-- **An unfinished sweep is not a sweep.** Session 12 ran five of thirteen
-  planted faults and deferred eight. Session 13 ran them: **five of the eight
-  survived**, including the entire §7.6 yaw loop being disconnected from the
-  contacts. Four green sessions had passed over it. Finish the sweep in the
-  session that plants it.
-
-  **Session 14 did not follow its own rule, and the reason is worth knowing.**
-  It planted 37 faults over the combat layer and ran four of them before running
-  out of session. The four all passed; the remaining 33 are listed and ready in
-  `sweep4.py` (see §8 item 0). What made it unaffordable was arithmetic nobody
-  had done: the suite grew a duel that steps 700 physics ticks, a sweep run went
-  from 2.5 minutes to about 6, and 37 × 6 is three and a half hours. **Cost the
-  sweep before writing it.** A sweep you cannot afford to finish is worse than a
-  smaller one you can, because it leaves the same false confidence behind and
-  takes longer to do it.
+  and asked for a real behaviour — and the largest of them, session 15's
+  overpenetration grind, came from the first test that asked two *different*
+  kinds of Assembly to fight each other.
+- **An unfinished sweep is not a sweep, and an unaffordable one is worse.**
+  Session 12 ran five of thirteen planted faults and deferred eight; session 13
+  ran them and **five of the eight survived**, including the entire §7.6 yaw loop
+  being disconnected from the contacts, after four green sessions. Session 14
+  then planted 37 over the combat layer and ran four, because nobody had done the
+  arithmetic: the suite had grown a duel that steps 700 ticks, and 37 × 6 minutes
+  is three and a half hours. Session 15 planted six and ran six. **Cost the sweep
+  before writing it** — §2's opening paragraph has the current per-fault figure.
 - **A new subsystem written with its sweep in mind is cheap to defend.** Session
   13's fourteen faults over `ControlSystem` and the reverse path were **all
-  caught first time** — no gap to close afterwards. The difference from §4.8 is
-  not luck: the tests were written against the *document's* table of mappings and
-  each one asserts a direction rather than a value, so there was nothing for a
-  sign flip to hide behind.
+  caught first time**. The difference from §4.8 is not luck: the tests were
+  written against the *document's* table of mappings and each one asserts a
+  direction rather than a value, so there was nothing for a sign flip to hide
+  behind.
 
 | Test | Faults it has caught |
 |---|---|
@@ -144,11 +188,104 @@ The lessons worth carrying:
 | `test_motive_force_application` | a disc given a ground probe |
 | `test_inertia_coupling` | coupling torque unclamped; identically zero; applied in the body frame; angular velocity never rotated into the body frame; never applied at all; evaluated at the tick boundary rather than the midpoint; **sign flipped** |
 | `test_locomotion_behaviour` | both track flanks driven alike; flanks swapped; the steer command never reaching the mixer; every bogie counted as one flank; a limb's probe sized from suspension it has none of; a limb sweeping from the Assembly origin |
+| `test_family_duels` | *(session 15; see the sweep record below)* the muzzle-relative recoil impulse dropped; a pitch limit that no longer clamps |
+| `test_overpenetration_bounds` | a round that no longer continues past what it defeated;
+the within-tick continuation removed; the same part struck twice; the penetration count
+restarted every tick |
+| `test_team_engagement` | *(nothing yet — planted faults reached it through the files above)* |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
 | *nothing* | anti-roll pushing both ends of an axle the same way — see §5 |
 | *nothing* | a hard-coded steer lock — see §5 |
+
+### 2.0 The sweeps of sessions 15 and 16
+
+Session 15 planted six faults over the paths the new engagement files rest on;
+session 16 grew that to fourteen, keeping the six and adding eight against the
+code this session wrote. The script is committed at
+`tools/ci/sweeps/engagement_sweep.py` and names what each one is defending. **The
+survivals are worth more than the catches and are recorded first.**
+
+The whole fourteen now runs in **about six minutes** (§3.50). It cost an hour
+before `--fixed-fps`, which is why session 15 planted six rather than thirty and
+why §2's "cost the sweep before writing it" advice existed. That constraint is
+gone; the sweep was re-run end to end after the speedup and reproduces every
+result below exactly.
+
+#### Survivals on the first run, and what each one bought
+
+Three faults got through the sweep as it was first run. Two of them were
+defects in the tests rather than in the sweep, and both are now fixed; the
+third was accepted with reasons.
+
+| Fault | Result |
+|---|---|
+| `self-immunity-zero` — §12.3's window set to zero | **SURVIVED, twice.** A round may hit the Assembly that fired it on the tick it is fired, and nothing notices, because the nose mount emits from 2.75 m ahead of the lattice origin — clear of every hull on every recipe. §12.3 is not load-bearing for these builds, so the duels' self-hit check asserts something true for a reason other than the one it names. **Left as it is, deliberately**: it becomes a real test the day a module is mounted where its muzzle overhangs the hull, and the honest reading until then is that it is a regression guard against a *future* mount. Manufacturing a build to make it fail would be testing the fixture. |
+| `penetration-budget-removed` — §12.2.2's bound deleted outright | **SURVIVED, and it found two defects.** Nothing in the suite ever *reached* four penetrations: a round crossing one hull gets through two or three parts and stops for want of anything else to hit, so a bound of four and no bound at all are the same bound. Chasing that turned up the second and worse one — `resolved` was a local initialised to `0` at the top of every sweep, so **both the budget and the strike record restarted every tick**, while doc 07 §12.2.1 and §12.2.2 both scope them to the round's life. A round crossing two hulls on two consecutive ticks could resolve eight packets against a bound of four. **Fixed**: `_strikes[index]` persists the count across ticks, written through on every strike because three of the loop's four exits are a release. Doc 07 §12.2.1 and §12.2.2 now state the scope and the asymmetry — damage is a property of the round, work is a property of the tick — and `test_overpenetration_bounds.gd` fires one round down a file of three hulls, six parts on the line, and asserts four parts over more than one tick. |
+| `no-assembly-terminated` — doc 04 §8.2's signal never emitted | **SURVIVED, and the assertion was the problem.** Two duels checked `check_ne(d.killer_of_loser, "")`, and `killer_of_loser` came from `arena.name_of(arena.kills.get(loser, 0))` — but `name_of` answers `"#0"` for an id it has never seen. The check could not fail. **Fixed**: the lookup is now guarded on `kills.has()`, so an unattributed kill leaves the field empty, and the assertion compares it against the survivor's callsign derived independently from the roster. It is now an equality against a name rather than an inequality against nothing. |
+
+#### Where the sweep stands after the fixes
+
+Re-run end to end once the fixes landed: **fourteen faults, eleven caught, three
+survivors** — and the three are not the same three.
+
+| Still surviving | Why, and what closes it |
+|---|---|
+| `self-immunity-zero` | Accepted. The nose mount clears every hull, so §12.3 is not load-bearing for these builds. Closes when a module ships with its muzzle overhanging its own hull. |
+| `same-part-twice-allowed` | **A coverage regression this session caused.** It was caught before §4.24 and is not caught after. See below, and §5. Closes when a part ships with two collider primitives along one axis. |
+| `cyclic-not-cone-clamped` | Accepted, session 15's finding. Two 14° deflections clamped per axis compose to 19.8° of tilt and the hover simply asks for less next tick — a closed loop absorbing a fault in the quantity it closes over. Closes with a unit test of `RotorSolver.thrust_direction`, where the demand is open-loop. |
+
+#### The eleven that were caught
+
+| Fault | Failures | What noticed |
+|---|---|---|
+| `recoil-not-applied` | 10, across 3 files | The **rearward** half of §4.14, at −0.001 m/s against 1.310 expected. The pitch half passes against it — zero is a small number — which is why both halves exist. |
+| `cyclic-pitch-inverted` | 9, across 2 files | Every airborne assertion. The rotary Assembly fires 0 rounds and the five-a-side loses its upright check. |
+| `pitch-clamp-removed` | 10, and a check-count change | `test_aim_solver` names it. Then the ambulatory duels **stop timing out** — see §4.22; a fault that proves the finding it was planted to defend is the best outcome a sweep has. |
+| `standing-never-replants` | 8, across 3 files | §4.20's third defect. The drift file's standing case goes to −3.52°, the walker collapses onto its hull, and the five-a-side loses two shooters. |
+| `sweep-does-not-continue` | 4, across 2 files | Without the within-tick continuation the rotary mirror never reaches a decision and the five-a-side leaves five standing. |
+| `same-part-twice-allowed` | 1, then **0** | Caught by the brawl finishing in 494 ticks instead of most of its window — and then **uncaught**, once the penetration budget became lifetime-scoped. See below; this one moved backwards and is now an open gap. |
+| `gait-turn-sign-flipped` | 2 | `test_gait_solver`'s direction assertions, added in session 16 for exactly this. |
+| `gait-chases-chassis-speed` | 2 | The drift file's neutral case, at −17.6° where the real number is +169.6°. |
+| `arc-gate-removed` | 3 | The rotary mirror stops reaching a decision — §4.19's gate is what makes the fire worth firing. |
+| `strikes-reset-each-tick` *(new; the defect above, replanted)* | — | Added in the same change as the fix, so the regression that hid inside `penetration-budget-removed` has a fault of its own. |
+
+#### What the two sweeps taught
+
+**A closed loop hides the thing it closes over.** Session 15's two survivals were
+both of this shape: an autopilot that corrects an error every tick absorbs a
+fault in the quantity it is correcting, and an emission geometry with margin to
+spare absorbs a fault in the guard that protects the margin. The assertion has to
+be made where the loop is *open*.
+
+**A bound is only tested by geometry that exceeds it.** Session 16's new lesson,
+and a different failure from the closed-loop one. Nothing was correcting for the
+penetration budget; the fixtures simply never asked for a fifth part. Every
+bound in Invariant I-12's table should be read with the question "does anything
+in the suite reach this?", and the answer for most of them today is no. The
+fixture that closes one has to be built to exceed it and then has to *assert that
+it exceeds it* — `test_overpenetration_bounds` checks that six parts are on the
+line before it checks that four were struck, because every assertion after that
+is unfalsifiable if the line is short.
+
+**Ask how many files failed, not whether any did — and re-run the sweep after
+the fix.** `same-part-twice-allowed` was caught by exactly one assertion in one
+file: the ten-a-side brawl finishing 700 ticks early. After §4.24 made the
+penetration budget lifetime-scoped, the same fault **stopped being caught at
+all**, because a round that double-taps one part now still stops at four parts
+and the brawl finishes on schedule. Nothing about the rule changed; the fix
+shrank the fault's blast radius until the one fixture sensitive to it went quiet.
+
+**Bounding a rule's consequences is not testing the rule**, and a sweep run only
+before a change will not tell you that. One failure in one file means one
+fixture happens to be sensitive, not that the rule is covered — and a sensitive
+fixture is exactly the kind that a later, unrelated, correct change desensitises.
+§12.2.1 is now recorded as untested; see §5.
+
+**Two of session 15's six faults were planted against loops rather than against
+laws.** Of session 16's twelve, one was — and it was kept knowingly.
+
 
 ### 2.1 What the uncaught faults taught
 
@@ -192,6 +329,23 @@ saved a mass floor by finding the one state that reaches it. Reaching for
 - **When a fault survives, check whether it crashed rather than whether it was
   tolerated.** Those look identical in a green run and only one of them means the
   test is missing. §3.34 is why, and the shell wrapper is what closed it.
+- **An assertion that passes for a state the test was written to exclude is not
+  an assertion.** Found twice, in two different disguises, and it is the single
+  most productive question to ask of an existing green test.
+  `test_locomotion_behaviour` asserted since session 9 that a walker "stands on
+  its feet rather than on its shins", by checking
+  `contact.distance_m < leg_length_m`. Session 15 measured that a *stationary*
+  ambulatory Assembly rests on its thigh colliders with the stance spring doing
+  nothing, and the check passes in exactly that state (§4.15); the fixed version
+  compares against the **rest** length, not the full extension. Session 16's was
+  subtler and only a fault sweep found it: two duels asserted
+  `check_ne(killer_of_loser, "")` over a value produced by
+  `arena.name_of(kills.get(loser, 0))`, and `name_of` answers `"#0"` for an id it
+  has never seen — so deleting doc 04 §8.2's `assembly_terminated` emission
+  entirely left the suite green. **A `check_ne` against `""` is a smell.** It
+  passes for every string a formatter can produce, including the ones that mean
+  "nothing was found", and the fix is almost always to name what the value should
+  have been and use `check_eq`.
 
 ---
 
@@ -465,14 +619,106 @@ All verified against 4.7.1 in this repo, not recalled.
     instead of one method asserting five things and reporting only the first
     failure.
 
+44. **This suite is not bit-reproducible run to run once several bodies are in
+    one space.** Two consecutive runs of `tests/physics/test_family_duels.gd`
+    gave 23 and 25 rounds from the same Assembly, and the five-a-side gave 222
+    rounds and three kills on one run and 375 and two on the next. Nothing
+    stochastic differs — every generator is seeded (Invariant I-9) — so the
+    divergence is float ordering inside the physics server across many contacts.
+    **Assert a range, a direction, or a pigeonhole in a multi-Assembly test, and
+    never an exact count.** A single Assembly on a slab still reproduces exactly,
+    which is why every unit and integration test is unaffected.
+
+45. **Every `CombatArena` builds its slab and its Assemblies at the same world
+    coordinates, because they all hang off the one [SceneTree] the autoloads live
+    in.** Two arenas open at once put the second engagement inside the first
+    one's wreckage: rounds strike hulls belonging to a finished fight, and the
+    bus delivers one arena's `part_damaged` into the other's counters. Every
+    number either of them records is then a mixture. Open exactly one at a time
+    and close it before the next — `test_family_duels._open_arena` asserts it.
+
+46. **`RigidBody3D.freeze = true` on a hovering Assembly is not the same
+    simplification as freezing a wheeled one.** A frozen wheeled build keeps the
+    pose its suspension settled into; a frozen rotary one keeps whatever pose the
+    autopilot happened to be holding, and the two Assemblies stop pushing each
+    other around. Session 15's overpenetration grind reproduces with both
+    Assemblies live and **stops** reproducing the moment either is frozen, which
+    cost most of an hour before it was noticed.
+
+47. **A physics fixture with a small margin is a fixture that fails somewhere
+    else.** `tests/physics/test_duel.gd` needed 9.5° of depression against an
+    authored 8°, and passed alone while failing inside the suite — the two ran
+    the same code and differed only in how much simulation had happened before
+    them. §3.44's float ordering is enough to move a frozen hull's attitude by a
+    degree or two, and a fixture with two degrees of margin flips on it. **When a
+    test passes in isolation and fails in the suite, look for the margin before
+    you look for the contamination**; both are real here and they present
+    identically.
+
+48. **A leaked arena is invisible until it eats something.** Session 16's drift
+    file left four Assemblies standing at the origin because it closed its arena
+    in `after_all` rather than as soon as it had its measurement. The next file
+    along built its engagement inside them, and every round the shooter fired
+    stopped on a hull belonging to a fight that had finished — reported as "the
+    shooter fired and nothing came apart", which reads as a damage bug and is
+    not one. Close an arena the moment its record is taken; leave `after_all` as
+    the guard for a run that failed part-way through (§3.45).
+
+49. **`wrapf(x, -PI, PI)` is half-open and `clamp_yaw` uses it for a full-circle
+    mount.** A bearing of exactly `+PI` comes back as `-PI`, so an equality test
+    between the clamped and unclamped yaw fails for a target dead astern and
+    only for a target dead astern. Everything else in `(-PI, PI)` round-trips to
+    within 1e-9. It is a one-value hole and it is the kind that surfaces once a
+    year in a bug report nobody can reproduce.
+
+50. **Headless Godot still paces its main loop against the wall clock, and
+    `Engine.time_scale` will not fix it.** This is the single most expensive
+    engine fact in the file, because it silently cost every session before this
+    one a factor of twelve on every suite run and every fault sweep.
+
+    Measured on 4.7.1 in this repo, with a probe that does nothing but
+    `await physics_frame`:
+
+    | Configuration | 600 bare frames | Effective rate |
+    |---|---|---|
+    | default headless | 9876 ms | 60.8 fps |
+    | `Engine.time_scale = 20` | 10003 ms | 60.0 fps |
+    | `--fixed-fps 60` | 4 ms | 152 000 fps |
+    | `--fixed-fps 60 --disable-render-loop` | 3 ms | 184 000 fps |
+
+    So `tests/physics/` was never compute-bound. Its wall time was tick count
+    divided by sixty — a 900-tick engagement cost fifteen real seconds no matter
+    how little work was in it.
+
+    **`Engine.time_scale` is the trap.** It is the obvious answer and it is wrong
+    twice: it produced *no* speedup at all, and the delta handed to
+    `_physics_process` went from 0.016667 s to **0.333333 s**. It scales the
+    delta, not the frame count. At that step a 940 m/s round advances 313 m per
+    tick, every spring in doc 05 integrates to nonsense, and Invariant I-9's
+    determinism is gone. Anything that changes `delta` is disqualified here on
+    principle, not just on measurement.
+
+    **`--fixed-fps 60` is the right lever precisely because it changes nothing
+    the simulation can observe.** It disables real-time synchronisation and lets
+    the loop advance as fast as the CPU allows; the physics step stays exactly
+    1/60. Verified rather than assumed: a full real-time run and a full
+    `--fixed-fps` run produce 4342 checks each and byte-identical engagement
+    output — same 207 / 900 / 291 tick duels, same 684-tick brawl, same kill
+    order, same pool peak. `tools/ci/run_all_checks.sh` passes it, so the sweeps
+    inherit it.
+
+    `--disable-render-loop` adds nothing worth having on top of it in headless.
+
 ---
 
 ## 4. What the physics tests found, and what was decided
 
 Everything here came out of `tests/physics/` — the first tests in the project's
-history to build an Assembly, put it on ground, and ask it to move. None of it
-came from a fault sweep. Every one of these subsystems had exact unit tests over
-synthetic inputs, and every one of them was inert.
+history to build an Assembly, put it on ground, ask it to move, and then ask two
+of them to fight. None of it came from a fault sweep. Every subsystem in §4.1 to
+§4.12 had exact unit tests over synthetic inputs and every one of them was inert;
+§4.13 to §4.18 came from the first tests that put Assemblies of *different kinds*
+in front of each other, which is the same lesson one level up.
 
 ### 4.1 Fixed — no Motive Assembly could be attached to anything
 
@@ -641,6 +887,8 @@ solver does not use the decomposition and no ballistic module was authored.
 across the sphere. Either half checked alone passes with both of them wrong.
 
 ### 4.11 Measured — the shipped chassis cannot carry the shipped autocannon
+*(Read §4.14 with this one: session 15 halved the question and could not halve
+the other half.)*
 
 The first thing the duel found, before it found anything about damage.
 
@@ -679,6 +927,368 @@ tractive force is applied at the contact and the centre of mass is most of a
 metre above it, so the couple pitches the nose up under power and dives it under
 braking, from the same rigid body and the same offset forces.
 
+### 4.13 Fixed — overpenetration had no bound, and one round killed a Core Module
+
+**Session 15 found it, session 16 closed it.** It was the largest defect the
+project has had and it decided five of that session's six engagements.
+
+Doc 07 §12.2 said a round that defeats what it hit is repositioned to the impact
+point plus two centimetres and the function **returns**, gated on a
+`_penetration_budget` the document called for by name in its own code block and
+**defined nowhere**. `ProjectileSystem` implemented every line except the budget
+and substituted `outcome.was_applied()` — a question a penetrator answers yes to
+for as long as there is anything left to damage. And the reposition ended the
+tick: a round that stalled advanced two centimetres instead of the 15.7 m its
+velocity carried, and the rest of the segment was thrown away. Once per tick.
+
+**Measured before:** a round reporting **938 m/s** advancing **0.040 m per tick**
+for **nine consecutive ticks**, resolving a full 147.9-damage packet against the
+same Core Module every one of them. One round rated 120 damage took a Core
+Module rated 1450 to zero.
+
+**What replaced it**, doc 07 §12.2 amended and `ProjectileSystem` rewritten:
+
+1. The sweep runs over **the whole tick's travel**, not the first hit in it. A
+   round that penetrates continues inside the same tick.
+2. **One part, one packet** (§12.2.1). A round never resolves twice against the
+   same `(assembly_id, slot)`. A four-entry strike record per live round, flat
+   and packed, 32 KB for the pool.
+3. **Two Invariant I-12 bounds** (§12.2.2), and both are now in CLAUDE.md's I-12
+   table: `MAX_PENETRATIONS = 4` bounds the *damage* one round may do,
+   `MAX_SWEEP_SEGMENTS = 8` bounds the *work* it may cost in a tick.
+
+**Measured after:** longest stall 0 ticks; a round still gets through two parts
+inside one tick, which is what "continues through the target" is supposed to
+mean. `tests/physics/test_overpenetration_bounds.gd` is the same fixture as the
+file that recorded the defect, with every assertion inverted.
+
+**The balance consequence is the important part.** §2.0's `no-overpenetration`
+sweep fault — a round that never continues at all — makes *nothing in the
+shipped set lethal*: both rotary Assemblies survive 900 ticks and the brawl runs
+to its timeout. Overpenetration was not merely a bug, it was carrying the entire
+lethality of the shipped weapon. Bounding it at four parts kept the fights
+decidable; a future change to it is a balance change and has to be measured as
+one.
+
+### 4.14 Decided — a nose mount answers half of §4.11 and cannot answer the other half
+
+§4.11 measured the shipped autocannon on the shipped chassis with the module on
+the roof: 1450 N·s at a muzzle two metres above the centre of mass is 3.6 rad/s
+of pitch from one round, and the build never fires a second aimed shot.
+
+**What decides that is not the impulse, it is the height of the muzzle above the
+centre of mass**, because the fore-aft offset is parallel to the recoil and
+contributes no moment at all. Every recipe in `tests/combat_arena.gd` therefore
+mounts the module on the **nose at the Core Module's own height**, which puts the
+muzzle 0.247 m above the centre of mass on the wheeled build instead of two
+metres.
+
+**Measured, one round, from a settled Assembly:** **0.014 rad/s** of pitch,
+against 3.6 from the roof mount. The Assembly rocks.
+
+**The momentum half is untouched and cannot be moved.** 1450 N·s into 1107 kg is
+1.310 m/s whatever the module is bolted to; measured 1.078 m/s, the difference
+being what four loaded contacts took inside the tick the impulse landed in. A
+build holding this trigger at the heat-limited rate takes about a third of a g of
+continuous rearward acceleration for as long as it holds it. That is the part of
+§4.11 that is still a design decision for whoever decides what these vehicles
+weigh.
+
+**And there is a third axis nobody had looked at: yaw.** The Effector Module is
+five cells wide and the Core Module is four, so their centrelines can never
+coincide — the best a builder can do is half a cell, and the muzzle sits 0.125 m
+off the hull centreline whichever of the two candidate columns it goes in. That
+is 181 N·m·s of yaw impulse per round, and on an ambulatory Assembly, whose only
+yaw authority is a gait turn command worth about 45°/s, it is enough to walk the
+hull round in a slow circle while it fires. A wheeled or tracked build's contacts
+absorb it. **An odd-width module on an even-width Core Module cannot be
+balanced**, and the answers are a second module mirrored across the centreline,
+an even-width module, or an odd-width Core Module — all three of which are data
+decisions in doc 01 and none of which has been made.
+
+### 4.15 Found — three reasons an ambulatory Assembly is a poor gun platform
+
+*(Session 15's diagnosis. All three are closed or reduced — see §4.19 and §4.20 —
+and what is left is §4.21's drift. Kept because the reasoning is what led there.)*
+
+Two ambulatory Assemblies, identical builds, fifteen seconds of mutual fire, and
+**no decision**: one loses its Effector Module and neither loses a Core Module.
+`test_family_duels.test_two_walking_assemblies_cannot_settle_it_and_here_is_why`
+asserts each of the three measurements below rather than describing them.
+
+1. **A mount pinned against an elevation stop still reads `on_target`, and the
+   fire gate opens on it.** Doc 07 §4.3 tests convergence against the
+   **clamped** target angles, so a module asked for more depression than it has
+   converges on its stop, reports itself on target, and §7.1 lets it fire — over
+   the enemy, at the heat-limited rate, indefinitely. Measured on the mirror
+   match by pigeonhole: 539 on-target ticks plus the pinned ticks exceed the 900
+   commanded ticks, so the two states overlapped. **Nothing here is a defect
+   against any document; it is a gap between two of them** and it wants a
+   decision in doc 07 §4.3, not a patch.
+2. **An ambulatory hull under way pitches past 20° nose-down** with a 196 kg
+   module on the nose. The front pair of limbs takes the load and doc 05 §13.5's
+   placement law has no attitude term to trim it out with. With the module
+   authoring 8° of depression (doc 01 §10.5), a hull leaning that far forward
+   cannot point at something standing on the same ground.
+   **Confirmed from the other side.** §2.0's `pitch-clamp-removed` fault gives
+   every mount unlimited travel and nothing else. The mirror match then settles
+   in **389 ticks** with a Core Module destroyed, the mount pinned on 1 tick of
+   389 rather than on a majority of them, and the five-a-side resolves as well.
+   The 8° depression stop is not *a* reason those two engagements cannot finish;
+   it is *the* reason.
+
+3. **A stationary ambulatory Assembly sits down on its thigh colliders.** At zero
+   command the gait clock freezes, so `GaitSolver.foot_target` never runs, so
+   `LimbState.foot_world` is never established and the stance spring produces
+   nothing. The hull settles until the limb colliders reach the ground: the body
+   origin rests at −1.26 m where a walking one rides at about −0.5 m. It stands
+   up the moment it takes a step. See §2.1's last bullet for why the existing
+   test did not catch it.
+
+### 4.16 Found — `ControlInput` cannot ask an ambulatory Assembly to turn and travel at once
+
+*(Still true, and now much less of a problem: §4.20's turn-sign fix means the one
+steering number at least turns the right way, and §4.21's drift is the reason a
+walker still cannot hold a heading.)*
+
+Doc 05 §6.0 gives an Assembly one steering number and §13.5 spends it on both the
+gait's turn command **and** the lateral half of `ControlInput.desired_velocity`.
+A saturated demand therefore resolves to a velocity 45° off the nose: a walker
+with a large bearing error strafes in a circle instead of turning onto its
+target, and it cannot turn its way out either, because §13.5 rotates the foot
+*offset* and a nearly stationary Assembly has no offset to rotate.
+
+The arena's pilot works around it with a yaw-rate damper rather than a heading
+controller, and the workaround is documented where it lives. The underlying gap
+is doc 05's: there is no field that lets an ambulatory Assembly hold a heading
+while travelling somewhere else, and a walker is the one family for which those
+are genuinely independent.
+
+### 4.17 Observed — the first Prime Mover detonation
+
+§7 has recorded since session 14 that doc 08 §8.5's detonation had never been
+observed. It has now, in the rotary mirror match, and the chain is worth knowing
+because it is what makes that engagement mutual annihilation in under a second:
+a round destroys the Effector Module, its spall finishes the Prime Mover, and the
+detonation blast takes the Core Module and everything else within reach. Both
+Assemblies died to it in the same second.
+
+Spall is now routinely observed as well — every kinetic hit in the engagement
+traces carries two to five spall packets behind it.
+
+### 4.18 What the six engagements did — session 15, before the fixes
+
+*(Superseded by §4.23. Kept as the before half of the comparison.)*
+
+All from `tests/physics/test_family_duels.gd` and
+`tests/physics/test_team_engagement.gd`, on shipped parts, with nothing frozen
+and nothing scripted. Figures move a little run to run (§3.44).
+
+| Engagement | Result |
+|---|---|
+| Ambulatory vs rotary | Decided in **28 ticks**. The rotary Assembly loses its Core Module. |
+| Ambulatory vs ambulatory | **No decision in 900 ticks.** One Effector Module lost; see §4.15. |
+| Rotary vs rotary | Decided in **33 ticks**, mutual: both Core Modules gone, via §4.17's detonation. |
+| Five-a-side combined arms | **No decision in 1200 ticks.** 2–3 of 10 killed, both teams still standing; a mixed force fights at the rate of its worst gun platform. |
+| Ten wheeled builds a side | Decided in **91 ticks**. 14 of 20 killed, 25 parts lost, one team wiped. |
+| One round, one Assembly | 0.014 rad/s of pitch and 1.078 m/s of rearward velocity — §4.14. |
+
+The projectile pool peaked at **61 of 2048** rounds in flight with twenty
+Effector Modules firing, so Invariant I-12's ceiling is not close to being met
+and nothing leaks.
+
+### 4.19 Fixed — a mount on its stop reported itself on target, and fired
+
+Doc 07 §4.3 tested convergence against the **clamped** target angles. A module
+asked for more depression than it has therefore converged perfectly on its own
+stop, reported `on_target`, and §7.1's fire gate opened on that flag — so the
+Assembly fired over its enemy, at the heat-limited rate, for as long as the
+geometry stayed outside its arc, while every diagnostic it offered said it was
+aiming correctly.
+
+Doc 07 §4.3.1 now defines `solution_in_arc`: true when the bearing §4.2 solved
+was inside the arc **before** the clamp touched it. `HardpointState` carries it,
+`EffectorSystem._solve_aim` writes it, and `on_target` requires it. The mount
+still slews to the stop — a turret tracking a target that dives below its
+depression should sit pointed as close as it can — but it does not shoot.
+
+Session 15 measured a mount pinned on its stop for a majority of an engagement
+while reading on-target. After the fix the same engagement pins for a fifth of
+it, and the ticks it pins for are ones on which it holds fire.
+
+### 4.20 Fixed — three defects in the ambulatory family, and one still open
+
+Session 15's ambulatory Assembly could not hold a firing solution, could not
+hold a heading, and sat down on its own thigh colliders whenever it stopped.
+Three separate causes, all now closed, and a fourth that is not.
+
+**Standing planted no feet.** Doc 05 §13.4 says the standing state is "gait
+frozen, **every foot planted**" and calls it "the only state in which every limb
+contributes stance force simultaneously". The implementation froze the clock and
+planted nothing: `GaitSolver.foot_target` only runs on a swing→stance
+transition, which never happens with the clock stopped, so `LimbState.foot_world`
+was never established at all. The Assembly sank until its thigh colliders
+reached the ground — body origin at −1.26 m where a standing one belongs at
+−0.81 — and stayed there. Fixed by planting on entry to stance *and*, while
+standing, whenever the leg is **slack** (longer than its rest length, therefore
+carrying nothing and anchoring nothing). The slack bound matters: a foot
+re-planted under the hip every tick anchors no friction, and an Assembly that
+slides on a frictionless stand tips over the first time anything nudges it.
+Measured after: hull level to 1°, all four feet loaded at 1.55–1.60 m against a
+1.63 m rest, indefinitely.
+
+**The placement law chased a speed the gait cannot reach.** §13.5's correction
+term is `(v − v_desired) · placement_gain`, and `v_desired` came from the Core
+Module's `speed_cap_mps` — **24 m/s**. §13.4 caps a gait at
+`max_cadence_hz · max_step_length_m`, which is **2.42 m/s** for the shipped
+strider. The correction was therefore saturated on every stride of every walk:
+every foot landed at the maximum step behind neutral, reaching backwards for a
+speed ten times what the family can produce, and the hull pitched progressively
+nose-down doing it. `GaitSolver.top_speed_mps` is the derived ceiling and
+`MotiveSystem` now clamps the demand to it. Measured: an unarmed Assembly's
+walking pitch fell from 18° to under 6°; an armed one from 32° to under 9°.
+
+**The turn command was inverted.** `ControlInput.steer` is positive-is-right
+across every family — §7.1 rotates a wheeled contact frame right, §14.2 drives
+the right track slower — and a right turn is a *negative* rotation about the
+world up. §13.5 rotated the plant target by `+turn_rate · turn_command`, so an
+ambulatory Assembly walked **left** on a demand to go right, and was the only
+thing in the game that steered backwards. Measured before the fix: a constant
+`steer = +1` turned the hull +44.8°. Doc 05 §13.5 now states the sign as
+normative and `tests/unit/test_gait_solver.gd` asserts the direction both ways.
+The old test asserted that the foot had *moved* — which a sign flip satisfies
+exactly, and did, for six sessions.
+
+### 4.21 Found and not fixed — the ambulatory gait has an intrinsic yaw drift
+
+What is left after §4.20's three fixes, and it is now the family's limiting
+defect. `tests/physics/test_ambulatory_drift.gd` measures it:
+
+| Demand | Heading change over 300 ticks |
+|---|---|
+| `steer = 0`, walking | **+169.6°** |
+| `steer = +1`, walking | +109.8° |
+| `steer = −1`, walking | +93.1° |
+| standing | **+0.00°** |
+
+An unarmed, symmetric Assembly commanded straight ahead turns most of the way
+round in five seconds. Held hard over, the drift is *reduced and not reversed*:
+the family has less yaw authority than it has yaw disturbance. Standing is
+perfect, which is what §4.20's first fix bought and is why the arena's tactics
+plant an ambulatory Assembly before it shoots.
+
+It is an integrator, not a wobble, and everything downstream inherits it — an
+Assembly that cannot hold a heading cannot hold a firing solution either,
+because doc 07 §4.3 converges a mount at half a degree and slews it at 65°/s.
+
+**Where the fix belongs:** doc 05 §13, and probably §13.8, which states outright
+that "the Raibert term is the only balance authority" and lists no heading
+authority at all. A yaw-rate term in the placement law is new architecture and
+CLAUDE.md §10 rule 13 puts it outside what a test session may decide.
+
+### 4.22 Measured — 8° of depression is a real constraint, and widening it is not free
+
+`test_duel`'s Effector Module sat on the Prime Mover's roof, about four metres
+above the Core Module of something standing on the same ground. At the 26 m that
+duel is fought over, the solution is **9.5° of depression** against an authored
+8° — outside its own arc. It fired anyway for two sessions, because §4.19's gate
+did not exist; and the fight still resolved, because §4.13's unbounded
+overpenetration made any round that did connect lethal on its own. **Two defects
+cancelling.** Fixing either one exposes the geometry.
+
+**Widening the authored limit was tried and reverted.** Changing
+`EffectorModuleProfile.pitch_limit_deg` from `(-8, 34)` to `(-15, 34)` fixes the
+roof mount and makes **every engagement in `test_family_duels.gd` stop
+resolving** — 900-tick timeouts in place of decisions at 239 and 291 ticks,
+reproducibly, on an otherwise identical tree. Whatever couples the two is not
+understood, and a balance change nobody can explain the second-order effects of
+is not one worth shipping. The measurement is recorded in doc 01 §10.5 and the
+decision is left open.
+
+**What was changed instead is the fixture's geometry**: `test_duel` now mounts
+its module on the nose at the Core Module's own height, like every recipe in
+`tests/combat_arena.gd`, where the solution onto a target at 26 m is under a
+degree. That is what a builder would do, and it is the same answer §4.14 reached
+for a different reason.
+
+### 4.23 What the six engagements do now — session 16, after the fixes
+
+All from `tests/physics/test_family_duels.gd` and
+`tests/physics/test_team_engagement.gd`, on shipped parts, nothing frozen,
+nothing scripted. Compare against §4.18. Figures move a little run to run
+(§3.44), which is why the assertions are ranges.
+
+| Engagement | Before (§4.18) | Now |
+|---|---|---|
+| Ambulatory vs rotary | decided in 28 ticks | decided in **207**; the rotary Assembly wins, 14 rounds to 1 |
+| Ambulatory vs ambulatory | no decision, 900 ticks | **still no decision** — §4.21's drift |
+| Rotary vs rotary | mutual kill in 33 ticks | decided in **291**; a Prime Mover detonation opens it, the Core Module survives another two seconds |
+| Five-a-side combined arms | no decision, 2–3 of 10 killed | **8 of 10 killed**, 28 parts lost, 367 packets, 2 left standing at the timeout |
+| Ten wheeled a side | over in 91 ticks | **18 of 20 killed** in 684 ticks, 45 parts, 964 packets, 2 left standing |
+| One round, one Assembly | 0.014 rad/s pitch | **0.003 rad/s** pitch, 1.074 m/s rearward |
+
+The shape of the change is the point. Before, every decisive engagement was
+decided in under a second by a single round that stalled inside a hull. Now the
+same fixtures take three to twenty seconds and are decided by volume of fire,
+part attrition, and — in the rotary mirror — a Prime Mover detonation that takes
+two more seconds to finish the job. The projectile pool peaked at **31 of 2048**
+with twenty Effector Modules firing.
+
+Run-to-run spread is real and is why every assertion is a range (§3.44). Across
+the session's runs the five-a-side finished with 7–8 of 10 down and the brawl
+with 17–18 of 20, over anywhere from 684 to 1200 ticks. The *shape* is stable;
+the ticks are not.
+
+
+### 4.24 Fixed — the penetration budget and the strike record both restarted every tick
+
+§4.13 bounded overpenetration and the six engagements stopped being decided by
+one round stalling inside a hull. The bound was still wrong, and a fault sweep
+is what said so — see §2.0's `penetration-budget-removed`, which deleted
+`MAX_PENETRATIONS` outright and left the suite green at 4337 checks.
+
+The immediate reason is that **nothing in the suite ever reached four
+penetrations.** A round crossing one hull gets through two or three parts and
+stops for want of anything else on the line, so a bound of four and no bound at
+all produce identical fights. That is a gap in the fixtures, not in the code.
+
+The reason found while closing it is a gap in the code. `_sweep_and_resolve`
+opened with `var resolved := 0`, and `_record_strike` indexed the strike record
+by `resolved` — so **both the budget and the "one part, one packet" record reset
+at the top of every tick**, while doc 07 §12.2.1 and §12.2.2 both scope them to
+the round's life. A round crossing two hulls on two consecutive ticks could
+resolve eight packets against a bound of four, and would have forgotten the first
+hull entirely by the time it reached the second.
+
+It survives in practice on the shipped set because 15.7 m of travel per tick
+against a 3 m hull means a round nearly always crosses in one. "Nearly always" is
+the whole problem: the case the bound exists for is a round that meets more than
+one Assembly, and that is exactly the case that spans a tick boundary.
+
+**What changed.** `_strikes: PackedInt32Array` carries the count per round,
+cleared by `spawn` and written through on every strike — three of the sweep
+loop's four exits are a release, so writing it on the way out would lose it.
+`strikes_of()` exposes it for diagnostics and survives release. Doc 07 §12.2.1
+gained a paragraph on the record's scope and §12.2.2 one on the asymmetry:
+**damage is a property of the round and work is a property of the tick**, so
+`MAX_PENETRATIONS` persists and `MAX_SWEEP_SEGMENTS` does not.
+
+**What tests it.** `test_overpenetration_bounds.gd` gained a second fixture, and
+it is static on purpose — three heavy builds in a file 13 m apart, six parts on
+the centreline, one round handed straight to `ProjectileSystem.spawn` with no
+Effector Module, no bloom cone and no jam roll. It asserts, in this order: that
+six parts are on the line (so everything after it can fail), that four were
+struck, that it took more than one tick to strike them, and that the round was
+retired rather than left flying. Measured: **6 parts on the line, 4 resolved over
+2 ticks, round spent.**
+
+The first version of that fixture counted `part_damaged` and reported 18 packets
+across 13 slots from a single round. It was measuring doc 08 §4.4's spall cone,
+which is indistinguishable from a direct hit in the signal. The fixture reads the
+round's own strike record instead, which is the only observable that answers the
+question asked.
+
+
 ---
 
 ## 5. Deliberate readings, and the redundancies
@@ -691,6 +1301,24 @@ created there: they are physics, and they are what doc 02 §7.7 queries.
 `BuildContext.headless()` has none, and server-side blueprint re-validation uses
 it. Doc 02 §12 invariant 1 permits this precisely because the query may only
 *reject*, never *accept*.
+
+**`ProjectileSystem._already_struck` is unreachable against the shipped part
+set, and is kept anyway.** All twelve `ColliderProfile`s carry exactly one
+convex primitive; the sweep queries with `hit_from_inside = false` starting two
+centimetres past each impact; a straight ray therefore cannot report the same
+`(assembly_id, slot)` twice. Doc 07 §12.2.1 mandates the rule, Invariant I-1
+permits three primitives per part, and the guard costs a scan of at most four
+int32s — so this is a guard against geometry that has not been authored yet
+rather than dead code, and deleting it would be trading 32 KB and four
+comparisons for a defect that reappears with the first two-primitive part.
+
+What is *not* acceptable is calling it tested. §2.0 records how it went: the
+`same-part-twice-allowed` fault was caught by one assertion in one file, and
+§4.24's lifetime-scoped budget — a correct, unrelated change — desensitised that
+fixture and left the rule uncovered. `test_overpenetration_bounds` asserts it
+against the round's own strike record and says in the comment that the assertion
+cannot currently fail. **The condition that closes this is a part with two
+collider primitives along one axis**, not a cleverer fixture.
 
 **`ResolvedNode.is_face_paired` is over-specified, knowingly.** It tests
 adjacency in both directions *and* that the faces oppose, and any two imply the
@@ -861,6 +1489,41 @@ resolve path separately guards against a null graph.** These look like the same
 check and are not: the first covers an Assembly that left the match with a
 destruction already queued, the second an id that was never registered at all.
 
+**`CombatArena` is a fixture, and its tactics are a test pilot.** They read the
+world and write a `ControlInput` — the same eight numbers doc 05 §6.0 gives the
+AI driver — and they decide nothing about who wins. The rotary attitude
+controller in `_fly` is the one place that goes further than a person holding a
+key, and it is there because an Assembly that only flies when a human is flying
+it cannot be put in a test at all. When `src/ai/` is written, the tactics here
+are the reference for the contract and **not** for the content.
+
+**The rotary autopilot resolves a demand into a world-space thrust direction and
+then back out into swash angles.** That last step is what makes it stable: the
+cyclic demand carries the body's own tilt in it, so a gust, a recoil impulse, or
+a shot-off part is corrected by the same arithmetic that holds the hover.
+`_cyclic_for` inverts `RotorSolver.thrust_direction` exactly, which is why the
+controller can ask for a direction and get a demand that produces it rather than
+one that approaches it.
+
+**Every recipe puts its Effector Module on the nose at the Core Module's own
+height.** §4.14 is the arithmetic. It is the one deliberate departure from
+`test_duel.gd`'s build and it is what makes an engagement last long enough to be
+an engagement.
+
+**A disc's own AXLE face is its underside**, where a wheel's and a track's is
+their `-Z` flank and a limb's is its top. So a mast needs a station under it
+exactly as a limb needs one over it — and doc 01 §4.2's rule that a station
+cannot bolt on through a drive face means the station goes on the Core Module's
+*flank* at orientation 8, not on its roof. That in turn forces a **pair** of
+discs: a station on a flank carries its mast three quarters of a metre off the
+centreline and a single disc there rolls the Assembly over.
+
+**§7.4's power budget is checked against what the context holds at the moment of
+the placement.** The second rotor disc is refused if the Energy Cell that covers
+its draw has not been bolted on yet. That is the same rule a player meets in the
+garage and the same order they have to build in; it is not a validator quirk, and
+a layout function has to place supply before draw.
+
 **`tests/physics/` builds its ground out of a `StaticBody3D` slab and says so.**
 Document 09 owns Dynamic Ground Arrays and nothing in a test may pre-empt it. The
 slab is a fixture, on `LAYER_GROUND`, and is named as one in both files that
@@ -878,6 +1541,8 @@ build one.
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
 | `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37 planted faults; 33 unrun — §8 item 0 |
+| `tools/ci/sweeps/engagement_sweep.py` | Session 15's six plus session 16's, over every fix — §2.0 |
+| `JULES.md` | Read-only review charter for a second agent; grants no authority |
 
 ### Source
 - `src/core/data/` — `SyndicateConstants`, `PartEnums`, `CollisionLayers`,
@@ -907,6 +1572,22 @@ build one.
 - `src/combat/projectiles/` — **`ProjectileRegistry`, `ProjectileSystem` (new)**.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `project.godot` — autoloads, physics/display settings, all 37 input actions.
+
+Session 15 changed no `src/` file and recorded everything it found. **Session 16
+changed six, and amended four documents to match** — every change traceable to a
+measurement in §4.13 to §4.24:
+
+| File | What changed | Document |
+|---|---|---|
+| `ProjectileSystem` | within-tick sweep continuation, per-round strike record and strike count, two I-12 bounds, `strikes_of` | doc 07 §12.2, §12.2.1, §12.2.2; CLAUDE.md I-12 |
+| `HardpointState`, `EffectorSystem`, `AimSolver` | `solution_in_arc`; the fire gate refuses a clamped solution | doc 07 §4.3, §4.3.1 |
+| `MotiveSystem` | standing plants every foot; gait demand capped to the gait's own top speed; `PowerSystem.recompute` on structural events | doc 05 §13.4, §13.5 |
+| `GaitSolver` | `top_speed_mps`; turn-command sign | doc 05 §13.4, §13.5 |
+| `DamageResolver` | emits `assembly_terminated` with killer attribution | doc 04 §8.2 |
+
+Two things were deliberately **not** changed and are recorded instead: doc 01
+§10.5's 8° depression (§4.22), and doc 05 §13's missing heading authority
+(§4.21).
 
 `DamageResolver` covers doc 08 §3 to §8 in full: all five channels, §4's
 penetration curve and ricochet, §4.4's spall, §5's single-query blast with sorted
@@ -957,8 +1638,11 @@ add_child(detachment); add_child(mass); add_child(debris)
 #   runtime.add_child(controls)
 ```
 
-The combat half, added in session 14. `tests/physics/test_duel.gd` is the only
-thing that builds it today and is the reference:
+The combat half, added in session 14. `tests/combat_arena.gd` builds all of it
+— motion, control, damage, effectors, projectiles, ammunition — for any number of
+Assemblies of five different recipes, and is now the reference a match scene
+should be read against; `tests/physics/test_duel.gd` is the same wiring written
+out by hand for one pairing:
 
 ```gdscript
 var projectile_registry := ProjectileRegistry.new()
@@ -1021,7 +1705,13 @@ and `tools/author_locomotion_parts.gd` are the two committed generators. Both ar
 idempotent (with the caveat in §3.15).
 
 ### Tests
-`tests/test_case.gd` (assertions, and `physics_frames`) and `tests/source_scanner.gd`.
+`tests/test_case.gd` (assertions, and `physics_frames`), `tests/source_scanner.gd`,
+and **`tests/combat_arena.gd` (new)** — a whole engagement as a fixture: the
+ground slab, the four shared combat systems, five build recipes, spawn and
+teardown, a per-tick test pilot for all five locomotion families, and the
+telemetry the engagement files assert against. It is not discovered by the runner
+(`test_` prefix only) and it is the thing to reach for before writing a fourth
+duel by hand.
 
 Arch: `test_autoload_set`, `test_input_actions`, `test_project_settings`,
 `test_no_polling`, `test_no_global_rng`, `test_no_forbidden_patterns`,
@@ -1042,10 +1732,18 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
 `test_mass_recompute`, `test_island_detachment`, `test_debris_pool`,
 `test_motive_system`.
 
-Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly`,
+Physics: **`test_ambulatory_drift`** (§4.21's drift, pinned),
+**`test_overpenetration_bounds`** (§4.13's fix, guarded — the same fixture that
+recorded the defect, with every assertion inverted, plus §4.24's static file of
+three hulls that makes the penetration bound reachable),
+`test_locomotion_families`, `test_physics_frame`, `test_ground_assembly`,
 `test_motive_force_application`, `test_inertia_coupling`,
-`test_locomotion_behaviour`, **`test_duel`** — two Assemblies, real parts, real
-ground, real rounds, one winner.
+`test_locomotion_behaviour`, `test_duel` — two Assemblies, real parts, real
+ground, real rounds, one winner — and, new in session 15,
+**`test_family_duels`** (three engagements between different locomotion
+families, plus the nose-mount recoil measurement),
+and **`test_team_engagement`** (five-a-side combined arms and ten wheeled builds
+a side).
 
 `tests/generation/` is still empty.
 
@@ -1058,6 +1756,20 @@ ground, real rounds, one winner.
   intent and every family consumes it, but no scene constructs one, so the whole
   chain from a key to a wheel exists and has never been run by a person. That is
   §8's item 12, not a defect.
+- **There is no autopilot, and a rotary Assembly needs one to exist in a test.**
+  `CombatArena._fly` is three loops through `ControlInput` — collective on
+  altitude, cyclic on horizontal velocity, pedal on heading — and it is the only
+  thing in the repository that can hold a hover. When `src/ai/` is written it
+  should start from that shape; see §5.
+- ~~**A stationary ambulatory Assembly sits on its thigh colliders.**~~ Closed —
+  §4.20.
+- **The ambulatory gait drifts in yaw and no steering demand can null it.**
+  §4.21, measured at 170° over five seconds, and now the family's limiting
+  defect. It wants a heading term in doc 05 §13, which §13.8 currently forbids
+  by omission.
+- **An ambulatory Assembly still cannot be asked to turn and travel
+  independently** (§4.16). Less painful than it was — the one steering number
+  now turns the right way — but still one number doing two jobs.
 - **`handbrake` and `boost` have producers and no consumers.** `ControlSystem`
   writes both; nothing in `src/motion/` reads either. Doc 05 does not define what
   a handbrake does to a contact and inventing it here would be worse than the
@@ -1069,10 +1781,10 @@ ground, real rounds, one winner.
 - **`_surface_multiplier` returns 1.0 unconditionally.** The Ground Array of
   document 09 answers it. Routed through one named function so landing that
   document is a single edit.
-- **`PowerSystem.recompute` has no production caller.** It should run on
-  structural and band-change events; `DamageResolver` now produces both, so this
-  is a two-line subscription that has not been written. The tests call it directly
-  at spawn.
+- ~~**`PowerSystem.recompute` has no production caller.**~~ Closed —
+  `MotiveSystem` subscribes to `part_destroyed` and re-solves the budget on the
+  event. Band changes deliberately do not trigger it: no table in doc 08 scales
+  supply, so it would be work with no result.
 - **`_static_load_n` returns `rated_load_kg · g` rather than the distributed
   static load doc 05 §6.4 specifies,** and `SuspensionSolver.retune` is called
   per contact per tick rather than on mass recompute. Neither is wrong
@@ -1120,18 +1832,26 @@ ground, real rounds, one winner.
   repair path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so that a band transition upward fires the same signal as one
   downward, and nothing else may write integrity.
-- **A detonation has never been observed.** §8.5 queues one when a Prime Mover or
-  an Energy Cell is destroyed and `_flush_detonations` drains it at
-  `PRIORITY_DAMAGE`. The path is written and unit-tested at the arithmetic level;
-  no test has yet destroyed a Prime Mover on a real Assembly and watched the
-  blast take its neighbours.
-- **Spall has never been observed either.** §4.4 needs a round that
-  overpenetrates a part with live parts behind it inside the 2.4 m cone. The duel
-  fires at a Core Module with nothing behind it.
-- **No `assembly_terminated` producer.** `DamageResolver` emits `part_destroyed`
-  for slot 0 and I-2 says that ends the Assembly, but nothing turns that into the
-  match-level event. The duel reads the raw signal and calls it a win, which is a
-  test standing in for a match layer that does not exist.
+- ~~**A detonation has never been observed.**~~ Observed in session 15 — §4.17.
+  ~~**Spall has never been observed either.**~~ Also observed; every kinetic hit
+  in an engagement trace carries two to five spall packets behind it.
+- ~~**Overpenetration has no bound.**~~ Closed — §4.13.
+  ~~**A mount pinned on an elevation stop still reads `on_target`.**~~ Closed —
+  §4.19.
+- **The shipped weapon's lethality was the overpenetration bug.** §4.13's last
+  paragraph. With rounds stopping at the first part they defeat, nothing in the
+  shipped set kills anything. The bound at four parts is what keeps the fights
+  decidable, and moving it is a balance change that has to be measured as one.
+- **8° of depression is a real constraint and widening it is not free.** §4.22.
+  Measured, reverted, recorded in doc 01 §10.5; the decision is open.
+- ~~**No `assembly_terminated` producer.**~~ Closed — `DamageResolver` emits it
+  on slot 0 with the packet's source as `killer_id`, doc 04 §8.2 names it the
+  only producer, and `CombatArena` reads it rather than re-deriving I-2. What is
+  still missing is a *consumer*: nothing decides what a wreck does (§8 item 12a).
+- **Nothing knows what a team is.** `DamagePacket` carries a source Assembly and
+  the resolver never asks whose side it is on, so friendly fire in the
+  five-a-side and the brawl is decided purely by which hull the ray reaches
+  first. That is probably right, and it is undecided rather than decided.
 
 ### Data and the registry
 - **Rule 13 (tier scaling) has still never fired.** It needs two tiers of one
@@ -1146,6 +1866,10 @@ ground, real rounds, one winner.
   both are the teaching.
 - **Rule 2's reorder half is not implemented, and cannot be from data alone.** It
   needs a recorded baseline of shipped ids.
+- **An odd-width Effector Module cannot be centred on an even-width Core
+  Module**, and the resulting 0.125 m lateral muzzle offset yaws a light
+  Assembly. §4.14's last paragraph. It is a data decision in doc 01 and it has
+  not been made.
 - **Two Effector Modules exist, one per resolution path.** Doc 02 §7.6's
   muzzle-offset half-cell discrepancy is still unresolved and still flagged
   rather than silently fixed; the autocannon authors its muzzle half a cell past
@@ -1172,8 +1896,11 @@ ground, real rounds, one winner.
 - **Strain is attributed to the primary-tree edge only.** A wide panel bridged
   across two spars loads only the one doc 04 §3.2 picked. Spreading it is a change
   to §4.1.
-- **`assembly_terminated` reports `killer_id = 0`.** Attribution needs the damage
-  layer.
+- ~~**`assembly_terminated` reports `killer_id = 0`.**~~ Closed, session 16.
+  `DamageResolver` passes `packet.source_assembly_id` through, and the duels
+  assert the credited killer is the Assembly that was still standing. A kill with
+  no packet behind it — a fall, a self-detonation — still reports `0`, which is
+  correct and is what `CombatArena` prints as "X is destroyed" with no "by".
 
 ### Testing and scenes
 - **No scenes, and no main scene set.** What a scene still gates is the camera
@@ -1181,80 +1908,140 @@ ground, real rounds, one winner.
   look at.
 - **`tests/generation/` is empty.** The runner walks it and finds nothing.
 - **`test_constant_ownership` is not written.**
+- **CLAUDE.md §8's prohibited terms are enforced in `src/` and nowhere else, and
+  `tests/` has drifted.** §8 bans `walker` outright and bans `gun` in
+  identifiers; `tests/physics/test_locomotion_behaviour.gd` has `_build_walker`,
+  `WALKER_CORE` and `WALKER_SPAWN`, and `tests/physics/test_duel.gd` has
+  `GUN_KEY` and `_guns_a`. Session 15's files use the locomotion vocabulary
+  throughout (`AMBULATORY_*`, `_ambulatory_mirror`, `_rotary_mirror`) and kept
+  `GUN_KEY` only where `test_duel.gd` had already established it. Either
+  `test_no_forbidden_patterns` should scan `tests/` too, or §8 should say it
+  does not — right now the rule is binding and unenforced, which is the worst of
+  both.
 - **`run_all_checks.gd` still tolerates a runtime error on its own.** The shell
   wrapper catches it (§3.34). Worth knowing before running the `.gd` directly.
 - **`cam_orbit`/`cam_pan` have keyboard/mouse bindings only**, and several
   actions had no binding in doc 11 §7.1.
+- **The suite is now 4 min 15 s and `tests/physics/` is most of it.** Three of
+  the four multi-Assembly files soak for hundreds of ticks by construction, and
+  the two that time out — the ambulatory mirror and the five-a-side — spend their
+  full budget every run on purpose. If the wall time becomes a problem, the
+  honest lever is closing §4.13 and §4.15 so those two reach a decision, not
+  shortening their windows.
+- **Two engagements are asserted as they fail.** `test_family_duels`'s ambulatory
+  mirror and `test_team_engagement`'s five-a-side both assert that they run to
+  the timeout. Those assertions are correct today and are *supposed* to break:
+  when §4.13 or §4.15 is closed, both files fail, and the fix is to re-measure
+  and re-assert rather than to loosen them.
 
 ---
 
 ## 8. Suggested next steps, in dependency order
-
-1–10. ~~Lattice, parts, validator, graph, strain, detachment, runtime, mass,
+1–11. ~~Lattice, parts, validator, graph, strain, detachment, runtime, mass,
    debris, registry, the motion layer, four locomotion families, a physics step
-   inside the suite~~ — **done, sessions 1–10.**
+   inside the suite, `ControlSystem` and the input map~~ — **done, sessions
+   1–13.**
 
-0. **Run the rest of session 14's fault sweep, before anything else.** The
-    script is committed at `tools/ci/sweeps/combat_layer_sweep.py`; 4 of
-    its 37 faults ran and were caught (`cos-floor-removed`, `pen-defeat-removed`,
-    `partial-ramp-linear`, `surplus-uncapped`). The other 33 cover the ricochet
-    gate, the blast exponent, the impact threshold and cap, the band boundaries,
-    the armour band multiplier, resistance, destruction, the aim signs, the fire
-    gate, the swept ray, self-immunity, and §8.4's new band dispatch. **Until
-    they run, treat every one of those behaviours as untested** — §4.8 is what
-    that assumption cost the last time it was made. Budget three to four hours of
-    wall time, run it detached, and do not `git add -A` while it is going (§2).
+0. ~~**Bound overpenetration.**~~ — **done, sessions 15–16.** §4.13 closed the
+   grind and §4.24 closed the tick-scoped budget that a fault sweep found hiding
+   behind it. Doc 07 §12.2, §12.2.1 and §12.2.2 are amended, both bounds are in
+   Invariant I-12's table, and `test_overpenetration_bounds.gd` guards all of it.
 
-11. ~~`ControlSystem`, and the input map into it~~ — **done, session 13.** Doc 05
-    §15 owns the mapping, doc 11 §7.1 gained four tilt actions for the rotary
-    family's cyclic, and `tests/unit/test_control_system.gd` drives the real
-    input map with `Input.action_press` (§3.40).
+   **The balance pass it was budgeted with did not happen, and is still owed.**
+   §2.0's `no-overpenetration` fault is the evidence: with rounds stopping at the
+   first part they defeat, *no* engagement in the suite reaches a decision. That
+   means overpenetration is currently carrying the shipped set's entire lethality
+   — a 120-damage round against a 1450 Core Module is a dozen clean hits, and the
+   only reason a fight ends inside its window is that each round is worth up to
+   four of them. Any future change to `MAX_PENETRATIONS`, to §10.5's damage, or to
+   the spall fraction is a **balance change to all six engagements at once**, and
+   doc 01 §10.5 and doc 08 §4.4 are where it has to be argued.
 
-12. **The match scene.** Now unambiguously the largest thing between this project
-    and a person playing it, and every other item is easier once it exists. The
-    wiring is written out in §6 in full — motion, control, damage, effectors,
-    projectiles — and `tests/physics/test_duel.gd` is a working reference for the
-    combat half. What it gates: a camera, the debris visibility mechanism that
-    has never met one, the visual wheel that does not follow its contact, and
-    every feel question in §7 that a test cannot answer, §4.11 included.
+0a. ~~**Decide what `on_target` means for a mount on its stop.**~~ — **done,
+   session 16.** Doc 07 §4.3.1's `solution_in_arc` term; §4.19.
 
-12a. **`assembly_terminated`, and what a wreck does.** The duel reads
-    `part_destroyed` on slot 0 and calls it a win, standing in for a match layer
-    that does not exist. Deciding what death looks like — despawn, wreck,
-    spectate from the cab — is a small amount of code and a real design decision,
-    and the architecture does not constrain it: nothing detonates on losing a
-    Core Module, only on losing a Prime Mover or an Energy Cell.
+0b. **Run the rest of session 14's fault sweep.** The script is committed at
+   `tools/ci/sweeps/combat_layer_sweep.py`; 4 of its 37 faults ran and were
+   caught. The other 33 cover the ricochet gate, the blast exponent, the impact
+   threshold and cap, the band boundaries, the armour band multiplier,
+   resistance, destruction, the aim signs, the fire gate, the swept ray,
+   self-immunity, and §8.4's band dispatch. **Until they run, treat every one of
+   those behaviours as untested** — §4.8 is what that assumption cost the last
+   time it was made, and §2.0's three survivals are what it cost this time. At
+   roughly four and a half minutes a fault that is two and a half hours; split it
+   across sessions if it has to be, but record which ran.
+
+0c. **Sweep the bounds nobody reaches.** §2.0's new lesson generalises past the
+   penetration budget: Invariant I-12 lists eighteen bounds and the suite
+   demonstrably reaches almost none of them. Deleting each one in turn and
+   watching for green is a cheap way to find out which are load-bearing and
+   which are decoration, and the fixture that closes one has to be built to
+   *exceed* it — `test_overpenetration_bounds` asserts six parts are on the line
+   before it asserts four were struck, and that ordering is the technique.
+   Likeliest to be untested: chain-reaction depth 3, collapse cascades, melee
+   sweep segments, and the two debris caps.
+
+0d. **Widen the authored depression, or decide not to.** §4.22, and it is the
+   sole remaining reason the ambulatory mirror cannot reach a decision alongside
+   §4.21's drift. 8° is a turret ring on flat ground and nothing in this game is
+   on flat ground for long; the A/B is recorded in doc 01 §10.5 with the
+   measurement, and the change was reverted rather than rejected. It is a
+   `balance-review` decision, not an engineering one.
+
+12. **The match scene.** Still the largest thing between this project and a
+    person playing it, and every other item is easier once it exists. The wiring
+    is written out in §6 in full, and `tests/combat_arena.gd` is now a working
+    reference for all of it — ground, registry, resolver, projectiles, ammunition,
+    per-Assembly motion and effectors, spawn and teardown. What a scene still
+    gates: a camera, the debris visibility mechanism that has never met one, the
+    visual wheel that does not follow its contact, and every feel question in §7
+    that a test cannot answer, §4.14's rearward push included.
+
+12a. **What a wreck does.** Doc 04 §8.2's `assembly_terminated` now has a
+    producer — `DamageResolver`, when slot 0 is destroyed — and `CombatArena`
+    reads it for kill attribution rather than re-deriving Invariant I-2 from a
+    slot-0 `part_destroyed`. What is still missing is the *consumer*: deciding
+    what death looks like — despawn, wreck left in the road, spectate from the
+    cab — is a small amount of code and a real design decision. Nothing detonates
+    on losing a Core Module, only on losing a Prime Mover or an Energy Cell, and
+    §4.17 is what that looks like now that it has been seen.
 
 12b. **The melee sweep query.** `MeleeSolver` has computed everything except the
-    `intersect_shape` since session 8, and `EffectorSystem` now owns a space and
-    `DamageResolver` now consumes `channel_mix`. Both of its missing halves
-    arrived in session 14 and nothing has joined them.
+    `intersect_shape` since session 8; `EffectorSystem` owns a space and
+    `DamageResolver` consumes `channel_mix`. Both halves arrived in session 14
+    and nothing has joined them. `CombatArena` would give it a fight to be tested
+    in on the day it lands.
 
 12c. **`DotScheduler`.** Doc 08 §7.3, about sixty lines, and the difference
     between thermal damage that resolves correctly when submitted and thermal
     damage that actually burns.
 
-13. **The debris body shape query.** §5's uncaught fault, and cheap: a shape
+13. **`src/ai/`, starting from `CombatArena`'s pilot.** The tactics in
+    `command`, `_drive` and `_fly` are the only thing in the repository that
+    drives an Assembly of any family toward a target and shoots at it, and the
+    rotary autopilot is the only thing that can hold a hover at all. Promoting
+    them is mostly a question of what belongs in `AiDriver` and what belongs in a
+    stability-augmentation layer doc 05 does not have yet — see §5.
+
+14. **The debris body shape query.** §5's uncaught fault, and cheap: a shape
     query at a severed island's centre of mass must find the debris body, and
     writing the body's transform before its shapes must fail it.
 
-14. **A second steered wheeled row.** Makes one of §5's three surviving faults
+15. **A second steered wheeled row.** Makes one of §5's three surviving faults
     visible, gives rule 13 a second tier to check, and gives the garage a real
     choice on the front axle.
 
-15. **`DamageResolver` and doc 08.** The missing consumer for `channel_mix`, for
-    `PowerSystem.recompute`, for `MotiveSystem.on_band_changed`, and for
-    `assembly_terminated`'s killer attribution. Four systems waiting on one
-    document.
-
-16. **`EffectorSystem` and doc 07 §7.** The melee sweep query needs it, and it is
-    what gives `deposit_recoil_force` its first caller.
-
-17. **A second tier of the rotor family.** The cheapest way to make rule 13
+16. **A second tier of the rotor family.** The cheapest way to make rule 13
     non-vacuous, and `mot.rotor.main_single.t3` is worth authoring for its failure
-    mode alone.
+    mode alone. Session 15's twin-disc rotary build (§5) is the first thing in
+    the project that flies, and a single main disc with
+    `torque_reaction_ratio = 1.0` is the interesting opposite of it.
 
----
+17. **An attitude term for the ambulatory placement law, or a second steering
+    field.** §4.15 item 2 and §4.16. A walking Assembly with a nose-mounted
+    Effector Module leans past 20°, and `ControlInput` gives it no way to hold a
+    heading while travelling somewhere else. Both are doc 05 §13 changes and
+    both are what stands between the ambulatory family and being able to fight.
 
 ## 9. Conventions — follow these when adding to the suite
 
@@ -1272,6 +2059,25 @@ ground, real rounds, one winner.
 - Free every `Node` a test puts in the tree, and `dispose()` every
   `BuildContext`, in `after_all`. Release every held input action at the **top**
   of each test that presses one.
+
+### Engagement tests
+- **Use `CombatArena`.** It builds the ground, the four shared combat systems and
+  any number of Assemblies from five recipes, and it drives them. A fourth duel
+  written by hand is four hundred lines that will disagree with the other three.
+- **One arena at a time** (§3.45). Take the record, then close it.
+- **Record a property of the fixture when the fixture is built**, never in a test
+  method. The runner sorts methods, and by the time an alphabetically later one
+  runs the Assemblies have moved and one of them is wreckage. `Duel` and
+  `Engagement` exist for exactly this.
+- **Run each fight once and let every method assert one thing about the record.**
+  A fight is destructive and cannot be repeated. `_run_all()` guards it, which is
+  what lets eight methods report eight failures instead of one method reporting
+  the first of eight.
+- **Assert ranges, directions and pigeonholes, never exact counts** (§3.44).
+- **Assert the honest outcome.** Two of session 15's six engagements do not reach
+  a decision. Both are asserted as they behave, with the three measurements that
+  explain why, because a finding left in prose gets re-litigated and one left in
+  a test does not.
 
 ### Physics tests
 - **`await physics_frames(n)` is the only way to observe a force**, and it costs
@@ -1347,6 +2153,12 @@ ground, real rounds, one winner.
   test passes for a reason you cannot state in one sentence, the fixture is wrong.
 
 ### After writing
+- **Plant faults against laws, not against loops.** §2.0's two survivals are both
+  faults planted inside something that corrects itself: a closed-loop autopilot
+  absorbs an error in the quantity it is closing over, and a geometry with margin
+  absorbs a fault in the guard protecting the margin. Ask, before writing a
+  fault, *what would have to be true for nothing to notice this* — and if the
+  answer is "the loop compensates", plant it somewhere the loop is open.
 - **Plant faults, one at a time, and confirm something fails.** Not optional, and
   where most real defects here have been found. A scripted sweep is worth the ten
   minutes it takes to write — and **finish it in the session that starts it**
