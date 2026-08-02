@@ -30,7 +30,7 @@ PS = os.path.join(ROOT, "src/combat/projectiles/projectile_system.gd")
 AL = os.path.join(ROOT, "src/combat/effectors/ammo_ledger.gd")
 MS = os.path.join(ROOT, "src/motion/motive_system.gd")
 
-BASELINE = 4256  # tools/ci/run_all_checks.sh at the commit this landed
+BASELINE = 4342  # tools/ci/run_all_checks.sh at the commit this landed
 
 FAULTS = [
     # --- DamageResolver, §4 -------------------------------------------
