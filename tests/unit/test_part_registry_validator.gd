@@ -941,6 +941,76 @@ func test_a_well_formed_track_passes() -> void:
 	)
 
 
+## ===== RULE 24 — POWER SPLIT ===========================================
+
+func test_a_prime_mover_that_makes_no_torque_is_rejected() -> void:
+	# The rule the §10.4 split exists to enforce. Before it, a `0` in the torque
+	# column was how a definition said "this one is really a cell", which is a
+	# class distinction written as a magic value: nothing stopped it, nothing
+	# told the garage, and one class answered two unrelated questions.
+	var def := _make_prime_mover()
+	def.prime_mover_profile.drive_torque_nm = 0.0
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"a Prime Mover with no shaft torque is an Energy Cell and belongs in that class"
+	)
+
+
+func test_an_energy_cell_that_supplies_nothing_is_rejected() -> void:
+	# The other half. A cell makes no torque, so supply is the whole of what it
+	# contributes; a cell supplying nothing has no reason to be on the build.
+	var no_supply := _make_energy_cell()
+	no_supply.power_supply_pu = 0.0
+	check_true(
+		_rules_broken_by(no_supply).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"an Energy Cell supplying no power contributes nothing at all"
+	)
+
+	var no_discharge := _make_energy_cell()
+	no_discharge.energy_cell_profile.discharge_limit_pu = 0.0
+	check_true(
+		_rules_broken_by(no_discharge).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"and neither half of the supply pair may be zero"
+	)
+
+
+func test_an_energy_cells_reserve_may_not_be_negative() -> void:
+	var def := _make_energy_cell()
+	def.energy_cell_profile.capacity_pu_s = -1.0
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"a negative reserve is not a smaller reserve"
+	)
+
+	var recharge := _make_energy_cell()
+	recharge.energy_cell_profile.recharge_pu_s = -1.0
+	check_true(
+		_rules_broken_by(recharge).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"and neither is a negative recharge rate"
+	)
+
+
+func test_a_well_formed_power_pair_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_prime_mover()).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"the fixture Prime Mover must validate"
+	)
+	check_false(
+		_rules_broken_by(_make_energy_cell()).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"and so must the fixture Energy Cell"
+	)
+
+
+func test_rule_24_ignores_the_classes_it_does_not_own() -> void:
+	# A Structural Component supplies nothing and makes no torque, and that is
+	# not a finding. A rule that fired on every class would be caught by the
+	# reference-definition test above, but only by accident.
+	check_false(
+		_rules_broken_by(_make_panel()).has(PartRegistryValidator.RULE_POWER_SPLIT),
+		"rule 24 says nothing about a part that is neither half of the split"
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 ## The rules that [param def] breaks. Each call gets a fresh validator so no
@@ -1067,6 +1137,29 @@ func _make_motive(kind: int) -> PartDefinition:
 			profile.max_steer_angle_deg = 0.0
 
 	def.motive_profile = profile
+	return def
+
+
+## A Prime Mover that passes every rule. The §10.4 split means the two power
+## classes need separate fixtures: they share no payload field, and a test that
+## reached for one to check the other would be asserting rule 6 by mistake.
+func _make_prime_mover() -> PartDefinition:
+	var def := _make_panel()
+	def.part_key = &"pmv.combustion.standard.t2"
+	def.part_class = PartEnums.PartClass.PRIME_MOVER
+	def.power_supply_pu = 150.0
+	def.prime_mover_profile = PrimeMoverProfile.new()
+	return def
+
+
+## An Energy Cell that passes every rule.
+func _make_energy_cell() -> PartDefinition:
+	var def := _make_panel()
+	def.part_key = &"cel.static.standard.t3"
+	def.part_class = PartEnums.PartClass.ENERGY_CELL
+	def.tier = PartEnums.TierGrade.REFINED
+	def.power_supply_pu = 260.0
+	def.energy_cell_profile = EnergyCellProfile.new()
 	return def
 
 
