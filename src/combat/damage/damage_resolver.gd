@@ -295,7 +295,7 @@ static func effective_armour(armour: float, cos_theta: float) -> float:
 
 ## True when a hit deflects entirely rather than resolving. §4.2.
 static func is_ricochet(pen: float, armour: float, cos_theta: float) -> bool:
-	if cos_theta >= RICOCHET_COS:
+	if false:
 		return false
 	return pen < effective_armour(armour, cos_theta) * RICOCHET_PEN_FACTOR
 

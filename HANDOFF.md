@@ -4,7 +4,8 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 13 (session 12's fault sweep finished, and `ControlSystem`).
+Last updated: session 14 (the damage layer, direct-fire effectors, and the first
+duel between two Assemblies).
 
 ---
 
@@ -37,7 +38,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**48 files, 3683 checks, 0 failures.**
+**51 files, 4241 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34). A run takes about 100 s, because
@@ -430,6 +431,30 @@ All verified against 4.7.1 in this repo, not recalled.
     test: the runner sorts the methods, and a test that fails part-way through
     would otherwise leave a key held for the next one.
 
+41. **`RigidBody3D.freeze = true` makes a clean static test platform**, and it
+    keeps its collision shapes, its transform, and its visibility to every query.
+    A frozen body still gets hit by a swept ray and still resolves damage; what it
+    stops doing is responding to impulses. That is what `tests/physics/test_duel.gd`
+    uses to take §4.11's recoil out of a test whose subject is everything
+    downstream of the muzzle. **Freeze after the settle, not before** — a body
+    frozen in mid-air never finds its suspension and fires from a pose no real
+    build would be in.
+
+42. **A test method's name decides when it runs, and `before_all` is the only
+    place a pre-condition can be measured.** The runner sorts methods, so
+    `test_the_two_assemblies_are_built_and_separate` runs *after*
+    `test_they_close_shoot_and_one_of_them_wins` — by which time one of them has
+    driven several metres and the separation it was asserting is gone. A property
+    of the fixture is recorded when the fixture is built, not when a test happens
+    to ask.
+
+43. **A destructive fixture needs a run-once guard, not a per-test rebuild.** The
+    duel cannot be repeated: an Assembly whose Core Module has gone cannot be put
+    back. `_fight()` runs on the first call and returns immediately after, which
+    is what lets five test methods each assert one thing about the same run
+    instead of one method asserting five things and reporting only the first
+    failure.
+
 ---
 
 ## 4. What the physics tests found, and what was decided
@@ -588,7 +613,47 @@ own lateral grip is a strong yaw damper and it swamps the aid quickly.
 
 Rule 24, added the same session, had no test at all. Both halves are covered now.
 
-### 4.9 What the four families do now, measured
+### 4.10 Found — the aim decomposition solved for the wrong forward (session 14)
+
+Doc 07 §4.2 writes the yaw decomposition as `atan2(x, z)`, which solves for a
+mount whose forward is `+Z`. But §7.2 emits along `-muzzle_xform.basis.z`, and
+every Effector Module in the registry — the beam edge and now the autocannon —
+authors its barrel or its blade along its own `-Z`. Two of those three agree and
+the decomposition was the odd one out.
+
+Taken literally it points a turret **exactly backwards**. Nothing caught it,
+because nothing had ever asked a hardpoint to point at anything: the melee
+solver does not use the decomposition and no ballistic module was authored.
+
+`AimSolver.angles_for` uses `atan2(-x, -z)` and records the correction, and
+`test_aim_solver` asserts the property a sign error cannot satisfy — that
+`angles_for` and `direction_for` are genuine inverses over directions spread
+across the sphere. Either half checked alone passes with both of them wrong.
+
+### 4.11 Measured — the shipped chassis cannot carry the shipped autocannon
+
+The first thing the duel found, before it found anything about damage.
+
+§10.5 authors `eff.ballistic.autocannon_30.t3` at **1450 N·s of recoil per round
+on a 0.14 s cycle**. Doc 07 §8 applies that as an impulse at the muzzle, which is
+where it belongs. On the four-contact wheeled build the physics suite uses, the
+muzzle sits about two metres above the centre of mass and two metres forward of
+it, and the Assembly's pitch inertia is roughly 800 kg·m².
+
+**One round is 3.6 rad/s of pitch.** Measured: the nose comes up through 70
+degrees on the first shot and the build never fires a second aimed round. It also
+takes 1.3 m/s of backwards velocity per shot, which at 7.1 rounds a second is
+about one g of continuous rearward acceleration on an 1100 kg vehicle.
+
+Nothing is wrong with any of it. The arithmetic says so before the simulation
+does, and it is what a 30 mm autocannon does to a light truck. What it means is a
+**design decision that has not been made**: the shipped Core Module wants either
+a much heavier hull under it or a much smaller gun on it. `tests/physics/test_duel.gd`
+freezes its shooter, says so in its docstring, and asserts everything downstream
+of the muzzle; the recoil question is left where it belongs, which is with
+whoever decides what this game's vehicles weigh.
+
+### 4.12 What the four families do now, measured
 
 | Family | Behaviour | Where |
 |---|---|---|
@@ -697,6 +762,55 @@ so a mode switch would have to pick a winner. Each family reads the fields it
 uses and ignores the rest, which is the same discipline doc 05 §6.0 rule 1 asks
 of the force side.
 
+**`DamageResolver` and `ProjectileRegistry` are objects, not autoloads.** Doc 08
+§3.1 writes `AssemblyRegistry.get(aid)` and its own amendment records why that
+became `registry.get_runtime(aid)` on an ordinary `RefCounted`: CLAUDE.md §4
+freezes the autoload list at eight and a `static var` holding the same dictionary
+is that global with less of the visibility that makes an autoload reviewable. The
+resolver needs the registry, so it is one too. The match scene owns both and
+hands them out.
+
+**Band transitions reach the caching systems as a signal, not as a direct call.**
+Doc 08 §8.4 writes `assembly.motive_system.on_band_changed(slot, after)`, which
+would need the resolver to hold a reference to every per-Assembly system in the
+match. That is the same shape it declined for the registry. `MotiveSystem` and
+`EffectorSystem` subscribe to `EventBus.part_band_changed` and filter on their
+own assembly id. **This was missing until session 14 closed it**, and while it was
+missing the multipliers were written once at registration and never again — a
+Motive Assembly could be shot to pieces and keep full traction, and an Effector
+Module could never jam.
+
+**Blast occlusion walks parts, not lattice cells.** Doc 08 §5.2 walks the
+occupancy lattice with the §7.6 DDA. The occupancy array belongs to the
+`BuildContext` the Assembly was adopted from and does not survive into the match,
+and the question being asked is "how much metal is in the way" — a part is the
+unit metal comes in. A part-level walk gives the same answer at the resolution
+that matters and needs no structure the match does not already have.
+
+**Non-kinetic damage meets armour on a curve, not a threshold.** §4's penetration
+ratio needs a penetration figure and blast, impact and thermal have none. They go
+through `armour / (armour + ARMOUR_HALF_ABSORPTION)`, which never reaches 1.0 —
+so a heavily armoured part is resistant to fire and never immune to it. The
+half-absorption point is one armour rating and the constant is owned by the
+resolver, because doc 08 specifies the channels and leaves this join open.
+
+**A projectile is an index, not a node.** Doc 07 §12.1. `ProjectileSystem` holds
+flat arrays and one loop; the pool recycles the *oldest* round on exhaustion
+rather than dropping the newest, because a dropped shot is one a player fired
+that silently never existed. The victim is chosen by a ring cursor so it is O(1)
+and deterministic — a server and a predicting client must recycle the same slot
+or their pools diverge for the rest of the match.
+
+**Hit detection is a swept ray and can never be a point test.** At 940 m/s a
+round covers 15.7 m in a tick. This is the one place in the combat layer where
+the obvious implementation is not merely slower but silently wrong, and the
+symptom is rounds passing through everything and landing in the terrain behind.
+
+**Ammunition is held per projectile type per Assembly, not per module.** Two
+autocannon firing the same round draw from one store, which is what makes
+carrying a second one a trade against the Support Modules that hold the rounds
+rather than a free doubling of output.
+
 **The coupling torque runs before the input guard.** It is a property of the
 Assembly's mass distribution, not of what it is being asked to do; a wreck
 tumbling with nobody at the controls is exactly where it is most visible.
@@ -775,10 +889,20 @@ build one.
   `TractionControl`, `RotorSolver`, `RotorDiscState`, `GaitSolver`, `LimbState`,
   `TrackSolver`, `AeroSolver`, `PowerSystem`, `ControlInput`,
   **`ControlSystem` (new)**, `MotiveSystem`.
-- `src/combat/damage/` — `DegradationTable`.
-- `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`.
+- `src/combat/damage/` — `DegradationTable`, **`DamagePacket`, `PacketFlags`,
+  `DamageOutcome`, `DamageResolver` (new)**.
+- `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`, **`HardpointState`,
+  `AimSolver`, `AmmoLedger`, `EffectorSystem` (new)**.
+- `src/combat/projectiles/` — **`ProjectileRegistry`, `ProjectileSystem` (new)**.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
-- `project.godot` — autoloads, physics/display settings, all **37** input actions.
+- `project.godot` — autoloads, physics/display settings, all 37 input actions.
+
+`DamageResolver` covers doc 08 §3 to §8 in full: all five channels, §4's
+penetration curve and ricochet, §4.4's spall, §5's single-query blast with sorted
+resolution, §6's rate-limited impact, §7's thermal hysteresis and corrosive
+decay, §8.4's transitions and §8.5's queued detonations. The `src/combat/`
+effector and projectile set covers doc 07 §2, §3, §4, §6, §7, §8, §9 and §12 for
+**direct fire only**.
 
 `ChassisGraph` covers doc 04 §2–§4 in full; `DetachmentSolver` and
 `DetachmentScheduler` cover §5 and §7.2; `IslandDetacher`, `DebrisPool` and
@@ -822,6 +946,42 @@ add_child(detachment); add_child(mass); add_child(debris)
 #   runtime.add_child(controls)
 ```
 
+The combat half, added in session 14. `tests/physics/test_duel.gd` is the only
+thing that builds it today and is the reference:
+
+```gdscript
+var projectile_registry := ProjectileRegistry.new()
+projectile_registry.register(load("res://data/projectiles/proj.kinetic.ap_30.tres"))
+projectile_registry.seal()
+
+var resolver := DamageResolver.new()
+resolver.registry = registry                      # the AssemblyRegistry above
+resolver.space = world.direct_space_state         # §5.3's blast query
+add_child(resolver)
+
+var projectiles := ProjectileSystem.new()
+projectiles.registry = projectile_registry
+projectiles.resolver = resolver
+projectiles.space = world.direct_space_state
+add_child(projectiles)
+
+var ammo := AmmoLedger.new()                      # one, shared by every Assembly
+
+# then, per Assembly carrying Effector Modules:
+#   var guns := EffectorSystem.new()
+#   guns.runtime = runtime
+#   guns.projectiles = projectiles
+#   guns.registry = projectile_registry
+#   guns.ammo = ammo
+#   guns.seed_rng(match_seed ^ runtime.assembly_id)   # I-9; never the global RNG
+#   runtime.add_child(guns)
+#   for each Effector Module slot: guns.register(slot, def)
+#   ammo.add(runtime.assembly_id, projectile_registry.id_of(&"proj.kinetic.ap_30"), n)
+#
+# per tick: guns.aim_point_world = <camera ray hit, or the AI's intercept>
+#           guns.set_trigger(0, <effector_fire_primary held>)
+```
+
 ### Data
 Eleven definitions, in manifest order. **Append only** — `part_def_id` is the
 manifest index and is serialised.
@@ -839,6 +999,11 @@ manifest index and is serialised.
 | `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 72 cells, 2.4 m reach, 75% thermal mix |
 | `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 24 cells, zero steer lock — the rear axle a steering build needs |
 | `cel.static.standard.t3` | Energy Cell | 48 cells, 260 PU, no torque, 900 PU·s reserve |
+| `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 180 cells, 196 kg, 940 m/s, 0.14 s cycle, 1450 N·s recoil — see §4.11 |
+
+One projectile, in `data/projectiles/`: `proj.kinetic.ap_30`, 120 damage, 95
+penetration, overpenetrating. `tools/author_combat_parts.gd` is its generator and
+the autocannon's.
 
 `tools/part_authoring.gd` holds the shared derivations; `tools/author_first_parts.gd`
 and `tools/author_locomotion_parts.gd` are the two committed generators. Both are
@@ -859,7 +1024,7 @@ Unit: `test_assembly_registry`, `test_lattice_math`, `test_orientation_table`,
 `test_mass_solver`, `test_degradation_table`, `test_suspension_solver`,
 `test_traction_solver`, **`test_traction_control`**, `test_rotor_solver`,
 `test_gait_solver`, `test_track_solver`, `test_melee_solver`,
-**`test_control_system`**.
+`test_control_system`, **`test_damage_resolver`**, **`test_aim_solver`**.
 
 Integration: `test_tick_ordering`, `test_part_registry_data`,
 `test_placement_validator`, `test_detachment_scheduler`, `test_assembly_runtime`,
@@ -868,7 +1033,8 @@ Integration: `test_tick_ordering`, `test_part_registry_data`,
 
 Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly`,
 `test_motive_force_application`, `test_inertia_coupling`,
-`test_locomotion_behaviour`.
+`test_locomotion_behaviour`, **`test_duel`** — two Assemblies, real parts, real
+ground, real rounds, one winner.
 
 `tests/generation/` is still empty.
 
@@ -892,9 +1058,10 @@ Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly
 - **`_surface_multiplier` returns 1.0 unconditionally.** The Ground Array of
   document 09 answers it. Routed through one named function so landing that
   document is a single edit.
-- **`PowerSystem.recompute` has no production caller.** It is wired on structural
-  and band-change events, and `DamageResolver` does not exist. The physics tests
-  call it directly at spawn.
+- **`PowerSystem.recompute` has no production caller.** It should run on
+  structural and band-change events; `DamageResolver` now produces both, so this
+  is a two-line subscription that has not been written. The tests call it directly
+  at spawn.
 - **`_static_load_n` returns `rated_load_kg · g` rather than the distributed
   static load doc 05 §6.4 specifies,** and `SuspensionSolver.retune` is called
   per contact per tick rather than on mass recompute. Neither is wrong
@@ -924,13 +1091,36 @@ Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly
   `throttle_response_s`.** Drive torque is a flat figure scaled by the throttle,
   so a Prime Mover has no power band and no lag. That is doc 05 §7.5 work.
 
-### Melee
-- **`MeleeSolver` computes everything except the query.** The swept-capsule
-  `intersect_shape` belongs to the effector system, which owns the space and does
-  not exist. `EffectorSystem`, `HardpointState`, `AimSolver`, and `AmmoLedger` are
-  all doc 07 and all unwritten.
-- **Nothing consumes `channel_mix`.** `DamageResolver` (doc 08 §5) is where the
-  packets go, and it is unwritten.
+### Combat
+- **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
+  ordnance, §10's AI target acquisition and §11's prediction are not written. A
+  module of a kind that needs one aims correctly and declines to fire, which is
+  the failure mode to prefer.
+- **`MeleeSolver` still computes everything except the query.** `EffectorSystem`
+  now exists and owns a space, so the swept-capsule `intersect_shape` of §15.3
+  finally has somewhere to live — and `channel_mix` finally has a consumer in
+  `DamageResolver`. Wiring the two together is the cheapest combat item left.
+- **`DotScheduler` is not written.** Doc 08 §7.3. Thermal and corrosive packets
+  resolve correctly *when submitted* — the hysteresis, the heat accumulation and
+  the resistance decay are all there and tested — but nothing submits them over
+  time, so nothing burns. It is a flat list processed at 10 Hz and it is about
+  sixty lines.
+- **`VisualDamageController` is not written** (doc 08 §9) and neither is §10's
+  repair path. Repair is the more interesting of the two: it must route through
+  `DamageResolver` so that a band transition upward fires the same signal as one
+  downward, and nothing else may write integrity.
+- **A detonation has never been observed.** §8.5 queues one when a Prime Mover or
+  an Energy Cell is destroyed and `_flush_detonations` drains it at
+  `PRIORITY_DAMAGE`. The path is written and unit-tested at the arithmetic level;
+  no test has yet destroyed a Prime Mover on a real Assembly and watched the
+  blast take its neighbours.
+- **Spall has never been observed either.** §4.4 needs a round that
+  overpenetrates a part with live parts behind it inside the 2.4 m cone. The duel
+  fires at a Core Module with nothing behind it.
+- **No `assembly_terminated` producer.** `DamageResolver` emits `part_destroyed`
+  for slot 0 and I-2 says that ends the Assembly, but nothing turns that into the
+  match-level event. The duel reads the raw signal and calls it a win, which is a
+  test standing in for a match layer that does not exist.
 
 ### Data and the registry
 - **Rule 13 (tier scaling) has still never fired.** It needs two tiers of one
@@ -945,9 +1135,14 @@ Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly
   both are the teaching.
 - **Rule 2's reorder half is not implemented, and cannot be from data alone.** It
   needs a recorded baseline of shipped ids.
-- **Only one Effector Module exists and it is melee.** The ballistic path has no
-  authored user. Doc 02 §7.6's muzzle-offset half-cell discrepancy is unresolved
-  and still flagged rather than silently fixed.
+- **Two Effector Modules exist, one per resolution path.** Doc 02 §7.6's
+  muzzle-offset half-cell discrepancy is still unresolved and still flagged
+  rather than silently fixed; the autocannon authors its muzzle half a cell past
+  its last occupied cell, which is a choice made in the generator and commented
+  there.
+- **§4.11 is an open balance question, not a defect.** The shipped chassis cannot
+  fire the shipped autocannon without flipping. Either a heavier hull or a
+  lighter gun; someone has to pick.
 
 ### The lattice and the garage
 - **`BuildCommand` and the undo stack (doc 02 §9.3) are not written.**
@@ -993,12 +1188,29 @@ Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly
     family's cyclic, and `tests/unit/test_control_system.gd` drives the real
     input map with `Input.action_press` (§3.40).
 
-12. **The match scene.** Now the single largest thing between this project and a
-    person driving something, and every other item below is easier once it
-    exists. The wiring is written out in §6 in full, including the client-only
-    `ControlSystem`. What it gates: a camera, the debris visibility mechanism
-    that has never met one, the visual wheel that does not yet follow its
-    contact, and every feel question in §7 that a test cannot answer.
+12. **The match scene.** Now unambiguously the largest thing between this project
+    and a person playing it, and every other item is easier once it exists. The
+    wiring is written out in §6 in full — motion, control, damage, effectors,
+    projectiles — and `tests/physics/test_duel.gd` is a working reference for the
+    combat half. What it gates: a camera, the debris visibility mechanism that
+    has never met one, the visual wheel that does not follow its contact, and
+    every feel question in §7 that a test cannot answer, §4.11 included.
+
+12a. **`assembly_terminated`, and what a wreck does.** The duel reads
+    `part_destroyed` on slot 0 and calls it a win, standing in for a match layer
+    that does not exist. Deciding what death looks like — despawn, wreck,
+    spectate from the cab — is a small amount of code and a real design decision,
+    and the architecture does not constrain it: nothing detonates on losing a
+    Core Module, only on losing a Prime Mover or an Energy Cell.
+
+12b. **The melee sweep query.** `MeleeSolver` has computed everything except the
+    `intersect_shape` since session 8, and `EffectorSystem` now owns a space and
+    `DamageResolver` now consumes `channel_mix`. Both of its missing halves
+    arrived in session 14 and nothing has joined them.
+
+12c. **`DotScheduler`.** Doc 08 §7.3, about sixty lines, and the difference
+    between thermal damage that resolves correctly when submitted and thermal
+    damage that actually burns.
 
 13. **The debris body shape query.** §5's uncaught fault, and cheap: a shape
     query at a severed island's centre of mass must find the debris body, and
@@ -1059,6 +1271,11 @@ Physics: `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly
 - **Build the ground out of a `StaticBody3D` slab and name it a fixture.**
   Document 09 owns Dynamic Ground Arrays.
 - **A physics test that plants no fault is not finished.**
+- **A sweep gets slower as the suite grows.** Session 13's cost about 2.5 minutes
+  a fault; session 14's, with the duel in the suite, costs nearer six. Thirty-odd
+  faults is then most of an afternoon of wall time. Plant fewer and better ones,
+  scope them to the code that changed, and start the sweep before writing the
+  documentation rather than after.
 
 ### What to assert
 - **Assert the rejection, not just the acceptance.** Every check in
