@@ -142,7 +142,7 @@ func test_an_idle_tick_announces_nothing() -> void:
 
 
 func test_a_death_during_a_resolve_lands_in_the_next_tick() -> void:
-	# A severed Power Plant detonates and kills more parts. Those deaths must
+	# A severed Prime Mover detonates and kills more parts. Those deaths must
 	# not re-enter the pass that caused them; they resolve on the tick after.
 	var g := _chain(4)
 	var s := _scheduler(g)
@@ -292,7 +292,7 @@ func test_repeated_resolves_do_not_drift() -> void:
 
 
 ## Re-emits a destruction from inside the resolve pass, standing in for the
-## severed Power Plant of §5.6.
+## severed Prime Mover of §5.6.
 ##
 ## A distinct object rather than a bound [Callable] because
 ## [method Callable.bind] does not make two Callables compare unequal.

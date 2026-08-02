@@ -4,7 +4,8 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 9 (the motion layer, and four locomotion families).
+Last updated: session 12 (the Power Plant class split in two, and traction
+control).
 
 ---
 
@@ -37,11 +38,13 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**41 files, 3359 checks, 0 failures.**
+**46 files, 3580 checks, 0 failures.**
 
-`run_all_checks.sh` now **fails on any engine error printed during the suite**,
-not only on recorded assertion failures. See §3.34 for why — it closes a hole
-that made a whole class of fault invisible.
+`run_all_checks.sh` fails on any engine error printed during the suite, not only
+on recorded assertion failures (§3.34). A run now takes about 90 s rather than
+10 s, because `tests/physics/` waits on real ticks at 60 Hz — see §3.36 before
+adding to it. Build a fixture once in `before_all` and reset it per test; four
+tests that each spawn an Assembly spawn them on top of each other.
 
 ---
 
@@ -49,17 +52,32 @@ that made a whole class of fault invisible.
 
 Every session verifies the suite by **planting faults one at a time and
 confirming something fails**. A test asserted only against correct code passes
-just as happily with its subject commented out. Roughly 365 faults have been
-planted across eight sessions; the table below is the accumulated record, grouped
-by catcher rather than by session, because what matters to the next session is
-which test defends which behaviour.
+just as happily with its subject commented out. Roughly 404 faults have been
+planted across eleven working sessions; the table below is the accumulated record,
+grouped by catcher rather than by session, because what matters to the next
+session is which test defends which behaviour.
 
-Session 9 planted **142** across three passes. The first found 14 survivors, and
-the way they resolved is the useful part: **six were dead code and were deleted**,
-one was two owners of one invariant and was consolidated, two were genuine test
-gaps, four were a whole validator rule set with no fault coverage at all, and one
-turned out to be invisible to the harness rather than untested — which is how
-§3.34 got found.
+Session 10 planted 21 and session 11 planted 13. Two survive across both and are
+listed at the end of the table with their reasons. The lessons worth carrying:
+
+- **A test that reads the same constant the source does asserts nothing.** The
+  probe-radius check imported `AssemblyRuntime.PROBE_RADIUS_RATIO`, so a probe
+  five times too large moved the expectation with it. A published constant is
+  asserted against its document once, by value.
+- **A count is not a pairing, and a fixture can hide even the fixed test.**
+  `axle_pair_count() == 2` passes whether four probes were matched across the
+  Assembly or down one flank; and with the discs committed left-front,
+  right-front, left-rear, right-rear, the pairing loop's own ascending order
+  *is* the right answer, so deleting §6.5's side test changed nothing.
+- **Pick the assertion that the wrong sign cannot satisfy.** A flipped coupling
+  torque tumbles the Assembly and leaves the energy roughly alone; only
+  world-frame angular momentum tells the two apart. The same shape of question
+  caught the steering sign and session 9's traction sign.
+- **`taken[i] = 1` in the pairing loop was dead** and was deleted rather than
+  tested: the outer loop visits each index once and ascending.
+- **Sweeps confirm; integration finds.** Not one of §4's seven findings came from
+  a fault sweep. Every one came from the first test that assembled the real
+  pieces and asked for a real behaviour.
 
 | Test | Faults it has caught |
 |---|---|
@@ -90,12 +108,22 @@ turned out to be invisible to the harness rather than untested — which is how
 | `test_gait_solver` | **right side not reversed**; phase offsets not spread; sides not partitioned; fore-aft tie not broken on slot; standing deadband removed; cadence unclamped; clock not wrapping; neutral point using a whole stance; velocity-error correction dropped; step length unclamped; leg reach unclamped; frozen gait still stepping; turn command ignored; stance spring allowed to pull; foot force uncapped; stance damper dropped; foot μ ignoring the band; friction cone never limiting; an upward-pulling foot still transmitting; swing arc not a parabola |
 | `test_track_solver` | stations not centred on the patch; stations all at the pivot; authority not tapering; taper ignoring speed magnitude; steer command unclamped; internal loss charged after the split; bias not differentiating the sides; slew resistance uncapped; slew resistance not opposing; slew ignoring patch length; slew ignoring normal load; the centreline counting as right; station load divided by count |
 | `test_melee_solver` | cycle multiplier ignored; swing arc not centred; edge not offset along its reach; sample count unbounded; samples not reaching the end of the swing; channel mix ignored; the mix sum hard-coded to one; sustained flag ignored; closing-speed gate inverted; the terminal swing-progress assignment removed; reaction not opposing the strike; energised draw always charged; `begin` not clearing the target set; target budget not enforced |
-| `test_motive_system` | slot list not sorted; duplicate registration appending; the class guard removed (caught only since §3.34); a tracked part given one contact; a rotary part given a contact; station index never advancing; a band change writing only traction; unregister leaving the slot; unregister not re-phasing the gait; unregister leaving the disc state; the hip not resolved from the placement |
+| `test_motive_system` | slot list not sorted; duplicate registration appending; the class guard removed (caught only since §3.34); a tracked part given one contact; a rotary part given a contact; station index never advancing; a band change writing only traction; unregister leaving the slot; unregister not re-phasing the gait; unregister leaving the disc state; the hip not resolved from the placement; contacts never bound to their probes; any two probes pairing regardless of side; a probe taken into two pairs; pairs never built at registration |
 | `test_locomotion_families` | a locomotion family mis-mapped in `LOCOMOTION_OF_MOTIVE_KIND`; `ENERGY_MELEE` not recognised as melee; a family payload keyed on the wrong kind; rotor max thrust dropping the density; stance rest length as the whole leg; stance duration ignoring duty factor; melee mix sum hard-coded to one |
+| `test_physics_frame` | `physics_frames` waiting for nothing |
+| `test_ground_assembly` | steering turning the wrong way; the steer angle snapping instead of rate limiting; the contact frame never steered; probe sphere far larger than the contact; every probe sweeping from the Assembly origin; probe reach too short to reach the ground; probes masked to hulls instead of ground; probes parented outside `MotiveProbes`; no part getting a probe at all; contacts never bound to their probes; any two probes pairing regardless of side; axle pair ends swapped; pairs never built at registration |
+| `test_motive_force_application` | a disc given a ground probe |
+| `test_inertia_coupling` | coupling torque unclamped; identically zero; applied in the body frame; angular velocity never rotated into the body frame; never applied at all; evaluated at the tick boundary rather than the midpoint; **sign flipped** |
+| *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
-| *nothing* | debris body given its transform before its shapes — see §5 |
+| `test_locomotion_behaviour` | both track flanks driven alike; flanks swapped; the steer command never reaching the mixer; every bogie counted as one flank; a limb's probe sized from suspension it has none of; a limb sweeping from the Assembly origin |
+| `test_part_registry_validator` | rule 23 never firing |
+| `test_ground_assembly` (§7.6) | the slip limiter never cutting; the limiter ignoring its authority; the yaw target pointing the wrong way; the corrective brake applied to the flank that adds to the spin |
+| *nothing* | a probe claimed into two axle pairs — see §5 |
+| *nothing* | anti-roll pushing both ends of an axle the same way — see §5 |
+| *nothing* | a hard-coded steer lock — see §5 |
 
-### 2.1 What five sessions learned from faults that were *not* caught
+### 2.1 What six sessions learned from faults that were *not* caught
 
 The question to ask first is never "how do I test this" — it is **"is this code
 dead?"** Across sessions 4 to 7 that question deleted a depth sort, a duplicate
@@ -108,47 +136,33 @@ The patterns worth repeating:
 - **A fixture that cannot distinguish the rule from its inverse is not a test.**
   Session 5's shape-transform test used a part at orientation 0, under which the
   two composition orders differ by an addition that commutes. Session 6 walked
-  into the same trap twice in one file. Session 9's version of the trap was the
-  gait: a four-limb phase test that only asserted "the offsets are all different"
-  would pass against an ordering with the right side *not* reversed, which is the
-  one thing the rule exists to do. The test that works asserts *which* pair is
-  adjacent in phase. Build fixtures where the rule under test and the thing it
-  would fall back to disagree.
-- **Two owners of one invariant is worse than either alone.** Nine found so far,
-  three of them in session 9. One was in the tests rather than the source: a new
-  `test_registry_publishes_every_shipped_part` walked the whole manifest and
-  asserted the key-to-id map, which the existing `test_part_ids_follow_manifest_order`
-  already did for two of the nine parts; the old test was narrowed to the reverse
-  direction and the reserved id rather than left to duplicate it. The other two
-  were in `MotiveSystem.register`, which guarded both the part class and the null
-  profile — indistinguishable, because both return without registering — and in
-  `MeleeSolver.advance`, which clamped swing progress on the assignment *and*
-  pinned it to 1.0 in the branch below.
-- **Six pieces of dead code were deleted rather than tested.** All six were
-  guards whose condition the surrounding arithmetic already produced: a slew
-  early-out for a stationary hull (`signf(0.0)` is `0.0`), an airborne-track
-  early-out (a zero load makes a zero magnitude), a `READY` early-out in a match
-  statement with no `READY` arm, a zero-travel guard before
-  `Vector3.normalized()` (which returns zero for zero), a `duplicate()` on a
-  returned `Packed*Array` (which copies on assignment anyway — §3.9), and a lower
-  clamp on a quantity that only ever rises from zero. Every one of them read as
-  prudence. Reaching for "document the redundancy" before "delete it" is how
-  untested code accumulates.
+  into the same trap twice in one file. Session 9's version was a four-limb gait
+  phase test that only asserted "the offsets are all different", which passes
+  against an ordering with the right side *not* reversed. Session 10's was live
+  and was caught while writing: `test_inertia_coupling` spins the Assembly about
+  its **intermediate** principal axis, because a spin about the largest or the
+  smallest is stable and would sit still for a correct correction and a broken
+  one alike.
+- **The most valuable test is the first one that tries the whole thing.** Every
+  large finding in this repository has come from a test that assembled the real
+  pieces and asked for a real behaviour, not from a sweep over code already
+  under test. Session 9's traction sign error came from the first test that
+  asserted a driven contact accelerates its Assembly. All three of session 10's
+  findings (§4) came from the first test that built an Assembly with locomotion,
+  put it on ground, and asked it to drive. Sweeps confirm; integration finds.
+- **Two owners of one invariant is worse than either alone.** Nine found so far.
+  One was in the tests rather than the source; two were in `MotiveSystem.register`
+  and `MeleeSolver.advance`.
+- **Six pieces of dead code were deleted rather than tested** (session 9). All
+  were guards whose condition the surrounding arithmetic already produced. Every
+  one read as prudence.
 - **A redundant check can hide a genuinely needed one.** `DetachmentScheduler`
   drops an Assembly's pending work when it leaves the match, and the resolve path
   separately guards against a null graph. They cover different cases, so the
   answer was a test for the first rather than a deletion of it.
-- **Some things this harness cannot assert at all — and one it turned out it
-  could, once the harness was fixed.** See §3.28: a query against the main
-  world's physics space returns nothing in the suite. That is why the motion
-  layer is built as pure static solvers with a thin gathering step (§5), and why
-  `MotiveSystem`'s force application has no direct test. The *second* limitation
-  found this session was fixable: a fault whose only symptom was a crash passed
-  the suite silently, because the runner counts assertion failures and a runtime
-  error merely aborts the method it happened in. That is now caught by the shell
-  wrapper (§3.34). **When a fault survives, check whether it crashed rather than
-  whether it was tolerated** — those look identical in a green run, and only one
-  of them means the test is missing.
+- **When a fault survives, check whether it crashed rather than whether it was
+  tolerated.** Those look identical in a green run and only one of them means the
+  test is missing. §3.34 is why, and the shell wrapper is what closed it.
 
 ---
 
@@ -173,7 +187,7 @@ All verified against 4.7.1 in this repo, not recalled.
    Test files are fine, because the runner loads them after the autoloads are in
    the tree. **A throwaway probe script therefore cannot touch autoloaded
    singletons or anything that references one.** Write the probe as a temporary
-   `tests/unit/test_zz_probe.gd` and run the normal suite instead.
+   `tests/**/test_zz_probe.gd` and run the normal suite instead.
 
 4. **`Basis.get_column()`, `set_column()`, and `get_row()` were removed in 4.7.**
    `Basis.x`, `.y`, `.z` remain and are the **columns**, so `b.x.x` is element
@@ -184,15 +198,11 @@ All verified against 4.7.1 in this repo, not recalled.
 5. **`Vector3i` components are int32.** A 64-bit sentinel assigned into one wraps
    silently. Use `±2147483647`.
 
-6. **No `Packed*Array` constructor is a constant expression.** The rule was
-   recorded for `PackedStringArray` in session 2 and is general:
+6. **No `Packed*Array` constructor is a constant expression.**
    `const X: PackedInt32Array = PackedInt32Array([...])` fails with "Assigned
-   value for constant isn't a constant expression" exactly the same way. Use
-   `const X: Array[int] = [...]`, or a `static func` returning the packed array
-   where a packed one is what the field needs. `Vector3i(...)` and `Vector2(...)`
-   **are** constant expressions, including as `Dictionary` keys, which is why the
-   face-polarity maps in the authoring tools are `const` and the class filters
-   are functions.
+   value for constant isn't a constant expression". Use `const X: Array[int]`, or
+   a `static func` returning the packed array. `Vector3i(...)` and `Vector2(...)`
+   **are** constant expressions, including as `Dictionary` keys.
 
 7. **A typed-array `const` does not give a `for` loop's variable a static type,
    and neither does `range()` or an array literal.** With `untyped_declaration=2`
@@ -210,15 +220,14 @@ All verified against 4.7.1 in this repo, not recalled.
    assignment.** `func f(out: PackedVector3Array)` mutating `out` *is* visible to
    the caller. But `var mine := shared` or `obj.field = shared` takes a copy.
    This is why `ChassisGraph` writes `children[p] = kids` back after every
-   `push_back` — dropping that line loses the edit silently.
+   `push_back` — dropping that line loses the edit silently. Not true of a plain
+   `Array`, which is why `AssemblyRegistry.ids()` does need its `duplicate()`.
 
 10. **`Callable.bind()` does not make two Callables compare unequal.** Use a
     distinct receiver object per handler.
 
 11. **A `TestCase` is a `RefCounted` and has no `get_tree()`.** To put a `Node`
-    under test into a real tree — which `DetachmentScheduler`,
-    `MassRecomputeScheduler`, `AssemblyRuntime`, `DebrisPool` and `MotiveSystem`
-    all need — go through an autoload:
+    under test into a real tree, go through an autoload:
     `EventBus.get_tree().root.add_child(node)`. Free it in the same file's
     `after_all`; a leaked node stays connected to the bus and resolves the next
     test's fixture underneath it.
@@ -238,31 +247,27 @@ All verified against 4.7.1 in this repo, not recalled.
     its path serialises as an *inlined copy*.
 
 15. **`ResourceSaver` regenerates `[sub_resource]` ids from the file's external
-    resource set, not from content.** Session 9 refactored the authoring
-    derivations into `PartAuthoring` without changing a single authored value,
-    and every `.tres` still came back with different `Resource_xxxxx` ids. Reruns
-    of the *same* code are byte-stable, so the tools are still idempotent — but
-    "re-running rewrites the same bytes" is only true while the surrounding code
-    is unchanged. Diff generated data with the `[sub_resource]` and `SubResource(`
-    lines filtered out before concluding anything changed.
+    resource set, not from content.** Reruns of the *same* code are byte-stable,
+    but any change to the surrounding authoring code churns every id. **Diff
+    generated data with the `[sub_resource]` and `SubResource(` lines filtered
+    out before concluding anything changed.** Session 10's data change was 776
+    lines of diff and 69 lines of content; the filter is what showed that.
 
 16. **`PackedFloat32Array` round-trips 0.85 as 0.85000002.** `resistance` is
     float32; compare with `is_equal_approx`. The same bites `Vector2`, which is
     also float32: a friction-circle magnitude computed in doubles and returned
-    through a `Vector2` disagrees with the double at about 1e-7 relative, so
-    `check_approx` on one needs a tolerance nearer `1e-3` than `1e-5`.
+    through a `Vector2` disagrees at about 1e-7 relative, so `check_approx` on one
+    needs a tolerance nearer `1e-3` than `1e-5`.
 
 17. **A float accumulated from `PHYSICS_DT` never lands on a round threshold.**
     27 additions of `1.0/60.0` compare `< 0.45`, so a bare `>=` against a dwell
     constant silently grants one extra tick. Compare against
-    `THRESHOLD - EPSILON_LINEAR` — or, where the deadline is set once rather than
-    accumulated, store a **tick** and compare integers.
+    `THRESHOLD - EPSILON_LINEAR` — or store a **tick** and compare integers.
 
 18. **`PhysicsServer3D` works fully under `--headless`,** including
     `space_create`, static bodies, and `space_get_direct_state(...).intersect_shape`.
     A body is visible to a query in the **same frame** it is added, with no
-    physics step in between. **This holds only for a space you created yourself;
-    see §3.28 for the main world.**
+    physics step in between.
 
 19. **A physics body must be given its transform *after* its shapes are added.**
     `body_set_state(BODY_STATE_TRANSFORM)` on a shapeless body leaves it with the
@@ -280,7 +285,9 @@ All verified against 4.7.1 in this repo, not recalled.
 22. **A `CollisionShape3D` registers only as a *direct* child of a
     `CollisionObject3D`.** Nested under an intervening `Node3D` it is silently
     inert: no runtime error, no warning, and `body_get_shape_count` simply does
-    not count it. This is why doc 05 §2's `ColliderRoot` had to go.
+    not count it. This is why doc 05 §2's `ColliderRoot` had to go. A
+    `ShapeCast3D` is **not** a shape owner and works anywhere in the tree, which
+    is why `MotiveProbes` survived the same amendment.
 
 23. **A body's shape indices are assignment order, and disabling preserves them
     while removal renumbers.** `PhysicsServer3D.body_is_shape_disabled` does
@@ -294,24 +301,33 @@ All verified against 4.7.1 in this repo, not recalled.
 25. **`WorkerThreadPool.add_task` + `wait_for_task_completion` work under
     `--headless`**, including within a single `_process` frame.
 
-26. **The suite never has a physics frame interleaved into it.** The runner does
-    all its work inside one `_process` callback, so emitting
-    `MatchClock.tick_started` by hand is deterministic. The same fact is what
-    makes §3.28 bite.
+26. **A test method that never awaits still runs entirely inside one
+    `_process` callback,** so emitting `MatchClock.tick_started` by hand is
+    deterministic and no physics frame interleaves into it. That is still true
+    and is what every `tests/unit/` and `tests/integration/` file relies on;
+    §3.36 is the opt-in exception.
 
 27. **Two `class_name` scripts may call each other's statics.** `MassSolver` and
     `InertiaSolver` reference each other, as do `RotorDiscState` and
-    `RotorSolver`; neither the parser nor the loader objects. A cycle is only a
-    problem for `extends` and for constant folding.
+    `RotorSolver`. A cycle is only a problem for `extends` and for constant
+    folding.
 
-28. **The main world's `direct_space_state` answers nothing in this suite.** A
-    `StaticBody3D` or `RigidBody3D` added to `get_tree().root` with a live
-    `CollisionShape3D` is invisible to `intersect_shape` and to `intersect_ray`
-    until a physics step has run, and the runner never lets one run. No error is
-    printed: the query returns empty, which reads exactly like a correct
-    "nothing there". A space made with `PhysicsServer3D.space_create` answers
-    immediately. `SubViewport.world_3d` is null headless even with
-    `own_world_3d = true`.
+28. **~~The main world's `direct_space_state` answers nothing in this suite.~~
+    Corrected in session 10: it answers, against a stale pose.** A body added to
+    `get_tree().root` is registered in the space *immediately* and both
+    `intersect_ray` and `intersect_shape` find it in the same frame. What it does
+    **not** have is the transform you gave it after `add_child` — the broadphase
+    keeps the pose the body was added with until a physics tick flushes it.
+    `tests/physics/test_physics_frame.gd` asserts both halves: the ray finds the
+    ground slab at its unmoved height before the first tick and at its real
+    height after one.
+
+    The distinction is not academic, and getting it wrong cost two sessions. "The
+    space is empty" says *build your own space with `space_create`*, and that is
+    what §5 recorded as the reason the motion layer had no end-to-end test. "The
+    pose is stale" says *step once*, which is four lines. It is also the same
+    fact as §3.19, seen from the other side. `SubViewport.world_3d` really is
+    null headless even with `own_world_3d = true`.
 
 29. **`RigidBody3D.linear_velocity` and `angular_velocity` round-trip through the
     server with no physics step**, so a test can set a chassis velocity and
@@ -324,146 +340,242 @@ All verified against 4.7.1 in this repo, not recalled.
 31. **`VisibleOnScreenNotifier3D.is_on_screen()` is always false headless, but
     its signals are drivable.** A class that *caches* the flag from
     `screen_entered`/`screen_exited` is testable where one that polls is not.
-    Cheaper too. The notifier's `aabb` is in its own local space.
+    The notifier's `aabb` is in its own local space.
 
 32. **A `VisualInstance3D` under a `PhysicsBody3D` is not automatically an I-1
     violation.** The invariant is about geometry and about visual transforms
-    driving physics. Doc 04 §6.2 records the reasoning; do not extend it to
-    meshes without the same argument.
+    driving physics. Doc 04 §6.2 records the reasoning.
 
 33. **A `Callable` bound to a `Node`'s method survives being reassigned around.**
     `scheduler.island_sink = pool.on_island_severed` is the whole production
     wiring between doc 04 §5 and §6.
 
-34. **The test runner does not fail on a GDScript runtime error, and now the
-    shell wrapper does.** `run_all_checks.gd` counts recorded assertion failures
-    and nothing else. A null dereference, a failed `assert()`, or a call on a
-    freed object prints to stderr, aborts the *method* it happened in, and lets
-    the runner continue — so the test reports zero failures and the file passes.
-    **Any fault whose only symptom is a crash is therefore invisible to fault
-    injection.** Session 9 hit this with a class guard in `MotiveSystem.register`
-    whose removal caused a null dereference and changed nothing the suite could
-    see. `tools/ci/run_all_checks.sh` now tees the run and fails on any
-    `SCRIPT ERROR`/`ERROR` line, which caught it immediately. Two consequences
-    for the next session: a planted fault that "passes" may have crashed rather
-    than been tolerated, so read the log; and **an `assert()` is not a testable
-    guard here** — it does not fail a check, it only prints.
+34. **The test runner does not fail on a GDScript runtime error, and the shell
+    wrapper does.** `run_all_checks.gd` counts recorded assertion failures and
+    nothing else. A null dereference, a failed `assert()`, or a call on a freed
+    object prints to stderr, aborts the *method* it happened in, and lets the
+    runner continue. `tools/ci/run_all_checks.sh` tees the run and fails on any
+    `SCRIPT ERROR`/`ERROR` line. Two consequences: a planted fault that "passes"
+    may have crashed rather than been tolerated, so read the log; and **an
+    `assert()` is not a testable guard here** — it does not fail a check, it only
+    prints.
 
 35. **`Vector2.limit_length` is the cone clamp, and `clampf` per component is
     not.** Two 14° deflections clamped independently compose to about 19.8° of
-    resultant tilt; the same input through `limit_length` composes to 13.92°.
-    The 0.08° shortfall against the nominal limit is the cost of composing two
-    orthogonal rotations and is correct — a test asserting exactly 14° there is
-    asserting something false.
+    resultant tilt; the same input through `limit_length` composes to 13.92°. The
+    0.08° shortfall is the cost of composing two orthogonal rotations and is
+    correct — a test asserting exactly 14° there is asserting something false.
+
+36. **The suite can step physics, and three things had to be true at once.**
+    `await physics_frames(n)` on a `TestCase` suspends a test until the engine has
+    ticked. Making that work needed:
+    - **`_process` must return `false`.** A `SceneTree` script's `_process`
+      returning `true` *quits the main loop*. With a suspended run that meant the
+      suite printed the handful of checks that had completed before the first
+      suspension and **exited zero** — a silent partial pass, the worst possible
+      failure mode for a test runner. The run ends at `quit()` inside `_run`.
+    - **The runner must await the call.** A suspended GDScript call returns a
+      `GDScriptFunctionState`, not its declared type. `GDScriptFunctionState` is
+      not exposed to script and cannot be named, so the runner tests
+      `pending is Object` and awaits `Signal(pending, &"completed")`.
+    - **`_done` still guards re-entry**, because `_process` now fires on every
+      frame the run needs rather than once.
+
+    Both of the first two, planted as faults, are caught only by the **check
+    count** — the suite reports `PASS` on every file it reached and exits zero.
+    The sweep script compares against a baseline count for exactly this reason.
+
+37. **Godot applies no gyroscopic term.** A free `RigidBody3D` with three
+    distinct principal moments, spun about its intermediate axis, holds its
+    angular velocity constant to seven significant figures for five simulated
+    seconds. The server integrates `I_diag ω̇ = τ` and nothing else. This
+    contradicts doc 05 §3.4's premise; see §4.
+
+38. **Damping is a project default and it is not zero.** A `RigidBody3D` used to
+    assert `Δv = F·dt/m` needs `linear_damp_mode = DAMP_MODE_REPLACE` with
+    `linear_damp = 0.0`, and the same for angular. Measuring **from rest** is
+    better still: the damping term is proportional to the current velocity, so
+    from zero it contributes nothing and the equality is exact rather than
+    approximate. `test_motive_force_application` matches to 1e-4.
+
+39. **`Vector3.FORWARD` is `(0, 0, -1)` and `Vector3.BACK` is `(0, 0, +1)`.**
+    Using the wrong one when searching the orientation group for the index that
+    carries a part's `-Z` drive face onto the Assembly's `+X` silently returns
+    orientation 0, and every placement then fails with a mating rejection that
+    looks like a data problem.
 
 ---
 
-## 4. Architecture changes, cumulatively
+## 4. What the physics tests found, and what was decided
 
-Every amendment is recorded in the owning document, in the change that
-introduced it. This section is the index, not the record.
+Everything in this section came out of `tests/physics/` — the first tests in the
+project's history to build an Assembly, put it on ground, and ask it to move.
+None of it came from a fault sweep. Every one of these subsystems had exact unit
+tests over synthetic inputs, and every one of them was inert.
 
-**Session 1 — doc 01 §6.2.** `PrimitiveDef` was an inner class of
-`ColliderProfile`. Godot 4 cannot serialise an inner-class `Resource` into a
-`.tres`: every element fails typed-array validation on load and is dropped
-**silently**, which would have shipped every part with an empty collider set and
-no hit registration. The type is now top-level `ColliderPrimitiveDef`.
+### 4.1 Fixed — no Motive Assembly could be attached to anything
 
-**Session 2 — no document changed; code was corrected to match one.**
-`AttachmentNodeDef.accepts_polarity` contradicted doc 02 §7.3's matrix. The
-matrix is now a flat `POLARITY_MATRIX`, asserted cell by cell.
+All four `mot.*` parts carried `accepts_classes = [MOTIVE_ASSEMBLY]` on their
+**own** drive face. That is the AXLE *station's* restriction; doc 01 §4.2 puts it
+on the station alone. `PlacementValidator._check_mating` tests `accepts_class` in
+**both** directions, so every Motive Assembly in the registry rejected the only
+class §4.2 lets it mount on. Nothing with locomotion could be built at all, and
+rule 18 checked only the station's half of the pair.
 
-**Session 3 — doc 04 §2.1 and §3.1.** §2.1 gained `mass_kg`. §3.1 now states that
-a `MateRecord`'s `joint_strength_n` is the **weaker** of the two nodes and that
-`_add_edge` is idempotent per pair.
+Fixed in the authoring tool, with rule 18 extended to both halves in doc 01 §14
+and in the validator.
 
-**Session 4 — doc 01 §3; doc 04 §2.1, §3.3, §4.1, §4.2, §5.3, §5.5, §7.2, §8.2;
-doc 07 §8; doc 08 §6.2.** Gap-filling except two corrections: the dwell key is
-canonical over the *unordered* pair, and the dwell comparison carries an epsilon.
-`GRAVITY_MPS2` was written as a literal in four documents and owned by none.
+### 4.2 Decided — a ground contact's rest length must reach past its radius
 
-**Session 5 — doc 05 §2, §3.3, §4.3; doc 04 §6; doc 08 §5.4; `CLAUDE.md` §5.1.**
-`ColliderRoot` removed (§3.22 above). The inertia accumulation moved to
-`InertiaSolver`. The mass scheduler runs on `MatchClock.tick_started`, joins on
-the next tick, and reads a snapshot rather than the live graph. The shape map
-grows filled with `INVALID_SLOT` rather than zero.
+`suspension_rest_length_m` was 0.32 m on both ground rows against a 0.50 m
+`contact_radius_m`. §6.1 puts the probe at the part's centre of mass and §6.2
+reads compression as `rest − distance`; a part standing on its own collider puts
+that distance at one radius. Measured: zero compression, zero normal force, and a
+full-throttle displacement of **0.000 m**.
 
-**Session 6 — doc 04 §6 and §6.2; `CLAUDE.md` §2.** `DebrisPool` and
-`DebrisReaper` are instances rather than globals; colliders are re-registered on
-the debris body rather than moved; mass properties go through
-`MassSolver.apply_mass_properties`; both debris deadlines are tick counts; shape
-nodes are reused, never freed.
+**Decision: `rest = contact_radius + travel_limit`**, so 0.74 m on both rows.
+That places full droop exactly one travel above the surface and makes the part's
+own collider the bump stop, so two authored numbers determine the third and there
+is no third number to get wrong. §14 rule 23 enforces the hard half — rest
+strictly greater than radius — rather than the convention, because a shorter
+travel is a legitimate tuning choice and an inert spring is not.
 
-**Session 7 — doc 04 §6 and §6.2; doc 08 §5.1; doc 12 §7.2 and §9.2.**
-`AssemblyRegistry` is an object, not a global. A wreck's lifetime ends in two
-events — deterministic retirement, then a presentation-only linger. Doc 12 §9.2
-gained `debris_visibility`, the first tag whose absence changes behaviour.
+### 4.3 Decided — the coupling torque was correcting for a term nothing applies
 
-**Session 9 — doc 01 §3, §4, §7.2, §7.4, §10, §11, §14; doc 05 §6, §7.2, §7.4,
-§11, §12, §13, §14; doc 06 §3; doc 07 §14, §15; `CLAUDE.md` §1.1, §2, §6, §8.**
-The largest amendment set so far, because it added three locomotion families and
-a weapon class. The ones that are corrections rather than additions:
+Doc 05 §3.4 derived `τ = ω × (I_diag ω) − ω × (I_full ω)` on the premise that the
+server integrates the diagonal gyroscopic term. §3.37 is the measurement: it
+integrates `I_diag ω̇ = τ` and no gyroscopic term at all.
 
-- **Doc 05 §7.2: the longitudinal friction sign was wrong.** The section wrote
-  both friction components as negative. With `κ = (ω·r − v_long)` from §7.1, a
-  driven contact has *positive* κ, so a negative `F_long` pushed the Assembly
-  backwards — pressing the accelerator would have decelerated it. §7.4's own
-  `− F_long · r` retarding term only balances against the positive sign, so the
-  two sections disagreed and §7.4 was right. The asymmetry between the two signs
-  is real and now stated: κ is already the negative of the patch's slip velocity
-  and `tan α` is not. **Found by the first test that asserted a driven contact
-  accelerates the Assembly it is attached to**, which is exactly the kind of
-  claim the fixture rules in §9 are about.
-- **Doc 05 §7.4: `wheel_omega`, `m_wheel`, and `_integrate_wheel` renamed.**
-  `CLAUDE.md` §8 prohibits *wheel* in identifiers and §7.1's own contact frame
-  already used neutral vocabulary. The conflict was invisible while nothing
-  implemented the section.
-- **Doc 01 §4.2: `AXLE` resolved as a keyed connector.** The open question from
-  session 2 is closed. A Motive Assembly's drive face is `AXLE` and nothing else;
-  it mates only to a Structural Component offering an `AXLE` station whose nodes
-  restrict `accepts_classes` to `MOTIVE_ASSEMBLY`. One station
-  (`str.hub.axle_station.t2`) serves all four families, because the
-  24-orientation group points its drive axis anywhere — which is the strongest
-  evidence available that the four families really are one class.
+**Decision: `τ = − ω × (I_full ω)`, evaluated at the midpoint.** The diagonal
+half was cancelling something nothing produced. The midpoint matters separately:
+the continuous torque does no work, but sampling it at the tick boundary added
+**16%** of the rotational energy over five seconds, which §11 invariant 10
+forbids outright. Stepping ω half a tick along `ω̇ = I_diag⁻¹ τ` and re-evaluating
+costs one cross product and turns that into a **3% loss**. A correction that
+bleeds energy cannot destabilise an Assembly; one that adds it spins a wreck up
+out of nothing, so the test bounds the gain tightly and the loss loosely.
 
-And the additions, each with its own document section rather than a flag on an
-existing one:
+The assertion that catches a sign error is **world-frame angular momentum**, not
+energy and not the tumble: both signs tumble and both leave the energy roughly
+alone, and only the correct one conserves `L = R · I_full · ω`.
 
-- **`LocomotionMode` and `LOCOMOTION_OF_MOTIVE_KIND` (doc 01 §4.1).** Family
-  selection is one array index. No subsystem outside `MotiveSystem` branches on
-  `MotiveKind`, and a fifth family is an append rather than a new branch in every
-  consumer.
-- **Doc 05 §6.0, the five rules every family meets.** Forces and torques on
-  `ChassisBody` only; cached band multipliers, never integrity; no state the mass
-  solver owns; deterministic; bounded and slot-indexed. Rule 1 is the load-bearing
-  one — it is what lets a rotorcraft take blast damage, shed a panel, re-solve its
-  mass and keep flying with no code in the damage or mass layers aware that rotors
-  exist.
-- **Doc 05 §12, rotor lift and tilt.** Momentum-theory thrust, signed collective,
-  ground effect, translational lift, vortex ring state with a forward-flight
-  escape, cone-limited cyclic, reaction torque, and shaft power. The shipping
-  coefficients are *solved* from `T_max = rated_load × g` rather than chosen, and
-  §14 rule 19 checks it.
-- **Doc 05 §13, ambulatory locomotion.** Spring-loaded inverted pendulum with
-  Raibert foot placement. §13.1 records why Invariant I-3 does not merely forbid
-  a jointed leg but makes one unnecessary: a leg contributes exactly one force at
-  the hip, and the internal articulation reaches the body only through it.
-- **Doc 05 §14, tracked locomotion.** Road stations, differential drive with a
-  speed taper, and slew resistance proportional to patch length times normal load.
-  Its own family rather than a flag on the ground one, because routing it through
-  `GROUND` puts three `if kind == TRACKED_SEGMENT` branches inside hot loops.
-- **Doc 07 §15, melee effectors.** Swept-capsule resolution, a stage machine in
-  place of a cycle timer, `channel_mix` doing the balance work so `KINETIC_MELEE`
-  and `ENERGY_MELEE` need no second code path, and server-only authority that is
-  stricter than the ballistic path.
-- **Doc 01 §3 gained `AIR_DENSITY_KG_M3`**, for the same reason it gained
-  `GRAVITY_MPS2`: §8's dynamic pressure and §12's momentum theory must not be able
-  to disagree about the atmosphere.
-- **Doc 06 §3 gained `locomotion_modes` and two archetypes**, `rotorcraft` and
-  `strider`, each with a hard constraint checked in Phase 3 rather than deferred
-  to the objective, because a build that fails either does not function.
+### 4.4 Fixed — steering was authored but never implemented
 
----
+`max_steer_angle_deg` and `steer_rate_deg_s` were on every wheeled row and
+`DegradationTable.MOTIVE_STEER` was cached per slot, and nothing read any of
+them. `MotiveSystem` now carries a rate-limited steer angle per slot and rotates
+that slot's contact frame about the contact normal before the friction solve, so
+the lateral force stays a genuine slip-angle force (doc 05 §7.0).
+
+Two things fell out of it:
+
+- **The sign was wrong first time.** A positive rotation about the surface normal
+  carries the forward axis *left*, and positive steer is right on every input
+  device. The test asserts the direction of the yaw, which is the only assertion
+  that catches it.
+- **An Assembly on which every wheel steers does not turn — it crabs.** Four
+  patches pointing the same way translate the hull sideways with its nose still
+  forward. `mot.wheeled.fixed_rear.t2` was published in doc 01 §10.3 and never
+  authored; it is now the tenth shipped part, and the difference between it and
+  the steered row is one authored number.
+
+### 4.5 Fixed — a track's differential drive was never wired
+
+`TrackSolver.drive_bias` and `side_torques` were written, unit-tested to the
+newton, and **never called**. `MotiveSystem._solve_tracked` computed a suspension
+force and a slew resistance and drove both flanks from the same undifferentiated
+share, so a tracked Assembly rolled forward and could not turn.
+
+Wiring it exposed that §14.2's own formula could not produce the behaviour its
+prose described. `τ_left = τ_share · (1 + bias)` with `bias` bounded at 1 never
+drives a flank backwards — at full lock it gives one track everything and the
+other exactly zero, a pivot about the *stopped track* — and because the whole
+expression scaled with the throttle, a stopped tracked Assembly received nothing
+on either flank and could not turn under any input. **Decision: throttle and
+steer are additive terms**, `τ = τ_share · clamp(throttle ± bias, −1, 1)`, which
+is the standard skid-steer mixer and what the prose asked for. A tracked Assembly
+now pivots on the spot with no throttle at all, and steering into a full throttle
+costs total drive because the outer flank is already at its limit.
+
+The unit test that covered this was named `test_a_full_bias_counter_rotates_the_sides`
+and asserted that the inner track **stops**. A test whose name contradicts its
+assertion is worth more attention than a test that fails.
+
+### 4.6 Fixed — a limb's probe had zero length, and its collider was its leg
+
+Two separate faults, both of which made a walker stand perfectly still.
+
+- §14 rule 21 requires every `suspension_*` field on an ambulatory row to be zero
+  — a leg is a spring-loaded inverted pendulum, not a strut — and the probe
+  constructor sized its sweep from exactly those fields. A zero-length cast finds
+  nothing, the contact never grounds, the foot is never planted, and the gait
+  clock runs happily. An ambulatory probe now sweeps `leg_length_m` from the hip.
+- The limb's occupancy spanned the **fully extended** leg, so `single_box_collider`
+  baked a 2.0 m collider around a machine whose stance height is
+  `0.86 × 1.90 = 1.63 m`. The Assembly rested on its own shins with 0.23 m of
+  travel it could not reach. **Decision: a limb occupies its hip and thigh, not
+  its leg** — 3×5×3 — exactly as `mot.rotor.*` occupies its mast and not its
+  2.6 m disc. §13.1 puts the articulation under `VisualRoot` and Invariant I-1
+  will not let a collider follow it, so a footprint spanning full extension is
+  wrong at every moment except full droop.
+
+### 4.7 What the four families do now, measured
+
+| Family | Behaviour | Where |
+|---|---|---|
+| Wheeled | drives, brakes, steers to a rate-limited lock, and holds a heading | `test_ground_assembly.gd` |
+| Wheeled | full throttle spins the patches past the grip peak — a burnout — and transfers load off the front axle to a third of its resting weight | same |
+| Tracked | drives straight on both flanks, pivots on the spot at zero throttle, resists an imposed slew without reversing it | `test_locomotion_behaviour.gd` |
+| Ambulatory | stands on four feet with the stance spring loaded, walks forward at about 1.5 m/s, limbs spread evenly around the cycle | same |
+| Rotary | thrust reaches the body at `F·dt/m`, exact to 1e-4, at the disc's own offset | `test_motive_force_application.gd` |
+
+Both the burnout and the load transfer are emergent. Nothing scripts either: the
+tractive force is applied at the contact and the centre of mass is most of a
+metre above it, so the couple pitches the nose up under power and dives it under
+braking, from the same rigid body and the same offset forces.
+
+### 4.8 Session 12 — the power classes split, and traction control
+
+**`POWER_PLANT` became `PRIME_MOVER` and `ENERGY_CELL`.** §10.4 already published
+two rows with a `0` in the torque column, which is a class distinction written as
+a magic value: nothing stopped a cell being authored with torque, nothing told
+the garage that the two parts answer different questions, and one name covered
+two unrelated jobs. The split puts it in the type system and §14 rule 24 keeps it
+there.
+
+*Prime Mover* is the standard engineering term for a machine that turns energy
+into motion. It is deliberately **not** *engine*: CLAUDE.md §8 prohibits that
+word in identifiers alongside *wheel* and *cannon*, and the class has to cover a
+turbine and a reaction drive as readily as a piston. The prohibition was already
+there and the rename honours it rather than arguing with it.
+
+**A part key was renamed, which rule 12 forbids.** `pwr.combustion.standard.t2`
+is now `pmv.combustion.standard.t2`, in place at the same manifest index, so
+every other `part_def_id` is unchanged. Rule 12's stated reason is that ids are
+serialised into save data and network packets — and nothing has shipped to a
+player, so there is no history to protect. **This is the last cheap moment for a
+rename of this kind.** After the first build ships, the same change costs a
+migration.
+
+**Traction control** (doc 05 §7.6) is two loops that both act *through the
+contacts*: a slip limiter that scales drive torque, and a yaw controller that
+brakes one flank. Neither applies a force of its own, and that is the design
+rather than an implementation detail — a yaw controller calling `apply_torque`
+would turn an Assembly just as briskly on ice, on a slope, or with two wheels in
+the air. It carries an authority in `[0, 1]` on `ControlInput`, so the aid is a
+dial rather than a switch and a burnout is what you get at zero.
+
+Two things worth keeping:
+
+- **A slip ratio is meaningless at a standstill.** §7.1 divides by
+  `max(|v|, 0.8)`, so any rotation reads as enormous slip and the first limiter
+  throttled a stopped Assembly to a crawl. Flooring the road speed at 5 m/s makes
+  the law a slip *velocity* below that and a slip *ratio* above it — launch
+  control and traction control in one `maxf` rather than two modes.
+- **The pair of tests is the assertion, not either one.** A managed launch that
+  does not spin its wheels proves nothing on its own: it looks identical to an
+  Assembly without the torque to spin them. Every §7.6 test compares the aid on
+  against the aid off on the same fixture.
 
 ## 5. Deliberate readings, and the redundancies
 
@@ -478,57 +590,98 @@ it. Doc 02 §12 invariant 1 permits this precisely because the query may only
 
 **`ResolvedNode.is_face_paired` is over-specified, knowingly.** It tests
 adjacency in both directions *and* that the faces oppose, and any two imply the
-third. Fault injection cannot make it fail by removing one — one of the two
-entries in §2's table with no catcher, and not a test gap.
+third. Fault injection cannot make it fail by removing one — the last remaining
+entry in §2's table with no catcher, and not a test gap.
 
 **`IslandDetacher` writes the debris body's transform after its shapes, and
-nothing proves it must.** §3.19 recorded the failure that rule exists for, and
-§3.28 is why it cannot be re-observed here. The second of §2's two uncaught
-faults. If a future session gains a physics step inside the suite, the test to
-write is *a shape query at the island's centre of mass finds the debris body*.
+nothing proves it must — but now something could.** §3.19 recorded the failure
+that rule exists for, and §3.28 used to be the reason it could not be
+re-observed. §3.28 was wrong, and `tests/physics/` can now step the engine, so
+the test to write is *a shape query at the island's centre of mass finds the
+debris body*, with the transform written before the shapes as the fault that must
+fail it. It is the cheapest remaining item in §8.
 
-**`MotiveSystem._gather_contacts` has no test, and that is the same limitation.**
-Everything the motion layer derives is in a pure static solver a test reaches
-directly; the gathering step is a loop over already-built `ShapeCast3D` nodes
-copying four fields, and §3.28 makes it unobservable here. It is kept as thin as
-it can possibly be for exactly that reason — every line in it is a line nothing
-defends. The same physics step that would test the debris body would test this.
+**`MotiveSystem._gather_contacts` is now covered end to end.** It was kept as
+thin as possible because it was the one part of the motion layer nothing
+defended; `test_ground_assembly` reaches it through four real probes on real
+ground. It should stay thin anyway — every derived quantity belongs in a static
+solver a unit test can call directly.
 
 **`MotiveSystem.register` guards the part class and nothing else.** It used to
 also guard a null `motive_profile`, and fault injection showed the two were
-indistinguishable — both return without registering. Validator rule 6 rejects a
-Motive Assembly with a null payload at build time, so the class test is the only
-guard that ever fires on real data, and the comment there names what it relies
-on. Removing it is caught only because the shell wrapper now fails on the
-resulting null dereference (§3.34); before that fix it was invisible.
+indistinguishable. Validator rule 6 rejects a Motive Assembly with a null payload
+at build time. Removing the class guard is caught only because the shell wrapper
+fails on the resulting null dereference (§3.34).
+
+**Three faults are uncaught, all for stated reasons.** A hard-coded steer lock of
+32 degrees is indistinguishable from reading `max_steer_angle_deg`, because
+`mot.wheeled.allroad.t2` is the only shipped row with a non-zero lock and its
+lock is 32; the fixed rear row cannot expose it either, since its `steer_rate_deg_s`
+is zero and the angle never leaves the stop. A second steered row with a
+different lock makes it visible and costs nothing else.
+
+**And two in the pairing and anti-roll code, both for stated
+reasons.** The first is the `taken[j]` guard in `_rebuild_axle_pairs`, which
+stops one probe being claimed by two pairs. It is live — three probes where one
+is a candidate for two others reaches it — and the shipped four-disc fixture
+cannot produce that arrangement, so nothing exercises it. The fixture that would
+is a fifth disc on one flank, or a unit test over synthetic contacts with bare
+`ShapeCast3D` nodes attached. The second is the *sign* of the anti-roll force.
+It cannot be observed at all today: §4.2 leaves every compression at zero, so
+`anti_roll_force` returns zero and the pair is never pushed either way. Both
+become testable the moment §4.2 is resolved, and the anti-roll one becomes
+testable *for free* — a build settled on real springs rolls, and a bar that
+pushes both ends the same way makes it roll further rather than less.
+
+**`MotiveContact.probe` holds a node reference, and that is the layering it
+wants.** The alternative was `MotiveSystem` resolving `probe_s%03d_%d` through
+`get_node_or_null` every tick — a string build and a `NodePath` construction
+inside the tick loop, for a node that cannot move relative to the chassis. The
+binding happens once, at registration, which fixes the ordering the §6 wiring
+already had: `adopt` builds the geometry, then Motive Assemblies register.
+
+**A probe is not collision geometry.** `ShapeCast3D` under `ChassisBody` is a
+query, not a shape owner (§3.22), so `MotiveProbes` does not touch I-1. It lives
+*inside* the body so its sweep follows the chassis: suspension travel is along
+the chassis's own down, not world down.
 
 **`MotiveSystem` declares `_physics_process` and is on the `test_no_polling`
 allowlist.** It is a force integrator, not a reactor to structural events, and
 doc 05 §9's dynamic amplification factor is explicitly per-tick work. `step(dt)`
-is the whole tick and `_physics_process` does nothing but call it — which is not
-decoration, it is what lets a test drive the identical path the engine uses.
+is the whole tick and `_physics_process` does nothing but call it — which is what
+lets a unit test drive the identical path with synthetic contacts *and* lets a
+physics test let the engine drive it and assert what the body did.
+
+**The coupling torque runs before the input guard.** It is a property of the
+Assembly's mass distribution, not of what it is being asked to do; a wreck
+tumbling with nobody at the controls is exactly where it is most visible.
+
+**Anti-roll runs after the families.** It differentiates the compressions they
+wrote *this* tick; running it first would couple the previous tick's roll into
+this one.
 
 **A rotor and a wheel share `DegradationTable.MOTIVE_TRACTION`.** A disc at
 `IMPAIRED` loses 40% of its thrust exactly as a wheel loses 40% of its grip.
-Splitting the table so the four families could drift apart would be a balance
-liability, not a modelling gain, and Invariant I-5 wants one table.
+Splitting the table would be a balance liability, and Invariant I-5 wants one
+table.
 
 **`LimbState.hip_local` is cached at registration rather than resolved per
-call.** A part does not move relative to the chassis, so the hip is fixed from
-placement to destruction. Caching it is not only cheaper — it is what lets
-`reassign_gait_phases` run without reaching back into the Assembly for a
-definition it was already handed, which is how the first version of it silently
-did nothing in a test with no runtime wired.
+call.** A part does not move relative to the chassis. Caching it is what lets
+`reassign_gait_phases` run without reaching back into the Assembly.
 
 **`MotiveAssemblyProfile.contact_radius_m` keeps its meaning across all four
-families** — rolling radius, hub radius, foot radius. Doc 02 §7.5's ground
-clearance check and doc 05 §6.1's probe geometry both read it, and neither should
-have to know which family it is looking at.
+families** — rolling radius, hub radius, foot radius. Doc 02 §7.5's clearance
+check and doc 05 §6.1's probe geometry both read it, and neither should have to
+know which family it is looking at. §4.2 above is what happens when a *second*
+authored length has to agree with it and does not.
 
-**`str.aperture.port.t2` is `TRANSPARENT` and was briefly not.** An edit to the
-§10.2 table adjacent to it changed the occlusion column by accident and it was
-reverted in the same session. Nothing depends on it yet; it is noted only because
-the row is easy to clip when appending to that table.
+**An AXLE station's two drive faces are opposite each other.** So a station
+cannot bolt on through one and offer the other: it attaches through a neutral
+face and both drive faces stay free. A station under a Core Module's corner
+carries a Motive Assembly outboard on either side; a station carrying a mast
+upward must itself attach sideways. Recorded in doc 01 §4.2 because it is not
+visible in the parameter table and it is the first thing that bites when
+composing a build by hand.
 
 **Nothing simulated may read `DebrisPool.retired_count`.** It is the one number
 in the debris system that legitimately differs between the server and a client.
@@ -538,6 +691,11 @@ in the debris system that legitimately differs between the server and a client.
 resolve path separately guards against a null graph.** These look like the same
 check and are not: the first covers an Assembly that left the match with a
 destruction already queued, the second an id that was never registered at all.
+
+**`tests/physics/` builds its ground out of a `StaticBody3D` slab and says so.**
+Document 09 owns Dynamic Ground Arrays and nothing in a test may pre-empt it. The
+slab is a fixture, on `LAYER_GROUND`, and is named as one in both files that
+build one.
 
 ---
 
@@ -549,15 +707,15 @@ destruction already queued, the second an id that was never registered at all.
 | `tools/ci/bootstrap_env.sh` | Provisions Godot into `.tooling/` |
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
-| `tools/ci/run_all_checks.gd` | Discovery-based headless test runner |
+| `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
 
 ### Source
 - `src/core/data/` — `SyndicateConstants`, `PartEnums`, `CollisionLayers`,
   `RenderLayers`, `PartFlags`, `PartDefinition`, `PartManifest`,
   `PartInstanceState`, `AttachmentNodeDef`, `ColliderPrimitiveDef`,
   `ColliderProfile`, `FusionProfile`, `ProxyPrimitiveDef`, `PartVisualProfile`,
-  the six class profiles, and **new in session 9**: `RotorProfile`,
-  `LimbProfile`, `TrackProfile`, `MeleeProfile`.
+  the six class profiles, `RotorProfile`, `LimbProfile`, `TrackProfile`,
+  `MeleeProfile`.
 - `src/core/math/` — `LatticeMath`, `OrientationTable` (full 24-element group).
 - `src/assembly/lattice/` — `LatticeOccupancy`, `FootprintSolver`,
   `ResolvedNode`, `PlacementCandidate`, `BuildBudgetLedger`, `BuildShapeCache`,
@@ -565,22 +723,26 @@ destruction already queued, the second an id that was never registered at all.
 - `src/assembly/graph/` — `MateRecord`, `MateSelector`, `ChassisGraph`,
   `DetachmentSolver`, `DetachmentScheduler`, `IslandDetacher`.
 - `src/assembly/mass/` — `MassSolver`, `InertiaSolver`, `MassRecomputeScheduler`.
-- `src/assembly/runtime/` — `AssemblyStats`, `AssemblyRuntime`, `ChassisBodyRef`,
-  `AssemblyInterpolator`, `DebrisBodyRef`, `DebrisPool`, `DebrisReaper`,
-  `AssemblyRegistry`.
-- `src/motion/` — **all new in session 9**: `MotiveContact`, `SuspensionSolver`,
+- `src/assembly/runtime/` — `AssemblyStats`, `AssemblyRuntime` (**now builds the
+  §6.1 suspension probes**), `ChassisBodyRef`, `AssemblyInterpolator`,
+  `DebrisBodyRef`, `DebrisPool`, `DebrisReaper`, `AssemblyRegistry`.
+- `src/motion/` — `MotiveContact` (**carries its probe**), `SuspensionSolver`,
+  **`TractionControl` (new)**,
   `TractionSolver`, `RotorSolver`, `RotorDiscState`, `GaitSolver`, `LimbState`,
-  `TrackSolver`, `AeroSolver`, `PowerSystem`, `ControlInput`, `MotiveSystem`.
-- `src/combat/damage/` — **new**: `DegradationTable`.
-- `src/combat/effectors/` — **new**: `MeleeSolver`, `MeleeStrikeState`.
+  `TrackSolver`, `AeroSolver`, `PowerSystem`, `ControlInput`, `MotiveSystem`
+  (**now binds probes, pairs axles, applies anti-roll and the §3.4 coupling
+  torque**).
+- `src/combat/damage/` — `DegradationTable`.
+- `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `project.godot` — autoloads, physics/display settings, all 33 input actions.
 
 `ChassisGraph` covers doc 04 §2–§4 in full; `DetachmentSolver` and
 `DetachmentScheduler` cover §5 and §7.2; `IslandDetacher`, `DebrisPool` and
 `DebrisReaper` cover §6 and §6.2. `AssemblyRuntime` and the mass classes cover
-doc 05 §1–§4 and §10.2. **The `src/motion/` set covers doc 05 §6–§9 and §12–§14**,
-and `MeleeSolver` covers doc 07 §15.
+doc 05 §1–§4 and §10.2 — **§3.4 included, as of this session**. The `src/motion/`
+set covers doc 05 §6–§9 and §12–§14, **§6.1 and §6.5 included**. `MeleeSolver`
+covers doc 07 §15.
 
 **The wiring the match scene will do**, in full:
 
@@ -599,11 +761,14 @@ detachment.island_sink = debris.on_island_severed
 
 add_child(detachment); add_child(mass); add_child(debris)
 
-# then, per Assembly:
+# then, per Assembly — and the order matters: adopt() builds the probes that
+# MotiveSystem.register() binds its contacts to.
 #   runtime.adopt(ctx); registry.register(runtime)
+#   runtime.apply_mass_properties(MassSolver.compute(runtime.states, runtime.graph))
 #   var motion := MotiveSystem.new()
 #   motion.runtime = runtime
 #   motion.power = PowerSystem.new()
+#   motion.power.recompute(runtime.states, runtime.graph.alive)
 #   motion.input = ControlInput.new()
 #   runtime.add_child(motion)
 #   for each Motive Assembly slot: motion.register(slot, def, runtime.states[slot])
@@ -611,26 +776,30 @@ add_child(detachment); add_child(mass); add_child(debris)
 ```
 
 ### Data
-Nine definitions, in manifest order. **Append only.**
+Eleven definitions, in manifest order. **Append only** — `mot.wheeled.fixed_rear.t2`
+is last because `part_def_id` is the manifest index and is serialised, not
+because it belongs there in a catalogue.
 
 | `part_key` | Class / kind | Notes |
 |---|---|---|
 | `core.command.compact.t2` | Core Module | 60 cells, 94 nodes, 380 kg, 240 PU, 28 mounts |
 | `str.panel.medium.t2` | Structural | 16 cells, 48 neutral nodes, 34 kg |
 | `str.hub.axle_station.t2` | Structural | 8 cells; the only part carrying `AXLE` nodes (±X, keyed to Motive) |
-| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 24 cells, authored as a **disc** so a cylinder collider meets §6.2 coverage |
-| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 96 cells, 4 road stations, 1.90 m patch |
+| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 24 cells, disc footprint, 0.50 m radius, 0.74 m rest, 32° lock |
+| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 96 cells, 4 road stations, 1.90 m patch, 0.74 m rest |
 | `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 96 cells, 2.6 m disc, lifts 2600 kg, draws 150 PU |
-| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 72 cells, 1.90 m leg, 0.62 duty factor |
-| `pwr.combustion.standard.t2` | Power Plant | 60 cells, 3200 N·m, supplies 150 PU |
+| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 45 cells (hip and thigh; the 1.90 m leg is reach, not occupancy), 0.62 duty factor |
+| `pmv.combustion.standard.t2` | Prime Mover | 60 cells, 3200 N·m, supplies 150 PU |
 | `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 72 cells, 2.4 m reach, 75% thermal mix |
+| `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 24 cells, zero steer lock — the rear axle a steering build needs |
+| `cel.static.standard.t3` | Energy Cell | 48 cells, 260 PU, no torque, 900 PU·s reserve |
 
 `tools/part_authoring.gd` holds the shared derivations; `tools/author_first_parts.gd`
 and `tools/author_locomotion_parts.gd` are the two committed generators. Both are
 idempotent (with the caveat in §3.15).
 
 ### Tests
-`tests/test_case.gd` (assertion base) and `tests/source_scanner.gd`.
+`tests/test_case.gd` (assertions, and `physics_frames`) and `tests/source_scanner.gd`.
 
 Arch: `test_autoload_set`, `test_input_actions`, `test_project_settings`,
 `test_no_polling`, `test_no_global_rng`, `test_no_forbidden_patterns`,
@@ -641,18 +810,22 @@ Unit: `test_assembly_registry`, `test_lattice_math`, `test_orientation_table`,
 `test_lattice_occupancy`, `test_footprint_solver`, `test_attachment_polarity`,
 `test_part_registry_validator`, `test_chassis_graph`, `test_mate_selector`,
 `test_build_budget_ledger`, `test_chassis_strain`, `test_detachment_solver`,
-`test_mass_solver`, and **new**: `test_degradation_table`,
-`test_suspension_solver`, `test_traction_solver`, `test_rotor_solver`,
-`test_gait_solver`, `test_track_solver`, `test_melee_solver`.
+`test_mass_solver`, `test_degradation_table`, `test_suspension_solver`,
+`test_traction_solver`, `test_rotor_solver`, `test_gait_solver`,
+`test_track_solver`, `test_melee_solver`.
 
 Integration: `test_tick_ordering`, `test_part_registry_data`,
 `test_placement_validator`, `test_detachment_scheduler`, `test_assembly_runtime`,
-`test_mass_recompute`, `test_island_detachment`, `test_debris_pool`, and
-**new**: `test_motive_system`.
+`test_mass_recompute`, `test_island_detachment`, `test_debris_pool`,
+`test_motive_system`.
 
-Physics: **new**, and the directory's first occupant —
-`test_locomotion_families`, which asserts against the shipped definitions rather
-than synthetics.
+Physics: `test_locomotion_families` (against shipped definitions), and **new in
+session 10**: `test_physics_frame` (what a tick buys, §3.28's correction),
+`test_ground_assembly` (a real four-contact build, settled on real ground),
+`test_motive_force_application` (a solved force reaching the body, exact to
+1e-4), `test_inertia_coupling` (doc 05 §3.4, and §4.3's measurements), and **new
+in session 11**: `test_locomotion_behaviour` (a tracked Assembly driving and
+pivoting, a quadruped standing and walking).
 
 `tests/generation/` is still empty.
 
@@ -661,34 +834,53 @@ than synthetics.
 ## 7. Known gaps — deliberate, not oversights
 
 ### The motion layer
-- **`MotiveSystem` has never applied a force.** Every solver it calls is asserted
-  exactly, and the dispatch and bookkeeping are tested, but the force application
-  itself needs a physics step the suite cannot run (§3.28, §5). This is the
-  largest single untested surface in the project and it is one scene away from
-  being testable.
-- **Probes are never built.** `_probe_for` looks up `probe_s%03d_%d` under
-  `MotiveProbes` and nothing creates those nodes yet. Doc 05 §6.1 specifies the
-  geometry; the constructor belongs with `AssemblyRuntime.adopt`, and writing it
-  before there is a scene to see it in would be writing it blind.
+- **Session 12's fault sweep is incomplete and the remainder is queued.** Five of
+  thirteen planted faults ran: four were caught and one — dropping §7.6's launch
+  floor — survived and is now covered by
+  `test_the_aid_does_not_cost_the_launch`. The eight unrun faults are the yaw
+  deadband, the grip clamp, the brake ceiling, the yaw wiring, the both-flanks
+  brake, the wheelbase derivation, and rule 24's two halves; the sweep script is
+  in the scratchpad with them listed. **Run these before trusting §7.6.**
+- **`ControlSystem` is still not written.** Every family reads a `ControlInput`
+  and the tests fill one in by hand; the mapping from the §7.2 input actions into
+  one is a garage/HUD concern and wants `src/ui/`. This is now the largest gap in
+  the layer: the physics is done and nothing but a test can drive it.
+- **Reverse is untested.** `throttle = -1` should back an Assembly up on every
+  family and nothing asserts that it does.
+- **Nothing consumes `AeroSolver`, and no `ctl.*` part is authored**, so drag,
+  downforce, and Control Surfaces have never acted on a moving Assembly.
 - **`_surface_multiplier` returns 1.0 unconditionally.** The Ground Array of
   document 09 answers it. Routed through one named function so landing that
-  document is a single edit rather than a search for every place a surface was
-  assumed.
+  document is a single edit.
 - **`AeroSolver` has no caller.** It is complete and matches doc 05 §8, but
   Control Surfaces need a per-part pressure-centre pass in `MotiveSystem` and no
   `ctl.*` part is authored.
 - **`ControlSystem` is not written.** `ControlInput` is the record every family
   reads; the mapping from the §7.2 input actions into one is a garage/HUD concern
   and wants `src/ui/`.
-- **`PowerSystem.recompute` has no caller**, for the same reason
-  `MassRecomputeScheduler` had none for two sessions: it is wired on structural
-  and band-change events, and `DamageResolver` does not exist.
-- **Anti-roll is implemented and unused.** `SuspensionSolver.anti_roll_force` and
-  `is_axle_pair` are tested; pairing probes at spawn belongs with the probe
-  constructor above.
-- **The coupling torque of doc 05 §3.4 is still not applied.** `MassProperties`
-  carries `inertia_full` precisely so it can be. It belongs in `MotiveSystem.step`
-  and brings `tests/physics/`'s second occupant.
+- **`PowerSystem.recompute` has no production caller.** It is wired on structural
+  and band-change events, and `DamageResolver` does not exist. The physics tests
+  call it directly at spawn.
+- **`_static_load_n` returns `rated_load_kg · g` rather than the distributed
+  static load doc 05 §6.4 specifies,** and `SuspensionSolver.retune` is called
+  per contact per tick rather than on mass recompute. Neither is wrong
+  numerically — `retune` is pure and its inputs are constant between structural
+  events — but §6.4 says "fires on mass recompute only" and the code does not.
+  Cheap to fix once §4.2 makes the suspension observable.
+- **The visual wheel does not follow the contact.** Nothing renders a Motive
+  Assembly at its probe hit point, so a lightly loaded Assembly will draw its
+  wheels wherever the part was placed, and a walker's legs will not bend at all.
+  Doc 05 does not cover this and should — it is the one part of the motion layer
+  with no owner.
+- **A tracked pivot drifts a couple of metres** rather than turning about a
+  point. The flanks counter-rotate correctly but their forces do not cancel
+  exactly, because the two bogies sit at slightly different offsets. Whether that
+  is worth correcting is a feel question and wants a scene to answer it.
+- **The wheeled build wanders under full throttle.** Deep wheelspin is unstable
+  by construction — past the friction peak, more slip means less force — so once
+  one flank hooks up before the other the Assembly yaws. That is what a burnout
+  does, and it is why traction control exists; it is not modelled and does not
+  need to be until someone asks for it.
 
 ### Melee
 - **`MeleeSolver` computes everything except the query.** The swept-capsule
@@ -698,40 +890,46 @@ than synthetics.
 - **Nothing consumes `channel_mix`.** `DamageResolver` (doc 08 §5) is where the
   packets go, and it is unwritten.
 
+### Power
+- **An Energy Cell's reserve does nothing yet.** `capacity_pu_s` and
+  `recharge_pu_s` are authored and read by nobody; `PowerSystem` uses the
+  sustained figures alone. The reserve is what should cover a transient overdraw
+  — a salvo and a rotor spool in the same tick — and it belongs with doc 08's
+  brownout handling, which is unwritten.
+- **Nothing reads `PrimeMoverProfile.torque_curve`, `peak_angular_rpm`, or
+  `throttle_response_s`.** Drive torque is a flat figure scaled by the throttle,
+  so a Prime Mover has no power band and no lag. That is doc 05 §7.5 work.
+
 ### Data and the registry
 - **Rule 13 (tier scaling) has still never fired.** It needs two tiers of one
-  `class.family.variant` and the nine shipped parts have no such pair. The rotor
-  family is now the cheapest place to make it non-vacuous: doc 01 §10.3 publishes
-  `mot.rotor.coaxial_heavy.t4` and `mot.rotor.main_single.t3` alongside the
-  shipped mid disc.
+  `class.family.variant`. The rotor family is the cheapest place to make it
+  non-vacuous: doc 01 §10.3 publishes `mot.rotor.coaxial_heavy.t4` and
+  `mot.rotor.main_single.t3` alongside the shipped mid disc.
 - **`mot.rotor.main_single.t3` is the interesting one to author next.** It has
   `torque_reaction_ratio = 1.0` and no yaw authority, so a build carrying one
-  alone spins under its own reaction torque and cannot stop. That is legal, and
-  it is the first part whose *failure mode* is the teaching.
+  alone spins under its own reaction torque and cannot stop. Session 10 saw the
+  shape of that failure by accident: a *coaxial* disc mounted well off the centre
+  of mass tumbled to 131 rad/s of yaw in ten seconds. Both are legal builds and
+  both are the teaching.
 - **Rule 2's reorder half is not implemented, and cannot be from data alone.** It
-  needs a recorded baseline of shipped ids. Nine parts have now shipped in this
-  branch but nothing has shipped to a player, so there is still no history to
-  protect.
-- **Only one Effector Module exists and it is melee.** The ballistic path — arc
-  solving, spread, recoil deposit, the projectile pool — has no authored user.
-  Doc 02 §7.6's muzzle-offset half-cell discrepancy is still unresolved and is
-  still flagged rather than silently fixed.
+  needs a recorded baseline of shipped ids. Nine parts have shipped in this
+  branch but nothing has shipped to a player.
+- **Only one Effector Module exists and it is melee.** The ballistic path has no
+  authored user. Doc 02 §7.6's muzzle-offset half-cell discrepancy is unresolved
+  and still flagged rather than silently fixed.
 
 ### The lattice and the garage
-- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written.** Everything
-  it needs is in place — every commit and removal is already expressed in integer
-  lattice terms, so undo can be exact.
+- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written.**
 - **`PlacementValidator.remove` returns the cascade list rather than acting on
   it.** §9.2 requires a player confirmation showing the affected count.
-- **Nothing has ever placed a Motive Assembly through the validator.** Doc 02
-  §7.5's ground-clearance check now has real parts to reject, and the `AXLE`
-  keying of §4.2 has never been exercised by a placement. `test_placement_validator`
-  uses synthetic candidates throughout and should gain a real one.
+- **Doc 02 §7.5's ground-clearance check has still never rejected anything.** A
+  Motive Assembly now goes through the validator, but no test places one where
+  the clearance check should refuse it.
 
 ### The graph and strain
-- **`update_dynamic_factor` finally has a caller** — `MotiveSystem._update_kappa`
-  — but nothing has run it against a moving body. `recompute_strain` and
-  `evaluate_strain` are still waiting on a recoil discharge and an impact deposit.
+- **`update_dynamic_factor` has a caller and now has a moving body**, but nothing
+  asserts the factor it produces. `recompute_strain` and `evaluate_strain` are
+  still waiting on a recoil discharge and an impact deposit.
 - **Strain is attributed to the primary-tree edge only.** A wide panel bridged
   across two spars loads only the one doc 04 §3.2 picked. Spreading it is a change
   to §4.1.
@@ -739,19 +937,15 @@ than synthetics.
   layer.
 
 ### Testing and scenes
-- **No scenes, and no main scene set.** This is now the single biggest blocker.
-  It gates the probe constructor, the force application test, the camera the
-  debris visibility mechanism has never met, and the coupling torque.
+- **No scenes, and no main scene set.** Still true, and it is no longer the
+  blocker it was: §3.36 unblocked the probe constructor, the force application
+  test, and the coupling torque without one. What a scene still gates is the
+  camera the debris visibility mechanism has never met, and anything a human is
+  meant to look at.
 - **`tests/generation/` is empty.** The runner walks it and finds nothing.
-- **`test_constant_ownership` is not written.** `test_degradation_table` landed
-  this session; the ownership scan should land with whatever next duplicates a
-  constant.
-- **`run_all_checks.gd` itself still tolerates a runtime error.** The shell
-  wrapper catches it (§3.34), which is enough for CI, but a test run through the
-  engine directly still reports a false pass. Moving the scan into the runner
-  would want a way to observe engine errors from GDScript, which 4.7 does not
-  offer cleanly — the wrapper is the pragmatic place for it and the limitation is
-  worth knowing before someone runs the `.gd` on its own and trusts the result.
+- **`test_constant_ownership` is not written.**
+- **`run_all_checks.gd` still tolerates a runtime error on its own.** The shell
+  wrapper catches it (§3.34). Worth knowing before running the `.gd` directly.
 - **`cam_orbit`/`cam_pan` have keyboard/mouse bindings only**, and seven actions
   had no binding in doc 11 §7.1.
 
@@ -759,40 +953,38 @@ than synthetics.
 
 ## 8. Suggested next steps, in dependency order
 
-1. ~~`LatticeOccupancy` + `FootprintSolver`~~ — **done, session 1.**
-2. ~~First two part definitions and the registry validator~~ — **done, session 2.**
-3. ~~`PlacementValidator`, `BuildContext`, `ChassisGraph`, `MateSelector`~~ —
-   **done, session 3.**
-4. ~~Strain and the detachment solver~~ — **done, session 4.**
-5. ~~`AssemblyRuntime` and the mass solver~~ — **done, session 5.**
-6. ~~Island conversion to debris~~ — **done, session 6.**
-7. ~~`AssemblyRegistry` and visibility-aware debris retirement~~ — **done, session 7.**
-8. ~~A first `mot.*` part~~ — **done, session 9**, and it became seven parts across
-   four locomotion families.
-9. ~~Doc 05 §6–§9: suspension, traction, aerodynamics, and κ~~ — **done,
-   session 9**, plus §12–§14 for the rotary, ambulatory, and tracked families.
+1–9. ~~Lattice, parts, validator, graph, strain, detachment, runtime, mass,
+   debris, registry, the motion layer and four locomotion families~~ — **done,
+   sessions 1–9.**
 
-10. **The match scene — start here.** It is now the blocker for four separate
-    things, all of them listed in §7: the suspension probe constructor, the first
-    real force application, the camera the debris visibility mechanism has never
-    seen, and doc 05 §3.4's coupling torque with its tumbling test. Everything it
-    needs to hold is written and the wiring is in §6. Nothing else in the project
-    unblocks as much per hour.
+10. ~~A physics step inside the suite~~ — **done, session 10.** It turned out to
+    be what steps 10 and 11 of the previous list were actually waiting on.
 
-11. **The probe constructor and one real placement.** Building the `ShapeCast3D`
-    set in `AssemblyRuntime.adopt` per doc 05 §6.1, and pushing one Motive
-    Assembly through `PlacementValidator` so §7.5's clearance check and §4.2's
-    `AXLE` keying are exercised by a placement rather than by a unit test.
+11. **`ControlSystem`, and the input map into it.** Every family moves and
+    nothing but a test can ask them to. It is the smallest piece of work with the
+    largest visible result, and it is the last thing between the motion layer and
+    a person driving something.
 
-12. **`DamageResolver` and doc 08.** It is the missing consumer for `channel_mix`,
-    for `PowerSystem.recompute`, for `MotiveSystem.on_band_changed`, and for
-    `assembly_terminated`'s killer attribution. Four systems are waiting on one
+12. **The debris body shape query.** §5's uncaught fault, and cheap: a shape
+    query at a severed island's centre of mass must find the debris body, and
+    writing the body's transform before its shapes must fail it.
+
+13. **A second steered wheeled row.** Makes the one surviving fault in §2's table
+    visible, gives rule 13 a second tier to check, and gives the garage a real
+    choice on the front axle.
+
+14. **`DamageResolver` and doc 08.** The missing consumer for `channel_mix`, for
+    `PowerSystem.recompute`, for `MotiveSystem.on_band_changed`, and for
+    `assembly_terminated`'s killer attribution. Four systems waiting on one
     document.
 
-13. **`EffectorSystem` and doc 07 §7.** The melee sweep query needs it, and it is
+15. **The match scene.** No longer a blocker for the physics work, still the only
+    way anything becomes visible, and the wiring is written out in §6.
+
+16. **`EffectorSystem` and doc 07 §7.** The melee sweep query needs it, and it is
     what gives `deposit_recoil_force` its first caller.
 
-14. **A second tier of the rotor family.** The cheapest way to make rule 13
+17. **A second tier of the rotor family.** The cheapest way to make rule 13
     non-vacuous, and `mot.rotor.main_single.t3` is worth authoring for its failure
     mode alone.
 
@@ -814,19 +1006,33 @@ than synthetics.
 - Free every `Node` a test puts in the tree, and `dispose()` every
   `BuildContext`, in `after_all`.
 
+### Physics tests
+- **`await physics_frames(n)` is the only way to observe a force**, and it costs
+  real wall time at 60 Hz. Prefer the fewest ticks that make the claim. A test
+  that soaks for ten seconds to show a trend is usually one that has not found
+  the derived number it should be asserting.
+- **Measure from rest wherever an equality is wanted.** Damping is proportional
+  to the current velocity, so from zero it contributes nothing and `Δv = F·dt/m`
+  is exact rather than approximate (§3.38).
+- **Set state directly instead of waiting for it.** `RotorDiscState.omega_rad_s`
+  assigned is deterministic and instant; spooling to it is neither.
+- **Build the ground out of a `StaticBody3D` slab and name it a fixture.**
+  Document 09 owns Dynamic Ground Arrays.
+- **A physics test that plants no fault is not finished.** Half of session 10's
+  sweep was aimed at the four new files, and it is the only reason the probe
+  geometry, the mask, the pairing, and the clamp are known to be defended.
+
 ### What to assert
 - **Assert the rejection, not just the acceptance.** Every check in
   `test_placement_validator` is asserted in both directions.
-- **Assert a derived number, not that it moved.** A test asserting "heavier means
-  more strain" passes against a model that omits κ entirely. Every strain, mass,
-  inertia, suspension, traction, rotor, gait and track test fixes an input and
-  asserts the exact value, written out as arithmetic against the published
-  tables — never derived by calling the code under test with different arguments.
+- **Assert a derived number, not that it moved.** Every strain, mass, inertia,
+  suspension, traction, rotor, gait and track test fixes an input and asserts the
+  exact value, written out as arithmetic against the published tables — never
+  derived by calling the code under test with different arguments. Where a test
+  must consume the code's own output — `test_motive_force_application` reads the
+  thrust the rotor solved — it says so and names what is actually under test.
 - **Assert the sign, in every direction it can point.** Session 9's traction sign
-  defect survived a test that asserted the friction *magnitude* was right. The
-  test that caught it asserts that a driven contact pushes forward, a dragging one
-  pushes back, and a sideways-sliding one is pushed the other way — three
-  directions, one convention.
+  defect survived a test that asserted the friction *magnitude* was right.
 - **Assert the surviving structure, not just the return value.** A solver that
   severs too much and one that severs too little both return an island list.
 - **Assert through the layer that consumes the result.** `test_assembly_runtime`
@@ -836,32 +1042,32 @@ than synthetics.
   `tick_resolved`.
 - **Cycle tests catch what point tests cannot.** Every structure these systems
   maintain is incremental and none fails loudly.
+- **Write down a measurement you cannot yet fix.** §4.2 and §4.3 are asserted as
+  they behave today, with the assertion's own comment saying what should replace
+  it. A finding left in prose gets re-litigated; a finding left in a test does
+  not.
 
 ### Fixtures
 - **Prefer real parts; use synthetics where the rule needs a class, a limit, or a
-  pose that is not authored yet.** With nine parts shipping, far more is
-  reachable with real data than was. `tests/physics/test_locomotion_families.gd`
-  is the pattern: it asserts against `PartRegistry` and nothing else.
+  pose that is not authored yet.** `tests/physics/` is entirely real parts.
+- **Derive an orientation index, never write one down.** Which of the 24 carries
+  a part's drive face onto a given Assembly axis is a property of
+  `OrientationTable`. Searching for it with a stated predicate survives a change
+  to the table; the integer `3` does not. Watch `Vector3.FORWARD` (§3.39).
 - **Drive a subsystem through the signal its real producer raises.**
 - **A fixture that cannot distinguish the rule from its fallback is not a test.**
-  Five examples now, all found by fault injection: the depth tie-break test put
-  the shallow mate on the lower slot index; the shape-transform test used an
-  unrotated part; the island-velocity test used an angular velocity parallel to
-  the lever arm; its world pose rotated about the axis the island sat on; and the
-  gait phase test would have passed with the right side unreversed if it had only
-  asserted that the offsets differ.
+  Six examples now, all found by fault injection or while writing the fixture.
 - **A fixture built by hand can be wrong in a way that hides the rule.** If a
   test passes for a reason you cannot state in one sentence, the fixture is wrong.
 
 ### After writing
-- **Plant faults, one at a time, and confirm something fails.** This is not
-  optional and it is where most real defects in this repository have been found —
-  including, this session, a sign error in a normative document. A scripted sweep
-  is worth the ten minutes it takes to write; session 9's was 130 faults in one
-  pass.
+- **Plant faults, one at a time, and confirm something fails.** Not optional, and
+  where most real defects here have been found. A scripted sweep is worth the ten
+  minutes it takes to write.
+- **Compare the check count, not just the exit code.** Two of session 10's faults
+  truncate the suite into a green partial pass and are invisible to anything else
+  (§3.36).
 - **When a planted fault is not caught, first ask whether the code is dead.**
-- **Two owners of one invariant is worse than either alone.** If two places both
-  enforce something, neither is load-bearing and either can be deleted silently.
-  This applies to tests as much as to source.
+- **Two owners of one invariant is worse than either alone.**
 - **Two checks that look alike may cover different cases.** Before deleting the
   one whose removal changed nothing, write down the input each would catch.

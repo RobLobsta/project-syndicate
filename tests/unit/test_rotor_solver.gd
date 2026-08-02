@@ -304,7 +304,7 @@ func test_a_mid_disc_at_full_collective_draws_one_standard_power_plant() -> void
 	check_approx(
 		RotorSolver.draw_pu(_rotor, OMEGA),
 		150.0,
-		"§12.5: one pwr.combustion.standard.t2 per mid disc",
+		"§12.5: one pmv.combustion.standard.t2 per mid disc",
 		1.0
 	)
 

@@ -16,9 +16,10 @@ extends Node
 ## bands all arrive as cached values written by their owners on their own events.
 ##
 ## [method step] is the whole tick and [method _physics_process] does nothing but
-## call it. That split is not decoration: the suite never runs a physics frame,
-## so a test drives [method step] directly with contacts it constructed itself,
-## through the identical path the engine uses.
+## call it. That split is not decoration: it lets a unit test drive one tick with
+## contacts it constructed itself, through the identical path the engine uses,
+## and it lets a [code]tests/physics/[/code] test let the engine drive it instead
+## and assert what the body did.
 
 ## Rate at which the strain model's dynamic amplification factor is refreshed.
 ## §9: 10 Hz, not per tick, because the graph re-evaluates strain against it and
@@ -29,6 +30,11 @@ const KAPPA_INTERVAL_S: float = 0.1
 ## load on a part at the end of a long boom, which pure linear acceleration
 ## misses.
 const KAPPA_ANGULAR_WEIGHT: float = 0.35
+
+## Ceiling on the §3.4 coupling torque, in N·m. §11 invariant 10: the correction
+## omits the `(I_diag − I_full) ω̇` term, and this clamp is what guarantees the
+## omission can never inject energy faster than the solver removes it.
+const COUPLING_TORQUE_LIMIT_NM: float = 24000.0
 
 ## Assembly this system moves. Set once, before the node enters the tree.
 var runtime: AssemblyRuntime = null
@@ -64,6 +70,23 @@ var _limbs: Dictionary = {}  # slot -> LimbState
 ## how the cadence changes.
 var _gait_clock: float = 0.0
 
+## Contacts forming an axle pair, left at even indices and right at odd (§6.5).
+## Rebuilt on every registration change, never per tick: pairing is a function of
+## where the builder put the Motive Assemblies, and they do not move.
+var _axle_pairs: Array[MotiveContact] = []
+
+## Slot -> current steer angle in degrees, positive to the right (§7.1). Carried
+## between ticks because a wheel takes time to turn: the authored
+## `steer_rate_deg_s` is what stops an Assembly changing direction instantly, and
+## it is what a damaged Motive Assembly loses through
+## [constant DegradationTable.MOTIVE_STEER].
+var _steer_deg: PackedFloat32Array = PackedFloat32Array()
+
+## Longitudinal spread of the ground contacts, in metres. §7.6's yaw target is a
+## bicycle model and needs a wheelbase; it is where the builder put the Motive
+## Assemblies, so it is derived on registration and never per tick.
+var _wheelbase_m: float = 0.0
+
 var _kappa_accum: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 
@@ -74,6 +97,7 @@ func _ready() -> void:
 	_rolling_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
 	_steer_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
 	_damp_mult.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	_steer_deg.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
 	_traction_mult.fill(1.0)
 	_rolling_mult.fill(1.0)
 	_steer_mult.fill(1.0)
@@ -117,7 +141,7 @@ func register(slot: int, def: PartDefinition, state: PartInstanceState = null) -
 		PartEnums.LocomotionMode.AMBULATORY:
 			var limb := LimbState.new()
 			limb.slot = slot
-			limb.hip_local = _hip_local_of(def, state)
+			limb.hip_local = hip_local_of(def, state)
 			_limbs[slot] = limb
 			_contacts[slot] = [_new_contact(slot, 0)]
 		PartEnums.LocomotionMode.TRACKED:
@@ -132,6 +156,9 @@ func register(slot: int, def: PartDefinition, state: PartInstanceState = null) -
 			_contacts[slot] = [_new_contact(slot, 0)]
 
 	_write_band_multipliers(slot, PartEnums.IntegrityBand.NOMINAL)
+	_bind_probes(slot)
+	_rebuild_axle_pairs()
+	_rebuild_wheelbase()
 
 
 ## Drops a Motive Assembly that has been destroyed or detached.
@@ -142,6 +169,10 @@ func unregister(slot: int) -> void:
 	_contacts.erase(slot)
 	_discs.erase(slot)
 	_limbs.erase(slot)
+	# Anti-roll couples two surviving probes. Losing one end of an axle leaves
+	# the other unpaired rather than pushing against a probe that has left.
+	_rebuild_axle_pairs()
+	_rebuild_wheelbase()
 	# Phases are a function of the surviving limb set, so losing one re-phases
 	# the rest. A walker that loses a limb changes its gait; leaving the others
 	# on their old offsets would leave a hole in the cycle.
@@ -182,7 +213,15 @@ func reassign_gait_phases() -> void:
 ## [member AssemblyRuntime.body], and no family touches anything else (§11
 ## invariant 11).
 func step(dt: float) -> void:
-	if runtime == null or runtime.body == null or input == null:
+	if runtime == null or runtime.body == null:
+		return
+	# Before the input guard, and before any family runs. The coupling torque is
+	# a property of the Assembly's mass distribution, not of what it is being
+	# asked to do: an Assembly tumbling with nobody at the controls still has an
+	# asymmetric tensor, and a wreck spinning through the air is exactly where
+	# the correction is most visible.
+	_apply_coupling_torque(dt)
+	if input == null:
 		return
 	_gather_contacts()
 
@@ -200,6 +239,9 @@ func step(dt: float) -> void:
 			PartEnums.LocomotionMode.AMBULATORY:
 				_solve_ambulatory(slot, dt)
 
+	# After the families, because it differentiates the compressions they wrote
+	# this tick. Running it first would couple last tick's roll into this one.
+	_apply_anti_roll()
 	_update_kappa(dt)
 
 
@@ -277,6 +319,9 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 		return
 	var profile := def.motive_profile
 	var contacts: Array = _contacts.get(slot, [])
+	# §7.6. One yaw error for the whole Assembly, evaluated before any contact is
+	# solved, so every wheel this tick is corrected against the same heading.
+	var yaw_error := _yaw_error(profile, chassis_speed)
 	for c: MotiveContact in contacts:
 		if not c.grounded:
 			c.prev_compression_m = 0.0
@@ -289,7 +334,20 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 			tuned.x, tuned.y, profile.suspension_travel_limit_m, x, rate, _damp_mult[slot], chassis_speed
 		)
 		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
-		_apply_traction(slot, profile, c, dt, 1.0)
+		_steer_contact(slot, profile, c)
+		_apply_traction(
+			slot,
+			profile,
+			c,
+			dt,
+			1.0,
+			_ground_drive_share(profile) * TractionControl.drive_scale(
+				c.contact_omega * profile.contact_radius_m,
+				c.velocity_world.dot(c.forward),
+				input.traction_control
+			),
+			_yaw_brake_nm(slot, profile, yaw_error)
+		)
 
 
 func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
@@ -302,6 +360,21 @@ func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
 		return
 	var contacts: Array = _contacts.get(slot, [])
 	var normal_total := 0.0
+
+	# §14.2's differential drive, and the whole of how a track steers. The bias
+	# tapers to nothing at `pivot_taper_mps`, so the same expression pivots the
+	# Assembly on the spot when it is stopped and commits it to a long arc at
+	# speed, with nothing switching between the two.
+	var bias := TrackSolver.drive_bias(track, input.steer, chassis_speed)
+	var sides := TrackSolver.side_torques(
+		track, 0.0 if power == null else power.drive_torque_nm, input.throttle, bias
+	)
+	var side := TrackSolver.side_of(_part_local_position(slot))
+	var per_side := sides.y if side > 0 else sides.x
+	# Shared across this part's road stations and across the parts on its side,
+	# so adding a second bogie to a flank does not double that flank's torque.
+	var share := per_side / maxf(float(_tracked_count_on_side(side) * contacts.size()), 1.0)
+
 	for c: MotiveContact in contacts:
 		if not c.grounded:
 			c.prev_compression_m = 0.0
@@ -317,7 +390,7 @@ func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
 		)
 		normal_total += c.normal_force_n
 		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
-		_apply_traction(slot, profile, c, dt, track.lateral_grip_ratio)
+		_apply_traction(slot, profile, c, dt, track.lateral_grip_ratio, share)
 
 	var yaw_rate := runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y)
 	var slew := TrackSolver.slew_torque_nm(track, normal_total, yaw_rate)
@@ -439,8 +512,114 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 ## ===== SHARED ==========================================================
 
 
+## §7.1. Advances [param slot]'s steer angle toward the commanded one and turns
+## the contact frame to match.
+##
+## The contact frame is the [i]wheel's[/i], not the chassis's: §7.1 fixes x as
+## the rolling direction, and a steered wheel's rolling direction is not the hull
+## centreline. Rotating the frame here rather than steering with a yaw torque is
+## what makes the lateral force a genuine slip-angle force — the wheel is pointed
+## somewhere, the contact patch slides, and the Assembly turns because of the
+## force that slide produces. A steering model that applied yaw directly would
+## turn just as well on ice.
+##
+## A `WHEELED_FIXED` row authors `max_steer_angle_deg = 0` and falls through this
+## unchanged, which is why there is no second code path for an unsteered wheel.
+## The rate limit is scaled by the band multiplier, which is the only consumer
+## [constant DegradationTable.MOTIVE_STEER] has: a Motive Assembly at `CRITICAL`
+## turns at half rate and the Assembly understeers rather than failing outright.
+func _steer_contact(slot: int, profile: MotiveAssemblyProfile, c: MotiveContact) -> void:
+	var target := clampf(input.steer, -1.0, 1.0) * profile.max_steer_angle_deg
+	var step := profile.steer_rate_deg_s * _steer_mult[slot] * SyndicateConstants.PHYSICS_DT
+	_steer_deg[slot] = move_toward(_steer_deg[slot], target, step)
+	if is_zero_approx(_steer_deg[slot]):
+		return
+	# About the contact normal rather than the chassis up, so a wheel on a camber
+	# steers in the plane it is actually standing on. Negated because a positive
+	# rotation about the surface normal carries the forward axis to the left,
+	# and §7.2 of doc 11 fixes positive steer as right on every input device.
+	var turn := Basis(c.normal_world, -deg_to_rad(_steer_deg[slot]))
+	c.forward = turn * c.forward
+	c.lateral = turn * c.lateral
+
+
+## §7.6's yaw error for this tick, in rad/s, or zero when the aid is off, the
+## Assembly is too slow for the model to mean anything, or it is already going
+## where it was pointed.
+func _yaw_error(profile: MotiveAssemblyProfile, chassis_speed: float) -> float:
+	if input.traction_control <= 0.0 or chassis_speed < TractionControl.MIN_YAW_CONTROL_SPEED_MPS:
+		return 0.0
+	var forward := -runtime.body.global_transform.basis.z
+	var along := runtime.body.linear_velocity.dot(forward)
+	var target := TractionControl.target_yaw_rate_rad_s(
+		along, deg_to_rad(_commanded_steer_deg()), _wheelbase_m
+	)
+	return TractionControl.yaw_error_rad_s(
+		runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y),
+		target,
+		TractionControl.grip_limited_yaw_rate_rad_s(chassis_speed, profile.traction_coefficient)
+	)
+
+
+## The corrective brake for [param slot], applied only to the flank that opposes
+## the error. Braking both flanks would slow the Assembly and turn it nowhere.
+func _yaw_brake_nm(slot: int, profile: MotiveAssemblyProfile, yaw_error: float) -> float:
+	if is_zero_approx(yaw_error):
+		return 0.0
+	if TrackSolver.side_of(_part_local_position(slot)) != TractionControl.brake_side(yaw_error):
+		return 0.0
+	return TractionControl.yaw_brake_nm(
+		yaw_error, profile.brake_torque_nm, input.traction_control
+	)
+
+
+## The steer angle the driver is asking for, in degrees, taken from the widest
+## authored lock on the Assembly. The yaw target is a property of the build, not
+## of one wheel, and a build with no steered axle asks for no yaw at all.
+func _commanded_steer_deg() -> float:
+	var widest := 0.0
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.GROUND:
+			continue
+		var def := _definition(slot)
+		if def != null:
+			widest = maxf(widest, def.motive_profile.max_steer_angle_deg)
+	return clampf(input.steer, -1.0, 1.0) * widest
+
+
+## Longitudinal spread of the ground contacts, in metres.
+func _rebuild_wheelbase() -> void:
+	var lo := INF
+	var hi := -INF
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.GROUND:
+			continue
+		for c: MotiveContact in _contacts.get(slot, []):
+			if c.probe == null:
+				continue
+			lo = minf(lo, c.probe.position.z)
+			hi = maxf(hi, c.probe.position.z)
+	_wheelbase_m = 0.0 if lo > hi else hi - lo
+
+
+## The wheelbase §7.6's yaw target is taken against. Diagnostics and tests.
+func wheelbase_m() -> float:
+	return _wheelbase_m
+
+
+## Current steer angle at [param slot], in degrees, positive to the right.
+func steer_angle_deg(slot: int) -> float:
+	return _steer_deg[slot]
+
+
 func _apply_traction(
-	slot: int, profile: MotiveAssemblyProfile, c: MotiveContact, dt: float, lateral_ratio: float
+	slot: int,
+	profile: MotiveAssemblyProfile,
+	c: MotiveContact,
+	dt: float,
+	lateral_ratio: float,
+	drive_nm: float,
+	extra_brake_nm: float = 0.0
 ) -> void:
 	if c.normal_force_n <= 0.0:
 		return
@@ -458,10 +637,8 @@ func _apply_traction(
 	)
 	_apply_at(c.point_world, c.forward * forces.x + c.lateral * forces.y)
 
-	var drive := 0.0
-	if profile.driven and power != null:
-		drive = power.throttle_torque_nm(input.throttle) / maxf(float(_driven_count()), 1.0)
-	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0)
+	var drive := drive_nm
+	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0) + extra_brake_nm
 	c.contact_omega = TractionSolver.integrate_contact(
 		c.contact_omega,
 		TractionSolver.contact_inertia(_definition(slot).mass_kg, profile.contact_radius_m),
@@ -470,6 +647,99 @@ func _apply_traction(
 		forces.x,
 		profile.contact_radius_m,
 		dt
+	)
+
+
+## §6.5. Couples paired probes so that an axle resists roll rather than letting
+## each corner rise and fall alone.
+##
+## Reads the compression each family already wrote onto its contact this tick, so
+## an anti-roll bar costs one subtraction per axle and no second probe sweep. The
+## force is equal and opposite by construction: it transfers load across the
+## axle, and can never change the Assembly's total normal force.
+##
+## An airborne pair contributes nothing, because an ungrounded contact has zero
+## compression and both ends of the subtraction come from the same solver.
+func _apply_anti_roll() -> void:
+	for i: int in _axle_pairs.size() / 2:
+		var left := _axle_pairs[i * 2]
+		var right := _axle_pairs[i * 2 + 1]
+		if not left.grounded and not right.grounded:
+			continue
+		var profile := _definition(left.slot).motive_profile
+		var k_eff := SuspensionSolver.retune(profile, _static_load_n(left.slot)).x
+		var f := SuspensionSolver.anti_roll_force(
+			k_eff,
+			left.prev_compression_m,
+			right.prev_compression_m,
+			SuspensionSolver.ANTI_ROLL_RATIO
+		)
+		if is_zero_approx(f):
+			continue
+		# Along each contact's own normal rather than a shared one, so a pair
+		# straddling a camber transfers load along the surface it is standing on.
+		_apply_at(left.probe.global_position, left.normal_world * -f)
+		_apply_at(right.probe.global_position, right.normal_world * f)
+
+
+## §3.4. Supplies the gyroscopic term the physics server does not integrate, so
+## that an Assembly rotates about its true inertia tensor rather than about the
+## diagonal one [member RigidBody3D.inertia] can hold.
+##
+## Euler's equation in the body frame is `I ω̇ + ω × (I ω) = τ`. **The server
+## integrates `I_diag ω̇ = τ` and no gyroscopic term at all** — measured, in
+## `tests/physics/test_inertia_coupling.gd`, by spinning a body whose three
+## principal moments differ by 15% about its intermediate axis and watching the
+## angular velocity not move for five seconds. §3.4 originally derived this
+## correction as the *difference* between the diagonal and full gyroscopic terms,
+## on the premise that the server applied the first of them. It does not, so the
+## whole of `ω × (I_full ω)` is what has to be supplied, and the diagonal half of
+## the old expression was cancelling a term nothing produced.
+##
+## Evaluated at the midpoint rather than at the start of the tick. The continuous
+## torque is perpendicular to `ω` and therefore does no work, but sampling it at
+## the tick boundary and holding it constant across the step does: explicit Euler
+## on a 6 rad/s spin added about 16% of the rotational energy over five seconds,
+## which §11 invariant 10 forbids outright. One extra evaluation at the half-step
+## brings that under a tenth of a percent for the cost of one cross product, and
+## the invariant becomes something the code can be held to rather than an
+## aspiration.
+##
+## Without any of this a lopsided Assembly — one heavy Effector Module on the
+## left flank — rotates as though it were symmetric: no precession, no yaw
+## coupling under roll input, and no tumble about the intermediate axis. It reads
+## as a vehicle that is subtly weightless rather than as a missing term.
+func _apply_coupling_torque(dt: float) -> void:
+	var mp := runtime.mass_properties
+	if mp == null:
+		return
+	var basis := runtime.body.global_transform.basis
+	var w := basis.inverse() * runtime.body.angular_velocity
+	# Half a step of the correction's own effect, then the correction again from
+	# there. `ω̇ = I_diag⁻¹ τ` is how the server will apply whatever is returned,
+	# so that is the derivative the midpoint has to be taken along.
+	var half := w + _angular_accel(mp, w) * (dt * 0.5)
+	var tau := _gyroscopic_torque(mp, half).limit_length(COUPLING_TORQUE_LIMIT_NM)
+	if tau.is_zero_approx():
+		return
+	runtime.body.apply_torque(basis * tau)
+
+
+## `−ω × (I_full ω)`, in body space: the torque that makes a diagonal-tensor
+## integrator reproduce the full tensor's free rotation.
+static func _gyroscopic_torque(mp: MassSolver.MassProperties, w: Vector3) -> Vector3:
+	return -w.cross(mp.inertia_full * w)
+
+
+## The angular acceleration the server will produce from that torque, used only
+## to step the midpoint. Divided by the diagonal because that is the tensor the
+## server divides by, floored because §3.5 floors what it writes to the body.
+static func _angular_accel(mp: MassSolver.MassProperties, w: Vector3) -> Vector3:
+	var tau := _gyroscopic_torque(mp, w)
+	return Vector3(
+		tau.x / maxf(mp.inertia_diag.x, MassSolver.MIN_BODY_INERTIA),
+		tau.y / maxf(mp.inertia_diag.y, MassSolver.MIN_BODY_INERTIA),
+		tau.z / maxf(mp.inertia_diag.z, MassSolver.MIN_BODY_INERTIA)
 	)
 
 
@@ -518,17 +788,16 @@ func _new_contact(slot: int, station_index: int) -> MotiveContact:
 
 ## Populates this tick's probe results.
 ##
-## The one part of the motion layer the suite cannot exercise: a query against
-## the main world's space answers nothing without a physics step, and the runner
-## never lets one run. It is therefore kept as thin as it can be — a loop over
-## already-built [ShapeCast3D] nodes copying four fields — with every derived
-## quantity computed by a pure solver that a test can reach.
+## A loop over already-built [ShapeCast3D] nodes copying four fields, with every
+## derived quantity computed by a pure solver a test can reach directly. It is
+## kept that thin deliberately, and now that `tests/physics/` can step the engine
+## it is also exercised end to end rather than only by inspection.
 func _gather_contacts() -> void:
 	var xform := runtime.body.global_transform
 	for slot: int in _motive_slots:
 		var contacts: Array = _contacts.get(slot, [])
 		for c: MotiveContact in contacts:
-			var probe := _probe_for(c)
+			var probe := c.probe
 			c.clear_probe()
 			if probe == null or not probe.is_colliding():
 				continue
@@ -546,11 +815,85 @@ func _point_velocity(point_world: Vector3) -> Vector3:
 	return runtime.body.linear_velocity + runtime.body.angular_velocity.cross(r)
 
 
-func _probe_for(c: MotiveContact) -> ShapeCast3D:
-	var name_hint := "probe_s%03d_%d" % [c.slot, c.station_index]
-	if runtime.motive_probes == null:
+## Binds [param slot]'s contacts to the probes [AssemblyRuntime] built for them.
+##
+## Runs once per registration, which fixes the ordering the §6 wiring already
+## has: [method AssemblyRuntime.adopt] builds the physics geometry, and only then
+## is a Motive Assembly registered here. A part registered before its runtime
+## exists — which the garage does — simply keeps a null probe and contributes no
+## contact, because there is no world for it to sweep yet.
+func _bind_probes(slot: int) -> void:
+	if runtime == null:
+		return
+	var probes := runtime.motive_probes_of(slot)
+	var contacts: Array = _contacts.get(slot, [])
+	for i: int in mini(probes.size(), contacts.size()):
+		var c: MotiveContact = contacts[i]
+		c.probe = probes[i]
+
+
+## Recomputes the §6.5 axle pairs across every registered contact.
+##
+## Ascending slot then station on both sides of the comparison, and each contact
+## taken at most once, so the pair set is a deterministic function of the build
+## (Invariant I-9). Left is the negative-x end of each pair, which is what makes
+## the sign of [method SuspensionSolver.anti_roll_force] mean what its
+## documentation says it means.
+func _rebuild_axle_pairs() -> void:
+	_axle_pairs.clear()
+	var flat: Array[MotiveContact] = []
+	for slot: int in _motive_slots:
+		if _family[slot] == PartEnums.LocomotionMode.ROTARY:
+			continue
+		for c: MotiveContact in _contacts.get(slot, []):
+			if c.probe != null:
+				flat.append(c)
+
+	# Only the far end of a pair is marked. Marking the near end as well reads as
+	# symmetry and is dead: the outer loop visits each index once and ascending,
+	# so an index can only be claimed by an earlier one — which is the `taken[j]`
+	# write — and never revisits itself. Fault injection removed the second write
+	# without a single test noticing, which is what dead code looks like here.
+	var taken := PackedByteArray()
+	taken.resize(flat.size())
+	for i: int in flat.size():
+		if taken[i] != 0:
+			continue
+		for j: int in range(i + 1, flat.size()):
+			if taken[j] != 0:
+				continue
+			var a := flat[i].probe.position
+			var b := flat[j].probe.position
+			if not SuspensionSolver.is_axle_pair(a, b):
+				continue
+			taken[j] = 1
+			if a.x < b.x:
+				_axle_pairs.append(flat[i])
+				_axle_pairs.append(flat[j])
+			else:
+				_axle_pairs.append(flat[j])
+				_axle_pairs.append(flat[i])
+			break
+
+
+## Axle pairs found across this Assembly's probes. Diagnostics and tests.
+func axle_pair_count() -> int:
+	return _axle_pairs.size() / 2
+
+
+## One end of axle pair [param index]: [param right] false for the negative-x
+## end, true for the positive-x one.
+##
+## The side matters and a count does not. Four probes make two pairs whether they
+## were matched across the Assembly or down one flank, so a test that counts them
+## passes against pairing that ignores §6.5's sign test entirely — which is the
+## one thing the pairing exists to do, because two probes on the same side have
+## no roll couple between them to resist.
+func axle_pair_end(index: int, right: bool) -> MotiveContact:
+	var at := index * 2 + (1 if right else 0)
+	if at < 0 or at >= _axle_pairs.size():
 		return null
-	return runtime.motive_probes.get_node_or_null(NodePath(name_hint)) as ShapeCast3D
+	return _axle_pairs[at]
 
 
 ## The definition at [param slot], or null when there is nothing there.
@@ -574,7 +917,12 @@ func _definition(slot: int) -> PartDefinition:
 ## basis — the pivot rather than the centre of mass, because §7.2.2 defines
 ## [member LimbProfile.hip_offset_m] relative to the pivot cell and a limb's
 ## pivot is the cell it mounts through.
-static func _hip_local_of(def: PartDefinition, state: PartInstanceState) -> Vector3:
+##
+## Public because [AssemblyRuntime] needs the same answer when it builds the
+## limb's probe: the sweep starts at the hip and runs the length of the leg, and
+## two derivations of one hip position is exactly the "two owners of one
+## invariant" this project keeps deleting.
+static func hip_local_of(def: PartDefinition, state: PartInstanceState) -> Vector3:
 	if state == null:
 		return Vector3.ZERO
 	var offset := def.motive_profile.limb_profile.hip_offset_m
@@ -597,6 +945,35 @@ func _static_load_n(slot: int) -> float:
 	if def == null:
 		return 0.0
 	return def.motive_profile.rated_load_kg * SyndicateConstants.GRAVITY_MPS2
+
+
+## A GROUND contact's share of the Assembly's drive torque. Split evenly across
+## the driven Motive Assemblies, which is an open differential and is why a
+## wheeled Assembly with one wheel in the air spins it and goes nowhere.
+func _ground_drive_share(profile: MotiveAssemblyProfile) -> float:
+	if not profile.driven or power == null:
+		return 0.0
+	return power.throttle_torque_nm(input.throttle) / maxf(float(_driven_count()), 1.0)
+
+
+## The part's pivot in assembly-local metres. §14.2 partitions the sides by the
+## sign of this, so a bogie's side is where the builder put it and not a flag.
+func _part_local_position(slot: int) -> Vector3:
+	var st: PartInstanceState = runtime.states[slot]
+	if st == null:
+		return Vector3.ZERO
+	return LatticeMath.cell_to_local(st.origin_cell)
+
+
+## Tracked Motive Assemblies on [param side], for the torque split.
+func _tracked_count_on_side(side: int) -> int:
+	var count := 0
+	for slot: int in _motive_slots:
+		if _family[slot] != PartEnums.LocomotionMode.TRACKED:
+			continue
+		if TrackSolver.side_of(_part_local_position(slot)) == side:
+			count += 1
+	return count
 
 
 func _driven_count() -> int:

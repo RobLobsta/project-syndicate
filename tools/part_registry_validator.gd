@@ -40,15 +40,17 @@ const RULE_ROTOR: int = 19
 const RULE_MELEE: int = 20
 const RULE_LIMB: int = 21
 const RULE_TRACK: int = 22
+const RULE_SUSPENSION_REACH: int = 23
+const RULE_POWER_SPLIT: int = 24
 
 ## ===== RULE CONSTANTS ==================================================
 
 ## §5.1 key grammar. The class tags are the seven directory names under
 ## [code]data/parts/[/code], in [enum PartEnums.PartClass] order.
-const CLASS_TAGS: Array[String] = ["core", "str", "mot", "pwr", "eff", "sup", "ctl"]
+const CLASS_TAGS: Array[String] = ["core", "str", "mot", "pmv", "eff", "sup", "ctl", "cel"]
 
 const KEY_PATTERN: String = (
-	"^(core|str|mot|pwr|eff|sup|ctl)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
+	"^(core|str|mot|pmv|eff|sup|ctl|cel)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
 )
 
 ## §14 rule 5. A part larger than this in any axis would not fit the lattice
@@ -170,6 +172,8 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_melee(def)
 	_check_limb(def)
 	_check_track(def)
+	_check_suspension_reach(def)
+	_check_power_split(def)
 
 
 func failures() -> PackedStringArray:
@@ -379,8 +383,10 @@ func _check_class_payload(def: PartDefinition) -> void:
 		present.push_back("core_profile")
 	if def.motive_profile != null:
 		present.push_back("motive_profile")
-	if def.power_profile != null:
-		present.push_back("power_profile")
+	if def.prime_mover_profile != null:
+		present.push_back("prime_mover_profile")
+	if def.energy_cell_profile != null:
+		present.push_back("energy_cell_profile")
 	if def.effector_profile != null:
 		present.push_back("effector_profile")
 	if def.support_profile != null:
@@ -815,13 +821,40 @@ func _check_motive_family_payload(def: PartDefinition) -> void:
 
 ## §4.2: AXLE mates only with AXLE, so a station that accepted anything would
 ## make the polarity a slower FACE_NEUTRAL. A Structural Component offering one
-## must key it to Motive Assemblies; a Motive Assembly's own drive face needs no
-## restriction, because the station it mates with already carries it.
+## must key it to Motive Assemblies, and a Motive Assembly's own drive face must
+## still admit the Structural Component it bolts to.
+##
+## Both halves are checked because [code]PlacementValidator._check_mating[/code]
+## tests [code]accepts_class[/code] in [i]both[/i] directions. This rule
+## originally checked the station's half alone and said in as many words that the
+## drive face "needs no restriction, because the station it mates with already
+## carries it" — which is true of what the face may accept and says nothing about
+## what it may refuse. All four shipped `mot.*` parts were authored carrying the
+## station's own list on their drive face, so every Motive Assembly in the
+## registry rejected the only class §4.2 lets it mount on. Nothing with
+## locomotion could be built at all, and no validator rule, no unit test, and no
+## conformance test said a word: the defect is invisible until something attempts
+## a placement, which `tests/physics/test_ground_assembly.gd` is the first thing
+## in the project's history to do.
 func _check_axle_keying(def: PartDefinition) -> void:
 	for node: AttachmentNodeDef in def.attachment_nodes:
 		if node.polarity != PartEnums.AttachmentPolarity.AXLE:
 			continue
 		if def.part_class == PartEnums.PartClass.MOTIVE_ASSEMBLY:
+			if (
+				not node.accepts_classes.is_empty()
+				and not node.accepts_classes.has(PartEnums.PartClass.STRUCTURAL_COMPONENT)
+			):
+				_fail(
+					RULE_AXLE_KEYING,
+					def.part_key,
+					(
+						"node '%s' is a drive face that refuses STRUCTURAL_COMPONENT, "
+						% node.node_name
+					)
+					+ "so it cannot mate with the AXLE station §4.2 requires and the "
+					+ "part is unmountable on anything"
+				)
 			continue
 		if def.part_class != PartEnums.PartClass.STRUCTURAL_COMPONENT:
 			_fail(
@@ -1291,3 +1324,100 @@ static func _class_label(part_class: int) -> String:
 static func _channel_name(channel: int) -> String:
 	var names := PartEnums.DamageChannel.keys()
 	return String(names[channel]) if channel >= 0 and channel < names.size() else "?"
+
+
+## ===== RULE 23 — SUSPENSION REACH ======================================
+
+## §14 rule 23, and doc 05 §6.1: a ground contact's rest length must exceed its
+## contact radius, or its suspension can never carry load.
+##
+## The probe sweeps from the part's centre of mass and §6.2 reads compression as
+## `rest_length - distance`. A Motive Assembly standing on its own authored
+## collider puts that distance at one `contact_radius_m`, so a rest length at or
+## below the radius clamps compression to zero on every tick the part is on the
+## ground. The consequences run the whole length of the layer: no normal force,
+## so no traction, so no drive force, so an Assembly at full throttle that does
+## not move — and nothing in the logs, because every one of those zeroes is a
+## legal value that some airborne contact produces legitimately.
+##
+## Both shipped ground rows were authored below the radius and this rule is why
+## the next one will not be. The convention §6.1 recommends is
+## `radius + travel_limit`, which puts full droop exactly one travel above the
+## surface and makes the part's own collider the bump stop; the rule enforces
+## only the hard requirement, because a shorter travel is a legitimate tuning
+## choice and an inert spring is not.
+func _check_suspension_reach(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return
+	var profile := def.motive_profile
+	if profile == null:
+		return
+	var mode := profile.locomotion_mode()
+	if mode != PartEnums.LocomotionMode.GROUND and mode != PartEnums.LocomotionMode.TRACKED:
+		return
+	if profile.suspension_rest_length_m > profile.contact_radius_m:
+		return
+	_fail(
+		RULE_SUSPENSION_REACH,
+		def.part_key,
+		(
+			"suspension_rest_length_m is %.3f against a contact_radius_m of %.3f; "
+			% [profile.suspension_rest_length_m, profile.contact_radius_m]
+		)
+		+ "the probe can never register compression and the part cannot drive. "
+		+ "Doc 05 §6.1 recommends radius + travel_limit, which is %.3f here"
+		% (profile.contact_radius_m + profile.suspension_travel_limit_m)
+	)
+
+
+## ===== RULE 24 — PRIME MOVER / ENERGY CELL SPLIT =======================
+
+## §14 rule 24, and §7.3's split: a Prime Mover makes torque and a cell does not.
+##
+## The two classes were one until §10.4 published two rows with a zero in the
+## torque column, which is a class distinction written as a magic value: nothing
+## stopped a "cell" being authored with torque, and nothing told the garage that
+## the two parts answer different questions. Splitting them puts the difference
+## in the type system, and this rule is what keeps it there.
+##
+## A cell supplying nothing is the other half. It is the only thing a cell does,
+## so a cell with no supply is a 175 kg block of ballast with a detonation
+## radius, which is never what the author meant.
+func _check_power_split(def: PartDefinition) -> void:
+	if def.part_class == PartEnums.PartClass.PRIME_MOVER:
+		var mover := def.prime_mover_profile
+		if mover == null:
+			return  # Rule 6 has already reported it.
+		if mover.drive_torque_nm <= 0.0:
+			_fail(
+				RULE_POWER_SPLIT,
+				def.part_key,
+				(
+					"drive_torque_nm is %.1f; a Prime Mover that makes no torque is an "
+					% mover.drive_torque_nm
+				)
+				+ "Energy Cell and belongs in that class"
+			)
+		return
+
+	if def.part_class != PartEnums.PartClass.ENERGY_CELL:
+		return
+	var cell := def.energy_cell_profile
+	if cell == null:
+		return  # Rule 6 has already reported it.
+	if def.power_supply_pu <= 0.0 or cell.discharge_limit_pu <= 0.0:
+		_fail(
+			RULE_POWER_SPLIT,
+			def.part_key,
+			(
+				"power_supply_pu is %.1f and discharge_limit_pu is %.1f; supply is the "
+				% [def.power_supply_pu, cell.discharge_limit_pu]
+			)
+			+ "whole of what an Energy Cell contributes"
+		)
+	if cell.capacity_pu_s < 0.0 or cell.recharge_pu_s < 0.0:
+		_fail(
+			RULE_POWER_SPLIT,
+			def.part_key,
+			"capacity_pu_s and recharge_pu_s may not be negative"
+		)

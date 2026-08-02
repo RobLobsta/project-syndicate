@@ -493,9 +493,18 @@ net_diagnostics_toggle
 
 Generic engineering nomenclature is mandatory across code, data, comments, commit messages, and user-facing strings. The full table is in `docs/PART_DATA_SCHEMA.md` §2. Summary of the required terms:
 
-**Core Module** · **Structural Component** · **Motive Assembly** · **Power Plant** · **Effector Module** · **Support Module** · **Control Surface** · **Dynamic Ground Array** · **Static Volume** · **Assembly** · **Build Lattice** · **Attachment Node** · **Chassis Graph** · **Integrity** (not "health" in identifiers) · **Effector** (not "weapon" in identifiers)
+**Core Module** · **Structural Component** · **Motive Assembly** · **Prime Mover** · **Energy Cell** · **Effector Module** · **Support Module** · **Control Surface** · **Dynamic Ground Array** · **Static Volume** · **Assembly** · **Build Lattice** · **Attachment Node** · **Chassis Graph** · **Integrity** (not "health" in identifiers) · **Effector** (not "weapon" in identifiers)
 
 Prohibited in identifiers, resource names, and localisation keys: *cabin, cockpit, armor plate, wheel, engine, weapon, gun, cannon, terrain, building, vehicle, car, health bar*.
+
+**Power Plant** was the term for the torque source and was retired in favour of
+**Prime Mover** and **Energy Cell**. It named one class doing two unrelated jobs
+— making shaft torque and supplying power — and it read as a fixed installation
+rather than as something bolted into a vehicle. *Prime Mover* is the standard
+engineering term for a machine that converts energy into motion and covers a
+piston, a turbine, and a reaction drive without favouring any of them; *engine*
+stays prohibited above for the same reason *wheel* and *cannon* do. The split is
+`docs/PART_DATA_SCHEMA.md` §7.3 and §7.7.
 
 `hardpoint` is permitted **only** for the two-DOF rotational mount internal to an Effector Module.
 

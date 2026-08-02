@@ -27,14 +27,26 @@ const FACE_ZN: Vector3i = Vector3i(0, 0, -1)
 var _done: bool = false
 
 
-## The `accepts_classes` restriction every AXLE node carries: a drive station
-## takes a Motive Assembly and nothing else (§14 rule 18).
+## The `accepts_classes` restriction an AXLE [i]station[/i] carries: a drive
+## station takes a Motive Assembly and nothing else (§14 rule 18).
 ##
 ## A function rather than a `const`, because a `Packed*Array` constructor is not
 ## a constant expression in GDScript — the same rule that already forbids
 ## `const X: PackedStringArray = PackedStringArray([...])`.
 static func motive_only() -> PackedInt32Array:
 	return PackedInt32Array([PartEnums.PartClass.MOTIVE_ASSEMBLY])
+
+
+## The restriction a Motive Assembly's own drive face carries: §4.2's other half.
+##
+## The two halves are not the same list and putting the station's list on both
+## sides is the defect this function exists to name. `_check_mating` tests
+## `accepts_class` in [i]both[/i] directions, so a drive face keyed to
+## MOTIVE_ASSEMBLY rejects the very station §4.2 requires it to mate with — and
+## the part is then unmountable on anything, which is exactly what four of the
+## nine shipped parts were until the first placement test tried it.
+static func structural_only() -> PackedInt32Array:
+	return PackedInt32Array([PartEnums.PartClass.STRUCTURAL_COMPONENT])
 
 
 func _process(_delta: float) -> bool:
@@ -49,10 +61,12 @@ func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_hub_axle_station())
 	keys.append(_author_wheeled_allroad())
+	keys.append(_author_wheeled_fixed_rear())
 	keys.append(_author_tracked_short_bogie())
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
-	keys.append(_author_power_combustion_standard())
+	keys.append(_author_prime_mover_combustion_standard())
+	keys.append(_author_energy_cell_static_standard())
 	keys.append(_author_melee_beam_edge())
 	for key: String in keys:
 		if key.is_empty():
@@ -115,7 +129,11 @@ func _author_wheeled_allroad() -> String:
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = cells
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: motive_only()}, cells
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
 	)
 	def.mass_kg = 68.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -134,7 +152,11 @@ func _author_wheeled_allroad() -> String:
 	# the rolling radius, and the occupancy describing one object.
 	profile.contact_radius_m = 0.50
 	profile.contact_width_m = 0.50
-	profile.suspension_rest_length_m = 0.32
+	# Rolling radius plus full travel, per doc 05 §6.1. The probe sweeps from the
+	# disc's centre, so a rest length below the radius can never register
+	# compression; setting it to radius + travel puts full droop one travel above
+	# the ground and makes the disc's own collider the bump stop.
+	profile.suspension_rest_length_m = 0.74
 	profile.suspension_stiffness_n_m = 42000.0
 	profile.suspension_damping_ns_m = 3400.0
 	profile.suspension_travel_limit_m = 0.24
@@ -154,6 +176,70 @@ func _author_wheeled_allroad() -> String:
 	)
 
 
+## §10.3: `mot.wheeled.fixed_rear.t2`, WHEELED_FIXED, 4x4x2, 62 kg, 355
+## integrity, 680 kg rated, 1.09 traction, 0 steer, 44000 N/m, 3500 Ns/m.
+##
+## The unsteered half of a steering system, and it is not an optimisation. Four
+## wheels that all steer the same way do not turn an Assembly — they translate
+## it, because every contact patch points the same direction and there is no
+## couple about the vertical axis. It crabs sideways down the road with its nose
+## still pointing forward, which is exactly what the first steering test measured
+## before this part existed. A yaw needs the axles to disagree, so a steering
+## build is `WHEELED_STEERED` at the front and `WHEELED_FIXED` at the back, and
+## the difference is one authored number rather than a line of code: the steer
+## solver reads `max_steer_angle_deg`, and zero falls through it unchanged.
+##
+## Slightly heavier-duty than the steered row at the same tier — more rated load
+## and more grip, less mass — because it carries no steering mechanism. That is
+## §10.3's own trade and it makes the rear axle the one to drive.
+func _author_wheeled_fixed_rear() -> String:
+	var lo := Vector3i(-2, -2, -1)
+	var hi := Vector3i(1, 1, 0)
+	var cells := PartAuthoring.disc_cells(lo, hi)
+	var def := _base(&"mot.wheeled.fixed_rear.t2", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.STANDARD
+	def.occupancy_cells = cells
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
+	)
+	def.mass_kg = 62.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 355.0
+	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
+	def.armour_rating = 10.0
+	def.load_capacity_kg = 200.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.WHEELED_FIXED
+	profile.contact_radius_m = 0.50
+	profile.contact_width_m = 0.50
+	# §6.1's rule, identical to the steered row: the two share a footprint and a
+	# travel, so they share a rest length.
+	profile.suspension_rest_length_m = 0.74
+	profile.suspension_stiffness_n_m = 44000.0
+	profile.suspension_damping_ns_m = 3500.0
+	profile.suspension_travel_limit_m = 0.24
+	# Zero, and load-bearing: this is the whole difference between the two rows.
+	profile.max_steer_angle_deg = 0.0
+	profile.steer_rate_deg_s = 0.0
+	profile.rated_load_kg = 680.0
+	profile.traction_coefficient = 1.09
+	profile.rolling_resistance = 0.014
+	profile.brake_torque_nm = 2600.0
+	profile.driven = true
+	def.motive_profile = profile
+
+	def.build_cost = 205
+	def.mount_weight = 2
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.cylinder_z_collider(lo, hi), &"tread_std"
+	)
+
+
 ## §10.3: `mot.tracked.short_bogie.t2`, TRACKED_SEGMENT, 8x4x3, 210 kg,
 ## 900 integrity, 2100 kg rated, 1.34 traction, 0 steer, 88000 N/m, 7600 Ns/m.
 ## §7.2.3 and §10.3's tracked parameter table for the rest. §11: `mot.tracked.*`.
@@ -167,7 +253,7 @@ func _author_tracked_short_bogie() -> String:
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: motive_only()}
+		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: structural_only()}
 	)
 	def.mass_kg = 210.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -180,7 +266,9 @@ func _author_tracked_short_bogie() -> String:
 	profile.kind = PartEnums.MotiveKind.TRACKED_SEGMENT
 	profile.contact_radius_m = 0.50
 	profile.contact_width_m = 0.75
-	profile.suspension_rest_length_m = 0.32
+	# Hub radius plus full travel; §6.1's rule, and the same arithmetic as the
+	# wheel because a road station's spring is §6.2 unchanged.
+	profile.suspension_rest_length_m = 0.74
 	profile.suspension_stiffness_n_m = 88000.0
 	profile.suspension_damping_ns_m = 7600.0
 	profile.suspension_travel_limit_m = 0.24
@@ -236,7 +324,7 @@ func _author_rotor_coaxial_mid() -> String:
 	# The mast mounts downward onto a station, so the AXLE face is -Y and the
 	# disc axis is the part's local +Y that RotorSolver rotates.
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: motive_only()}
+		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: structural_only()}
 	)
 	def.mass_kg = 265.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -310,7 +398,16 @@ func _author_rotor_coaxial_mid() -> String:
 ## passive: its spring is [member LimbProfile.stance_stiffness_n_m], which is a
 ## controller gain. §14 rule 21 requires the distinction.
 func _author_limb_strider() -> String:
-	var lo := Vector3i(-1, -7, -1)
+	# The hip housing and thigh, not the whole extended leg. A limb's reach is
+	# `leg_length_m` and its occupancy is the structure that reach hangs from —
+	# exactly as `mot.rotor.*` occupies its mast and not its 2.6 m disc, and for
+	# the same reason. Doc 05 §13.1 puts the visible articulation under
+	# `VisualRoot` as inverse kinematics; Invariant I-1 forbids a collider that
+	# follows it. A footprint spanning the fully extended leg therefore bakes a
+	# 2.0 m collider around a limb that stands 1.63 m tall, and the Assembly
+	# rests on its own shins with the stance spring never compressing at all —
+	# measured, before this was shortened, at 0.23 m of unreachable travel.
+	var lo := Vector3i(-1, -4, -1)
 	var hi := Vector3i(1, 0, 1)
 	var def := _base(&"mot.limb.strider.t4", PartEnums.PartClass.MOTIVE_ASSEMBLY)
 	def.tier = PartEnums.TierGrade.PROTOTYPE
@@ -318,7 +415,7 @@ func _author_limb_strider() -> String:
 	# The pivot is the top cell and the limb hangs below it, so the AXLE face is
 	# +Y: a limb mounts under a chassis, where a wheel mounts beside one.
 	def.attachment_nodes = PartAuthoring.face_nodes(
-		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: motive_only()}
+		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: structural_only()}
 	)
 	def.mass_kg = 185.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
@@ -373,16 +470,18 @@ func _author_limb_strider() -> String:
 	)
 
 
-## §10.4: `pwr.combustion.standard.t2`, 4x3x5, 155 kg, 420 integrity,
+## §10.4: `pmv.combustion.standard.t2`, 4x3x5, 155 kg, 420 integrity,
 ## 3200 N.m, 5200 RPM, 150 PU, 7.4 HU/s, 4.2 m blast, 380 damage.
-## §11: the `pwr.combustion.*` row.
+## §11: the `pmv.combustion.*` row.
 ##
 ## 150 PU is exactly one `mot.rotor.coaxial_mid.t3` at full collective, which is
-## the balance point §12.5 chose ROTOR_W_PER_PU to produce.
-func _author_power_combustion_standard() -> String:
+## the balance point §12.5 chose ROTOR_W_PER_PU to produce. That is a Prime
+## Mover only barely covering a single disc, and it is the reason the Energy Cell
+## below exists: a rotary build wants supply, not torque.
+func _author_prime_mover_combustion_standard() -> String:
 	var lo := Vector3i(-2, 0, -2)
 	var hi := Vector3i(1, 2, 2)
-	var def := _base(&"pwr.combustion.standard.t2", PartEnums.PartClass.POWER_PLANT)
+	var def := _base(&"pmv.combustion.standard.t2", PartEnums.PartClass.PRIME_MOVER)
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
@@ -395,20 +494,64 @@ func _author_power_combustion_standard() -> String:
 	def.power_supply_pu = 150.0
 	def.heat_generation_hu_s = 7.4
 
-	var power := PowerPlantProfile.new()
-	power.drive_torque_nm = 3200.0
-	power.peak_angular_rpm = 5200.0
-	power.throttle_response_s = 0.18
-	power.thermal_throttle_start_hu = 620.0
-	power.thermal_shutdown_hu = 900.0
-	power.detonation_blast_radius_m = 4.2
-	power.detonation_blast_damage = 380.0
-	def.power_profile = power
+	var mover := PrimeMoverProfile.new()
+	mover.drive_torque_nm = 3200.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
 
 	def.build_cost = 480
 	def.mount_weight = 3
 	return PartAuthoring.save_part(
-		def, "pwr", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `cel.static.standard.t3`, 4x3x4, 175 kg, 540 integrity, no torque,
+## 260 PU, 1.1 HU/s, 3.4 m blast, 300 damage. §11: the `cel.static.*` row.
+##
+## The other half of the §7.3 split, and the first part in the registry whose
+## whole contribution is supply. It carries 260 PU against the Prime Mover's 150
+## for 20 kg more, makes no torque at all, and runs cold — 1.1 HU/s against 7.4.
+## A rotary Assembly built on cells flies further and cannot drive; one built on
+## movers drives and cannot spin a second disc. That trade is the reason the two
+## are separate classes rather than one class with a zero in the torque column.
+func _author_energy_cell_static_standard() -> String:
+	var lo := Vector3i(-2, 0, -2)
+	var hi := Vector3i(1, 2, 1)
+	var def := _base(&"cel.static.standard.t3", PartEnums.PartClass.ENERGY_CELL)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 175.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 540.0
+	# Softer to thermal and to corrosive than a Prime Mover, and harder to
+	# kinetic: a cell is a sealed block rather than a machine with moving parts.
+	def.resistance = PackedFloat32Array([0.22, 0.14, 0.06, 0.08, 0.10])
+	def.armour_rating = 16.0
+	def.load_capacity_kg = 800.0
+	def.power_supply_pu = 260.0
+	def.heat_generation_hu_s = 1.1
+
+	var cell := EnergyCellProfile.new()
+	cell.discharge_limit_pu = 260.0
+	cell.capacity_pu_s = 900.0
+	cell.recharge_pu_s = 45.0
+	cell.thermal_throttle_start_hu = 540.0
+	cell.thermal_shutdown_hu = 820.0
+	cell.detonation_blast_radius_m = 3.4
+	cell.detonation_blast_damage = 300.0
+	def.energy_cell_profile = cell
+
+	def.build_cost = 520
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "cel", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
 	)
 
 

@@ -184,7 +184,7 @@ A candidate blueprint is **illegal** if any of these is violated. They are check
 | `H12` | COM ground projection lies inside the motive support polygon | Phase 3 exit check, Phase 8 guard |
 | `H13` | Every part's tier ≤ `tier_ceiling`, and id ∈ `allowed_part_ids` when non-empty | Candidate filter |
 | `H14` | Locked placements are present and unmodified | Phase 0 pre-seed; placement never overwrites |
-| `H15` | At least one driven Motive Assembly and at least one Power Plant with `drive_torque_nm > 0` | Phase 4 exit check |
+| `H15` | At least one driven Motive Assembly and at least one Prime Mover with `drive_torque_nm > 0` | Phase 4 exit check |
 
 `H12` deserves emphasis: it is the constraint that prevents the generator from producing tall, narrow builds that tip over on their first turn. It is checked at the end of Phase 3 (before anything heavy is added on top) and again as a guard on every Phase 8 swap.
 
@@ -349,7 +349,7 @@ func _phase_motive(ctx: GenerationContext) -> int:
 
 ### 6.5 Phase 4 — Powerplant Placement
 
-Power Plants are placed low and central — protected by the Core Module and contributing minimal COM height. The count is driven by a two-sided requirement: total power supply must cover projected draw, and total drive torque must reach the archetype's acceleration target.
+Prime Movers are placed low and central — protected by the Core Module and contributing minimal COM height. The count is driven by a two-sided requirement: total power supply must cover projected draw, and total drive torque must reach the archetype's acceleration target.
 
 ```
 τ_required = M_projected · a_target · r_wheel / η_drive
@@ -365,18 +365,18 @@ func _phase_power(ctx: GenerationContext) -> int:
     var tau_have := 0.0
     var count := 0
     while count < ctx.arch.power_plant_count_range.y:
-        var ids := _viable_candidates(ctx, PartEnums.PartClass.POWER_PLANT)
+        var ids := _viable_candidates(ctx, PartEnums.PartClass.PRIME_MOVER)
         if ids.is_empty():
             break
         var pick := _best_by(ids, func(d):
-            return d.power_profile.drive_torque_nm / maxf(d.mass_kg, 1.0))
+            return d.prime_mover_profile.drive_torque_nm / maxf(d.mass_kg, 1.0))
         var cell := ctx.lowest_central_free_cell(PartRegistry.definition(pick))
         if cell == null:
             break
         var cand := ctx.make_candidate(pick, cell, 0)
         if ctx.try_place(cand) != PlacementValidator.Reject.NONE:
             break
-        tau_have += PartRegistry.definition(pick).power_profile.drive_torque_nm
+        tau_have += PartRegistry.definition(pick).prime_mover_profile.drive_torque_nm
         count += 1
         if tau_have >= tau_required and count >= ctx.arch.power_plant_count_range.x:
             break
@@ -448,7 +448,7 @@ The shell phase armours exposed surfaces in strict priority order, spending rema
 Priority order:
 
 1. Cells face-adjacent to the Core Module (its own skin).
-2. Cells face-adjacent to a Power Plant or a volatile Support Module.
+2. Cells face-adjacent to a Prime Mover or a volatile Support Module.
 3. Cells face-adjacent to an Effector Module's base, excluding cells inside its firing arc.
 4. Frontal cells (lowest `z`) across the whole Assembly.
 5. Remaining exposed cells, front-to-back.

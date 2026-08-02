@@ -10,10 +10,11 @@ enum PartClass {
 	CORE_MODULE = 0,
 	STRUCTURAL_COMPONENT = 1,
 	MOTIVE_ASSEMBLY = 2,
-	POWER_PLANT = 3,
+	PRIME_MOVER = 3,
 	EFFECTOR_MODULE = 4,
 	SUPPORT_MODULE = 5,
 	CONTROL_SURFACE = 6,
+	ENERGY_CELL = 7,
 }
 
 enum MotiveKind {
@@ -104,7 +105,7 @@ enum OcclusionProfile {
 const INTEGRITY_BAND_COUNT: int = 5
 
 ## Number of part classes; sizes the per-class bucket arrays in PartRegistry.
-const PART_CLASS_COUNT: int = 7
+const PART_CLASS_COUNT: int = 8
 
 ## Number of attachment polarities; sizes the mating matrix in [AttachmentNodeDef].
 const ATTACHMENT_POLARITY_COUNT: int = 5

@@ -98,24 +98,62 @@ func test_drive_bias_clamps_the_steer_command() -> void:
 
 
 func test_a_neutral_bias_drives_both_sides_equally() -> void:
-	var t := TrackSolver.side_torques(_track, 1000.0, 0.0)
+	var t := TrackSolver.side_torques(_track, 1000.0, 1.0, 0.0)
 	check_approx(t.x, 460.0, "half of 920 usable after the 8% internal loss")
 	check_approx(t.y, 460.0, "on each side")
 
 
-## A full bias at rest counter-rotates the sides, which is the pivot.
+## A full bias with no throttle counter-rotates the sides, which is the pivot.
+##
+## The assertion this replaces expected `(920, 0)` under a name that said
+## "counter-rotates", which is the shape §14.2's prose describes and its formula
+## could not produce: with the bias bounded at 1, a multiplicative mixer never
+## drives a side backwards, and at zero throttle it drives neither side at all —
+## a stopped tracked Assembly could not turn under any input.
 func test_a_full_bias_counter_rotates_the_sides() -> void:
-	var t := TrackSolver.side_torques(_track, 1000.0, 1.0)
-	check_approx(t.x, 920.0, "the outside track takes everything")
-	check_approx(t.y, 0.0, "and the inside stops")
+	var t := TrackSolver.side_torques(_track, 1000.0, 0.0, 1.0)
+	check_approx(t.x, 460.0, "the left track drives forward")
+	check_approx(t.y, -460.0, "and the right track drives backward by as much")
+	check_approx(t.x + t.y, 0.0, "so the pivot is about the Assembly, not about a track")
+
+
+## Throttle and steer at once saturate the outer side and stop the inner one.
+func test_full_throttle_and_full_lock_stops_the_inside_track() -> void:
+	var t := TrackSolver.side_torques(_track, 1000.0, 1.0, 1.0)
+	check_approx(t.x, 460.0, "the outer track is already at its limit and clamps there")
+	check_approx(t.y, 0.0, "and the inner one stops, so the turn is about the stopped track")
 
 
 ## Internal loss is charged before the torque reaches the ground, not afterwards.
 ## Charged after, the total would depend on the bias.
+##
+## Asserted where the mixer does not clamp — `|command| + |bias| <= 1` — because
+## a saturated side genuinely does reduce the total, and that is the next test
+## rather than a violation of this one.
 func test_internal_loss_is_charged_once_regardless_of_bias() -> void:
-	for bias: float in [-1.0, -0.5, 0.0, 0.5, 1.0]:
-		var t := TrackSolver.side_torques(_track, 1000.0, bias)
-		check_approx(t.x + t.y, 1000.0 * (1.0 - LOSS), "bias %.1f loses the same 8%%" % bias)
+	for bias: float in [-0.5, 0.0, 0.5]:
+		var t := TrackSolver.side_torques(_track, 1000.0, 0.5, bias)
+		check_approx(
+			t.x + t.y, 1000.0 * (1.0 - LOSS) * 0.5, "bias %.1f loses the same 8%%" % bias
+		)
+
+
+## Steering into a throttle the outer track cannot take costs total drive.
+##
+## A tracked Assembly turning under power is slower than one going straight, and
+## that is not a penalty applied on top: the outer side is already at its torque
+## limit, so the only way to make a difference between the sides is to take
+## torque off the inner one.
+func test_steering_under_full_throttle_costs_total_drive() -> void:
+	var straight := TrackSolver.side_torques(_track, 1000.0, 1.0, 0.0)
+	var turning := TrackSolver.side_torques(_track, 1000.0, 1.0, 0.5)
+	check_approx(straight.x + straight.y, 1000.0 * (1.0 - LOSS), "straight uses everything")
+	check_true(
+		turning.x + turning.y < straight.x + straight.y,
+		"and steering into it leaves less on the ground"
+	)
+	check_approx(turning.x, straight.x, "the outer side was already at its limit")
+	check_true(turning.y < straight.y, "so the difference came off the inner one")
 
 
 ## ===== SLEW RESISTANCE =================================================

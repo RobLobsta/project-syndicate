@@ -877,6 +877,52 @@ func test_malformed_track_parameters_are_rejected() -> void:
 		)
 
 
+## §14 rule 23. A ground contact whose rest length does not reach past its own
+## radius has a suspension that can never register compression, and everything
+## downstream of it — normal force, traction, drive — is then zero. Both shipped
+## ground rows were authored that way and nothing said a word, because every
+## intermediate value is a legal number that an airborne contact produces.
+func test_a_rest_length_inside_the_contact_radius_is_rejected() -> void:
+	for kind: PartEnums.MotiveKind in [
+		PartEnums.MotiveKind.WHEELED_STEERED, PartEnums.MotiveKind.TRACKED_SEGMENT
+	]:
+		var def := _make_motive(kind)
+		def.motive_profile.contact_radius_m = 0.50
+		def.motive_profile.suspension_rest_length_m = 0.32
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_SUSPENSION_REACH),
+			"a rest length of 0.32 m under a 0.50 m contact radius cannot drive"
+		)
+
+
+## The accept half. A rest length past the radius is legal, and the convention of
+## radius plus travel is what the shipping rows use.
+func test_a_rest_length_past_the_contact_radius_is_accepted() -> void:
+	var def := _make_motive(PartEnums.MotiveKind.WHEELED_STEERED)
+	def.motive_profile.contact_radius_m = 0.50
+	def.motive_profile.suspension_travel_limit_m = 0.24
+	def.motive_profile.suspension_rest_length_m = 0.74
+	check_false(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_SUSPENSION_REACH),
+		"radius plus travel is the documented convention and passes"
+	)
+
+
+## A rotary or ambulatory row has no suspension at all and rule 23 must not fire
+## on it — rules 19 and 21 already require those fields to be exactly zero, and
+## two rules failing one row makes neither of them load-bearing.
+func test_rule_23_ignores_the_families_with_no_suspension() -> void:
+	for kind: PartEnums.MotiveKind in [
+		PartEnums.MotiveKind.ROTOR_DISC, PartEnums.MotiveKind.AMBULATORY_LIMB
+	]:
+		var def := _make_motive(kind)
+		def.motive_profile.suspension_rest_length_m = 0.0
+		check_false(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_SUSPENSION_REACH),
+			"a disc and a limb carry no suspension for the rule to check"
+		)
+
+
 func test_too_many_road_stations_are_rejected() -> void:
 	var def := _make_motive(PartEnums.MotiveKind.TRACKED_SEGMENT)
 	def.motive_profile.track_profile.road_stations = TrackProfile.MAX_ROAD_STATIONS + 1

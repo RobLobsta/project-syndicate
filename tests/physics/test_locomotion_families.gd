@@ -13,7 +13,7 @@ const WHEEL: StringName = &"mot.wheeled.allroad.t2"
 const TRACK: StringName = &"mot.tracked.short_bogie.t2"
 const ROTOR: StringName = &"mot.rotor.coaxial_mid.t3"
 const LIMB: StringName = &"mot.limb.strider.t4"
-const PLANT: StringName = &"pwr.combustion.standard.t2"
+const PLANT: StringName = &"pmv.combustion.standard.t2"
 const EDGE: StringName = &"eff.melee.beam_edge.t4"
 
 
@@ -281,7 +281,7 @@ func test_the_shipped_edge_costs_power_to_hold_lit() -> void:
 	# than comfortably under.
 	var supply := _def(PLANT).power_supply_pu
 	var lit := def.power_draw_pu + melee.energised_draw_pu
-	check_true(lit < supply, "one standard Power Plant can just cover a lit edge")
+	check_true(lit < supply, "one standard Prime Mover can just cover a lit edge")
 	check_true(
 		lit > supply * 0.8,
 		"but only just: %.0f PU of a %.0f PU plant leaves nothing for a disc" % [lit, supply]

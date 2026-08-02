@@ -423,7 +423,7 @@ The deterministic sort of both assembly ids and slot indices is not cosmetic. It
 
 ### 5.6 Re-entrancy
 
-Detaching an island can itself destroy parts — a severed Power Plant detonates (`PART_DATA_SCHEMA.md` §7.3), damaging nearby parts, some of which may die. Those deaths must **not** recursively re-enter the solver mid-pass.
+Detaching an island can itself destroy parts — a severed Prime Mover detonates (`PART_DATA_SCHEMA.md` §7.3), damaging nearby parts, some of which may die. Those deaths must **not** recursively re-enter the solver mid-pass.
 
 The guard in `_resolve_all` asserts against re-entry, and `_queue` remains safe to call during resolution: newly destroyed parts land in `_pending` for the **next** tick's resolution. A chain reaction therefore unfolds over successive ticks — which is both correct and visually superior to resolving instantaneously.
 
@@ -559,7 +559,7 @@ Detachment is structural. Functional loss is a separate, immediate consequence c
 | Lost part class | Downstream effect | Handled in |
 |---|---|---|
 | `MOTIVE_ASSEMBLY` | Suspension ray removed; mass and COM recomputed; drive torque redistributed across remaining driven wheels | `DYNAMIC_MASS_PHYSICS.md` §5, §7 |
-| `POWER_PLANT` | Assembly power supply drops; modules exceeding budget are flagged `FLAG_POWER_STARVED` in ascending priority order | §7.1 |
+| `PRIME_MOVER` | Assembly power supply drops; modules exceeding budget are flagged `FLAG_POWER_STARVED` in ascending priority order | §7.1 |
 | `EFFECTOR_MODULE` | Removed from the targeting set; any in-flight guided ordnance it owns goes ballistic | `WEAPON_TARGETING_LOGIC.md` §10 |
 | `SUPPORT_MODULE` | Its effect is subtracted from the Assembly aggregate; volatile modules detonate | `PART_DATA_SCHEMA.md` §7.5 |
 | `CONTROL_SURFACE` | Aerodynamic contribution removed | `DYNAMIC_MASS_PHYSICS.md` §8 |

@@ -20,6 +20,15 @@ var station_index: int = 0
 
 ## ===== PROBE RESULT ====================================================
 
+## The shape cast that fills the fields below, built by
+## [method AssemblyRuntime._build_motive_probes] and bound once at registration.
+##
+## Held here rather than resolved per tick from a formatted node name, which is
+## a string build and a [NodePath] construction inside the tick loop for a node
+## that cannot move: a part is fixed to the chassis from placement to
+## destruction, so its probe is too.
+var probe: ShapeCast3D = null
+
 var grounded: bool = false
 ## Distance from the probe origin to the contact, in metres. Compared against
 ## the suspension rest length to give compression.

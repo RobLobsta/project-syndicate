@@ -56,10 +56,11 @@ extends Resource
 ## Exactly one is non-null, matching [member part_class]. Enforced by the validator.
 @export var core_profile: CoreModuleProfile = null
 @export var motive_profile: MotiveAssemblyProfile = null
-@export var power_profile: PowerPlantProfile = null
+@export var prime_mover_profile: PrimeMoverProfile = null
 @export var effector_profile: EffectorModuleProfile = null
 @export var support_profile: SupportModuleProfile = null
 @export var control_profile: ControlSurfaceProfile = null
+@export var energy_cell_profile: EnergyCellProfile = null
 
 ## ===== PRESENTATION ====================================================
 @export var visual_profile: PartVisualProfile = null
@@ -154,8 +155,10 @@ func class_payload() -> Resource:
 			return core_profile
 		PartEnums.PartClass.MOTIVE_ASSEMBLY:
 			return motive_profile
-		PartEnums.PartClass.POWER_PLANT:
-			return power_profile
+		PartEnums.PartClass.PRIME_MOVER:
+			return prime_mover_profile
+		PartEnums.PartClass.ENERGY_CELL:
+			return energy_cell_profile
 		PartEnums.PartClass.EFFECTOR_MODULE:
 			return effector_profile
 		PartEnums.PartClass.SUPPORT_MODULE:

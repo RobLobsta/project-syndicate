@@ -1,6 +1,6 @@
 class_name PowerSystem
 extends RefCounted
-## Power Plant aggregation, owned by
+## Prime Mover and Energy Cell aggregation, owned by
 ## [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] §7.5 and
 ## [code]docs/PART_DATA_SCHEMA.md[/code] §9.
 ##
@@ -62,9 +62,9 @@ func recompute(states: Array, alive: PackedByteArray) -> void:
 			def.power_supply_pu
 			* DegradationTable.multiplier(DegradationTable.POWER_SUPPLY, band)
 		)
-		if def.part_class == PartEnums.PartClass.POWER_PLANT and def.power_profile != null:
+		if def.part_class == PartEnums.PartClass.PRIME_MOVER and def.prime_mover_profile != null:
 			drive_torque_nm += (
-				def.power_profile.drive_torque_nm
+				def.prime_mover_profile.drive_torque_nm
 				* DegradationTable.multiplier(DegradationTable.POWER_TORQUE, band)
 			)
 

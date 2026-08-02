@@ -228,6 +228,32 @@ func _apply_coupling_torque(body: RigidBody3D, mp: MassSolver.MassProperties) ->
 
 This reproduces the steady-state coupling exactly and the transient response to within a few percent, because it omits the `(I_diag − I_full) ω̇` term. That omission is bounded and stable: `ω̇` is itself limited by the torque budget, and the clamp on `τ_couple` guarantees the correction can never inject energy faster than the solver removes it. `tests/physics/test_inertia_coupling.gd` verifies that an asymmetric Assembly spun about its intermediate axis exhibits the expected tumbling within 5% of the analytic solution over 10 seconds.
 
+> **Amendment — resolved. The premise above was false and the formula is replaced.**
+>
+> "Godot solves this with `I_diag`" asserts that the server integrates `I ω̇ + ω × (I ω) = τ` with the diagonal tensor. It does not. `tests/physics/test_inertia_coupling.gd::test_the_server_applies_no_gyroscopic_term_of_its_own` puts an Assembly whose three principal moments differ by 15% into a spin about its **intermediate** axis — the configuration that tumbles fastest in reality — and measures the angular velocity unchanged to seven significant figures after five simulated seconds. A free rigid body cannot do that. The server integrates `I_diag ω̇ = τ` and applies no gyroscopic term at all.
+>
+> The `+ ω × (I_diag ω)` half of the difference was therefore cancelling a term nothing produced. The whole gyroscopic term has to be supplied instead:
+>
+> ```
+> τ_couple = − ω × (I_full ω)
+> ```
+>
+> **Evaluated at the midpoint, not at the tick boundary.** The continuous torque is perpendicular to `ω` and does no work, but sampling it once per tick and holding it across the step does: measured on a 6 rad/s spin, explicit Euler added about **16%** of the rotational energy over five seconds, which §11 invariant 10 forbids outright. Stepping `ω` half a tick along `ω̇ = I_diag⁻¹ τ` and re-evaluating there costs one extra cross product and turns that into a **3% loss** over the same soak. A correction that bleeds a little energy cannot destabilise an Assembly; one that adds it spins a wreck up out of nothing, so the asymmetry is the right way round and the test asserts the gain bound tightly and the loss bound loosely.
+>
+> ```gdscript
+> func _apply_coupling_torque(dt: float) -> void:
+>     var mp := runtime.mass_properties
+>     if mp == null:
+>         return
+>     var b := runtime.body.global_transform.basis
+>     var w := b.inverse() * runtime.body.angular_velocity
+>     var half := w + _angular_accel(mp, w) * (dt * 0.5)
+>     var tau := _gyroscopic_torque(mp, half).limit_length(COUPLING_TORQUE_LIMIT_NM)
+>     runtime.body.apply_torque(b * tau)
+> ```
+>
+> The omission of the `(I_diag − I_full) ω̇` term stands: the server divides by the diagonal tensor whatever is handed to it, and correcting for that too would need the torque premultiplied by `I_diag I_full⁻¹`. The steady-state coupling is exact without it and the transient is within a few percent, which is what the paragraph above this block already claimed.
+
 ### 3.5 Application to the Body
 
 ```gdscript
@@ -426,6 +452,14 @@ func _build_probe(slot: int, def: PartDefinition, st: PartInstanceState) -> Shap
 
 The mask deliberately excludes `LAYER_ASSEMBLY_HULL` and `LAYER_DEBRIS`. Wheels do not push off other vehicles or off wreckage. This removes an entire family of exploits (wheel-climbing an opponent) and a family of instabilities (two Assemblies' suspensions fighting each other).
 
+**Where this runs.** The constructor is `AssemblyRuntime._build_motive_probes`, called from `attach_part`, so a probe set exists for exactly the parts whose colliders exist and is built from the same `PartInstanceState` (§2's tree, and doc 04 §6's release path disables both together). Probes are named `probe_s<slot>_<station>`: §2's `probe_s014` predates §14's road stations, and a tracked part needs one name per station. `MotiveContact.probe` holds the reference, bound once when the Motive Assembly registers — a part cannot move relative to the chassis, so resolving a formatted node name per tick would be a string build and a `NodePath` construction inside the tick loop for a node that is fixed from placement to destruction.
+
+**Rest length is measured from the probe origin, and the probe origin is the contact centre.** §6.2 reads compression as `rest_length − distance`, and `distance` is from `part_com_local` down to the surface. A Motive Assembly resting on its own authored collider puts that distance at one `contact_radius_m`. **`suspension_rest_length_m` must therefore exceed `contact_radius_m`**, by the static sag the build is meant to settle at, or compression clamps to zero on every contact, the normal force is zero, `_apply_traction` returns before applying anything, and the Assembly rests on its colliders with the suspension inert and no drive force reaching the ground at all.
+
+**Resolved: `suspension_rest_length_m = contact_radius_m + suspension_travel_limit_m`.** Both shipped ground rows were authored at 0.32 m against a 0.50 m rolling radius, and `tests/physics/test_ground_assembly.gd` measured the consequence on a four-contact Assembly settled on real ground: zero compression and zero normal force on every contact, and a full-throttle displacement of zero. The rows are now 0.74 m. The convention places full droop exactly one travel above the surface and makes the part's own collider the bump stop, so the two authored numbers determine the third and there is no third number to get wrong. §14 rule 23 of document 01 enforces the hard requirement — rest length strictly greater than contact radius — rather than the convention, because a shorter travel is a legitimate tuning choice and an inert spring is not.
+
+> **The same trap has an ambulatory form and §13 carries it.** A limb's `suspension_*` fields are all zero by rule 21, so sizing its sweep from them gives a zero-length cast: the contact never grounds, the foot is never planted, and the Assembly stands still with a healthy-looking gait clock running. An ambulatory probe sweeps `leg_length_m` from the hip instead. Neither case announces itself — every intermediate value is a legal number that some airborne contact produces legitimately.
+
 ### 6.2 Spring-Damper Force
 
 For a probe with compression `x` (metres of travel consumed) and compression rate `ẋ`:
@@ -511,9 +545,31 @@ F_arb = k_arb · (x_left − x_right)
 
 Pairing is derived automatically at spawn: probes whose local `z` coordinates are within `0.35 m` and whose local `x` coordinates have opposite signs form a pair. `k_arb` defaults to `0.22 · k_eff`, exposed as a garage tuning slider in the range `[0.0, 0.6]`.
 
+`MotiveSystem._rebuild_axle_pairs` runs on every registration change rather than per tick — pairing is a property of where the builder put the Motive Assemblies, and they do not move. Each contact is taken at most once and both loops run ascending by slot then station, so the pair set is a deterministic function of the build (Invariant I-9). The force is applied after the families have solved, because it differentiates the compressions they wrote this tick; running it first would couple the previous tick's roll into this one. Losing one end of an axle re-derives the set and leaves the survivor unpaired, rather than pushing against a probe that has left with a severed island.
+
 ---
 
 ## 7. Traction
+
+### 7.0 Steer Angle
+
+The contact frame of §7.1 is the **wheel's**, not the chassis's, and a steered wheel's rolling direction is not the hull centreline. `MotiveSystem` carries one steer angle per slot, advances it toward the commanded lock at the authored rate, and rotates that slot's contact frame about the contact normal before the friction solve:
+
+```
+target = clamp(steer_command, −1, +1) · max_steer_angle_deg
+angle  = move_toward(angle, target, steer_rate_deg_s · band_multiplier · dt)
+x̂, ẑ  = rotate(x̂, ẑ) about the contact normal by −angle
+```
+
+Three things follow, and each is why it is done here rather than as a yaw torque.
+
+1. **The lateral force stays a genuine slip-angle force.** The wheel is pointed somewhere, the patch slides, and the Assembly turns because of what that slide produces. A model that applied yaw directly would turn just as well on ice.
+2. **`DegradationTable.MOTIVE_STEER` finally has a consumer.** It scales the rate, so a Motive Assembly at `CRITICAL` turns at half speed and the Assembly understeers rather than failing outright.
+3. **`WHEELED_FIXED` needs no second code path.** It authors `max_steer_angle_deg = 0` and falls through unchanged.
+
+The rotation is about the **contact normal** rather than the chassis up, so a wheel on a camber steers in the plane it is standing on. It is negated because a positive rotation about the surface normal carries the forward axis to the left, and `RESPONSIVE_GARAGE_UI.md` §7.2 fixes positive steer as right on every input device.
+
+**An Assembly on which every wheel steers does not turn — it crabs.** Four contact patches pointing the same way translate the hull sideways with its nose still forward, and there is no couple about the vertical axis at all. A yaw needs the axles to disagree, which is what `mot.wheeled.fixed_rear.t2` is for: a steering build is `WHEELED_STEERED` at the front and `WHEELED_FIXED` at the back, and the difference between the two rows is one authored number. `tests/physics/test_ground_assembly.gd` measured the crab before that part existed.
 
 ### 7.1 Slip Quantities
 
@@ -686,13 +742,55 @@ The zero-crossing guard on braking is what prevents the contact from oscillating
 
 ### 7.5 Torque Distribution
 
-Available drive torque is the sum over live Power Plants, scaled by the throttle curve and thermal state, divided among live driven Motive Assemblies weighted by normal load:
+Available drive torque is the sum over live Prime Movers, scaled by the throttle curve and thermal state, divided among live driven Motive Assemblies weighted by normal load:
 
 ```
 τ_slot = τ_total · N_slot / Σ N_driven
 ```
 
-Load weighting means an unloaded wheel receives little torque, which naturally suppresses the wheelspin-on-airborne-wheel behaviour without a traction-control hack. A destroyed Power Plant simply reduces `τ_total`; a destroyed wheel simply leaves the denominator.
+Load weighting means an unloaded wheel receives little torque, which naturally suppresses the wheelspin-on-airborne-wheel behaviour without a traction-control hack. A destroyed Prime Mover simply reduces `τ_total`; a destroyed wheel simply leaves the denominator.
+
+---
+
+### 7.6 Traction Control
+
+Two loops, both acting **through the contacts**. Neither applies a force of its own.
+
+```
+# Slip limiting, per driven contact
+allowed = TARGET_SLIP_RATIO · max(|v_long|, LAUNCH_REFERENCE_MPS)
+excess  = max(|ω·r − v_long| − allowed, 0)
+scale   = lerp(1, 1 / (1 + excess · SLIP_GAIN), authority)
+τ_drive ← τ_drive · scale
+
+# Yaw control, per Assembly
+ω_target = −v_long · tan(δ) / wheelbase          # bicycle model
+ω_target = clamp(ω_target, ±GRIP_YAW_MARGIN · μ · g / |v|)
+error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
+τ_brake  = min(|error| · YAW_GAIN_NM_PER_RAD_S · authority,
+               brake_torque_nm · MAX_BRAKE_FRACTION)   on the flank sign(error)
+```
+
+| Constant | Value |
+|---|---|
+| `TARGET_SLIP_RATIO` | 0.14 |
+| `LAUNCH_REFERENCE_MPS` | 5.0 |
+| `SLIP_GAIN` | 1.2 |
+| `YAW_GAIN_NM_PER_RAD_S` | 2600.0 |
+| `YAW_DEADBAND_RAD_S` | 0.10 |
+| `MAX_BRAKE_FRACTION` | 0.55 |
+| `MIN_YAW_CONTROL_SPEED_MPS` | 1.5 |
+| `GRIP_YAW_MARGIN` | 0.95 |
+
+**An electronic aid may not apply a force the tyres could not.** A yaw controller that called `apply_torque` would turn an Assembly just as briskly on ice, on a slope, or with two wheels in the air, and would keep working after the contacts it is managing had stopped touching anything. Modulating one flank's brakes produces the same yaw moment through the same patches the driver is using, so it fades out exactly when grip does. This is what a real stability system does and it costs one extra term in §7.2's brake torque.
+
+**The allowance is a slip velocity at low speed and a slip ratio once rolling.** §7.1 divides by `max(|v|, V_REF)`, so at a standstill any rotation at all reads as enormous slip; a limiter that believed the ratio would cut a stationary Assembly's torque to nothing and it would never move. Flooring the road speed at `LAUNCH_REFERENCE_MPS` turns the law into launch control below 5 m/s and into ordinary slip limiting above it, in one `maxf` rather than a second mode.
+
+**The aid is an authority in `[0, 1]`, not a flag**, carried on `ControlInput` beside the throttle. The limiter is a `lerp` toward the managed torque, so 0.5 is a real intermediate state. At 0.0 the driver gets every newton-metre the Prime Movers make, wheelspin included — which is the only way to get a burnout out of a build with this much torque, and `tests/physics/test_ground_assembly.gd` asserts both sides of that switch against each other rather than either alone.
+
+**GROUND only, deliberately.** A tracked Assembly steers *by* making its flanks disagree (§14.2), so a yaw controller that removed the disagreement would remove its steering. A rotary or ambulatory Assembly has no slip ratio to limit. The boundary is recorded here rather than left to be rediscovered by whoever notices a tracked build that will not pivot.
+
+**What it fixes.** Deep slip is unstable by construction: past the peak of the §7.2 friction curve, more slip means less force, so once one flank hooks up before the other the Assembly yaws away and keeps yawing. Holding both patches inside the allowance is what stops the pull; the yaw loop trims what is left. Measured on the four-contact fixture, full throttle wandered about 20° in two and a half seconds with the aid off and holds inside 8° with it on.
 
 ---
 
@@ -1023,11 +1121,11 @@ draw_pu = P / ROTOR_W_PER_PU        ROTOR_W_PER_PU = 4500.0
 genuinely needs and the abstract Power Unit the rest of the schema budgets in.
 It is `4500` because that is the value at which `mot.rotor.coaxial_mid.t3` at
 full collective draws **150 PU** — precisely the supply of one
-`pwr.combustion.standard.t2`. The intended reading of a rotorcraft's power line
-is therefore "one standard Power Plant per mid disc", which is legible in the
+`pmv.combustion.standard.t2`. The intended reading of a rotorcraft's power line
+is therefore "one standard Prime Mover per mid disc", which is legible in the
 garage without arithmetic.
 
-When supply falls short, the Power Plant layer scales the **commanded angular
+When supply falls short, the Prime Mover layer scales the **commanded angular
 rate**, not the thrust:
 
 ```
@@ -1037,7 +1135,7 @@ omega_command = nominal_rad_s · throttle · power_available_fraction
 Scaling Ω rather than T is the honest model and the better feel. Thrust falls as
 `Ω²`, so a 10% power shortfall costs 19% of lift; the disc audibly and visibly
 slows; and because Ω is behind the spool filter of §12.6, the loss arrives over
-seconds rather than instantly. A rotorcraft losing a Power Plant sinks. It does
+seconds rather than instantly. A rotorcraft losing a Prime Mover sinks. It does
 not switch off.
 
 ### 12.6 Spool
@@ -1111,6 +1209,8 @@ cannot be a physical obstacle to anything but itself — a shot passes through t
 visible shin and hits the authored `ColliderProfile` box, which is the same
 trade doc 07 §2 makes for a turret barrel and is the correct one for the same
 reasons.
+
+**A limb occupies its hip and thigh, not its extended leg.** §13.1 puts the visible articulation under `VisualRoot` as inverse kinematics, and Invariant I-1 forbids a collider that follows it — so a footprint spanning the fully extended leg bakes a fixed collider around a shape the limb only ever has at full droop. On `mot.limb.strider.t4` that was a 2.0 m collider on a machine whose stance height is `0.86 × 1.90 = 1.63 m`, and the Assembly stood on its own shins with the stance spring never compressing: measured at 0.23 m of travel it could not reach. The row is now 3×5×3 and its reach is `leg_length_m`, exactly as `mot.rotor.*` occupies its mast and not its 2.6 m disc, for exactly the same reason.
 
 ### 13.2 Limb State
 
@@ -1321,9 +1421,12 @@ by the sign of each part's lateral position in assembly-local space:
 ```
 authority = differential_authority · (1 − clamp(|v| / pivot_taper_mps, 0, 1))
 bias      = steer_command · authority                    ∈ [−1, 1]
-τ_left    = τ_share · (1 + bias) · (1 − internal_loss)
-τ_right   = τ_share · (1 − bias) · (1 − internal_loss)
+τ_share   = ½ · drive_torque · (1 − internal_loss)
+τ_left    = τ_share · clamp(throttle + bias, −1, +1)
+τ_right   = τ_share · clamp(throttle − bias, −1, +1)
 ```
+
+**Amendment.** This block previously read `τ_left = τ_share · (1 + bias)` and `τ_right = τ_share · (1 − bias)`, with `τ_share` scaled by the throttle. That formula cannot produce the behaviour the paragraph below it describes and always did. With `bias` bounded at 1 it never drives a side backwards — at full lock it gives one track everything and the other exactly zero, which pivots about the *stationary track* rather than about the Assembly — and because the whole expression scaled with the throttle, a stopped tracked Assembly received nothing on either side and could not turn at all under any input. Making throttle and steer additive terms is the standard skid-steer mixer and is what the prose already asked for. The consequence is that steering into a full throttle costs total drive, because the outer side is already at its limit and the only way to make a difference is to take torque off the inner one; that is correct and is why a tracked Assembly slows in a turn.
 
 At rest `authority` is full, so `bias = ±1` drives one side forward and the
 other backward and the Assembly counter-rotates on the spot. At

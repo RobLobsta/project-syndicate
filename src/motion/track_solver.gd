@@ -56,15 +56,41 @@ static func drive_bias(profile: TrackProfile, steer_command: float, speed_mps: f
 
 ## Drive torque for the left and right sides, as [code](left, right)[/code].
 ##
+## [param axle_nm] is the Assembly's whole drive torque before the throttle, and
+## [param command] and [param bias] are the throttle and the steering bias, each
+## in [-1, 1]. Each side gets half the axle torque scaled by the sum of the two,
+## clamped, so that:
+##
+## [enum]
+## [*] full throttle, no steer — both sides take half the axle torque forward;
+## [*] no throttle, full steer at rest — one side takes half forward and the
+##     other half [i]backward[/i], and the Assembly counter-rotates about its own
+##     centre. This is the zero-radius pivot §14.2 describes.
+## [*] full throttle and full steer — the outer side saturates and the inner
+##     falls to nothing, so the Assembly turns about the stopped track.
+## [/enum]
+##
+## [b]Amendment to §14.2.[/b] The section's prose and its formula disagreed and
+## the prose was right. `τ_left = τ_share · (1 + bias)` with a bias bounded at 1
+## cannot make `τ_right` negative — at full lock it gives one track everything
+## and the other exactly zero, which pivots about the stationary track rather
+## than about the Assembly, and at zero throttle it gives both sides nothing at
+## all, so a stopped tracked Assembly could not turn under any input. Making
+## throttle and steer additive terms rather than a product is what the prose
+## already described, and it is the standard skid-steer mixer.
+##
 ## [param internal_loss] is charged before the torque reaches the ground, not
 ## afterwards, because that is where it physically goes — into the track's own
 ## pins, links, and idlers. The visible result is that a tracked Assembly is
 ## slower than a wheeled one of identical power, which is the cost its grip and
 ## ground pressure are bought with.
-static func side_torques(profile: TrackProfile, total_nm: float, bias: float) -> Vector2:
-	var usable := total_nm * (1.0 - clampf(profile.internal_loss, 0.0, 1.0))
-	var half := usable * 0.5
-	return Vector2(half * (1.0 + bias), half * (1.0 - bias))
+static func side_torques(
+	profile: TrackProfile, axle_nm: float, command: float, bias: float
+) -> Vector2:
+	var half := axle_nm * 0.5 * (1.0 - clampf(profile.internal_loss, 0.0, 1.0))
+	return Vector2(
+		half * clampf(command + bias, -1.0, 1.0), half * clampf(command - bias, -1.0, 1.0)
+	)
 
 
 ## Yaw torque resisting a slew of the patch, in N·m.
