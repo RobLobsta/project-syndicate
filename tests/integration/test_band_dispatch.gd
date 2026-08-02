@@ -217,6 +217,35 @@ func test_a_slot_this_system_does_not_own_is_ignored() -> void:
 	)
 
 
+## The same rule on the other subscriber, which had no test of its own.
+##
+## Session 17's sweep dropped [EffectorSystem]'s [code]_hardpoints.has(slot)[/code]
+## guard and the suite stayed green, while the identical fault on [MotiveSystem]
+## was caught by the method above. One filter had a test and its mirror did not,
+## which is the ordinary way a second subscriber to a shared signal goes
+## uncovered: the file was written when there was only one.
+func test_a_slot_the_effector_system_does_not_own_is_ignored() -> void:
+	var before := _guns.jam_chance(_gun_slot)
+	EventBus.part_band_changed.emit(
+		_runtime.assembly_id,
+		SyndicateConstants.CORE_SLOT,
+		PartEnums.IntegrityBand.NOMINAL,
+		PartEnums.IntegrityBand.CRITICAL
+	)
+	check_approx(
+		_guns.jam_chance(_gun_slot),
+		before,
+		"a Core Module's band does not land in the Effector Module's slot"
+	)
+	# CRITICAL is the band that carries §8.2's 0.18 jam chance, so an unfiltered
+	# handler writes a number this assertion can see rather than a harmless 1.0.
+	check_approx(
+		_guns.jam_chance(SyndicateConstants.CORE_SLOT),
+		0.0,
+		"nor in the Core Module's own entry, which would jam a Core Module"
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 

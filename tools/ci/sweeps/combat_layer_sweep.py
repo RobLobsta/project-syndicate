@@ -29,8 +29,9 @@ ES = os.path.join(ROOT, "src/combat/effectors/effector_system.gd")
 PS = os.path.join(ROOT, "src/combat/projectiles/projectile_system.gd")
 AL = os.path.join(ROOT, "src/combat/effectors/ammo_ledger.gd")
 MS = os.path.join(ROOT, "src/motion/motive_system.gd")
+ID = os.path.join(ROOT, "src/assembly/graph/island_detacher.gd")
 
-BASELINE = 4342  # tools/ci/run_all_checks.sh at the commit this landed
+BASELINE = 4405  # tools/ci/run_all_checks.sh at the commit this landed
 
 FAULTS = [
     # --- DamageResolver, §4 -------------------------------------------
@@ -150,6 +151,16 @@ FAULTS = [
     ("consume-does-not-reduce", AL,
      "	store[projectile_id] = held - taken",
      "	store[projectile_id] = held"),
+    # --- IslandDetacher, doc 04 §6 ------------------------------------
+    # §3.19's ordering rule. Writing the transform while the body is still
+    # shapeless leaves it with the broadphase entry it had when empty, and every
+    # query against it afterwards returns nothing -- a debris body that renders
+    # in the right place and cannot be hit. Invisible to every assertion that
+    # reads the node rather than the space.
+    ("debris-transform-before-shapes", ID,
+     "	var body := pool.acquire()\n	body.source_assembly_id = runtime.assembly_id",
+     "	var body := pool.acquire()\n	body.global_transform = runtime.body.global_transform\n"
+     "	body.source_assembly_id = runtime.assembly_id"),
 ]
 
 
