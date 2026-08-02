@@ -55,6 +55,11 @@ const WALKER_LEGS: Array[Vector3i] = [
 ]
 const HUB_AXLE_DOWN_ORIENTATION: int = 8
 
+## Slack on the stance rest length, in metres. The spring is compressed by the
+## Assembly's own weight, so a settled leg is a little shorter than `L₀`; this
+## bounds it from the long side only.
+const STANCE_TOLERANCE_M: float = 0.02
+
 const SETTLE_TICKS: int = 300
 const DRIVE_TICKS: int = 150
 const GROUND_HALF_HEIGHT: float = 2.0
@@ -240,16 +245,28 @@ func test_a_walker_stands_on_its_feet_rather_than_on_its_shins() -> void:
 	for slot: int in motion.motive_slots():
 		var contact := motion.contact_at(slot, 0)
 		check_true(contact.grounded, "slot %d has found the ground" % slot)
+		# Against the stance [b]rest[/b] length, not against full extension, and
+		# the difference is the whole assertion. A leg standing at 1.87 m of a
+		# 1.90 m reach is inside its full extension and is carrying nothing: the
+		# spring in §13.6 cannot pull, so a leg longer than `L₀` produces zero
+		# force and the Assembly is resting on its own thigh colliders with a
+		# perfectly healthy gait clock running. That is exactly the state §4.6
+		# was supposed to have ended, and this file asserted its way past it for
+		# six sessions because full extension is a bound anything satisfies.
 		check_true(
-			contact.distance_m < limb.leg_length_m,
-			"and is standing on it, with the leg inside its full extension"
+			contact.distance_m < limb.stance_rest_length_m() + STANCE_TOLERANCE_M,
+			(
+				"and is standing on it with the spring loaded: %.3f m against a rest of %.3f"
+				% [contact.distance_m, limb.stance_rest_length_m()]
+			)
 		)
 		if motion.limb_state(slot).planted:
 			planted += 1
-	# A duty factor above 0.5 means more than half the cycle is stance, so a
-	# standing quadruped always has feet down. §13.8: there is no flight phase in
-	# the shipping set, which is what makes this tractable under Invariant I-3.
-	check_true(planted > 0, "with at least one foot bearing weight at all times")
+	# §13.4: "gait is frozen, every foot planted". Every one, not the 62% of the
+	# cycle that happens to be in stance when the clock stops — the document
+	# calls the standing state the only one in which every limb contributes
+	# stance force at once, and that is what makes a stationary walk rock-solid.
+	check_eq(planted, motion.motive_slot_count(), "on every foot, not just some")
 
 
 func test_a_walker_walks_forward_when_told_to() -> void:

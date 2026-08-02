@@ -1301,9 +1301,18 @@ legged robots actually use, and it is the reason a walker in this game
 accelerates by leaning and reaching rather than by having a force added to it.
 
 Yaw is placement too. A turn command rotates the target about the Assembly's
-vertical axis by `turn_rate_deg_s · T_stance`, so the feet land off-axis and the
-resulting stance forces yaw the body. There is no yaw torque term anywhere in
-the ambulatory family.
+vertical axis by `−turn_rate_deg_s · turn_command · T_stance`, so the feet land
+off-axis and the resulting stance forces yaw the body. There is no yaw torque
+term anywhere in the ambulatory family.
+
+**The minus sign is normative.** `ControlInput.steer` is positive-is-right across
+every family — §7.1 rotates a wheeled contact frame right on a positive demand,
+§14.2 drives the right track slower — and a right turn is a *negative* rotation
+about the world up. Rotating the plant target by `+turn_rate · turn_command`
+therefore walks the Assembly **left** on a demand to go right, and makes the
+ambulatory family the only thing in the game that steers backwards. A test of
+this rotation asserts the direction the hull ends up facing; asserting that the
+foot moved is a test a sign flip passes.
 
 The target is clamped twice, in this order: the offset from the hip's ground
 projection is limited to `max_step_length_m / 2`, then the whole hip-to-target

@@ -619,7 +619,11 @@ Every signal the graph consumes or emits, with its exact payload. These are decl
 
 `island_severed` is declared on `DetachmentScheduler` rather than on the `EventBus`, because it is the handoff between two halves of one subsystem and not a cross-system signal. `island_detached` remains the `EventBus` signal, carrying the debris body id §6 produces.
 
-`killer_id` is a peer id, and is `0` when the termination is unattributed. Only the damage layer knows who fired the packet that reached zero; the graph sees a `part_destroyed` carrying a damage channel, not an attacker. Until attribution is recorded, terminations report `0`.
+`killer_id` is a peer id, and is `0` when the termination is unattributed. Only the damage layer knows who fired the packet that reached zero; the graph sees a `part_destroyed` carrying a damage channel, not an attacker.
+
+**The producer is therefore `DamageResolver`, and it is the only one.** When the part it has just destroyed is slot `0`, Architectural Invariant I-2 says the Assembly is over, and the resolver emits `assembly_terminated` immediately after the `part_destroyed` for that slot — same tick, same call, in that order, so a handler that wants both sees the part die before the Assembly does. `killer_id` is the packet's `source_assembly_id`, which is the Assembly that fired the round, the Assembly that started a detonation chain, or `0` for a packet with no author.
+
+Nothing else may emit it. The graph cannot: it would have to invent an attacker. A match layer could, by listening for `part_destroyed` on slot 0 — and that is exactly the duplication this signal exists to prevent, because every listener that re-derives I-2 for itself is a place I-2 can be got wrong.
 
 ### 8.3 Ordering Guarantee
 

@@ -231,6 +231,29 @@ func test_a_turn_command_rotates_the_plant_off_axis() -> void:
 	)
 	check_ne(straight.z, turning.z, "only which way, so the stance force yaws the body")
 
+	# The direction, which is the half a sign flip satisfies. §13.5: a right
+	# demand rotates the plant target by a negative angle about the world up,
+	# because that is what positive-is-right means everywhere else in doc 05 —
+	# and for six sessions this file asserted only that the foot had moved.
+	var flat_straight := Vector3(straight.x, 0.0, straight.z)
+	var flat_turning := Vector3(turning.x, 0.0, turning.z)
+	check_true(
+		flat_straight.signed_angle_to(flat_turning, Vector3.UP) < 0.0,
+		"a positive turn command swings the plant clockwise, which is right"
+	)
+	var left := GaitSolver.foot_target(_limb, hip, 0.0, v, v, 1.0, -1.0)
+	check_true(
+		flat_straight.signed_angle_to(Vector3(left.x, 0.0, left.z), Vector3.UP) > 0.0,
+		"and a negative one swings it the other way"
+	)
+	# The magnitude is the authored rate over one stance, and it is symmetric.
+	check_approx(
+		absf(flat_straight.signed_angle_to(flat_turning, Vector3.UP)),
+		absf(flat_straight.signed_angle_to(Vector3(left.x, 0.0, left.z), Vector3.UP)),
+		"by the same angle either way",
+		1e-4
+	)
+
 
 ## ===== STANCE FORCE ====================================================
 

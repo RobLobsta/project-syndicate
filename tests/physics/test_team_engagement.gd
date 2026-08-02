@@ -64,19 +64,19 @@ func after_all() -> void:
 ## ===== COMBINED ARMS ===================================================
 
 
-func test_five_a_side_combined_arms_grinds_without_resolving() -> void:
-	# Ten Assemblies, five recipes a side, twenty seconds — and it does not
-	# finish. Three of the ten die, both teams are still standing at the timeout,
-	# and the survivors are still shooting at each other when the clock runs out.
+func test_five_a_side_combined_arms_fights_itself_to_pieces() -> void:
+	# Ten Assemblies, five recipes a side, and it now produces a result: most of
+	# the field dies. One run ended at 654 ticks with a single team holding the
+	# ground; the next ran the clock out with three survivors between the two
+	# sides. Same fight, different float ordering (§3.44).
 	#
-	# Asserted as it behaves, because the reason is already recorded next door and
-	# is the same one:
-	# [method test_family_duels.test_two_walking_assemblies_cannot_settle_it_and_here_is_why].
-	# Once the opening exchange is over, what is left on each side includes
-	# something that cannot hold a firing solution, and a mixed force fights at
-	# the rate of its worst gun platform rather than its best. The ten-a-side
-	# brawl below settles in ninety-one ticks with a roster of the one recipe that
-	# can shoot straight, which is the same finding seen from the other end.
+	# It did not, last session. What changed is not the roster and not the
+	# tactics — it is that overpenetration is bounded (doc 07 §12.2.2), so a
+	# round no longer grinds a Core Module to zero on its own and a fight is
+	# decided by volume of fire instead of by which round happened to stall; that
+	# the fire gate refuses a clamped solution (§4.3.1), so nobody spends the
+	# engagement shooting over the enemy; and that an ambulatory Assembly plants
+	# and shoots instead of walking in circles.
 	await _run_all()
 	var e := _combined
 
@@ -87,11 +87,20 @@ func test_five_a_side_combined_arms_grinds_without_resolving() -> void:
 	check_true(
 		e.terminated > 0, "%d Assemblies lost their Core Modules" % e.terminated
 	)
+	# Ranged, not exact, and §3.44 is why: once ten rigid bodies share one space
+	# the run is no longer bit-reproducible, and two consecutive runs of this
+	# fixture have ended at 654 ticks with one team standing and at the 1200-tick
+	# timeout with three survivors between them. Both are the same result — a
+	# combined-arms line that fights itself to pieces — and an exact assertion on
+	# either would be asserting float ordering inside the physics server.
 	check_true(
-		e.terminated < e.spawned, "and %d of them were still alive" % e.survivors_total
+		e.terminated >= e.spawned / 2,
+		"at least half the field was destroyed: %d of %d" % [e.terminated, e.spawned]
 	)
-	check_eq(e.ticks, ENGAGE_TICKS, "the engagement ran to the timeout")
-	check_eq(e.teams_standing, 2, "with both teams still in it")
+	check_true(
+		e.survivors_total < e.spawned / 2,
+		"and fewer than half were left: %d" % e.survivors_total
+	)
 
 
 func test_every_recipe_reached_the_five_a_side_in_working_order() -> void:
@@ -112,20 +121,34 @@ func test_every_recipe_reached_the_five_a_side_in_working_order() -> void:
 ## ===== THE BRAWL =======================================================
 
 
-func test_ten_wheeled_builds_a_side_fight_to_a_decision() -> void:
+func test_ten_wheeled_builds_a_side_grind_each_other_down() -> void:
+	# Twenty Assemblies, and the one engagement of the five that now runs to its
+	# timeout rather than being over in ninety-one ticks.
+	#
+	# That reversal is the clearest single measurement of what bounding
+	# overpenetration did. Last session this was the fastest fight in the suite —
+	# twenty guns opening at once, and a round that stalled inside a hull took a
+	# Core Module to zero on its own. Now the same twenty guns need twenty seconds
+	# to kill sixteen of each other and cannot finish, which is what a firefight
+	# between symmetrical forces should look like.
 	await _run_all()
 	var e := _brawl
 
 	check_eq(e.spawned, BRAWL_PER_SIDE * 2, "twenty Assemblies took the field")
 	check_eq(e.distinct_ids, e.spawned, "each with its own assembly id")
-	check_true(e.shooters > BRAWL_PER_SIDE, "%d of them opened fire" % e.shooters)
+	check_eq(e.shooters, e.spawned, "every one of them opened fire")
 	check_true(
-		e.terminated > 0, "%d Assemblies lost their Core Modules" % e.terminated
+		e.terminated > BRAWL_PER_SIDE,
+		"%d of the twenty lost their Core Modules" % e.terminated
 	)
 	check_true(
 		e.parts_destroyed > e.terminated,
 		"and %d parts came off in total, so it was not all Core Module hits"
 		% e.parts_destroyed
+	)
+	check_true(
+		e.ticks > ENGAGE_TICKS / 2,
+		"and it took most of the window to do it: %d of %d ticks" % [e.ticks, ENGAGE_TICKS]
 	)
 
 
@@ -153,39 +176,24 @@ func test_the_projectile_pool_survived_twenty_effector_modules() -> void:
 	)
 
 
-func test_the_brawl_is_the_bigger_engagement_by_every_measure_but_its_length() -> void:
+func test_the_brawl_is_the_bigger_engagement() -> void:
 	# The scaling claim, and the reason this file exists rather than a fourth
 	# duel. Twenty Assemblies is twenty [MotiveSystem]s, twenty [EffectorSystem]s
 	# and something over two hundred collision shapes in one space, and none of
 	# the per-Assembly work became per-pair work.
-	#
-	# Note which way round the round counts go. The brawl fires [i]fewer[/i] total
-	# rounds than the five-a-side, because it is over in ninety-one ticks against
-	# twelve hundred — twenty guns opening at once on twenty targets settles it
-	# before anybody reloads. Rounds fired is a measure of duration here, not of
-	# intensity; hits, parts and kills are the measures of intensity, and the
-	# brawl leads on all three.
 	await _run_all()
 	check_eq(_brawl.shooters, BRAWL_PER_SIDE * 2, "twenty Assemblies fired")
 	check_eq(_combined.shooters, COMBINED_ARMS.size() * 2, "against the five-a-side's ten")
-	check_true(
-		_brawl.hits_landed > _combined.hits_landed,
-		(
-			"the brawl resolved more packets: %d against %d"
-			% [_brawl.hits_landed, _combined.hits_landed]
+	for pair: Array in [
+		["rounds", _brawl.rounds_fired, _combined.rounds_fired],
+		["packets", _brawl.hits_landed, _combined.hits_landed],
+		["parts", _brawl.parts_destroyed, _combined.parts_destroyed],
+		["kills", _brawl.terminated, _combined.terminated],
+	]:
+		check_true(
+			int(pair[1]) > int(pair[2]),
+			"the brawl leads on %s: %d against %d" % [pair[0], int(pair[1]), int(pair[2])]
 		)
-	)
-	check_true(
-		_brawl.terminated > _combined.terminated,
-		(
-			"and killed more Assemblies: %d against %d"
-			% [_brawl.terminated, _combined.terminated]
-		)
-	)
-	check_true(
-		_brawl.ticks < _combined.ticks,
-		"in less time: %d ticks against %d" % [_brawl.ticks, _combined.ticks]
-	)
 
 
 ## ===== FIXTURES ========================================================
@@ -242,17 +250,13 @@ func _engage(name: String, roster: Array[int]) -> Engagement:
 			e.airborne_at_start += 1
 	e.distinct_ids = ids.size()
 
-	# Sampled inside the loop rather than read at the end: the pool drains as
-	# rounds land and expire, so the count after the last tick says nothing about
-	# how full it ever got.
-	for i: int in ENGAGE_TICKS:
-		for c: CombatArena.Combatant in arena.combatants:
-			arena.command(c)
-		await _tick()
-		e.ticks += 1
-		e.peak_in_flight = maxi(e.peak_in_flight, arena.projectiles.active_count())
-		if arena.teams_standing().size() <= 1:
-			break
+	# Through [method CombatArena.engage] rather than a loop of this file's own.
+	# A local loop was two lines shorter and left every entry in the timeline
+	# stamped `t=0`, because the arena's tick counter advances inside its own
+	# loop — a whole engagement's chronology lost to a duplicated four lines.
+	await arena.engage(ENGAGE_TICKS)
+	e.ticks = arena.ticks_engaged
+	e.peak_in_flight = arena.peak_in_flight
 
 	e.rounds_fired = arena.shots_fired
 	e.hits_landed = arena.hits_landed
@@ -261,6 +265,7 @@ func _engage(name: String, roster: Array[int]) -> Engagement:
 	e.terminated = arena.terminated.size()
 	e.teams_standing = arena.teams_standing().size()
 	e.survivors_total = arena.survivors(TEAM_A).size() + arena.survivors(TEAM_B).size()
+	e.timeline = arena.timeline.duplicate()
 	print(
 		(
 			"  %s: %d ticks, %d rounds from %d shooters, %d hits, %d parts, "
@@ -271,13 +276,12 @@ func _engage(name: String, roster: Array[int]) -> Engagement:
 			e.parts_destroyed, e.terminated, e.survivors_total, e.peak_in_flight
 		]
 	)
+	for line: String in e.timeline:
+		print("      " + line)
 	arena.close()
 	_open = null
 	return e
 
-
-func _tick() -> void:
-	await (Engine.get_main_loop() as SceneTree).physics_frame
 
 
 ## Dot product of an Assembly's own up with the world up that still counts as
@@ -306,3 +310,4 @@ class Engagement:
 	var teams_standing: int = 0
 	var survivors_total: int = 0
 	var peak_in_flight: int = 0
+	var timeline: PackedStringArray = PackedStringArray()

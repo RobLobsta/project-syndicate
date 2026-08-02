@@ -207,7 +207,7 @@ func step(dt: float) -> void:
 			st.flags &= ~PartFlags.FLAG_JAMMED
 		_decay_spread(hp, profile, dt)
 		_dissipate_heat(hp, dt)
-		hp.on_target = AimSolver.is_converged(
+		hp.on_target = hp.solution_in_arc and AimSolver.is_converged(
 			hp.yaw_rad, hp.yaw_target_rad, hp.pitch_rad, hp.pitch_target_rad
 		)
 
@@ -298,6 +298,13 @@ func _solve_aim(hp: HardpointState, st: PartInstanceState, def: PartDefinition) 
 	var profile := def.effector_profile
 	hp.yaw_target_rad = AimSolver.clamp_yaw(angles.x, profile.yaw_limit_deg)
 	hp.pitch_target_rad = AimSolver.clamp_pitch(angles.y, profile.pitch_limit_deg)
+	# §4.3.1. The targets above are clamped, so convergence against them says only
+	# that the mount arrived where it was told — not that where it was told is
+	# where the enemy is. This is the difference, and the fire gate needs it.
+	hp.solution_in_arc = (
+		is_equal_approx(hp.yaw_target_rad, angles.x)
+		and is_equal_approx(hp.pitch_target_rad, angles.y)
+	)
 
 
 func _slew(hp: HardpointState, profile: EffectorModuleProfile, slot: int, dt: float) -> void:

@@ -45,15 +45,26 @@ enum Recipe {
 	## Two tracked bogies on stations under the flanks. Skid-steered, heaviest
 	## contact patch, no steering geometry to lose.
 	TRACKED,
-	## Four ambulatory limbs. Stands tall, walks at about 1.5 m/s, and carries
-	## its Core Module a metre and a half further off the ground than anything
-	## else here.
+	## Four ambulatory limbs and an Effector Module on the nose. Stands tall,
+	## carries its Core Module a metre and a half further off the ground than
+	## anything else here, and is a far better gun platform standing still than
+	## walking — see [constant AMBULATORY_STAND_OFF_M].
+	##
+	## It carries no Energy Cell, and not for want of trying: four limbs at four
+	## mount weights apiece leave two of the Core Module's twenty-eight, and a
+	## cell costs three. The ballast that would balance the nose does not fit,
+	## which is a real constraint of the shipped part set rather than an accident
+	## of this recipe.
 	AMBULATORY,
 	## A pair of coaxial rotor discs on outboard stations, an Energy Cell to
 	## cover their draw, and an Effector Module. It hovers, which means nothing
 	## but thrust holds it up and every newton of recoil goes straight into its
 	## flight path.
 	ROTARY,
+	## The ambulatory build with no Effector Module. Diagnostic only: it is the
+	## control for every question of the form "is that the gait or is that the
+	## 196 kg on the nose".
+	AMBULATORY_BARE,
 }
 
 const CORE_KEY := &"core.command.compact.t2"
@@ -67,6 +78,21 @@ const POWER_KEY := &"pmv.combustion.standard.t2"
 const CELL_KEY := &"cel.static.standard.t3"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
+
+## Callsigns, handed out in spawn order and deterministic for a given arena.
+##
+## A number is enough for an assertion and useless for reading a log. When
+## twenty Assemblies are in one engagement and the record says slot 3 of
+## assembly 14 was destroyed by assembly 7, nobody can follow it; when it says
+## HALYARD lost its Prime Mover to KESTREL, the fight has a shape. They are
+## diagnostics and never reach a player, so [code]tr()[/code] does not apply.
+const CALLSIGNS: Array[String] = [
+	"ASHFORD", "BRAMBLE", "CASTELLAN", "DRAYTON", "EMBER",
+	"FENWICK", "GALLOWAY", "HALYARD", "IRONWOOD", "KESTREL",
+	"LANTERN", "MARLOWE", "NIGHTJAR", "ORRERY", "PENNANT",
+	"QUARRY", "REDWING", "SABLE", "TALLOW", "VESPER",
+	"WARBLER", "YARROW", "ZEPHYR", "ALDER", "BIRCH",
+]
 
 ## ===== LAYOUTS =========================================================
 ## Cell origins, per recipe. Integer lattice coordinates throughout (Invariant
@@ -153,9 +179,16 @@ const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 900.0
 ## Height a ground recipe is dropped from, above the slab surface.
 const DROP_HEIGHT_M: float = 2.0
-## Height the ambulatory recipe is dropped from. Its Core Module rides higher, so
-## the same drop would leave it standing on its hull.
-const AMBULATORY_DROP_HEIGHT_M: float = 4.0
+## Body-origin height the ambulatory recipe spawns at, and it is [b]below[/b] the
+## slab, which is not a mistake. An Assembly's origin is its lattice origin, and
+## on this build that point sits two and a half metres up inside the machine: it
+## stands with its body origin at about −0.81. Spawning it at +4 was a five-metre
+## drop onto its own feet, and it spent the whole settle bouncing.
+##
+## Just high enough that the probes cannot see the ground at spawn — they reach
+## 1.90 m from hips that are 2.375 m up — so the Assembly falls the last few
+## centimetres onto its springs rather than being placed inside them.
+const AMBULATORY_DROP_HEIGHT_M: float = -0.40
 
 ## ===== PILOT ===========================================================
 ## Doc 05 §6.0's [ControlInput] is the whole interface. Every gain below turns
@@ -176,6 +209,23 @@ const ELEVATION_STOP_EPSILON_DEG: float = 0.05
 const AMBULATORY_STEER_AUTHORITY: float = 0.5
 ## Metres from the target a ground recipe stops closing at.
 const GROUND_STAND_OFF_M: float = 6.0
+## The same, for the ambulatory family, and further out for a reason that is
+## about gunnery rather than about survivability.
+##
+## An ambulatory Assembly is two different weapons platforms depending on whether
+## it is moving. Standing, doc 05 §13.4 puts every foot down at once and the hull
+## is level to within a degree — the steadiest mount in the game. Walking, it is
+## the worst: §13.8 allows no balance authority beyond foot placement, the hull
+## bobs, and the gait carries an intrinsic yaw drift that no steering demand can
+## null (see [code]tests/physics/test_ambulatory_drift.gd[/code], which measures
+## it at about 170° over five seconds with the steering demand held at zero).
+##
+## So an ambulatory Assembly here fights the way that measurement says it should:
+## it plants and shoots. The stand-off is set outside the distance the two spawn
+## at, which means it takes a step or two to square up and then stops — a
+## deliberate tactic for a machine that is a gun platform standing still and a
+## liability walking, and the honest way to field one until §13's drift is fixed.
+const AMBULATORY_STAND_OFF_M: float = 20.0
 ## Metres from the target a rotary recipe holds station at. Further out than the
 ## ground families because its muzzle is above theirs and the module can only
 ## depress 8° (§10.5) — closing further would put the target under the gun.
@@ -221,6 +271,8 @@ var band_events: Array[Vector3i] = []
 var shots_fired: int = 0
 ## assembly_id -> rounds it emitted.
 var shots_by: Dictionary = {}
+## Terminated assembly_id -> the id doc 04 §8.2 attributes the kill to.
+var kills: Dictionary = {}
 ## Damage packets that landed, and assembly_id -> total integrity taken off it.
 ## A fight can be lost by every round missing, and shots alone cannot tell that
 ## apart from a fight where every round landed on armour that soaked it.
@@ -228,11 +280,33 @@ var hits_landed: int = 0
 var damage_by_target: Dictionary = {}
 ## Ticks the last call to [method engage] actually ran for.
 var ticks_engaged: int = 0
+## Most rounds in flight at once during it. Sampled inside the loop, because the
+## pool drains as rounds land and a count taken after the last tick says nothing
+## about how full it ever got.
+var peak_in_flight: int = 0
+## What happened, in order, in plain words: "t=  74  KESTREL loses its Prime
+## Mover to ASHFORD". Written for a human reading the run, and the only reason
+## an account of one of these engagements can be checked against it.
+var timeline: PackedStringArray = PackedStringArray()
 
 var _ground: StaticBody3D = null
 var _contexts: Array[BuildContext] = []
 var _next_assembly_id: int = 1
 var _round_id: int = -1
+## Ticks since [method engage] opened, for stamping the timeline.
+var _clock: int = 0
+
+## Part class -> what to call it in the timeline.
+const PART_CLASS_NAMES: Dictionary = {
+	PartEnums.PartClass.CORE_MODULE: "its Core Module",
+	PartEnums.PartClass.STRUCTURAL_COMPONENT: "a Structural Component",
+	PartEnums.PartClass.MOTIVE_ASSEMBLY: "a Motive Assembly",
+	PartEnums.PartClass.PRIME_MOVER: "its Prime Mover",
+	PartEnums.PartClass.EFFECTOR_MODULE: "its Effector Module",
+	PartEnums.PartClass.SUPPORT_MODULE: "a Support Module",
+	PartEnums.PartClass.CONTROL_SURFACE: "a Control Surface",
+	PartEnums.PartClass.ENERGY_CELL: "its Energy Cell",
+}
 
 
 ## ===== SETUP ===========================================================
@@ -276,6 +350,7 @@ func open() -> void:
 	EventBus.effector_fired.connect(_on_effector_fired)
 	EventBus.part_band_changed.connect(_on_part_band_changed)
 	EventBus.part_damaged.connect(_on_part_damaged)
+	EventBus.assembly_terminated.connect(_on_assembly_terminated)
 
 
 ## Frees everything the arena put in the tree. Call from `after_all`; a leaked
@@ -290,6 +365,8 @@ func close() -> void:
 		EventBus.part_band_changed.disconnect(_on_part_band_changed)
 	if EventBus.part_damaged.is_connected(_on_part_damaged):
 		EventBus.part_damaged.disconnect(_on_part_damaged)
+	if EventBus.assembly_terminated.is_connected(_on_assembly_terminated):
+		EventBus.assembly_terminated.disconnect(_on_assembly_terminated)
 	for c: Combatant in combatants:
 		if c.runtime != null and is_instance_valid(c.runtime):
 			c.runtime.free()
@@ -325,7 +402,9 @@ func spawn(
 		Recipe.TRACKED:
 			_lay_out_tracked(ctx)
 		Recipe.AMBULATORY:
-			_lay_out_ambulatory(ctx)
+			_lay_out_ambulatory(ctx, true)
+		Recipe.AMBULATORY_BARE:
+			_lay_out_ambulatory(ctx, false)
 		Recipe.ROTARY:
 			_lay_out_rotary(ctx)
 		_:
@@ -358,10 +437,15 @@ func spawn(
 	var c := Combatant.new()
 	c.recipe = recipe
 	c.team = team
+	c.callsign = CALLSIGNS[(assembly_id - 1) % CALLSIGNS.size()]
 	c.runtime = runtime
 	c.motion = motion
 	c.guns = guns
-	c.stand_off_m = ROTARY_STAND_OFF_M if recipe == Recipe.ROTARY else GROUND_STAND_OFF_M
+	c.stand_off_m = GROUND_STAND_OFF_M
+	if recipe == Recipe.ROTARY:
+		c.stand_off_m = ROTARY_STAND_OFF_M
+	elif recipe == Recipe.AMBULATORY or recipe == Recipe.AMBULATORY_BARE:
+		c.stand_off_m = AMBULATORY_STAND_OFF_M
 
 	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
 		var def := runtime.definition_at(slot)
@@ -375,7 +459,7 @@ func spawn(
 	motion.reassign_gait_phases()
 
 	var height := DROP_HEIGHT_M
-	if recipe == Recipe.AMBULATORY:
+	if recipe == Recipe.AMBULATORY or recipe == Recipe.AMBULATORY_BARE:
 		height = AMBULATORY_DROP_HEIGHT_M
 	elif recipe == Recipe.ROTARY:
 		height = HOVER_HEIGHT_M
@@ -427,11 +511,15 @@ func settle(ticks: int) -> void:
 ## Returns when the fight is over. [member ticks_engaged] is how long it took.
 func engage(max_ticks: int) -> void:
 	ticks_engaged = 0
+	peak_in_flight = 0
+	_clock = 0
 	for i: int in max_ticks:
+		_clock = i
 		for c: Combatant in combatants:
 			command(c)
 		await _tick()
 		ticks_engaged += 1
+		peak_in_flight = maxi(peak_in_flight, projectiles.active_count())
 		if teams_standing().size() <= 1:
 			break
 	for c: Combatant in combatants:
@@ -637,15 +725,60 @@ func _on_part_destroyed(assembly_id: int, slot: int, _cause: int) -> void:
 	destroyed.append(Vector2i(assembly_id, slot))
 	if slot == SyndicateConstants.CORE_SLOT:
 		terminated.append(assembly_id)
+	else:
+		_log("%s loses %s" % [name_of(assembly_id), _part_name(assembly_id, slot)])
+
+
+## Doc 04 §8.2's match-level event, now that [DamageResolver] produces one.
+## Reading this rather than re-deriving Invariant I-2 from a slot-0
+## `part_destroyed` is the point of the signal existing.
+func _on_assembly_terminated(assembly_id: int, killer_id: int) -> void:
+	kills[assembly_id] = killer_id
+	if killer_id == 0 or killer_id == assembly_id:
+		_log("%s is destroyed" % name_of(assembly_id))
+	else:
+		_log("%s is destroyed by %s" % [name_of(assembly_id), name_of(killer_id)])
+
+
+func _log(text: String) -> void:
+	timeline.append("t=%4d  %s" % [_clock, text])
+
+
+## The callsign of an Assembly id, or the raw id if the arena never spawned it.
+func name_of(assembly_id: int) -> String:
+	for c: Combatant in combatants:
+		if c.assembly_id() == assembly_id:
+			return c.callsign
+	return "#%d" % assembly_id
+
+
+## A readable name for what just came off, from the part class rather than the
+## part key: "its Prime Mover" reads and "pmv.combustion.standard.t2" does not.
+func _part_name(assembly_id: int, slot: int) -> String:
+	for c: Combatant in combatants:
+		if c.assembly_id() != assembly_id:
+			continue
+		var def := c.runtime.definition_at(slot)
+		if def == null:
+			return "a part"
+		return PART_CLASS_NAMES.get(def.part_class, "a part")
+	return "a part"
 
 
 func _on_effector_fired(assembly_id: int, _slot: int, _tick: int) -> void:
 	shots_fired += 1
+	if not shots_by.has(assembly_id):
+		_log("%s opens fire" % name_of(assembly_id))
 	shots_by[assembly_id] = int(shots_by.get(assembly_id, 0)) + 1
 
 
 func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int) -> void:
 	band_events.append(Vector3i(assembly_id, slot, after))
+	# Only the Core Module's, and only the band that means it is nearly over.
+	# Invariant I-5's five bands on every part of twenty Assemblies is a wall of
+	# text; "ASHFORD's Core Module is CRITICAL" is the thing a reader wants.
+	if slot == SyndicateConstants.CORE_SLOT and after == PartEnums.IntegrityBand.CRITICAL:
+		_log("%s's Core Module is CRITICAL" % name_of(assembly_id))
 
 
 func _on_part_damaged(assembly_id: int, _slot: int, amount: float, _channel: int) -> void:
@@ -715,10 +848,11 @@ func _lay_out_tracked(ctx: BuildContext) -> void:
 		_place(ctx, TRACK_KEY, cell, drive_face_orientation(inboard))
 
 
-func _lay_out_ambulatory(ctx: BuildContext) -> void:
+func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 	_place(ctx, CORE_KEY, AMBULATORY_CORE, 0)
 	_place(ctx, POWER_KEY, AMBULATORY_POWER, 0)
-	_place(ctx, GUN_KEY, AMBULATORY_GUN, 0)
+	if armed:
+		_place(ctx, GUN_KEY, AMBULATORY_GUN, 0)
 	for i: int in AMBULATORY_LEGS.size() / 2:
 		_place(ctx, HUB_KEY, AMBULATORY_LEGS[i * 2], HUB_AXLE_DOWN_ORIENTATION)
 		_place(ctx, LIMB_KEY, AMBULATORY_LEGS[i * 2 + 1], 0)
@@ -767,6 +901,8 @@ class Combatant:
 	var motion: MotiveSystem = null
 	var guns: EffectorSystem = null
 	var gun_slot: int = SyndicateConstants.INVALID_SLOT
+	## What the timeline calls this Assembly.
+	var callsign: String = "?"
 	## Metres from its target this Assembly stops closing at.
 	var stand_off_m: float = 0.0
 	## Ticks this Assembly was commanded for, and how many of them its mount

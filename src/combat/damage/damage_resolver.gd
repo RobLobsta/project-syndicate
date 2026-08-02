@@ -427,6 +427,20 @@ func _destroy_part(
 
 	EventBus.part_destroyed.emit(runtime.assembly_id, st.slot, int(packet.channel))
 
+	# Architectural Invariant I-2: the Core Module is the root and losing it ends
+	# the Assembly. `DEPENDENCY_TREE_GRAPH.md` §8.2 puts the announcement here and
+	# nowhere else — "only the damage layer knows who fired the packet that
+	# reached zero; the graph sees a `part_destroyed` carrying a damage channel,
+	# not an attacker" — and until this existed every consumer of the match-level
+	# event had to read the raw signal and re-derive I-2 for itself.
+	#
+	# `killer_id` is the packet's source Assembly, which §8.2 allows to be 0 for
+	# an unattributed termination: a blast queued by a detonation two chain steps
+	# back carries the Assembly that started the chain, and a part that died to
+	# something with no author carries nothing.
+	if st.slot == SyndicateConstants.CORE_SLOT:
+		EventBus.assembly_terminated.emit(runtime.assembly_id, packet.source_assembly_id)
+
 
 func _queue_detonation(
 	runtime: AssemblyRuntime, st: PartInstanceState, radius_m: float, damage: float, depth: int
