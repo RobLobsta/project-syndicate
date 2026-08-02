@@ -84,8 +84,8 @@ func mount_budget() -> int:
 	return 0 if core_profile == null else core_profile.mount_budget
 
 
-## Total power available: the Core Module's capacity plus every Power Plant's
-## supply, per the §7.4 inequality.
+## Total power available: the Core Module's capacity plus every Prime Mover's and
+## Energy Cell's supply, per the §7.4 inequality.
 func power_available_pu() -> float:
 	var capacity := 0.0 if core_profile == null else core_profile.power_capacity_pu
 	return capacity + power_supply_pu

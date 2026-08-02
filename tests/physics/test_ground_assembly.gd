@@ -100,6 +100,19 @@ const STEER_SAMPLE_TICKS: int = 6
 ## the mark rather than about terminal speed, which the two runs share.
 const LAUNCH_TICKS: int = 45
 
+## Yaw imposed on a straight run to give the §7.6 controller something to trim.
+## Well past the 0.10 rad/s deadband so the aid is unambiguously engaged, and
+## well inside what the contacts can absorb so the comparison is about the
+## controller rather than about the Assembly spinning out either way.
+const IMPOSED_SPIN_RAD_S: float = 1.0
+
+## Ticks the yaw controller is given to work on the imposed spin. A tenth of a
+## second, and the window is the measurement: the contacts' own lateral grip
+## takes an unmanaged spin from 1.0 rad/s to about 0.05 within half a second, so
+## a longer soak compares two Assemblies that have both already stopped yawing.
+## Measured at this window: 0.30 rad/s left unmanaged against 0.12 managed.
+const YAW_TRIM_TICKS: int = 6
+
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
 
@@ -418,6 +431,26 @@ func test_part_throttle_drives_the_assembly_forward_in_a_straight_line() -> void
 	)
 
 
+func test_a_negative_throttle_backs_it_out() -> void:
+	# §15.5's other end. `ControlSystem` produces a negative throttle from the
+	# brake action rather than entering a reverse *state*, and this is the half
+	# of that arrangement the input layer cannot assert: a drive torque that
+	# refused to go negative would leave a build with no way off a wall, and
+	# would look identical to a correct one in every forward test in this file.
+	await _at_rest()
+	_motion.input.throttle = -PART_THROTTLE
+	await physics_frames(DRIVE_TICKS)
+	var along := _forward_speed()
+	var sideways := _runtime.body.linear_velocity.dot(_runtime.body.global_transform.basis.x)
+	_motion.input.throttle = 0.0
+
+	check_true(along < -1.0, "a negative throttle moves it backwards at a real speed")
+	check_true(
+		absf(sideways) < absf(along) * 0.1,
+		"and straight back rather than off to one side"
+	)
+
+
 func test_the_brake_stops_it() -> void:
 	await _at_rest()
 	_motion.input.throttle = PART_THROTTLE
@@ -662,46 +695,51 @@ func _forward_speed() -> float:
 	return _runtime.body.linear_velocity.dot(-_runtime.body.global_transform.basis.z)
 
 
-func test_the_yaw_controller_brakes_the_flank_that_opposes_the_error() -> void:
-	# §7.6's sign, isolated from the physics. Braking the left flank yaws the
-	# Assembly left, so an Assembly rotating right harder than it was asked to is
-	# corrected on the left — and a controller that braked the other side would
-	# add to the spin it is supposed to be trimming, which no test of "does it
-	# drive straight" reliably distinguishes from a controller that is off.
-	check_eq(
-		TractionControl.brake_side(-1.0), -1, "yawing right too fast brakes the left flank"
-	)
-	check_eq(TractionControl.brake_side(1.0), 1, "and yawing left too fast brakes the right")
+func test_the_yaw_controller_trims_a_spin_the_driver_did_not_ask_for() -> void:
+	# §7.6's second loop, through the Assembly rather than through its statics.
+	# Session 12's sweep left three faults here unrun and this is what they cost:
+	# with the corrective brake replaced by a hard zero — the whole yaw
+	# controller solved every tick and thrown away — every other §7.6 test in
+	# this file still passed, because the slip limiter alone holds a straight
+	# launch. So does braking *both* flanks, which is a slower Assembly and no
+	# yaw moment at all. Neither is visible to a test of "does it drive straight".
+	#
+	# Both runs coast. Reaching speed under the aid and then releasing the
+	# throttle before the spin is imposed means the drive torque is zero through
+	# the measurement window, so [method TractionControl.drive_scale] cannot
+	# contribute and the corrective brake is the *only* difference between the
+	# two authorities. It also starts both runs at the same speed, which they do
+	# not do if the limiter is allowed to hold one of them back.
+	var unmanaged := await _coasting_spin(0.0)
+	var managed := await _coasting_spin(1.0)
 
-	# Positive steer is right, and right is a negative yaw rate.
-	var target := TractionControl.target_yaw_rate_rad_s(10.0, deg_to_rad(20.0), 2.5)
-	check_true(target < 0.0, "a right-hand lock asks for a right-hand yaw")
-	check_approx(
-		target, -10.0 * tan(deg_to_rad(20.0)) / 2.5, "at the bicycle model's rate"
-	)
-
-
-func test_the_yaw_controller_leaves_a_straight_run_alone() -> void:
-	# The deadband. An aid that trimmed continuously would have the brakes on
-	# every tick of every straight, and the Assembly would be slower for it with
-	# nothing to show.
-	check_approx(
-		TractionControl.yaw_error_rad_s(
-			TractionControl.YAW_DEADBAND_RAD_S * 0.5, 0.0, INF
-		),
-		0.0,
-		"an error inside the deadband is no error"
-	)
+	check_true(unmanaged > 0.25, "the imposed spin survives a tenth of a second on its own")
 	check_true(
-		absf(TractionControl.yaw_error_rad_s(1.0, 0.0, INF)) > 0.0,
-		"and one outside it is"
+		absf(managed) < unmanaged * 0.6,
+		"and the yaw controller has taken most of it off: %.3f vs %.3f rad/s"
+		% [managed, unmanaged]
 	)
-	# The grip clamp: a lock the contacts could never follow is not chased.
-	check_approx(
-		TractionControl.yaw_error_rad_s(0.0, -9.0, 1.0),
-		1.0 - TractionControl.YAW_DEADBAND_RAD_S,
-		"a yaw target past the grip limit is clamped to it before the error is taken"
-	)
+
+
+## Yaw rate, in rad/s, [constant YAW_TRIM_TICKS] after an identical spin is
+## imposed on an Assembly coasting in a straight line at [param authority].
+##
+## Signed, because a controller strong enough to reverse the spin has still
+## corrected it and the caller takes the magnitude.
+func _coasting_spin(authority: float) -> float:
+	await _at_rest()
+	_motion.input.traction_control = 1.0
+	_motion.input.throttle = PART_THROTTLE
+	await physics_frames(DRIVE_TICKS)
+	_motion.input.throttle = 0.0
+	_motion.input.traction_control = authority
+	# Yawing left. No steer is commanded, so the bicycle model asks for zero and
+	# the whole of this is error.
+	_runtime.body.angular_velocity = Vector3(0.0, IMPOSED_SPIN_RAD_S, 0.0)
+	await physics_frames(YAW_TRIM_TICKS)
+	var remaining := _runtime.body.angular_velocity.y
+	_motion.input.traction_control = 1.0
+	return remaining
 
 
 func test_the_wheelbase_is_derived_from_where_the_contacts_are() -> void:

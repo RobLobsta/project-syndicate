@@ -38,8 +38,8 @@ const COUPLING_TORQUE_LIMIT_NM: float = 24000.0
 
 ## Assembly this system moves. Set once, before the node enters the tree.
 var runtime: AssemblyRuntime = null
-## Aggregated Power Plant totals. Recomputed on structural and band events by
-## the owner, never here.
+## Aggregated Prime Mover and Energy Cell totals. Recomputed on structural and
+## band events by the owner, never here.
 var power: PowerSystem = null
 ## This tick's intent. Written by the control system, the AI driver, or the
 ## network input channel; read by every family.
@@ -106,6 +106,31 @@ func _ready() -> void:
 
 func _physics_process(dt: float) -> void:
 	step(dt)
+
+
+func _enter_tree() -> void:
+	EventBus.part_band_changed.connect(_on_part_band_changed)
+
+
+func _exit_tree() -> void:
+	EventBus.part_band_changed.disconnect(_on_part_band_changed)
+
+
+## Doc 08 §8.4's dispatch, arriving as a signal rather than as a direct call.
+##
+## The document writes `assembly.motive_system.on_band_changed(slot, after)`,
+## which would need [DamageResolver] to hold a reference to every per-Assembly
+## system in the match. It already declined that shape once — §3.1's amendment
+## is why the registry is an object rather than an autoload — and the same answer
+## applies here: the resolver announces, and whoever caches the consequence
+## subscribes. Invariant I-4, and the signal exists for exactly this.
+##
+## The id filter is what keeps one Assembly's damage out of another's arrays.
+func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int) -> void:
+	if runtime == null or assembly_id != runtime.assembly_id:
+		return
+	if _motive_slots.has(slot):
+		on_band_changed(slot, after)
 
 
 ## Registers a Motive Assembly and builds its family state.
@@ -933,11 +958,7 @@ static func hip_local_of(def: PartDefinition, state: PartInstanceState) -> Vecto
 
 
 func _part_world_position(slot: int) -> Vector3:
-	var st: PartInstanceState = runtime.states[slot]
-	if st == null:
-		return runtime.body.global_position
-	var def := PartRegistry.definition(st.part_def_id)
-	return runtime.body.global_transform * MassSolver.part_com_local(st, def)
+	return runtime.part_world_position(slot)
 
 
 func _static_load_n(slot: int) -> float:

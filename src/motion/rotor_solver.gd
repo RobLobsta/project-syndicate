@@ -51,7 +51,7 @@ static func spool_tau_s(profile: RotorProfile, omega_rad_s: float, command_rad_s
 ## Power shortfall scales the [b]commanded rate[/b], never the thrust. Thrust
 ## goes as the square of the rate, so a 10% shortfall costs 19% of lift, the
 ## disc audibly slows, and the loss arrives over seconds because it is behind
-## the spool lag. A rotary Assembly losing a Power Plant sinks; it does not
+## the spool lag. A rotary Assembly losing a Prime Mover sinks; it does not
 ## switch off.
 static func commanded_omega(
 	profile: RotorProfile, throttle: float, power_available_fraction: float

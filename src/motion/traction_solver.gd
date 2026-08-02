@@ -149,7 +149,7 @@ static func contact_inertia(mass_kg: float, radius_m: float) -> float:
 ##
 ## Load weighting is what suppresses wheelspin on an airborne contact without a
 ## traction-control hack: an unloaded contact receives almost no torque. A
-## destroyed Power Plant simply reduces the total; a destroyed contact simply
+## destroyed Prime Mover simply reduces the total; a destroyed contact simply
 ## leaves the denominator.
 ##
 ## [param normals_n] and the returned array are parallel and index-aligned.

@@ -100,6 +100,7 @@ const SHIPPED_KEYS: Array[String] = [
 	# and those are different orderings on purpose.
 	"mot.wheeled.fixed_rear.t2",
 	"cel.static.standard.t3",
+	"eff.ballistic.autocannon_30.t3",
 ]
 
 
@@ -161,7 +162,11 @@ func test_class_buckets_are_populated() -> void:
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.ENERGY_CELL).size(), 1, "and one Energy Cell"
 	)
-	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(), 1, "one edge")
+	check_eq(
+		PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(),
+		2,
+		"a powered edge and an autocannon: one module per resolution path"
+	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.SUPPORT_MODULE).size(),
 		0,

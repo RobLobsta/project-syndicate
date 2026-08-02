@@ -850,6 +850,7 @@ var child_slots: PackedInt32Array = PackedInt32Array()
 var integrity: float = 0.0
 var integrity_band: PartEnums.IntegrityBand = PartEnums.IntegrityBand.NOMINAL
 var accumulated_heat_hu: float = 0.0
+var resist_modifier: PackedFloat32Array = PackedFloat32Array()   # see below
 var flags: int = 0                              # bitfield, see §8.1
 var visual_node_path: NodePath = NodePath()
 var collider_shape_ids: PackedInt32Array = PackedInt32Array()
@@ -857,6 +858,19 @@ var collider_shape_ids: PackedInt32Array = PackedInt32Array()
 func integrity_fraction(def: PartDefinition) -> float:
     return clampf(integrity / def.integrity_max, 0.0, 1.0)
 ```
+
+`resist_modifier` is a per-channel offset applied on top of the definition's
+`resistance`, five entries long, zero on a fresh instance. It exists because
+`COMPONENT_HEALTH_DAMAGE.md` §7.2's corrosive channel permanently degrades a
+part's resistance, and Architectural Invariant I-11 forbids writing that back
+into the shared `PartDefinition` — a single corroded panel would otherwise
+weaken every copy of that part in the match, on every Assembly, for the rest of
+the session.
+
+It is left **empty** until something first modifies it. A match with no
+corrosive damage in it pays five bytes per part for a null array header rather
+than twenty bytes of zeroes, and `effective_resistance` returns the definition's
+own array untouched, which is the common case by a wide margin.
 
 ### 8.1 Instance Flag Bits
 

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="ProjectileDefinition" format=3 uid="uid://4oy5d8rm8c4d"]
+
+[ext_resource type="Script" path="res://src/core/data/projectile_definition.gd" id="1_0cho5"]
+
+[resource]
+script = ExtResource("1_0cho5")
+drag_coefficient_per_m = 2e-05
+penetrates_after_hit = true
