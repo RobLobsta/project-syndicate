@@ -93,6 +93,29 @@ func _physics_process(dt: float) -> void:
 	step(dt)
 
 
+func _enter_tree() -> void:
+	EventBus.part_band_changed.connect(_on_part_band_changed)
+
+
+func _exit_tree() -> void:
+	EventBus.part_band_changed.disconnect(_on_part_band_changed)
+
+
+## Doc 08 §8.4's dispatch. See [method MotiveSystem._on_part_band_changed] for
+## why it arrives as a signal rather than as the direct call the document writes.
+##
+## This is the path that gives §8.2's jam chance a producer: a module below 30%
+## integrity gets [constant DegradationTable.EFF_JAM]'s 0.18 written into its
+## slot here, and §7.2's roll reads it there. Without the subscription the
+## multipliers are written once at registration and never again, so a module
+## could be shot to pieces and still fire like new.
+func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int) -> void:
+	if runtime == null or assembly_id != runtime.assembly_id:
+		return
+	if _hardpoints.has(slot):
+		on_band_changed(slot, after)
+
+
 ## Seeds this Assembly's combat generator.
 ##
 ## Called by the match scene from the match seed and the Assembly id, so two
@@ -230,6 +253,31 @@ func hardpoint(slot: int) -> HardpointState:
 ## Registered Effector Module slots, ascending.
 func slots() -> PackedInt32Array:
 	return _slots.duplicate()
+
+
+## ===== INSPECTION ======================================================
+## Read-only views of the cached band multipliers. They exist so that a test, the
+## garage's stat panel, and the diagnostics overlay can read this system without
+## any of them reaching into its arrays — which would break all three the next
+## time the layout changes.
+
+
+func slew_multiplier(slot: int) -> float:
+	return _slew_mult[slot]
+
+
+func cycle_multiplier(slot: int) -> float:
+	return _cycle_mult[slot]
+
+
+func spread_multiplier(slot: int) -> float:
+	return _spread_mult[slot]
+
+
+## §7.2's per-shot jam probability at this module's cached band. Zero above
+## CRITICAL, by §8.2.
+func jam_chance(slot: int) -> float:
+	return _jam_chance[slot]
 
 
 ## ===== PRIVATE =========================================================

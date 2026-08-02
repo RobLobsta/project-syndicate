@@ -1271,6 +1271,15 @@ ground, real rounds, one winner.
 - **Build the ground out of a `StaticBody3D` slab and name it a fixture.**
   Document 09 owns Dynamic Ground Arrays.
 - **A physics test that plants no fault is not finished.**
+- **Never `git add -A` while a sweep is running, and never kill one mid-fault.**
+  A sweep writes a fault, runs, and restores in a `finally`. Session 14 did both
+  of the things that break that: it committed during a sweep, capturing a planted
+  fault into a commit, and then killed the sweep between the write and the
+  restore. The fault — §4.2's ricochet angle gate replaced by `if false` — went
+  in as a one-line change to a file the commit had no business touching, and the
+  only reason it was noticed within the hour is that
+  `test_a_square_hit_never_ricochets_however_weak` had been written twenty minutes
+  earlier and started failing. Stage explicit paths, or wait.
 - **A sweep gets slower as the suite grows.** Session 13's cost about 2.5 minutes
   a fault; session 14's, with the duel in the suite, costs nearer six. Thirty-odd
   faults is then most of an afternoon of wall time. Plant fewer and better ones,
