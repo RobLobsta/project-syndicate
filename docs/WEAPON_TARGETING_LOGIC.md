@@ -652,6 +652,86 @@ func _apply_difficulty_error(aim: Vector3, distance: float,
 
 This keeps AI shots physically honest — an AI miss is a real miss, visible as a real tracer going wide, and it can hit a third party.
 
+### 10.1 What a `TargetHandle` Is, and Where the Roster Comes From
+
+`TargetHandle` is an inner class of `AiContext`, not a type of its own, because
+it has no life outside a scan: it is four fields sampled off an `AssemblyRuntime`
+at scan time and discarded at the next one.
+
+```gdscript
+class_name AiContext
+extends RefCounted
+
+class TargetHandle:
+    extends RefCounted
+    var id: int
+    var team: int
+    var position: Vector3            # the Core Module, in world space
+    var integrity_fraction: float    # of the Core Module
+```
+
+`position` is the **Core Module's** world position rather than the body origin,
+because it is also the aim point the driver hands `EffectorSystem`, and Invariant
+I-2 makes that part the thing worth shooting at.
+
+`integrity_fraction` is likewise the Core Module's. A whole-Assembly figure would
+read "wounded" for a build that had lost a Motive Assembly and was otherwise
+intact, where I-2 says how close a target is to being *finished* is a question
+about one part. It is read at scan cadence, never per tick, which is what keeps
+Invariant I-5 intact.
+
+`visible_assemblies` is rebuilt from `AssemblyRegistry.ids()` on each scan, which
+is ascending, so two drivers scanning the same tick iterate the same order and
+break score ties the same way (Invariant I-9). **There is no visibility test yet**
+— the name is aspirational, every live Assembly is a candidate, and closing that
+gap is a line of sight query this document does not currently specify.
+
+`ctx.team` and each candidate's `team` come from a roster the match layer owns
+and hands to the context. Nothing in `src/combat/` knows what a team is —
+`DamagePacket` carries a source Assembly and the resolver never asks whose side
+it is on, so friendly fire is decided by which hull the ray reaches first. The AI
+layer is the first consumer of the concept, and it holds it as data rather than
+introducing a team field on anything the damage path touches.
+
+### 10.2 `_arc_cost` Is a Boolean
+
+The `float()` cast in §10's snippet is load-bearing. `_arc_cost` answers "would
+this target be outside the mount's authored arc from where the hull is pointing
+now", by running §4.2's decomposition against the candidate and comparing the
+unclamped angles to §3.1's limits — the identical test `solution_in_arc` makes,
+asked ahead of time about a target the mount is not yet pointing at.
+
+At a weight of 140 against a proximity term that peaks at 30, this is not a
+tie-break: it is a near-absolute preference for a target the mount can actually
+reach. That is the intent. A driver that picks the nearest enemy and then sits
+on an elevation stop pointing over it has chosen a target it cannot shoot, and
+§4.3.1 exists precisely because that state is otherwise indistinguishable from a
+firing solution.
+
+The wounded term, by contrast, **is** a tie-break at these weights: `1.6` against
+a proximity term that spans 0.75 to 30 separates two candidates at equal range
+and cannot move one closer to the top. Recorded here as measured rather than
+adjusted; changing it is a `balance-review` change to this table.
+
+### 10.3 The Difficulty Error Is Rolled Per Scan
+
+`_apply_difficulty_error` is evaluated when the target is selected, and the
+offset is held until the next scan. Re-rolling it per tick would put a 60 Hz
+random walk on the aim point, and §4.2's convergence would chase noise it can
+never arrive at — a mount that never reads `on_target` never opens §7.1's gate,
+so a per-tick roll does not make an AI less accurate, it makes it hold fire.
+
+`_ai_rng` is a `RandomNumberGenerator` owned by the driver and seeded from the
+Assembly id (Invariant I-9). Two AI Assemblies in one match must not miss in
+lockstep, and the same match must replay identically.
+
+### 10.4 Scan Staggering
+
+The initial timer is seeded from the Assembly id, so eight AI Assemblies spawned
+on the same tick do not all scan on the same tick thereafter. The stagger is a
+deterministic function of the id and not a random phase, for the same reason the
+RNG is seeded: a replay must reproduce which tick each driver re-targeted on.
+
 ---
 
 ## 11. Network Authority and Prediction

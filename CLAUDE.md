@@ -52,6 +52,8 @@ When a value appears in more than one place, exactly one document **owns** it an
 | Gait phase, cadence, foot placement, and stance constants | 05 |
 | Road station, differential drive, and slew constants | 05 |
 | Input action → `ControlInput` mapping | 05 |
+| AI stand-off, steer saturation, gait yaw damping | 05 |
+| AI scan cadence, target score weights, difficulty error | 07 |
 | Archetype weights and budget ratios | 06 |
 | Effector timing, spread, recoil, jam constants | 07 |
 | Melee reach, arc, sweep, and reaction constants | 07 |

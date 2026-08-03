@@ -4,21 +4,37 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 22 — **the ground is terrain.** `src/world/` did not
-exist; documents 09 and 10 were the only two of the thirteen with no
-implementation at all, and the match scene stood on a flat `BoxShape3D` slab its
-own docstring apologised for. Document 09 is now landed in full: a chunked
-mutable heightfield, a five-stage deformation pipeline, collision streaming, rut
-accumulation, surface reclassification, and craters that persist and change how
-the ground drives. **69 files, 4990 checks, 0 failures.**
+Last updated: session 23 — **something shoots back.** `src/ai/` did not exist and
+the match scene was a gunnery range: three opponents with modules, no
+ammunition, no driver. It is now a fight. `AiContext`, `AiTargetSelector` and
+`AiDriver` are landed, the match scene spawns its opponents on the other side of
+a roster and hands each one a driver, and they close, aim through the identical
+`EffectorSystem` a player's trigger reaches, and shoot. **72 files, 5104 checks,
+0 failures.**
 
-Writing it found **four defects in doc 09 itself**, all amended in the document
-in the same change and all recorded in §4.28 to §4.31. The largest is that §4.3's
-solve attenuated the crater rim to 5.8% of the height §7.1 depends on, so the
-cover-providing lip would have shipped at 23 mm.
+Building it found **three defects, none of them in the AI**, and the largest is
+the one you can watch:
 
-Session 21 measured Godot's CSG and changed no code (§3.57–§3.60). Session 20
-made the game render.
+- **Firing on the move yaws an Assembly harder than its steering can correct**
+  (§4.34). The autocannon's muzzle sits 0.125 m off the centreline — recorded in
+  §7 for two sessions as a data question nobody had answered — and at its cadence
+  that is about 1270 N·m of yaw torque. A driver holding the trigger through its
+  approach was turned 35° off heading in one second and spent fourteen seconds
+  circling a target 40 m away, getting further from it. The same driver with the
+  trigger cold held its heading to a tenth of a degree and closed 40 m to 5.4 m.
+  Doc 05 §15.7.4 is the workaround; **centring the muzzle is the fix and it is
+  now the highest-value data change in the project.**
+- **Every death was announced twice** (§4.35). `DetachmentScheduler` still emitted
+  `assembly_terminated` alongside `DamageResolver`, which doc 04 §8.2 forbids in
+  as many words. Visible in the match HUD as a player's own destruction reported
+  twice, once credited and once to nobody. Live since session 16, and held in
+  place by a fixture that asserted the duplicate.
+- **The ambulatory drift's direction is not reproducible** (§4.36). Adding one
+  engagement file earlier in the suite flipped the neutral case from +169.6° to
+  −76.1° while leaving both commanded runs byte-identical. §3.54 again, one level
+  sharper.
+
+Session 22 made the ground terrain. Session 20 made the game render.
 
 | § | What is in it |
 |---|---|
@@ -32,9 +48,9 @@ made the game render.
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §4.27 for what the first playable build showed,
-§3.51 for why a tick count in a multi-Assembly physics test measures the
-*suite* rather than the fight, and §8 for the next steps.
+**If you read three things:** §4.34 for why an Assembly cannot drive and shoot at
+the same time, §6.5 for what a player now meets in the first thirty seconds, and
+§8 for the next steps.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -72,7 +88,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**69 files, 4990 checks, 0 failures.**
+**72 files, 5104 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -227,13 +243,17 @@ restarted every tick |
 | `test_ground_deform` | *(session 22)* the bowl-and-rim shape, §9.2's reclassification, every copy of a shared sample agreeing, the erosion clamp asymptoting while still doing something on the fortieth shell, coalescing, §8.2's determinism by hash over two independently built arrays, and a replicated request reproducing an authored field exactly |
 | `test_ground_terrain` | *(session 22)* the collision shape agreeing with the height data at five world positions, the field not being transposed, an Assembly settling on terrain rather than through it, collision resident only near an anchor, and a contact in a crater reading `DEFORMED` |
 | `test_manifold_checker` | *(session 22)* all six cases the engine's CSG was probed on, including the two a naive index-based predicate gets wrong — a split-vertex `BoxMesh` and a `SphereMesh`'s pole fans — plus a duplicated face, which a boundary-only check passes |
+| `test_ai_target_selector` | *(session 23)* doc 07 §10's four weights by value, the team filter, the range gate in both directions, the tie-break order, and §10.3's error model — reproducible at one seed, different at two, growing with range and shrinking with difficulty |
+| `test_ai_driver` | *(session 23)* doc 05 §15.7.1's bearing and its flattening, the steering sign in both directions, saturation, §15.7.2's authority ceiling and the **sign of the yaw damper**, and each family's stand-off by value |
+| `test_ai_engagement` | *(session 23)* the whole chain end to end: a scan, a target, a 180° turn, an approach, a mount converged, a round fired, a store decremented by exactly the shots, integrity taken off the target — plus §15.7.4's fire discipline and §10.2's arc penalty by value |
+| `test_detachment_scheduler` | …and, since session 23, that the scheduler announces **no** termination. It used to assert the opposite, which is what kept doc 04 §8.2's duplicate producer alive for seven sessions |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
 | *nothing* | anti-roll pushing both ends of an axle the same way — see §5 |
 | *nothing* | a hard-coded steer lock — see §5 |
 
-### 2.0 The sweeps of sessions 15 to 18
+### 2.0 The sweeps of sessions 15 to 23
 
 There are two committed sweep scripts and they cover different things.
 `tools/ci/sweeps/engagement_sweep.py` is sessions 15 and 16's, over the paths the
@@ -387,7 +407,52 @@ direction has a consumer that can move, it is caught immediately. **Ask what
 reads the variable before planting a fault on it** — a fault on a value that only
 feeds a degenerate comparison is a fault on nothing.
 
-#### What the four sweeps taught
+#### Session 23: ten faults over `src/ai/`, nine caught
+
+`tools/ci/sweeps/ai_layer_sweep.py`, baseline **5104**. Planted against laws
+rather than loops, and the two most useful results are the survival and a
+mis-planted catch.
+
+| Fault | Result |
+|---|---|
+| `steer-sign-flipped` | **CAUGHT**, 11 failures across 2 files. The unit file names the sign seven times; the engagement file says the whole thing out loud — 177.1° of bearing error after 330 ticks, 46.3 m of range, **0 rounds fired**, because a driver steered away from its target never reaches its stand-off and §15.7.4 keeps the guns cold until it does. |
+| `throttle-taper-removed` | **CAUGHT**, and by one assertion nobody expected: *"none came off the attacker, which nothing was shooting at"*. Circling at 40 m with a parked target, the AI's own rounds come back through the terrain and its own hull. The turn assertion did **not** catch it, because 330 ticks is enough to turn round even on the wide arc. A fault caught by the wrong assertion is a fixture that is more sensitive than its author knew, and it is worth reading before trusting the one you wrote for it. |
+| `fire-discipline-removed` | **CAUGHT**, 3 failures. This is §4.34 planted deliberately: the range assertion goes to 42.5 m and the turn to 163.3°. |
+| `aim-point-read-from-scan` | **SURVIVED.** See below. |
+| `team-filter-dropped` | CAUGHT |
+| `range-gate-removed` | CAUGHT |
+| `arc-cost-always-reachable` | **CAUGHT — on the second attempt.** See below. |
+| `difficulty-error-flat` | CAUGHT, by the range-scaling assertion reporting `1.991 against 1.991` |
+| `scan-stagger-constant` | CAUGHT, 28 failures — every pair of the eight ids collides |
+| `terminated-emitted-twice` | CAUGHT, by the assertion §4.35 replaced |
+
+**The survivor: `aim-point-read-from-scan`.** Doc 07 §10 runs selection at 2.9 Hz
+and aim solving every tick, and `AiDriver._resolve_target` resolves the target's
+Core Module fresh each tick rather than reading the position off the scan's
+handle. Collapsing the two — aiming at where the target was up to 350 ms ago —
+changes nothing anywhere in the suite, **because the only target an `AiDriver`
+has ever shot at is parked**. For a stationary target the two implementations are
+identical by construction.
+
+It is the §2.1 shape again: a fixture that cannot distinguish the rule from its
+fallback. What closes it is an engagement in which the AI's target is *driving*,
+which needs `CombatArena` to pilot one side while `AiDriver` fights the other —
+the fixture supports it (`arena_piloted` is per combatant) and no file does it
+yet. **Left open deliberately** rather than closed with a fixture built to make a
+point: a moving target at 4 m/s is 1.4 m of lead error against a hull two metres
+wide, so the test that closes this has to be built to *exceed* the tolerance,
+which is §2.0's own lesson about bounds.
+
+**The mis-planted catch is worth as much.** `arc-cost-always-reachable` first
+anchored on `reaches`'s null guard — three lines that also open `can_fire`,
+earlier in the same file — so `.replace(old, new, 1)` took the wrong one and
+made every module able to fire regardless of heat, ammunition or jam. It reported
+`CAUGHT` with **19 failures across five files**, none of them about target
+selection, and the check count moved. A `CAUGHT` whose blast radius does not
+match its subject is as suspicious as a `SURVIVED`: re-anchored on the return
+expression, the real fault fails exactly the two assertions written for it.
+
+#### What the five sweeps taught
 
 **A closed loop hides the thing it closes over.** Session 15's two survivals were
 both of this shape: an autopilot that corrects an error every tick absorbs a
@@ -445,6 +510,14 @@ Two of session 14's faults no longer apply to code session 16 rewrote, and the
 script says `PATCH-MISS` and carries on. Read the misses as carefully as the
 survivals — a fault that cannot be planted is a defence that has been removed
 without anybody deciding to remove it.
+
+**And read a `CAUGHT` whose blast radius does not match its subject.** Session
+23's arc-cost fault anchored on three lines that appear twice in one file, landed
+in the wrong function, and reported `CAUGHT` with nineteen failures across five
+files that have nothing to do with what it was defending. A sweep that only
+greps its own output for `SURVIVED` records that as a success. The tell was in
+the output the whole time: a fault on target selection had broken
+overpenetration, the duel, and the brawl.
 
 
 ### 2.1 What the uncaught faults taught
@@ -965,6 +1038,16 @@ All verified against 4.7.1 in this repo, not recalled.
     Never a count, a duration, or an exact value.** §9's conventions already said
     this; what was missing was the knowledge that "an unrelated file was added"
     is one of the things that moves the number.
+
+    **Session 23 found the sharper version: a *direction* can move too.**
+    `test_ambulatory_drift` compared the sign of a counter-steered walker's
+    heading against a neutral one's, and adding one engagement file flipped the
+    neutral case from +169.6° to −76.1° while leaving both **commanded** runs
+    byte-identical. Only the uncommanded walker moved, because it is the one with
+    no demand to dominate its accumulated asymmetry. So the rule extends: a
+    quantity with no commanded input driving it is noise with a magnitude, and a
+    comparison *against* such a quantity is a comparison against the suite. §4.36
+    has the repair, which was to compare the two commanded runs with each other.
 
 55. **Godot's Movie Maker mode is how you look at this game from a headless
     box.** `xvfb-run -a -s "-screen 0 1600x900x24" tools/ci/godot.sh --path .
@@ -2018,6 +2101,120 @@ so the stencil now spans 4 m and the classification comes out in coherent bands.
 The suite was green for both, and the physics file proved the collision agreed
 with the data to 12 cm while the thing looked like a car park.
 
+### 4.33 Built — `src/ai/`, and the match is a fight
+
+Three files, and between them they close §8's item that had led the list for
+three sessions. `AiContext` is doc 07 §10.1's record — a roster, a self, and a
+candidate list rebuilt from `AssemblyRegistry.ids()` on the scan interval.
+`AiTargetSelector` is §10's four weighted terms as pure statics.  `AiDriver` is
+doc 05 §15.7's second `ControlInput` producer: it reacts to
+`MatchClock.tick_started` exactly as `ControlSystem` does, declares no per-frame
+callback, and reaches the simulation through nothing but the eight numbers, an
+aim point, and a trigger.
+
+`MatchScreen` now spawns its three opponents on team 1 with 200 rounds each and
+hands each one a driver at difficulty 0.55. **Nothing about them is privileged**
+— same `EffectorSystem`, same jam chance, same recoil, and a miss that puts a
+real round into the terrain.
+
+**The arena keeps its own command loop and now shares the arithmetic.**
+`tests/combat_arena.gd`'s `_drive` calls `AiDriver.bearing_to`,
+`steer_demand` and `ambulatory_steer_demand` and the six gain constants moved out
+of the fixture into the class doc 05 §15.7 gives them to. Behaviour is unchanged
+to the digit, which was the point: switching the five recipes onto a driver with
+a 2.9 Hz scan interval would silently re-measure `test_family_duels` and
+`test_team_engagement`, and that is a session of its own. `CombatArena.make_autonomous`
+is the opt-in route by which `src/ai/` gets into an engagement test, and
+`test_ai_engagement.gd` is the only file that takes it.
+
+### 4.34 Found — an Assembly cannot drive and shoot at the same time
+
+**The session's largest finding, and it is not in the AI.** It was found by the
+first test that asked a driver to close on a target and shoot it, which is §2's
+"integration finds" for the eighth time.
+
+A driver holding its trigger through an approach:
+
+| | Trigger held | Trigger cold |
+|---|---|---|
+| Heading error after 1 s | 35° | 0.1° |
+| Top speed reached | 2.7 m/s | 13.4 m/s |
+| Range after 14 s, from 40 m | **46 m** | 5.4 m |
+| Outcome | circles, spiralling outward | stops on its stand-off |
+
+The cause is doc 01's, not doc 05's. §10.5 authors 1450 N·s of recoil a round;
+the shipped autocannon's muzzle sits **0.125 m off the Assembly's centreline**,
+because an odd-width Effector Module cannot be centred on an even-width Core
+Module. At the module's cadence that is about **1270 N·m of steady yaw torque** on
+an 1100 kg vehicle, and it is larger than the steering authority the wheeled
+family has. §7 has carried the offset as "yaws a light Assembly" for two sessions
+as an open data question. It is not a nuance: it is the dominant handling defect
+in the game the moment anything holds a trigger while moving, **and a player will
+meet it in their first ten seconds.**
+
+Two things came out of chasing it, both now in doc 05 §15.7 and both measured:
+
+- **§15.7.1's throttle is a cosine of the heading error, not a boolean.** At full
+  throttle through a full-lock turn the build drives an arc wider than the range
+  it is closing and spirals outward at constant bearing. It cannot taper to zero
+  either — a steered contact needs road speed to make any lateral force, and at
+  0.35 throttle with the lock over the build stalls to 0.2 m/s and stops turning.
+  `APPROACH_MIN_THROTTLE` is the floor between the two failures.
+- **§15.7.4: an `AiDriver` closes with its guns cold.** Recorded in the document
+  as a workaround for a data defect rather than as a tactic, with the cost stated:
+  an AI chasing a target that keeps running away never fires. **A player gets no
+  such rule and is not given one** — they can hold the trigger while driving and
+  will meet the same yaw, which is the strongest argument for fixing the offset.
+
+Neither of these could be evaluated while the other was wrong. The throttle taper
+looks harmful right up until the gun stops spinning the hull, and the fire
+discipline looks unnecessary right up until you try to turn round. **A fault in
+two coupled laws reads as two dead ends.**
+
+### 4.35 Fixed — every death was announced twice
+
+Found by looking at the game (rule 17), in the HUD feed: `Assembly 1 destroyed`,
+twice, in the colour that means it is you.
+
+`DamageResolver` emits `assembly_terminated` on slot 0, and `DetachmentScheduler`
+**also** emitted it from `_terminate`, with a comment saying attribution belonged
+to the damage layer "until it does". It has done since session 16. Doc 04 §8.2 is
+unambiguous — *"the producer is therefore `DamageResolver`, and it is the only
+one … nothing else may emit it"* — and the scheduler's line was not a fallback
+but a second announcement of every death: once credited to the killer, once to
+nobody. Slot-0 destruction is the only thing that can reach `_terminate`, and
+CLAUDE.md §10 rule 10 lets nothing but the resolver write integrity, so the
+duplicate was unconditional.
+
+**What kept it alive for seven sessions is the more useful half.**
+`test_detachment_scheduler` asserted `_terminated.size() == 1` — it was written
+before the resolver had a producer, and it went on asserting the duplicate after
+one arrived. A fixture written against a temporary arrangement becomes the reason
+the arrangement is permanent. The file now asserts that the scheduler announces
+**nothing** and that the graph is emptied, which is its actual job, and
+`ai_layer_sweep.py` carries `terminated-emitted-twice` so the duplicate cannot
+come back quietly.
+
+### 4.36 Found — the ambulatory drift's *direction* is not reproducible
+
+`test_ambulatory_drift` asserted since session 15 that full opposite lock leaves
+the hull turned *the same way* as the neutral case. Adding one engagement file
+earlier in the suite flipped the neutral case from **+169.6° to −76.1°** and left
+both commanded runs **byte-identical** at +109.8° and +93.1°.
+
+Only the uncommanded walker moved, which is the tell: it is the one whose outcome
+is decided entirely by accumulated asymmetry, with no demand to dominate it, so
+its direction is a property of the suite's floating-point history and not of the
+family. Its *magnitude* is stable and still exceeds the threshold.
+
+This is §3.54 one level sharper. That entry says a tick count in a multi-Assembly
+file measures the suite; this says **the sign of a chaotic quantity does too**,
+and that a comparison between a commanded run and an uncommanded one is a
+comparison against noise. The file now asserts that the counter-steered run still
+ends up past the drift threshold — which is the claim §4.21 actually makes — and
+compares the two *commanded* runs against each other. §4.21's finding is
+unchanged and better defended.
+
 ## 5. Deliberate readings, and the redundancies
 
 **The camera went into doc 11 rather than into a fourteenth document.** It had
@@ -2283,6 +2480,44 @@ resolve path separately guards against a null graph.** These look like the same
 check and are not: the first covers an Assembly that left the match with a
 destruction already queued, the second an id that was never registered at all.
 
+**The rotary autopilot stayed in the fixture, and that is the decision §5 has
+been deferring since session 15.** The question was always "what belongs in
+`AiDriver` and what belongs in a stability-augmentation layer doc 05 does not
+have". The answer is a test rather than a taste: **would a human flying this
+build need the same loop?** Holding a hover is three closed loops that resolve a
+demand into a world-space thrust direction and invert §12.3 back into swash
+angles, and a person with a keyboard needs every one of them — so putting it in
+`AiDriver` would give a bot flight a player cannot have, which is exactly what
+doc 05 §15.7's contract forbids. Closing on a bearing and stopping at a stand-off
+fails the same test in the other direction: a player does that with two keys.
+
+So the augmentation layer is real, it is unwritten, it sits between *both*
+producers and the motion layer, and `AiDriver` asked to drive a rotary Assembly
+aims, fires, and writes a neutral motion record rather than a wrong one. Doc 05
+§15.7.3 records it; `CombatArena._fly` remains the only implementation and still
+names itself a fixture.
+
+**The AI layer is the first system in the project that knows what a team is, and
+it holds the roster as data.** Nothing in `src/combat/` asks whose side a packet
+came from — friendly fire is decided by which hull the ray reaches first — and
+the temptation was to put a team field on `DamagePacket` or on `AssemblyRuntime`
+while passing. `AiContext` carries an `assembly_id -> team` dictionary the match
+layer owns instead, so the resolver's ignorance stays a deliberate property
+rather than something the next system to want teams has to unpick. An Assembly
+the roster does not name is skipped rather than defaulted onto a side: a
+candidate whose team is a guess is one an AI may shoot at because nobody said not
+to.
+
+**`EffectorSystem.reaches` exists so that §10.2's arc cost cannot disagree with
+§7.1's fire gate.** The selector needs to know whether a candidate is reachable
+*before* committing the mount to slewing at it, and the obvious implementation —
+a bearing comparison against the authored yaw limits — is wrong in the same way
+doc 07 §4.2 was wrong before session 14: it ignores the chassis basis and the
+part's placement orientation. So the question is asked of the mount, through the
+identical decomposition `_solve_aim` runs, factored into `_rest_direction`. A
+driver whose arc test disagreed with its fire gate would pick targets it then
+declined to shoot at.
+
 **`CombatArena` is a fixture, and its tactics are a test pilot.** They read the
 world and write a `ControlInput` — the same eight numbers doc 05 §6.0 gives the
 AI driver — and they decide nothing about who wins. The rotary attitude
@@ -2336,6 +2571,7 @@ build one.
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
 | `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37, session 17's 1, session 18's 7 over §15 — §2.0. The two `PATCH-MISS` entries are re-targeted and caught; one standing survivor remains by design (§8 item 14). Baseline **4674** |
 | `tools/ci/sweeps/engagement_sweep.py` | Session 15's six plus session 16's, over every fix — §2.0 |
+| `tools/ci/sweeps/ai_layer_sweep.py` | Session 23's ten over `src/ai/`, doc 05 §15.7 and doc 04 §8.2's single producer — §2.0. Nine caught; `aim-point-read-from-scan` is a standing survivor with its reason. Baseline **5104** |
 | `JULES.md` | Read-only review charter for a second agent; grants no authority |
 
 ### Source
@@ -2358,20 +2594,24 @@ build one.
 - `src/motion/` — `MotiveContact`, `SuspensionSolver`, `TractionSolver`,
   `TractionControl`, `RotorSolver`, `RotorDiscState`, `GaitSolver`, `LimbState`,
   `TrackSolver`, `AeroSolver`, `PowerSystem`, `ControlInput`,
-  **`ControlSystem` (new)**, `MotiveSystem`.
-- `src/combat/damage/` — `DegradationTable`, **`DamagePacket`, `PacketFlags`,
-  `DamageOutcome`, `DamageResolver` (new)**.
-- `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`, **`HardpointState`,
-  `AimSolver`, `AmmoLedger`, `EffectorSystem` (new)**.
-- `src/combat/projectiles/` — **`ProjectileRegistry`, `ProjectileSystem` (new)**.
-- `src/core/util/` — **`ProxyMeshBuilder`, `ProxyMeshCache`, `GreyboxMaterial`
-  (new)**: doc 13 §2.1's greybox chain, which had been specified and never built.
-- `src/ui/boot/` — **`MainBoot` (new)**. Branches to the match scene or to doc
+  `ControlSystem`, `MotiveSystem`.
+- `src/combat/damage/` — `DegradationTable`, `DamagePacket`, `PacketFlags`,
+  `DamageOutcome`, `DamageResolver`.
+- `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`, `HardpointState`,
+  `AimSolver`, `AmmoLedger`, `EffectorSystem`.
+- `src/combat/projectiles/` — `ProjectileRegistry`, `ProjectileSystem`.
+- `src/core/util/` — `ProxyMeshBuilder`, `ProxyMeshCache`, `GreyboxMaterial`,
+  `ManifoldChecker`.
+- `src/ai/` — **`AiContext`, `AiTargetSelector`, `AiDriver` (new)**. Doc 05
+  §15.7's second `ControlInput` producer and doc 07 §10's target acquisition.
+  Three files, no autoload, no per-frame callback, and nothing it can reach that
+  a player's keyboard cannot.
+- `src/ui/boot/` — `MainBoot`. Branches to the match scene or to doc
   12's server scene, and says so honestly when the latter does not exist.
-- `src/ui/match/` — **`MatchScreen`, `ChaseCamera`, `HudFrame` (new)**. Doc 11
-  §13 and §15.
-- `src/ui/hud/` — **`MatchHud`, `Reticle` (new)**. Doc 11 §14.
-- `src/ui/common/` — **`UiTokens`, `MeterRow` (new)**. Doc 11 §6.1 and §8.3.
+- `src/ui/match/` — `MatchScreen`, `ChaseCamera`, `HudFrame`. Doc 11 §13 and
+  §15. `MatchScreen` owns the roster every `AiDriver` shares.
+- `src/ui/hud/` — `MatchHud`, `Reticle`. Doc 11 §14.
+- `src/ui/common/` — `UiTokens`, `MeterRow`. Doc 11 §6.1 and §8.3.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
 - `project.godot` — autoloads, physics/display settings, **41** input actions,
   `run/main_scene`, the project-wide theme, and the translation list.
@@ -2530,6 +2770,32 @@ builds all three and drops its spawns onto the terrain.
 **`src/core/util/manifold_checker.gd`** is doc 10 §3.1's gate — the only thing
 standing between a DCC-authored Static Volume and a silently missing wall.
 
+**`src/ai/` — the second `ControlInput` producer (doc 05 §15.7, doc 07 §10).**
+Three files, and the wiring is four lines:
+
+```gdscript
+var driver := AiDriver.new()
+driver.runtime = runtime
+driver.input = motion.input        # the same record MotiveSystem reads
+driver.motion = motion             # read only for family_of()
+driver.guns = guns
+driver.effector_slot = gun_slot
+driver.registry = registry         # candidates come from here
+driver.roster = roster             # assembly_id -> team, shared by reference
+driver.difficulty = 0.55           # §10's aim-point offset; never a multiplier
+runtime.add_child(driver)          # everything above must be set before this
+```
+
+Everything is set **before** `add_child`, because `_enter_tree` caches the
+locomotion family, the stand-off, the RNG seed and the scan phase — a driver
+configured afterwards has already decided how it drives. The roster is one
+dictionary shared by reference, so a driver attached before its opponents exist
+sees them at its first scan.
+
+`AiTargetSelector` is entirely static and `AiContext` is a plain record, so both
+can be asserted without a match; `AiDriver`'s tactic is static too, which is what
+lets `tests/combat_arena.gd` call the same arithmetic from its own command loop.
+
 ### Data
 Eleven definitions, in manifest order. **Append only** — `part_def_id` is the
 manifest index and is serialised.
@@ -2559,12 +2825,17 @@ idempotent (with the caveat in §3.15).
 
 ### Tests
 `tests/test_case.gd` (assertions, and `physics_frames`), `tests/source_scanner.gd`,
-and **`tests/combat_arena.gd` (new)** — a whole engagement as a fixture: the
-ground slab, the four shared combat systems, five build recipes, spawn and
-teardown, a per-tick test pilot for all five locomotion families, and the
-telemetry the engagement files assert against. It is not discovered by the runner
-(`test_` prefix only) and it is the thing to reach for before writing a fourth
-duel by hand.
+and `tests/combat_arena.gd` — a whole engagement as a fixture: the ground slab,
+the four shared combat systems, five build recipes, spawn and teardown, a
+per-tick test pilot for all five locomotion families, a roster, and the telemetry
+the engagement files assert against. It is not discovered by the runner (`test_`
+prefix only) and it is the thing to reach for before writing a fourth duel by
+hand.
+
+Since session 23 it also carries `make_autonomous`, which takes the pilot off a
+combatant and hands it to a real `AiDriver`. It is opt-in and exactly one file
+takes it: switching the five recipes onto a driver with a 2.9 Hz scan interval
+would silently re-measure every engagement assertion in the suite.
 
 Arch: `test_autoload_set`, `test_input_actions`, `test_project_settings`,
 `test_no_polling`, `test_no_global_rng`, `test_no_forbidden_patterns`,
@@ -2608,10 +2879,20 @@ families, plus the nose-mount recoil measurement),
 and **`test_team_engagement`** (five-a-side combined arms and ten wheeled builds
 a side).
 
-New in session 20: **`test_part_visuals.gd`** (integration — doc 13 §2.1 and §9,
-and Invariant I-1 asserted from the presentation side, which was a vacuous check
-until meshes existed), **`test_chase_camera.gd`** and **`test_reticle_states.gd`**
-(unit — doc 11 §13.4 to §13.6 and §14.3).
+Session 20 added `test_part_visuals.gd` (integration — doc 13 §2.1 and §9, and
+Invariant I-1 asserted from the presentation side, which was a vacuous check
+until meshes existed), `test_chase_camera.gd` and `test_reticle_states.gd` (unit
+— doc 11 §13.4 to §13.6 and §14.3). Session 22 added `test_crater_profile.gd`,
+`test_ground_math.gd`, `test_manifold_checker.gd`, `test_ground_deform.gd` and
+`test_ground_terrain.gd`.
+
+**New in session 23:** **`test_ai_target_selector.gd`** and
+**`test_ai_driver.gd`** (unit — doc 07 §10's weights and doc 05 §15.7's tactic,
+both written out by hand from the documents), and
+**`test_ai_engagement.gd`** (physics — the only file that drives one side of a
+fight with `src/ai/` rather than with the arena's pilot). The last of those is
+what found §4.34, which is the eighth time §2's "sweeps confirm; integration
+finds" has held.
 
 `tests/generation/` is still empty.
 
@@ -2630,94 +2911,93 @@ until meshes existed), **`test_chase_camera.gd`** and **`test_reticle_states.gd`
 Recorded every session from now on, because a green suite says nothing about
 whether the thing is any good to play.
 
-**Can a person play it? Yes — for the first time.** `godot --path .` opens on a
-match: a wheeled Assembly on a ground slab under a sky, three more standing off
-at 34 to 46 m, a chase camera behind you, and a HUD reading integrity, power,
-ammunition and part count. `W` drives it, the mouse aims it, the left button
-fires the autocannon, `C` switches the camera between chase and orbit, `Escape`
-releases the mouse. Verified by capture rather than by assertion (§3.55): the
-build accelerates to 4.45 m/s and turns.
+**It is a fight now.** `godot --path .` opens on a basin with 15 m of relief: a
+wheeled Assembly under a sky, three opponents standing off at 34 to 46 m, a chase
+camera behind you, a HUD reading integrity, power, ammunition and part count.
+`W` drives, the mouse aims, the left button fires, `C` switches the camera,
+`Escape` releases the mouse. And the three opponents now **drive at you and shoot
+you to pieces.**
 
-**That closes the item that had led this list for five sessions.** What follows
-is the honest state of the thing that now exists, which is a different and
-better class of bad news than "there is nothing to look at".
+Captured with §3.55's route, 900 frames, no player input at all. At frame 120 the
+three are cresting the ridge in line abreast; by 260 the nearest is at short
+range and the player is at 92%; by 450 there is a pile of wreckage a few metres
+off the nose and the player is at 45% with two parts gone; by 880 the player is
+dead and the arena is still running. **A player who does nothing dies in about
+fifteen seconds,** which is the first time this project has been able to say
+anything of the kind.
 
-**Session 22 changed what you are standing on.** The flat slab is a Dynamic
-Ground Array: a basin with 15 m of relief, sand on the slopes and packed earth in
-the hollows, and craters that persist and grip worse than the ground they
-replaced. Verified by capture (§4.32) as well as by assertion. It does not change
-the ranking below, because the thing wrong with this game is still that nothing
-in it is trying to kill you.
+That closes the item that had led this list for three sessions. What replaces it
+is a better class of bad news.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **Nothing shoots back, and nothing tells you that.** The three opponents are
-   inert: they have Effector Modules and no ammunition, no driver, and no
-   tactics, because `src/ai/` is unwritten and `CombatArena`'s test pilot lives
-   in `tests/` where it belongs. So the first thing a player does is destroy
-   three parked vehicles that never react. It is a gunnery range presented as a
-   match, and the gap between those two is now the largest one in the project.
-   §8 item 13 — and `CombatArena.command`, `_drive` and `_fly` are the shape to
-   promote.
-2. **There is no way to learn the controls.** No key prompts, no pause menu, no
-   settings screen. A player who does not read `docs/RESPONSIVE_GARAGE_UI.md`
-   §7.1 has to guess, and `C` for the camera toggle is not guessable. The
-   cheapest real fix is a dismissible control card on the first match.
-3. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
+1. **You cannot drive and shoot at the same time, and neither can they**
+   (§4.34). Hold the trigger while moving and the muzzle's 0.125 m lateral offset
+   yaws the hull faster than the steering can correct — 35° in the first second,
+   measured. The AI works around it by closing with cold guns; a player gets no
+   such rule and will simply find that their vehicle spins when they shoot on the
+   move. **Centring the muzzle is the highest-value data change in the project**
+   and it is one number in doc 01. Everything below this is smaller.
+2. **Nothing happens when you die.** The Core Module goes, the feed says so in
+   red, and the match carries on with a camera bolted to a corpse. No respawn, no
+   spectate, no end screen, not even a stop. §8 item 12a has had a producer for
+   the event since session 16 and still has no consumer, and this is now the most
+   obviously unfinished thing a player reaches — because they reach it, every
+   time, in the first minute.
+3. **There is no way to learn the controls.** No key prompts, no pause menu, no
+   settings screen. `C` for the camera toggle is not guessable. A dismissible
+   control card on the first match is an afternoon.
+4. **The opponents shoot each other.** Three Assemblies on one team converging on
+   one target at a six-metre stand-off put rounds through each other constantly,
+   because nothing in `src/combat/` knows what a team is (§7) — friendly fire is
+   decided by whichever hull the ray reaches first. In the capture at least one
+   opponent died to another before the player fired a shot. It is not obviously
+   wrong as a *rule*, and it is obviously wrong as a *spectacle*.
+5. **Nothing renders a wheel at its contact point** (§7). The greybox contacts are
+   drawn where the part was placed, not where the suspension put them, so on 15 m
+   of rolling terrain the wheels hang in the air on every crest. Doc 05 does not
+   cover it and should; `AssemblyRuntime.visual_of(slot)` is the hook and the
+   contact's `point_world` is the answer.
+6. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
    firing solution on wherever the aim ray landed, which is correct and is *not*
-   what a player reads: green reads as "enemy acquired". Every state below it is
-   honest, so the fix is a target indicator rather than a reticle change — the
-   aim ray already knows whether it hit `LAYER_ASSEMBLY_HULL`, and that
-   distinction is one field on `HudFrame`.
-4. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
-   §4.14). Unchanged and now reachable: a player bolting the shipped autocannon
-   to the shipped chassis and pulling the trigger gets a vehicle on its roof. The
-   match scene's nose mount hides it exactly as `CombatArena`'s does. **This is a
-   balance decision nobody has made and a player will meet it in their first
-   minute of the garage that does not exist yet.**
-5. **Nothing renders a wheel at its contact point** (§7), and session 22 made
-   this materially worse rather than merely visible. The greybox contacts are
-   drawn where the part was placed, not where the suspension put them — which on
-   a flat slab was a theoretical complaint, and on 15 m of rolling terrain is a
-   vehicle whose wheels visibly hang in the air on every crest and sink into
-   every hollow. **Landing the terrain promoted this from seventh to the most
-   obvious unfinished thing about the vehicle.** Doc 05 does not cover it and
-   should; `AssemblyRuntime.visual_of(slot)` is the hook and the contact's
-   `point_world` is the answer.
-6. **A walking build turns 170 degrees in five seconds while commanded straight
-   ahead** (§4.21). Unchanged, and a player cannot reach it yet because the match
-   scene spawns wheeled builds only.
-7. **The edge cuts and nothing has ever fought with one** (§4.26, §8 item 12d).
-   Unchanged from session 18 and now one place further down the list only because
-   items 1 to 3 are things a player meets in the first ten seconds.
+   what a player reads. The fix is a target indicator, not a reticle change: the
+   aim ray already knows whether it hit `LAYER_ASSEMBLY_HULL`.
+7. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§4.21), and **the edge has still never been in a fight** (§4.26). Both
+   unchanged; a player cannot reach either, because the match scene spawns wheeled
+   builds only.
 
-Two smaller things a player would notice before a developer would. The vehicle
-is **small in frame** — about a sixth of the screen height at the default 68°
-field of view and 11 m follow distance — which is defensible for situational
-awareness and is worth an A/B against a tighter framing once there is something
-to be aware of. And **a destroyed part simply vanishes**, because
-`VisualDamageController` (doc 08 §9) is unwritten and `release_part` hides the
-mesh; that is the right behaviour for the "what you see is what you hit"
-guarantee and the wrong behaviour for a player, who should see a wreck.
+Two smaller things a player would notice before a developer would. The vehicle is
+**small in frame** — about a sixth of the screen height — which was defensible
+when there was nothing to be aware of and is now worth an A/B, because the fight
+happens at six metres and the camera is framed for a landscape. And **a destroyed
+part simply vanishes**, because `VisualDamageController` (doc 08 §9) is unwritten;
+that is the right behaviour for "what you see is what you hit" and the wrong
+behaviour for a player, who should see a wreck.
 
-The honest summary is unchanged from session 20 and that is the point: it is
-still **a game with no opponent in it**. Session 22 built the ground that fight
-would happen on, which is real progress and is not the fight. Item 1 is still
-what makes it one, and it has now led this list for three sessions.
+The honest summary: **it is a game with an opponent in it, and no consequences.**
+The fighting works and it is the first thing here that is genuinely fun to watch.
+What it lacks now is everything that happens *around* a fight — being told how to
+play, being told when you have lost, and being able to shoot while moving without
+your own gun spinning you round.
 
 ---
 
 ## 7. Known gaps — deliberate, not oversights
 
 ### The motion layer
-- ~~**Nothing drives an Assembly except a test.**~~ Closed — session 20.
+- ~~**Nothing drives an Assembly except a test, and nothing drives an opponent at
+  all.**~~ Closed — sessions 20 and 23.
   `MatchScreen` constructs a `ControlSystem` on the local Assembly and the chain
   from a key to a contact has been run by a person and measured (§4.27).
-- **There is no autopilot, and a rotary Assembly needs one to exist in a test.**
-  `CombatArena._fly` is three loops through `ControlInput` — collective on
-  altitude, cyclic on horizontal velocity, pedal on heading — and it is the only
-  thing in the repository that can hold a hover. When `src/ai/` is written it
-  should start from that shape; see §5.
+- **There is no stability-augmentation layer, and a rotary Assembly needs one to
+  exist in a test.** `CombatArena._fly` is three loops through `ControlInput` —
+  collective on altitude, cyclic on horizontal velocity, pedal on heading — and
+  it is still the only thing in the repository that can hold a hover. Session 23
+  decided where it belongs and declined to move it: a **player** flying a rotary
+  build needs the same loops, so it is not a tactic and does not go in
+  `AiDriver` (doc 05 §15.7.3, and §5). It wants a layer between both
+  `ControlInput` producers and the motion layer, which doc 05 does not have.
 - ~~**A stationary ambulatory Assembly sits on its thigh colliders.**~~ Closed —
   §4.20.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
@@ -2728,7 +3008,9 @@ what makes it one, and it has now led this list for three sessions.
   independently** (§4.16). Less painful than it was — the one steering number
   now turns the right way — but still one number doing two jobs.
 - **`handbrake` and `boost` have producers and no consumers.** `ControlSystem`
-  writes both; nothing in `src/motion/` reads either. Doc 05 does not define what
+  writes both — `AiDriver` writes neither, deliberately: a driver that used a
+  handbrake nothing implements would be writing a field for a behaviour that does
+  not exist. Nothing in `src/motion/` reads either. Doc 05 does not define what
   a handbrake does to a contact and inventing it here would be worse than the
   gap.
 - **Nothing consumes `AeroSolver`, and no `ctl.*` part is authored**, so drag,
@@ -2776,6 +3058,11 @@ what makes it one, and it has now led this list for three sessions.
   so a Prime Mover has no power band and no lag. That is doc 05 §7.5 work.
 
 ### Combat
+- **An Assembly cannot drive and fire at the same time.** §4.34, and it is the
+  first thing on §6.5's list. The muzzle's 0.125 m lateral offset is about
+  1270 N·m of yaw torque at the module's cadence, which is more than the wheeled
+  family's steering authority. `AiDriver` closes with its guns cold (doc 05
+  §15.7.4) and a **player has no such rule**. The fix is doc 01's, not doc 05's.
 - **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
@@ -2818,13 +3105,21 @@ what makes it one, and it has now led this list for three sessions.
 - **8° of depression is a real constraint and widening it is not free.** §4.22.
   Measured, reverted, recorded in doc 01 §10.5; the decision is open.
 - ~~**No `assembly_terminated` producer.**~~ Closed — `DamageResolver` emits it
-  on slot 0 with the packet's source as `killer_id`, doc 04 §8.2 names it the
-  only producer, and `CombatArena` reads it rather than re-deriving I-2. What is
-  still missing is a *consumer*: nothing decides what a wreck does (§8 item 12a).
-- **Nothing knows what a team is.** `DamagePacket` carries a source Assembly and
-  the resolver never asks whose side it is on, so friendly fire in the
-  five-a-side and the brawl is decided purely by which hull the ray reaches
-  first. That is probably right, and it is undecided rather than decided.
+  on slot 0 with the packet's source as `killer_id`. ~~**And two of them.**~~
+  Closed, session 23: `DetachmentScheduler` was emitting it as well and every
+  death was announced twice (§4.35). What is still missing is a *consumer*:
+  nothing decides what a wreck does, nothing ends the match, and the player's own
+  death is a red line in the feed and nothing else (§8 item 12a, and §6.5 item 2
+  — it is now the second thing a player meets).
+- **Nothing in `src/combat/` knows what a team is, and now something else does.**
+  `DamagePacket` carries a source Assembly and the resolver never asks whose side
+  it is on, so friendly fire is decided purely by which hull the ray reaches
+  first. Session 23 made the AI layer the first consumer of the concept and kept
+  the roster **as data on `AiContext`**, owned by the match layer, rather than
+  putting a team field on anything the damage path touches (§5). It is still
+  undecided rather than decided — and §6.5 item 4 is what undecided looks like
+  from the player's chair: three opponents at a six-metre stand-off shoot each
+  other to pieces around you.
 
 ### Data and the registry
 - **Rule 13 (tier scaling) has still never fired.** It needs two tiers of one
@@ -2841,8 +3136,12 @@ what makes it one, and it has now led this list for three sessions.
   needs a recorded baseline of shipped ids.
 - **An odd-width Effector Module cannot be centred on an even-width Core
   Module**, and the resulting 0.125 m lateral muzzle offset yaws a light
-  Assembly. §4.14's last paragraph. It is a data decision in doc 01 and it has
-  not been made.
+  Assembly. §4.14's last paragraph — and §4.34 measured what it actually costs,
+  which is that **no Assembly in this game can drive and shoot at once**. It is a
+  data decision in doc 01, it has not been made, and it is now the highest-value
+  one available: one number, and it removes a workaround from doc 05 §15.7.4, a
+  rule from `AiDriver`, and the worst thing a player meets in their first ten
+  seconds.
 - **Two Effector Modules exist, one per resolution path.** Doc 02 §7.6's
   muzzle-offset half-cell discrepancy is still unresolved and still flagged
   rather than silently fixed; the autocannon authors its muzzle half a cell past
@@ -3003,16 +3302,34 @@ what makes it one, and it has now led this list for three sessions.
     controls are, and the wheel still does not follow its contact — which was a
     theoretical gap and is now something you can watch.
 
-13a. **Fight something.** The single highest-value item on this list and the one
-    §6.5 leads with. `MatchScreen` spawns three opponents with Effector Modules,
-    no ammunition and no driver, so the first playable build is a gunnery range.
-    This is item 13 approached from the player's side rather than the
-    architecture's, and the cheapest honest version is not a finished `AiDriver`:
-    it is enough of `CombatArena.command` and `_drive` promoted into `src/ai/` to
-    make three wheeled builds close, aim, and shoot back. Everything the tactics
-    need already exists and is measured; what is missing is the decision about
-    what belongs in `AiDriver` and what belongs in a stability-augmentation layer
-    doc 05 does not have (§5).
+13a. ~~**Fight something.**~~ — **done, session 23.** §4.33. `src/ai/` is three
+    files, `MatchScreen` spawns its opponents on the other side of a roster and
+    hands each one an `AiDriver`, and they close, aim and shoot through the same
+    systems a player's trigger reaches. What it opened is item 0 below and §6.5's
+    new items 2 and 4.
+
+0. **Centre the muzzle, or decide not to.** §4.34, and the highest-value change
+    on this list by a distance. The shipped autocannon's muzzle sits 0.125 m off
+    the Assembly's centreline because an odd-width Effector Module cannot be
+    centred on an even-width Core Module, and at the module's cadence that is
+    about 1270 N·m of yaw torque — more than the wheeled family's entire steering
+    authority. **No Assembly in this game can drive and shoot at the same time**,
+    and a player meets that in their first ten seconds.
+
+    It is a data decision in doc 01 and there is more than one way to take it: an
+    even-width module, an authored muzzle offset that is not derived from the
+    footprint, or a Core Module width that admits an odd module on its
+    centreline. Whichever it is, it deletes a workaround from doc 05 §15.7.4 and
+    a rule from `AiDriver`, and it wants a `balance-review` label because every
+    engagement in `tests/physics/` is fought with that module.
+
+13d. **Give the AI something to do when it is not fighting.** Small, and it is
+    §6.5 item 4's other half. Three opponents converging on one target at a
+    six-metre stand-off shoot each other to pieces, because nothing spaces them
+    and nothing in `src/combat/` knows what a team is. A stand-off that scales
+    with how many friends are already engaging the same target is a few lines in
+    `AiDriver` and needs no new architecture; deciding whether friendly fire
+    should exist at all is doc 08's and is the larger question underneath it.
 
 13b. **Tell the player what the keys are.** No prompts, no pause, no settings.
     `C` for the camera toggle is not guessable and `Escape` releasing the mouse
@@ -3027,13 +3344,18 @@ what makes it one, and it has now led this list for three sessions.
     one more field on `HudFrame` and drawing a target bracket is the fix, and it
     is a change to doc 11 §14.3's table rather than to the reticle's semantics.
 
-12a. **What a wreck does.** Doc 04 §8.2's `assembly_terminated` now has a
-    producer — `DamageResolver`, when slot 0 is destroyed — and `CombatArena`
-    reads it for kill attribution rather than re-deriving Invariant I-2 from a
-    slot-0 `part_destroyed`. What is still missing is the *consumer*: deciding
-    what death looks like — despawn, wreck left in the road, spectate from the
-    cab — is a small amount of code and a real design decision. Nothing detonates
-    on losing a Core Module, only on losing a Prime Mover or an Energy Cell, and
+12a. **What a wreck does — and what a death does.** Doc 04 §8.2's
+    `assembly_terminated` has one producer since session 23 (§4.35) and still has
+    no consumer. That was a tidy architectural gap while nothing could kill the
+    player; it is now §6.5's item 2, because the AI kills them every time and the
+    match simply carries on with the camera bolted to a corpse.
+
+    Two decisions, and only the second is small. **What death looks like** —
+    despawn, wreck left in the road, spectate, respawn — is a real design
+    question. **What the match does when a side is gone** is not: something has
+    to notice `teams_standing().size() <= 1` and say so, and `CombatArena` has
+    had that line since session 15 for exactly this reason. Nothing detonates on
+    losing a Core Module, only on losing a Prime Mover or an Energy Cell, and
     §4.17 is what that looks like now that it has been seen.
 
 12b. ~~**The melee sweep query.**~~ — **done, session 18.** §4.26.

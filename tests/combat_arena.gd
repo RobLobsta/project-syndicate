@@ -17,13 +17,20 @@ extends RefCounted
 ## [enum]
 ## [*] [b]The ground is a [StaticBody3D] slab.[/b] Document 09 owns Dynamic
 ##     Ground Arrays and nothing here pre-empts it.
-## [*] [b]The tactics in [method command] are a test pilot, not
-##     [code]src/ai/[/code].[/b] They read the world and write a [ControlInput],
-##     which is exactly the contract doc 05 §6.0 gives the AI driver, and they
-##     make no decision the motion layer could not be given by a person holding
-##     a key. The rotary attitude controller is the one place that goes further
-##     — see [method _fly] — and it is there because an Assembly that only flies
-##     when a human is flying it cannot be put in a test at all.
+## [*] [b]The command loop in [method command] is a test pilot, not
+##     [code]src/ai/[/code].[/b] It reads the world and writes a [ControlInput],
+##     which is exactly the contract doc 05 §6.0 gives the AI driver, and it
+##     makes no decision the motion layer could not be given by a person holding
+##     a key. Its target selection is per tick and deliberately naive, because an
+##     engagement test measures a fight rather than a scan interval — but the
+##     [i]arithmetic[/i] it drives with is [AiDriver]'s since session 23, so a
+##     gain has one value in one place. [method make_autonomous] is the opt-in
+##     route by which a real [AiDriver] takes over a combatant.
+## [*] [b]The rotary attitude controller in [method _fly] is a stand-in for a
+##     stability-augmentation layer doc 05 does not have.[/b] It is not a tactic:
+##     a human flying a rotary build needs the same three loops, so it does not
+##     belong in [AiDriver] (doc 05 §15.7.3). It is here because an Assembly that
+##     only flies when a human is flying it cannot be put in a test at all.
 ## [/enum]
 ##
 ## Every fight is decided by the simulation. Nothing scripts a hit, a winner, or
@@ -193,43 +200,22 @@ const AMBULATORY_DROP_HEIGHT_M: float = -0.40
 ## ===== PILOT ===========================================================
 ## Doc 05 §6.0's [ControlInput] is the whole interface. Every gain below turns
 ## world state into one of its eight numbers and nothing else.
+##
+## [b]The ground tactic is not here any more.[/b] Doc 05 §15.7 gave it an owner:
+## the steering demands, the stand-offs and the ambulatory yaw damping are
+## [AiDriver]'s constants and statics, and this fixture calls them. Nothing about
+## the arithmetic changed — the arena still runs its own command loop over five
+## recipes and still decides its own targets per tick, because an engagement test
+## measures a fight rather than a scan interval — but a gain now has one value in
+## one place, and a change to how a bot drives cannot leave the two disagreeing.
+##
+## What is still a fixture is [method _fly]. §15.7.3 records why: holding a hover
+## is a stability-augmentation layer a [b]player[/b] flying a rotary build would
+## need too, and putting it in [AiDriver] would give a bot flight a person cannot
+## have. Until that layer exists it lives here and is named as a stand-in.
 
-## Heading error, in radians, at which the steering demand saturates.
-const STEER_SATURATION_RAD: float = 0.35
-## The same, for the ambulatory family, which turns far more slowly.
-const AMBULATORY_TURN_SATURATION_RAD: float = 0.60
-## Steering demand per radian per second of hull yaw, opposing it.
-const AMBULATORY_YAW_DAMPING: float = 0.55
 ## Degrees within an authored pitch limit that count as sitting on the stop.
 const ELEVATION_STOP_EPSILON_DEG: float = 0.05
-## Ceiling on an ambulatory steering demand. Below one, because §13.5 spends the
-## same number on the lateral half of the desired velocity: a saturated demand
-## walks the Assembly 45° off its own nose, which is a circle rather than an
-## approach.
-const AMBULATORY_STEER_AUTHORITY: float = 0.5
-## Metres from the target a ground recipe stops closing at.
-const GROUND_STAND_OFF_M: float = 6.0
-## The same, for the ambulatory family, and further out for a reason that is
-## about gunnery rather than about survivability.
-##
-## An ambulatory Assembly is two different weapons platforms depending on whether
-## it is moving. Standing, doc 05 §13.4 puts every foot down at once and the hull
-## is level to within a degree — the steadiest mount in the game. Walking, it is
-## the worst: §13.8 allows no balance authority beyond foot placement, the hull
-## bobs, and the gait carries an intrinsic yaw drift that no steering demand can
-## null (see [code]tests/physics/test_ambulatory_drift.gd[/code], which measures
-## it at about 170° over five seconds with the steering demand held at zero).
-##
-## So an ambulatory Assembly here fights the way that measurement says it should:
-## it plants and shoots. The stand-off is set outside the distance the two spawn
-## at, which means it takes a step or two to square up and then stops — a
-## deliberate tactic for a machine that is a gun platform standing still and a
-## liability walking, and the honest way to field one until §13's drift is fixed.
-const AMBULATORY_STAND_OFF_M: float = 20.0
-## Metres from the target a rotary recipe holds station at. Further out than the
-## ground families because its muzzle is above theirs and the module can only
-## depress 8° (§10.5) — closing further would put the target under the gun.
-const ROTARY_STAND_OFF_M: float = 22.0
 ## Metres per second a rotary recipe closes at.
 const ROTARY_APPROACH_MPS: float = 8.0
 ## Height above the slab a rotary recipe holds.
@@ -255,6 +241,10 @@ var projectiles: ProjectileSystem = null
 var projectile_registry: ProjectileRegistry = null
 var ammo: AmmoLedger = null
 var combatants: Array[Combatant] = []
+## Assembly id -> team, for every Assembly the arena has spawned. Doc 07 §10.1's
+## roster, kept as one dictionary and handed to every [AiDriver] by reference so
+## that a driver attached before its opponents exist sees them when it scans.
+var roster: Dictionary = {}
 
 ## Every `part_destroyed` seen, in order, as (assembly_id, slot).
 var destroyed: Array[Vector2i] = []
@@ -391,6 +381,7 @@ func spawn(
 ) -> Combatant:
 	var assembly_id := _next_assembly_id
 	_next_assembly_id += 1
+	roster[assembly_id] = team
 
 	var ctx := BuildContext.with_physics(assembly_id)
 	_contexts.append(ctx)
@@ -452,11 +443,11 @@ func spawn(
 	c.runtime = runtime
 	c.motion = motion
 	c.guns = guns
-	c.stand_off_m = GROUND_STAND_OFF_M
+	c.stand_off_m = AiDriver.GROUND_STAND_OFF_M
 	if recipe == Recipe.ROTARY:
-		c.stand_off_m = ROTARY_STAND_OFF_M
+		c.stand_off_m = AiDriver.ROTARY_STAND_OFF_M
 	elif recipe == Recipe.AMBULATORY or recipe == Recipe.AMBULATORY_BARE:
-		c.stand_off_m = AMBULATORY_STAND_OFF_M
+		c.stand_off_m = AiDriver.AMBULATORY_STAND_OFF_M
 
 	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
 		var def := runtime.definition_at(slot)
@@ -550,6 +541,14 @@ func engage(max_ticks: int) -> void:
 ## not been written yet, and the point of these fights is the physics under the
 ## decision rather than the decision.
 func command(c: Combatant) -> void:
+	if not c.arena_piloted:
+		# Either an [AiDriver] is writing this Assembly's record on
+		# `MatchClock.tick_started` — see [method make_autonomous] — or it is a
+		# parked target with nothing driving it at all. Either way the pilot below
+		# must keep its hands off it, or the two producers fight over one
+		# [ControlInput] and whichever ran last wins.
+		c.sample_gunnery()
+		return
 	if not c.is_alive():
 		c.retire()
 		return
@@ -566,6 +565,34 @@ func command(c: Combatant) -> void:
 		_fly(c, aim)
 	else:
 		_drive(c, aim)
+
+
+## Hands [param c] over to doc 05 §15.7's [AiDriver] and takes the test pilot off
+## it. Returns the driver, so a test can read what it chose.
+##
+## This is the one route by which [code]src/ai/[/code] gets into an engagement
+## test, and it is deliberately opt-in: the five recipes' measured behaviour in
+## [code]test_family_duels.gd[/code] and [code]test_team_engagement.gd[/code] is
+## a record of what [method command]'s pilot does, and switching those files onto
+## a driver with a 2.9 Hz scan interval would silently re-measure every one of
+## them.
+##
+## Everything is set before [method Node.add_child], because [AiDriver] caches
+## its family, stand-off, RNG seed and scan phase on entering the tree.
+func make_autonomous(c: Combatant, difficulty: float) -> AiDriver:
+	var driver := AiDriver.new()
+	driver.name = "AiDriver"
+	driver.runtime = c.runtime
+	driver.input = c.motion.input
+	driver.motion = c.motion
+	driver.guns = c.guns
+	driver.effector_slot = c.gun_slot
+	driver.registry = registry
+	driver.roster = roster
+	driver.difficulty = difficulty
+	c.arena_piloted = false
+	c.runtime.add_child(driver)
+	return driver
 
 
 ## The nearest live enemy of [param c], or null when none is left.
@@ -622,37 +649,16 @@ func _drive(c: Combatant, aim: Vector3) -> void:
 		input.steer = 0.0
 		return
 
-	var basis := body.global_transform.basis
-	var forward := Vector3(-basis.z.x, 0.0, -basis.z.z).normalized()
-	var closing := flat.length() > c.stand_off_m
-	# Positive steer is right, and a right turn is a negative rotation about the
-	# world up — so every demand below is the negated bearing error.
-	var bearing := forward.signed_angle_to(flat.normalized(), Vector3.UP)
+	# Doc 05 §15.7.1's law, through the class that owns it. The sign convention —
+	# positive steer is right, and a right turn is a negative rotation about the
+	# world up — lives in [method AiDriver.steer_demand] with the assertion that
+	# defends it.
+	var bearing := AiDriver.bearing_to(body.global_transform.basis, flat)
+	input.throttle = 1.0 if flat.length() > c.stand_off_m else 0.0
 	if c.recipe == Recipe.AMBULATORY:
-		# An ambulatory Assembly is flown on a [i]yaw rate[/i], not onto a
-		# heading, and the reason is a hard number rather than a preference. Doc
-		# 07 §4.3 converges a mount at half a degree and slews it at 65°/s, so a
-		# hull turning faster than about 30°/s can never be tracked: the mount
-		# closes 1.08° a tick and the demand moves further than that. An
-		# ambulatory Assembly steered like a wheeled build turns at exactly that
-		# rate and spends the engagement one step behind its own target.
-		#
-		# The damping term is what holds it under the limit. It is also the only
-		# yaw authority the family has: doc 05 §6.0 gives [ControlInput] one
-		# steering number, §13.5 spends it on both the turn command and the
-		# lateral half of the desired velocity, and there is no third field that
-		# would let one turn on the spot while walking somewhere else.
-		input.throttle = 1.0 if closing else 0.0
-		input.steer = clampf(
-			-bearing / AMBULATORY_TURN_SATURATION_RAD
-			+ body.angular_velocity.y * AMBULATORY_YAW_DAMPING,
-			-1.0,
-			1.0
-		) * AMBULATORY_STEER_AUTHORITY
+		input.steer = AiDriver.ambulatory_steer_demand(bearing, body.angular_velocity.y)
 		return
-
-	input.steer = clampf(-bearing / STEER_SATURATION_RAD, -1.0, 1.0)
-	input.throttle = 1.0 if closing else 0.0
+	input.steer = AiDriver.steer_demand(bearing)
 
 
 ## The rotary family, and the one piece of this fixture that is a controller
@@ -906,6 +912,10 @@ class Combatant:
 	var motion: MotiveSystem = null
 	var guns: EffectorSystem = null
 	var gun_slot: int = SyndicateConstants.INVALID_SLOT
+	## False once something else owns this Assembly's [ControlInput] — an
+	## [AiDriver] via [method CombatArena.make_autonomous], or nothing at all for
+	## a parked target. [method CombatArena.command] then leaves it alone.
+	var arena_piloted: bool = true
 	## What the timeline calls this Assembly.
 	var callsign: String = "?"
 	## Metres from its target this Assembly stops closing at.

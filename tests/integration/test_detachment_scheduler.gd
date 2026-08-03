@@ -197,15 +197,24 @@ func test_a_failed_joint_on_a_bridged_part_severs_nothing() -> void:
 ## ===== CORE MODULE LOSS (§7.2) =========================================
 
 
-func test_losing_the_core_terminates_the_assembly() -> void:
+func test_losing_the_core_empties_the_graph_and_announces_nothing() -> void:
+	# §7.2 on the structural side, and doc 04 §8.2 on the announcement.
+	#
+	# This file used to assert that the scheduler emitted `assembly_terminated`.
+	# It does not, and must not: §8.2 names [DamageResolver] the only producer,
+	# because attribution is a fact only the damage layer holds. Session 23 found
+	# both of them emitting — a player's own destruction reported twice in the
+	# match HUD, once credited and once to nobody — and the fixture here was what
+	# had been holding the duplicate in place, by asserting the wrong half of it.
+	#
+	# The scheduler's job on core loss is the graph, and that is what is asserted.
 	var g := _chain(3)
 	_scheduler(g)
 
 	EventBus.part_destroyed.emit(ASSEMBLY, CORE, 0)
 	EventBus.tick_resolved.emit()
 
-	check_eq(_terminated.size(), 1, "the Assembly is terminated")
-	check_eq(_terminated[0][0], ASSEMBLY, "naming the Assembly")
+	check_eq(_terminated.size(), 0, "the scheduler announces no termination")
 	check_eq(g.live_slots(), PackedByteArray(), "and nothing is left in the graph")
 
 
@@ -239,7 +248,14 @@ func test_core_loss_short_circuits_rather_than_searching() -> void:
 	EventBus.part_destroyed.emit(ASSEMBLY, CORE, 0)
 	EventBus.tick_resolved.emit()
 
-	check_eq(_terminated.size(), 1, "terminated rather than resolved part by part")
+	# Every part that outlived the core became debris, which is what separates
+	# §7.2's short circuit from the ordinary solver: the latter would sever only
+	# what lost its support and leave the rest attached to a root that is gone.
+	var seen := PackedByteArray()
+	for entry: Array in _severed:
+		seen.append_array(entry[1])
+	seen.sort()
+	check_eq(seen, PackedByteArray([1, 3]), "both survivors became debris")
 	check_eq(g.live_slots(), PackedByteArray(), "with nothing left alive")
 
 
