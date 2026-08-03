@@ -12,13 +12,13 @@ extends TestCase
 ## that constructed a [GarageScreen] directly would be asserting something no
 ## player can reach.
 ##
-## [b]The match is opened exactly once, and that is a budget rather than a
+## [b]Two matches are opened, and no more, which is a budget rather than a
 ## preference.[/b] A [MatchScreen] builds a Dynamic Ground Array, primes its
 ## collision streaming and spawns four Assemblies, which costs most of a minute
-## in this suite — so the one thing worth spending it on is the handoff itself:
-## that what the garage produced is what the match was given. Everything else
-## here runs against the menu and the garage, which are cheap. See
-## [method _open_match_once].
+## in this suite. The two worth spending it on are the two exits a player has: a
+## test drive carrying the build they made, and a rematch carrying the same one.
+## Everything else here runs against the menu and the garage, which are cheap.
+## See [method _open_match_once].
 
 ## The signal a match raises when the player asks to go back and change the
 ## build. Named rather than emitted through the end card, because the card is a
@@ -35,6 +35,8 @@ var _session_size_after_drive: int = 0
 var _screen_after_drive: int = -1
 var _screen_after_leaving_match: int = -1
 var _match_freed_on_exit: bool = false
+var _screen_after_rematch: int = -1
+var _rematch_blueprint_size: int = 0
 
 
 func before_all() -> void:
@@ -172,8 +174,24 @@ func test_a_match_can_hand_the_player_back_to_the_garage() -> void:
 	check_true(_match_freed_on_exit, "and the match was released on the way out")
 
 
-## Opens the one match this file spends its budget on, and records everything the
-## two methods above assert.
+## The other exit. It was wired to the menu by a slip of a restore command and
+## nothing noticed, which is why it is asserted rather than assumed: a rematch
+## that quietly dropped the player back at the title screen is exactly the kind
+## of defect that survives a green suite and a capture.
+func test_a_match_can_be_fought_again() -> void:
+	await _open_match_once()
+	check_eq(
+		_screen_after_rematch, ShellRoot.Screen.MATCH, "a rematch opens another match"
+	)
+	check_eq(
+		_rematch_blueprint_size,
+		_edited_size,
+		"with the build that was driven, not with the shipped starter"
+	)
+
+
+## Opens the two matches this file spends its budget on, and records everything
+## the three methods above assert.
 ##
 ## Run once, for [code]tests/physics/[/code]'s reason: the fixture is expensive
 ## and a property of it is recorded when it is built, not when a method happens
@@ -202,7 +220,14 @@ func _open_match_once() -> void:
 	_match_screen_valid = match_screen != null
 	if match_screen != null:
 		_match_blueprint_size = match_screen.player_blueprint.size()
-		match_screen.garage_requested.emit()
+		# The other exit, taken first because it is the one that costs a second
+		# arena and this file opens exactly two: fight the same build again.
+		match_screen.rematch_requested.emit()
+		_screen_after_rematch = _shell.current_screen()
+		var again := _shell.current_node() as MatchScreen
+		if again != null:
+			_rematch_blueprint_size = again.player_blueprint.size()
+			again.garage_requested.emit()
 	_screen_after_leaving_match = _shell.current_screen()
 	await physics_frames(2)
 	_match_freed_on_exit = not is_instance_valid(match_screen)

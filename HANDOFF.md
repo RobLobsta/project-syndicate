@@ -60,7 +60,7 @@ names the two keys that fight again or go back to the garage.
 no undo, and a garage in which nothing tells a player what a part *does* until
 they have driven it.
 
-**82 files, 5496 checks, 0 failures.**
+**82 files, 5498 checks, 0 failures.**
 
 ---
 
@@ -93,24 +93,29 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**82 files, 5496 checks, 0 failures.**
+**82 files, 5498 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
 nothing in `src/` may `push_error` on a state a test deliberately exercises — a
 blueprint naming an unknown part warns instead.
 
-**A full run is about 170 seconds** — 14 s of reimport and the rest suite. Three
-files are most of it: `physics/test_ground_terrain.gd` at 41 s,
-`integration/test_screen_flow.gd` at 57 s and `integration/test_ground_deform.gd`
+**A full run is about 200 seconds** — 14 s of reimport and the rest suite. Three
+files are most of it: `integration/test_screen_flow.gd` at 91 s,
+`physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings, so check before assuming where the
 cost is.
 
-`test_screen_flow` is expensive because it opens a real [MatchScreen] once — a
-Ground Array, primed collision streaming and four Assemblies — and that is a
-budget rather than an oversight: the one assertion worth spending it on is that
-what the garage produced is what the match was given. It opens exactly one and
-says so at the top of the file.
+**`test_screen_flow` is now the most expensive file in the suite and it is worth
+knowing why before shortening it.** It opens two real `MatchScreen`s — each a
+Ground Array, primed collision streaming and four Assemblies, about 45 s — and
+those are the two exits a player has: a test drive carrying the build they made,
+and a rematch carrying the same one. The rematch was wired to the menu by a slip
+during this session and *nothing* caught it: the suite was green, the capture
+showed the end card naming the right key, and the key went to the title screen.
+That is what the second arena buys. If this ever has to come down, the honest
+lever is making a match cheaper to construct — the cost is doc 09's collision
+prime, not the flow.
 
 `tools/ci/run_all_checks.sh` takes two flags, both for sweeps rather than for
 people: `--no-import` skips the reimport when nothing under `data/` changed, and

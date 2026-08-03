@@ -98,7 +98,7 @@ func _on_test_drive_requested(bp: Blueprint) -> void:
 
 
 func _on_rematch_requested() -> void:
-	show_menu()
+	show_match(blueprint)
 
 
 func _on_quit_requested() -> void:
