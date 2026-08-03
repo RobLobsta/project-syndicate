@@ -3070,7 +3070,7 @@ your own gun spinning you round.
 - ~~**`MeleeSolver` still computes everything except the query.**~~ Closed —
   §4.26. The edge cuts, delivers its authored channel split, shoves what it hits
   along its travel, and is deduplicated per swing.
-- **No engagement has ever been fought at contact range.** §6.5 item 4. The
+- **No engagement has ever been fought at contact range.** §6.5 item 7. The
   sweep is proven by one fixture with a frozen attacker and a parked target;
   no `CombatArena` recipe carries an Appendage, so melee's balance against the
   autocannon is entirely unmeasured. §8 item 12d.
@@ -3297,10 +3297,10 @@ your own gun spinning you round.
     the local one and fills a `HudFrame` per tick. Doc 11 §13 to §15 is the
     architecture; `scenes/boot/main.tscn` is `run/main_scene`.
 
-    **What it opened rather than closed** is the interesting half, and it is all
-    in §6.5: nothing shoots back (item 13 below), nothing tells a player what the
-    controls are, and the wheel still does not follow its contact — which was a
-    theoretical gap and is now something you can watch.
+    **What it opened rather than closed** was the interesting half. Item 13a
+    below closed the first of the three; what is left of that list is that
+    nothing tells a player what the controls are and the wheel still does not
+    follow its contact.
 
 13a. ~~**Fight something.**~~ — **done, session 23.** §4.33. `src/ai/` is three
     files, `MatchScreen` spawns its opponents on the other side of a roster and
@@ -3337,7 +3337,7 @@ your own gun spinning you round.
     afternoon and is worth more to a first-time player than anything else at this
     size. Doc 11 §9's toast machinery is the obvious vehicle.
 
-13c. **Distinguish "on target" from "on an enemy".** §6.5 item 3. The reticle
+13c. **Distinguish "on target" from "on an enemy".** §6.5 item 6. The reticle
     goes `ACCENT_SECONDARY` whenever the mount has a firing solution on wherever
     the aim ray landed, which is correct and reads as "enemy acquired". The aim
     ray already knows whether it struck `LAYER_ASSEMBLY_HULL`; carrying that as
@@ -3363,7 +3363,7 @@ your own gun spinning you round.
 12d. **Fight with the edge.** The successor to 12b and the first item on this
     list a player would notice. `CombatArena` has five recipes and none carries
     an Appendage, so the weapon landed in session 18 has never been in a fight —
-    §6.5 item 4 lists the questions that are therefore unanswered. What it needs:
+    §6.5 item 7 lists the questions that are therefore unanswered. What it needs:
     a `MELEE` recipe (the wheeled layout with `apx.arm.manipulator.t3` and
     `eff.melee.beam_edge.t4` in place of the autocannon), a stand-off of roughly
     zero instead of `GROUND_STAND_OFF_M` so the pilot closes to contact rather
@@ -3385,12 +3385,18 @@ your own gun spinning you round.
     between thermal damage that resolves correctly when submitted and thermal
     damage that actually burns.
 
-13. **`src/ai/`, starting from `CombatArena`'s pilot.** The tactics in
-    `command`, `_drive` and `_fly` are the only thing in the repository that
-    drives an Assembly of any family toward a target and shoots at it, and the
-    rotary autopilot is the only thing that can hold a hover at all. Promoting
-    them is mostly a question of what belongs in `AiDriver` and what belongs in a
-    stability-augmentation layer doc 05 does not have yet — see §5.
+13. ~~**`src/ai/`, starting from `CombatArena`'s pilot.**~~ — **done for the
+    ground families, session 23.** §4.33, and §5 records the decision this item
+    was really asking for: what belongs in `AiDriver` is what a player could do
+    with keys, and what belongs in a stability-augmentation layer is what a
+    player would need the machine's help for.
+
+    **What is left of it is that layer**, and the rotary family is what waits on
+    it. `CombatArena._fly` is still the only thing that can hold a hover, it is
+    still a fixture, and an `AiDriver` handed a rotary Assembly aims and fires
+    but does not fly. The layer sits between *both* `ControlInput` producers and
+    the motion layer, so a human flying a rotary build gets it too — which is
+    exactly why it is not in `AiDriver`.
 
 14. **The debris body shape query — written, and it does not do what §5 said it
     would.** `tests/physics/test_debris_body_query.gd` exists and is worth
