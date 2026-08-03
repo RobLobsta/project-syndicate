@@ -20,20 +20,26 @@ Caught is determined by a non-zero exit, a recorded failure, *or* a check count
 that differs from the baseline -- the last of those is what catches a fault that
 truncates the suite into a green partial pass.
 """
-import subprocess, sys, os, re
+import os
+import sys
 
-ROOT = "/home/user/project-syndicate"
-DR = os.path.join(ROOT, "src/combat/damage/damage_resolver.gd")
-AS = os.path.join(ROOT, "src/combat/effectors/aim_solver.gd")
-ES = os.path.join(ROOT, "src/combat/effectors/effector_system.gd")
-PS = os.path.join(ROOT, "src/combat/projectiles/projectile_system.gd")
-AL = os.path.join(ROOT, "src/combat/effectors/ammo_ledger.gd")
-MS = os.path.join(ROOT, "src/motion/motive_system.gd")
-ID = os.path.join(ROOT, "src/assembly/graph/island_detacher.gd")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sweeplib
 
-MP = os.path.join(ROOT, "src/core/data/melee_profile.gd")
+DR = "src/combat/damage/damage_resolver.gd"
+AS = "src/combat/effectors/aim_solver.gd"
+ES = "src/combat/effectors/effector_system.gd"
+PS = "src/combat/projectiles/projectile_system.gd"
+AL = "src/combat/effectors/ammo_ledger.gd"
+MS = "src/motion/motive_system.gd"
+ID = "src/assembly/graph/island_detacher.gd"
 
-BASELINE = 4964  # tools/ci/run_all_checks.sh at the commit this landed
+MP = "src/core/data/melee_profile.gd"
+
+# The check count at the commit this last ran clean. sweeplib measures the real
+# one and warns if this disagrees, so a stale value here is a printed warning
+# rather than a sweep that reports CAUGHT for everything.
+BASELINE = 4964
 
 FAULTS = [
     # --- DamageResolver, §4 -------------------------------------------
@@ -218,35 +224,5 @@ FAULTS = [
 ]
 
 
-def run():
-    p = subprocess.run(["tools/ci/run_all_checks.sh"], cwd=ROOT,
-                       capture_output=True, text=True)
-    tail = p.stdout + p.stderr
-    m = re.search(r"run_all_checks: (\d+) checks, (\d+) failures across (\d+)/(\d+) files", tail)
-    return p.returncode, m.groups() if m else None, tail
-
-
-only = sys.argv[1:] if len(sys.argv) > 1 else None
-for name, path, old, new in FAULTS:
-    if only and name not in only:
-        continue
-    src = open(path).read()
-    if old not in src:
-        print(f"{name}: PATCH-MISS", flush=True)
-        continue
-    open(path, "w").write(src.replace(old, new, 1))
-    try:
-        rc, g, tail = run()
-    finally:
-        open(path, "w").write(src)
-    if g is None:
-        print(f"{name}: rc={rc} NO-SUMMARY (crash/parse)", flush=True)
-        continue
-    checks, failures, badfiles, files = g
-    caught = rc != 0 or int(failures) > 0 or int(checks) != BASELINE
-    print(f"{name}: {'CAUGHT' if caught else 'SURVIVED'} "
-          f"rc={rc} checks={checks} failures={failures}", flush=True)
-    if caught and int(failures) > 0:
-        for line in tail.splitlines():
-            if "FAIL" in line:
-                print("    " + line.strip(), flush=True)
+if __name__ == "__main__":
+    raise SystemExit(sweeplib.run_sweep(FAULTS, BASELINE, __doc__))

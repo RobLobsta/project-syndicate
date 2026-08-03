@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fault sweep over `src/ai/` and the two rules it made the match layer depend on.
 
-Ten faults, planted against laws rather than against loops (handoff §9). Doc 05
+Ten faults, planted against laws rather than against loops (LEARNED_FACTS.md §3). Doc 05
 §15.7 and doc 07 §10 are the subjects, plus the duplicate `assembly_terminated`
 producer session 23 removed — which had been held in place by a fixture asserting
 the wrong half of doc 04 §8.2, so it gets a fault of its own to stop it coming
@@ -21,38 +21,50 @@ back.
   breakaway-never-releases    the same, applied at every speed -- a STANDING SURVIVOR
   bore-off-centreline         doc 01 §14 rule 27, on the shipped data
 
-`breakaway-never-releases` is expected to SURVIVE and is kept for that reason.
-It is the change that was actually shipped for an afternoon: green on every
-fixture in the suite, and it stopped the opponents ever reaching the player in
-the real match, because `tests/combat_arena.gd` builds a flat slab and the arena
-has fifteen metres of relief. Nothing in the suite can see it. The only thing
-that catches it is a capture (handoff §3.55), and it stays here as the standing
-reminder that this section's fixtures are not the game.
+`breakaway-never-releases` is the change that actually shipped for an afternoon:
+the standing-start demand applied at every speed, so it becomes a sustained heavy
+throttle. It stopped the opponents ever reaching the player on the arena's real
+terrain while every fixture in the suite stayed green, because
+`tests/combat_arena.gd` builds a flat slab and the arena has fifteen metres of
+relief. It was kept here as a standing survivor for that reason.
 
-    python3 tools/ci/sweeps/ai_layer_sweep.py                  # all ten
-    python3 tools/ci/sweeps/ai_layer_sweep.py steer-sign-flipped
+**It is now caught, and not by anything aimed at it.** Deleting the arrival brake
+left `test_ai_engagement`'s rounds floor sensitive to a driver that orbits its own
+stand-off, which sustained throttle also produces; the fault fails that assertion
+on the flat slab. Worth knowing exactly what that does and does not mean: the
+suite catches the *orbit*, which is a symptom the two failures share, and it
+still cannot see the terrain behaviour that made this worth a session. A capture
+remains the only instrument for that (handoff, the engine fact about Movie Maker
+mode).
 
-Each fault is planted, the full suite runs, and the file is restored in a
-`finally`. Two rules, both learned the hard way and both still true:
+`aim-point-read-from-scan` is the standing survivor, and it is marginal rather
+than firmly one thing: it was CAUGHT on the run before the arrival brake was
+deleted and SURVIVED on the run after. Read it as untested rather than as tested.
 
-  * Do not `git add -A` while this is running. It will commit a planted fault.
-  * Do not kill it between the write and the restore. Check `git status` after.
+    python3 tools/ci/sweeps/ai_layer_sweep.py            # all of them, 4 workers
+    python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 
-Caught is a non-zero exit, a recorded failure, *or* a check count that differs
-from the baseline -- the last of those is what catches a fault that truncates the
-suite into a green partial pass. Update BASELINE in the same change as anything
-that moves the check count, or every fault after it reads as caught.
+The loop, the parallelism, the timeout and the fail-fast rule all live in
+`sweeplib.py`; read that before changing how this runs. Update BASELINE in the
+same change as anything that moves the check count, or every fault after it
+reads as caught.
 """
-import subprocess, sys, os, re
+import os
+import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-DRIVER = os.path.join(ROOT, "src/ai/ai_driver.gd")
-SELECTOR = os.path.join(ROOT, "src/ai/ai_target_selector.gd")
-ES = os.path.join(ROOT, "src/combat/effectors/effector_system.gd")
-SCHED = os.path.join(ROOT, "src/assembly/graph/detachment_scheduler.gd")
-GUN_TRES = os.path.join(ROOT, "data/parts/eff/eff.ballistic.autocannon_30.t3.tres")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sweeplib
 
-BASELINE = 5130  # tools/ci/run_all_checks.sh at the commit this landed
+DRIVER = "src/ai/ai_driver.gd"
+SELECTOR = "src/ai/ai_target_selector.gd"
+ES = "src/combat/effectors/effector_system.gd"
+SCHED = "src/assembly/graph/detachment_scheduler.gd"
+GUN_TRES = "data/parts/eff/eff.ballistic.autocannon_30.t3.tres"
+
+# The check count at the commit this last ran clean. sweeplib measures the real
+# one and warns if this disagrees, so a stale value here is a printed warning
+# rather than a sweep that reports CAUGHT for everything.
+BASELINE = 5130
 
 FAULTS = [
     # §15.7.1's whole sign rule. Positive steer is right and a right turn is a
@@ -166,35 +178,5 @@ FAULTS = [
 ]
 
 
-def run():
-    p = subprocess.run(["tools/ci/run_all_checks.sh"], cwd=ROOT,
-                       capture_output=True, text=True)
-    tail = p.stdout + p.stderr
-    m = re.search(r"run_all_checks: (\d+) checks, (\d+) failures across (\d+)/(\d+) files", tail)
-    return p.returncode, m.groups() if m else None, tail
-
-
-only = sys.argv[1:] if len(sys.argv) > 1 else None
-for name, path, old, new in FAULTS:
-    if only and name not in only:
-        continue
-    src = open(path).read()
-    if old not in src:
-        print(f"{name}: PATCH-MISS", flush=True)
-        continue
-    open(path, "w").write(src.replace(old, new, 1))
-    try:
-        rc, g, tail = run()
-    finally:
-        open(path, "w").write(src)
-    if g is None:
-        print(f"{name}: rc={rc} NO-SUMMARY (crash/parse)", flush=True)
-        continue
-    checks, failures, badfiles, files = g
-    caught = rc != 0 or int(failures) > 0 or int(checks) != BASELINE
-    print(f"{name}: {'CAUGHT' if caught else 'SURVIVED'} "
-          f"rc={rc} checks={checks} failures={failures}", flush=True)
-    if caught and int(failures) > 0:
-        for line in tail.splitlines():
-            if "FAIL" in line or line.strip().startswith("test_"):
-                print("    " + line.strip(), flush=True)
+if __name__ == "__main__":
+    raise SystemExit(sweeplib.run_sweep(FAULTS, BASELINE, __doc__))

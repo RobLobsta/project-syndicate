@@ -39,6 +39,27 @@ extends SceneTree
 const TESTS_ROOT: String = "res://tests"
 const TEST_FILE_PREFIX: String = "test_"
 
+## Stop the run after the first file that records a failure. Off by default:
+## CI wants the whole picture, and so does anyone reading a blast radius.
+##
+## It exists for [code]tools/ci/sweeps/[/code], where the only question asked of
+## a run is "did anything notice", and the answer is known the moment one file
+## says yes. It is an optimisation and nothing else — a run that records no
+## failure is unaffected, so the check-count comparison a sweep makes against its
+## baseline is still taken over a complete run.
+const ARG_FAIL_FAST: String = "--fail-fast"
+
+## [b]There is deliberately no way to reorder or subset the run.[/b] It was built
+## and then removed, because it is unsound here: hoisting one physics file ahead
+## of the rest leaves the check count identical at 5130 and moves
+## [code]test_family_duels[/code]'s single-round recoil measurement from 1.069 m/s
+## to 0.916 and its pitch from 0.012 rad/s to 0.119 — enough to fail an assertion
+## that passes in discovery order. The suite's file order is an input to every
+## measurement in [code]tests/physics/[/code] (LEARNED_FACTS.md §1 fact 54), so a sweep that
+## reordered to reach its expected file sooner would manufacture failures and
+## report them as faults being caught. Truncation is safe because it changes
+## nothing that already ran; reordering is not.
+
 ## Signal a suspended GDScript call emits when it finally returns.
 const COROUTINE_COMPLETED: StringName = &"completed"
 
@@ -54,6 +75,7 @@ const SUITE_ORDER: Array[String] = [
 
 
 var _done: bool = false
+var _fail_fast: bool = false
 
 
 ## Returning [code]false[/code] keeps the main loop alive so that a suspended
@@ -69,6 +91,7 @@ func _process(_delta: float) -> bool:
 
 
 func _run() -> void:
+	_read_arguments()
 	var files := _discover()
 	if files.is_empty():
 		printerr("run_all_checks: no test files found under %s" % TESTS_ROOT)
@@ -79,25 +102,46 @@ func _run() -> void:
 	var total_failures := 0
 	var failed_files := 0
 
-	print("run_all_checks: %d test files" % files.size())
+	print("run_all_checks: %d test files%s" % [
+		files.size(), " (fail-fast)" if _fail_fast else ""
+	])
+	var stopped_early := false
 	for path in files:
+		var started := Time.get_ticks_msec()
 		var result: Dictionary = await _run_file(path)
+		var elapsed := Time.get_ticks_msec() - started
 		total_checks += int(result["checks"])
 		var failures: PackedStringArray = result["failures"]
 		total_failures += failures.size()
 		if failures.is_empty():
-			print("  PASS  %s  (%d checks)" % [_short(path), int(result["checks"])])
+			print("  PASS  %s  (%d checks, %d ms)"
+					% [_short(path), int(result["checks"]), elapsed])
 		else:
 			failed_files += 1
-			print("  FAIL  %s  (%d checks, %d failures)"
-					% [_short(path), int(result["checks"]), failures.size()])
+			print("  FAIL  %s  (%d checks, %d failures, %d ms)"
+					% [_short(path), int(result["checks"]), failures.size(), elapsed])
 			for f in failures:
 				print("        %s" % f)
+			if _fail_fast:
+				stopped_early = true
+				break
 
 	print("")
+	if stopped_early:
+		# Named so that no reader — and no regular expression — mistakes a
+		# truncated run for a complete one. A sweep's baseline comparison is only
+		# meaningful over a full run, and this line is what says it was not.
+		print("run_all_checks: STOPPED EARLY on the first failing file (--fail-fast)")
 	print("run_all_checks: %d checks, %d failures across %d/%d files"
 			% [total_checks, total_failures, failed_files, files.size()])
 	quit(1 if total_failures > 0 else 0)
+
+
+## Reads the flags after [code]--[/code] on the command line.
+func _read_arguments() -> void:
+	for arg: String in OS.get_cmdline_user_args():
+		if arg == ARG_FAIL_FAST:
+			_fail_fast = true
 
 
 func _run_file(path: String) -> Dictionary:
@@ -143,6 +187,10 @@ static func _failure(path: String, reason: String) -> Dictionary:
 
 
 ## Sorted walk of the suite directories, skipping the base class itself.
+##
+## The order this returns is load-bearing and is not a presentation choice: see
+## the note on [constant ARG_FAIL_FAST] for what happens to a physics measurement
+## when it changes.
 func _discover() -> PackedStringArray:
 	var out := PackedStringArray()
 	for suite in SUITE_ORDER:

@@ -63,7 +63,7 @@ const AIM_SETTLE_TICKS: int = 260
 ## is indistinguishable from zero.
 const AIM_RANGE_M: float = 300.0
 
-## Pitch rate, in rad/s, that the roof-mounted module of handoff §4.11 imparted
+## Pitch rate, in rad/s, that the roof-mounted module imparted in session 15
 ## with a single round. Written out by value rather than derived, because it is
 ## the number this build is being compared against and a derivation would move
 ## with the thing under test.
