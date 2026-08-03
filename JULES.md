@@ -38,6 +38,7 @@ You may not, under any circumstances:
 - Create, edit, move, rename, or delete **any file** in the working tree —
   including `README.md`, including `JULES.md` itself, including anything under
   `docs/`, `tests/`, `tools/`, or `.build/`.
+  **This includes updating files to "log your work", "leave a handoff", or "version your audit." You must never write logs into files.** If you are asked to provide a handoff or log, you must output it directly in your chat response to the human, NOT by modifying files.
 - Run `git add`, `git commit`, `git push`, `git merge`, `git rebase`,
   `git checkout <branch>`, `git switch`, `git stash`, `git restore`,
   `git reset`, `git revert`, `git clean`, `git cherry-pick`, `git apply`, or

@@ -2451,6 +2451,13 @@ no game attached to it.** Session 18 made the simulation better again.
 
 0. **Full Codebase Audit and Test Run (Session 19).** Verified the test suite and documented findings, confirming 4486 tests passing and establishing "A match scene with a camera" as the highest priority next step.
 
+0. **Design Contribution: `DotScheduler` (Doc 08 §7.3).**
+   Currently, `DotScheduler` is missing from `src/combat/damage/`. This class is necessary to implement Damage-Over-Time (DOT) effects like thermal damage over time. Without it, DOTs don't burn over time.
+   - It should be implemented in `src/combat/damage/dot_scheduler.gd`.
+   - It should process a flat list of `DotEntry` items at 10 Hz (as per Doc 08 §7.3).
+   - It should `DamageResolver.apply(p)` to apply the damage from the entry's `build_packet(elapsed)`.
+   - Missing class: `DotEntry` must also be defined to hold the state of a DOT (e.g. `remaining_s`, `build_packet(elapsed)` method).
+
 0a. ~~**Decide what `on_target` means for a mount on its stop.**~~ — **done,
    session 16.** Doc 07 §4.3.1's `solution_in_arc` term; §4.19.
 
