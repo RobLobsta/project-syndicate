@@ -84,6 +84,14 @@ const HEADING_DEGENERATE_DOT: float = 0.985
 
 const COLLISION_PROBE_RADIUS_M: float = 0.4
 const COLLISION_MARGIN_M: float = 0.3
+## What §13.7's clamp treats as something to be behind: the world, and the
+## wreckage in it. Not hulls — see [method _avoid_ground] for why that exclusion
+## is deliberate and why debris is not covered by it.
+const CAMERA_OCCLUDER_MASK: int = (
+	CollisionLayers.MASK_GROUND
+	| CollisionLayers.MASK_STATIC_VOLUME
+	| CollisionLayers.LAYER_DEBRIS
+)
 ## Floor on the pulled-in distance, so the camera can never coincide with the
 ## point it looks at.
 const MIN_DISTANCE_M: float = 0.8
@@ -387,6 +395,13 @@ func _desired_position(pivot: Vector3, yaw: float) -> Vector3:
 ## Deliberately blind to [constant CollisionLayers.LAYER_ASSEMBLY_HULL]: pulling
 ## in on the player's own roof would make a fight a series of lurches, and
 ## pulling in on an enemy hull would hand the player a free proximity warning.
+##
+## [b]It is not blind to debris, and it used to be.[/b] §13.7's mask was ground
+## and Static Volumes, which is right for a camera behind a moving Assembly and
+## wrong at exactly the moment doc 11 §16.2 hands the player an orbit camera: a
+## player who finishes inside a pile of their own wreckage was left orbiting the
+## inside of a box. A debris body is geometry a camera can be behind, and unlike
+## a hull it is not something the player is trying to look at.
 func _avoid_ground(pivot: Vector3, desired: Vector3, dt: float) -> Vector3:
 	var world := get_world_3d()
 	if world == null:
@@ -399,7 +414,7 @@ func _avoid_ground(pivot: Vector3, desired: Vector3, dt: float) -> Vector3:
 	q.shape = _probe_shape
 	q.transform = Transform3D(Basis(), pivot)
 	q.motion = motion
-	q.collision_mask = CollisionLayers.MASK_GROUND | CollisionLayers.MASK_STATIC_VOLUME
+	q.collision_mask = CAMERA_OCCLUDER_MASK
 	var result := world.direct_space_state.cast_motion(q)
 	# cast_motion answers [1, 1] for a clear path and [0, 0] when the shape starts
 	# already overlapping — which at the pivot means the Assembly is buried, and

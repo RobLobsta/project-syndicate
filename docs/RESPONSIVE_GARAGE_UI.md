@@ -943,6 +943,8 @@ Three things this rule deliberately does **not** do:
   eases into a wall is a camera that spends several frames inside it, and one
   frame of geometry filling the screen is worse than a hard cut.
 
+> **Amendment — the mask includes `LAYER_DEBRIS`.** It was ground and Static Volumes, which is right for a camera behind a moving Assembly and wrong at exactly the moment §16.2 hands the player an orbit camera: at contact range a player finishes inside a pile of their own wreckage, and the camera was then orbiting the inside of a box. A debris body is geometry a camera can be behind, and unlike a hull it is not something the player is trying to look at — so the hull exclusion above does not extend to it.
+
 ### 13.8 The aim point
 
 The camera is the sole producer of the player's aim point, which

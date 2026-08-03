@@ -334,11 +334,6 @@ plane slicing and needs no CSG at all.
 
 ### 3.11 Smaller, and worth doing when passing
 
-- **The camera can still end up inside the wreckage.** `LEARNED_FACTS.md` §1 fact
-  56's `cast_motion` clamp does its job against ground and Static Volumes, and
-  debris is not in the mask. At contact range the player finishes inside a pile of
-  debris bodies, and the orbit camera §16.2 now hands them is orbiting the inside
-  of a box. Adding `LAYER_DEBRIS` to §13.7's mask is one constant.
 - **A second steered wheeled row.** Makes one of the three surviving uncaught
   faults visible, gives rule 13 a second tier, and gives the garage a real choice
   on the front axle.
@@ -526,10 +521,6 @@ fixing. None of these is a surprise waiting to be found.
   [SubViewport] projecting a ray — cannot be reached headless
   (`LEARNED_FACTS.md` §1 fact 28), so the one thing that was checked by hand and
   is checked by nothing is the ray itself.
-- **The camera can still be buried in debris.** §13.7's `cast_motion` clamp masks
-  ground and Static Volumes and not `LAYER_DEBRIS`, so a player who finishes
-  inside a pile of wreckage is handed an orbit camera orbiting the inside of a
-  box. One constant; owned by §3.11.
 - **The control card has no first-run flag.** Doc 11 §14.6 raises it on every
   entry to a match because there is nowhere to store "they have seen it", which
   is `SyndicateSettings` work and is waiting on there being more than one match.
