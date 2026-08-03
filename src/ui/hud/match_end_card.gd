@@ -12,7 +12,8 @@ extends CenterContainer
 ## once, so there is no dismissal, no timer, and no second state to be in. What
 ## the card does say is that the camera is now free — because it is, and because
 ## a player looking at a wreck with no idea they may look away is being shown a
-## bug rather than an ending.
+## bug rather than an ending — and how to leave, which §16.3 could not say until
+## §15 had a screen to leave to.
 ##
 ## Like [ControlCard] it declares no per-frame callback and is faded in by
 ## [MatchHud]; see that class for why there is one timer in this interface.
@@ -39,15 +40,20 @@ const KEY_DRAW: StringName = &"hud.outcome.draw"
 const KEY_DETAIL_VICTORY: StringName = &"hud.outcome.detail.victory"
 const KEY_DETAIL_DEFEAT: StringName = &"hud.outcome.detail.defeat"
 const KEY_DETAIL_DRAW: StringName = &"hud.outcome.detail.draw"
-## Takes the camera-toggle binding and the mouse-release binding, in that order.
+## Takes the camera-toggle binding: what a player may still do with the picture.
 const KEY_HINT: StringName = &"hud.outcome.hint"
+## Takes the rematch binding and the garage binding, in that order. The two ways
+## out of a finished match.
+const KEY_EXITS: StringName = &"hud.outcome.exits"
 
 const ACTION_CAMERA: StringName = &"cam_toggle_view"
-const ACTION_RELEASE_MOUSE: StringName = &"build_cancel"
+const ACTION_REMATCH: StringName = &"ui_accept"
+const ACTION_GARAGE: StringName = &"build_cancel"
 
 var _title: Label = null
 var _detail: Label = null
 var _hint: Label = null
+var _exits: Label = null
 var _elapsed_s: float = 0.0
 var _raised: bool = false
 
@@ -93,6 +99,12 @@ func _init() -> void:
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rows.add_child(_hint)
 
+	_exits = Label.new()
+	_exits.theme_type_variation = &"StatValue"
+	_exits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_exits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rows.add_child(_exits)
+
 
 ## Raises the card for [param outcome], a [enum MatchState.Outcome].
 ##
@@ -106,12 +118,14 @@ func show_outcome(outcome: int) -> void:
 	_title.text = tr(title_key_for(outcome))
 	_title.modulate = colour_for(outcome)
 	_detail.text = tr(detail_key_for(outcome))
-	_hint.text = (
-		tr(KEY_HINT)
-		% [
-			InputPrompt.label_for(ACTION_CAMERA),
-			InputPrompt.label_for(ACTION_RELEASE_MOUSE)
-		]
+	_hint.text = tr(KEY_HINT) % InputPrompt.label_for(ACTION_CAMERA)
+	# The two exits are the last line and the largest, because they are the
+	# answer to the question a player has at this moment. Until session 26 there
+	# was no answer: the match ended, and the only way to play again was to quit
+	# the process and relaunch.
+	_exits.text = (
+		tr(KEY_EXITS)
+		% [InputPrompt.label_for(ACTION_REMATCH), InputPrompt.label_for(ACTION_GARAGE)]
 	)
 	_raised = true
 	_elapsed_s = 0.0

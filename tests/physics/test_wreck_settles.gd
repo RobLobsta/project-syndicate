@@ -73,6 +73,15 @@ const COLLAPSED_MASS_CEILING_KG: float = 1.5
 ## all" with room for the settle of a body that has just lost most of its mass.
 const COMMANDED_WRECK_SPEED_CEILING_MPS: float = 0.5
 
+## Speed, in m/s, a [i]live[/i] Assembly must exceed under the same demand over
+## the same window. The control case: it separates a motion layer that declined
+## to drive from a fixture that could not have driven anyway.
+##
+## Four times the ceiling the terminated case has to stay under, and the measured
+## pair is 3.87 against 0.00 — so neither bound is a description of either
+## measurement.
+const ALIVE_COMMANDED_FLOOR_MPS: float = 2.0
+
 ## Fraction of its speed at the conclusion the coasting wreck must be under by
 ## the end of the window. It is on a flat slab with no drive: it should be
 ## stopping, and anything that is not stopping is being pushed.
@@ -86,6 +95,8 @@ var _mass_after_kg: float = 0.0
 var _speed_at_conclusion_mps: float = 0.0
 var _speed_coasting_mps: float = 0.0
 var _speed_commanded_mps: float = 0.0
+var _speed_alive_commanded_mps: float = 0.0
+var _contacts_after_termination: int = 0
 
 var _arena: CombatArena = null
 var _detachment: DetachmentScheduler = null
@@ -122,11 +133,27 @@ func test_the_body_collapses_onto_the_engines_mass_floor() -> void:
 	)
 
 
-## The law. Invariant I-2 ends the Assembly; doc 05 §3.1 makes the motion layer
-## stop with it, and a demand standing against a wreck is the fixture that can
-## tell "stopped" from "happens to be slowing down".
+## The law. Invariant I-2 ends the Assembly; doc 05 §3.6 makes the motion layer
+## stop with it, and a demand standing against a build whose contacts are still
+## there is the fixture that can tell "declined to drive" from "had nothing left
+## to drive with".
+##
+## The first two checks are what make the third mean anything. A fixture in which
+## the contacts had gone would pass this with the guard deleted, and the first
+## version of this file did exactly that — the guard was removed and nothing
+## failed.
 func test_a_wreck_does_not_move_however_hard_it_is_commanded() -> void:
 	await _run_all()
+	check_true(
+		_speed_alive_commanded_mps > ALIVE_COMMANDED_FLOOR_MPS,
+		"a live Assembly answers this demand by driving off: %.2f m/s"
+			% _speed_alive_commanded_mps
+	)
+	check_true(
+		_contacts_after_termination > 0,
+		"and the wreck still has contacts under it to drive with: %d"
+			% _contacts_after_termination
+	)
 	check_true(
 		_speed_commanded_mps < COMMANDED_WRECK_SPEED_CEILING_MPS,
 		(
@@ -152,21 +179,43 @@ func test_the_remains_slow_down_rather_than_accelerate() -> void:
 ## Runs once. The fixture is destructive — an Assembly whose Core Module has gone
 ## cannot be put back — so every method above asserts one thing about one run
 ## (LEARNED_FACTS.md §1 fact 43).
+##
+## [b]Two arenas, opened one after the other, and the pair is the point.[/b] The
+## defect has two halves and no single fixture holds both:
+##
+## [enum]
+## [*] [b]The amplifier[/b] needs the detachment scheduler and the debris pool,
+##     because the collapse to the engine's mass floor is what they do. With them
+##     the islands come off — and so do the contacts, so there is nothing left for
+##     the motion layer to push against and the wreck settles whatever the guard
+##     does.
+## [*] [b]The law[/b] needs the opposite: an Assembly that has been terminated
+##     while its parts are still attached, so that [method MotiveSystem.step] has
+##     four live contacts and a full throttle demand and must decline to use them.
+##     That is the state a fault can be planted against, and the one the first
+##     version of this file could not reach — the guard was removed and nothing
+##     failed.
+## [/enum]
+##
+## One at a time, closed before the next (LEARNED_FACTS.md §1 fact 45).
 func _run_all() -> void:
 	if _ran:
 		return
 	_ran = true
+	await _measure_the_collapse()
+	await _measure_the_law()
 
+
+## Phase one: what a match does to a wreck's mass, and what its remains do when
+## nobody is commanding them.
+func _measure_the_collapse() -> void:
 	_arena = CombatArena.new()
 	_arena.open()
 	# [CombatArena] carries the four systems an engagement needs and deliberately
 	# not these three, because every file that fights in it measures something
 	# else and adding bodies to a shared space moves those measurements
 	# (LEARNED_FACTS.md §1 fact 54). They are built here instead, in the order and
-	# with the wiring [MatchScreen] uses, because the collapse this file is about
-	# is the one the match produces: the destruction orphans every part, the
-	# scheduler severs the islands, the pool takes them, and the body the motion
-	# layer is still solving for is left holding the floor.
+	# with the wiring [MatchScreen] uses.
 	_detachment = DetachmentScheduler.new()
 	_detachment.registry = _arena.registry
 	EventBus.get_tree().root.add_child(_detachment)
@@ -181,9 +230,7 @@ func _run_all() -> void:
 	var c := _arena.spawn(CombatArena.Recipe.WHEELED_LIGHT, 0, Vector2.ZERO, 0.0, 0)
 	await _arena.settle(SETTLE_TICKS)
 
-	# Destroyed while moving, because that is the state the capture was taken in
-	# and because a stationary wreck cannot show a traction solver still working:
-	# every ground family's force is a function of slip, and slip at rest is zero.
+	# Destroyed while moving, because that is the state the capture was taken in.
 	c.motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 	_speed_under_power_mps = c.runtime.body.linear_velocity.length()
@@ -193,20 +240,8 @@ func _run_all() -> void:
 	# left holding is a neutral one.
 	c.motion.input.throttle = 0.0
 
-	var packet := DamagePacket.new()
-	packet.target_assembly_id = c.assembly_id()
-	packet.target_slot = SyndicateConstants.CORE_SLOT
-	packet.channel = PartEnums.DamageChannel.KINETIC
-	packet.raw_amount = LETHAL_DAMAGE
-	packet.penetration = LETHAL_PENETRATION
-	packet.impact_point_world = c.runtime.body.global_position
-	packet.impact_normal_world = Vector3.UP
-	packet.incoming_direction = Vector3.DOWN
-	_arena.resolver.apply(packet)
-	# The detachment the destruction queued resolves on the next tick, which is
-	# the tick the body loses its islands and its mass.
+	_destroy_core(c)
 	await physics_frames(1)
-
 	_terminated = not c.is_alive()
 	_speed_at_conclusion_mps = c.runtime.body.linear_velocity.length()
 
@@ -217,9 +252,44 @@ func _run_all() -> void:
 	# is the scheduler's business and not this file's claim; that it lands is.
 	_mass_after_kg = c.runtime.body.mass
 
-	# From rest, and against the loudest demand the input layer can produce. A
-	# live Assembly answers this by driving off; a terminated one must not answer
-	# it at all.
+	print(
+		(
+			"      wreck: %.2f m/s under power at %.1f kg; conclusion %.2f m/s; "
+			+ "%.3f kg and %.2f m/s after %d ticks"
+		) % [
+			_speed_under_power_mps, _mass_before_kg, _speed_at_conclusion_mps,
+			_mass_after_kg, _speed_coasting_mps, COAST_TICKS
+		]
+	)
+	_teardown()
+
+
+## Phase two: doc 05 §3.6's law, in the state that can falsify it.
+##
+## No detachment scheduler, so the destruction of slot 0 ends the Assembly and
+## leaves every part — and every contact — where it was. The motion layer
+## therefore [i]can[/i] drive this body, has a full throttle demand telling it to,
+## and must not.
+func _measure_the_law() -> void:
+	_arena = CombatArena.new()
+	_arena.open()
+	var c := _arena.spawn(CombatArena.Recipe.WHEELED_LIGHT, 0, Vector2.ZERO, 0.0, 0)
+	await _arena.settle(SETTLE_TICKS)
+
+	# The control case, and it is not decoration: it is what proves the fixture
+	# can tell the two states apart. A live Assembly given this demand drives off.
+	c.motion.input.throttle = 1.0
+	await physics_frames(COMMANDED_TICKS)
+	_speed_alive_commanded_mps = c.runtime.body.linear_velocity.length()
+
+	c.motion.input.throttle = 0.0
+	c.runtime.body.linear_velocity = Vector3.ZERO
+	c.runtime.body.angular_velocity = Vector3.ZERO
+	_destroy_core(c)
+	await physics_frames(1)
+	_contacts_after_termination = c.motion.contact_count(_first_motive_slot(c))
+
+	# From rest, and against the loudest demand the input layer can produce.
 	c.runtime.body.linear_velocity = Vector3.ZERO
 	c.runtime.body.angular_velocity = Vector3.ZERO
 	c.motion.input.throttle = 1.0
@@ -229,14 +299,32 @@ func _run_all() -> void:
 
 	print(
 		(
-			"      wreck: %.2f m/s under power at %.1f kg; conclusion %.2f m/s at %.3f kg; "
-			+ "coasting %.2f m/s after %d ticks; %.2f m/s under full throttle from rest"
-		) % [
-			_speed_under_power_mps, _mass_before_kg, _speed_at_conclusion_mps,
-			_mass_after_kg, _speed_coasting_mps, COAST_TICKS, _speed_commanded_mps
-		]
+			"      wreck: %.2f m/s alive under full throttle; %.2f m/s terminated under "
+			+ "the same demand, with %d contacts still under it"
+		) % [_speed_alive_commanded_mps, _speed_commanded_mps, _contacts_after_termination]
 	)
 	_teardown()
+
+
+## One packet through the ordinary door. CLAUDE.md §10 rule 10: nothing else in
+## the project writes integrity, and a test that reached past [DamageResolver]
+## would be staging a destruction the game cannot produce.
+func _destroy_core(c: CombatArena.Combatant) -> void:
+	var packet := DamagePacket.new()
+	packet.target_assembly_id = c.assembly_id()
+	packet.target_slot = SyndicateConstants.CORE_SLOT
+	packet.channel = PartEnums.DamageChannel.KINETIC
+	packet.raw_amount = LETHAL_DAMAGE
+	packet.penetration = LETHAL_PENETRATION
+	packet.impact_point_world = c.runtime.body.global_position
+	packet.impact_normal_world = Vector3.UP
+	packet.incoming_direction = Vector3.DOWN
+	_arena.resolver.apply(packet)
+
+
+static func _first_motive_slot(c: CombatArena.Combatant) -> int:
+	var slots := c.motion.motive_slots()
+	return slots[0] if not slots.is_empty() else SyndicateConstants.INVALID_SLOT
 
 
 ## Removes then frees, in that order: [MassRecomputeScheduler] joins its worker

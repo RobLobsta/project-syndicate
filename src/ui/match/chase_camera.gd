@@ -153,7 +153,7 @@ func _ready() -> void:
 ## lives in [code]SyndicateSettings[/code] with the other driver preferences.
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if InputMethod.mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 			return
 		# Accumulated rather than applied: several motion events can arrive
 		# between two render frames, and applying each one separately makes the

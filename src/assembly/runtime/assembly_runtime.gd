@@ -224,54 +224,29 @@ func attach_part(slot: int) -> void:
 ## cannot carry a layer or a mask at all. [method visual_decoupling_violations]
 ## walks the subtree after [method adopt] and is what proves that stayed true.
 ##
-## The transform is the part's placement pose composed with the authored visual
-## offset, in that order. Composing them the other way round would rotate the
-## offset by the part's orientation twice — invisible at orientation 0, which is
-## the fixture trap [code]HANDOFF.md[/code] §2.1 records for the collider path.
+## The mesh, the material and the pose come from [PartMeshFactory], which the
+## garage preview also builds its picture from. They are the same picture and one
+## answer: a garage that composed the placement pose with the authored visual
+## offset in the other order would show a player a build that assembles
+## differently the moment they drove it.
 func spawn_visual(slot: int) -> void:
 	var st := state(slot)
 	if st == null:
 		push_error("AssemblyRuntime: visual spawn of empty slot %d" % slot)
 		return
 	var def := PartRegistry.definition(st.part_def_id)
-	var vp := def.visual_profile
-	if vp == null:
+	if def.visual_profile == null:
 		push_warning(
 			"AssemblyRuntime: '%s' at slot %d has no visual profile" % [def.part_key, slot]
 		)
 		return
 
-	var mesh: Mesh = vp.mesh_for_band(st.integrity_band)
-	var material: Material = null
-	if mesh == null:
-		# STAGE_PROXY, which is every shipped part today: the mesh is generated
-		# from the primitive list, or mirrored from the collider when — as the
-		# whole shipped set does — the part authors none.
-		mesh = ProxyMeshCache.get_or_build(def)
-		material = GreyboxMaterial.for_class(def.part_class, vp.proxy_tint)
-	elif vp.stage == PartVisualProfile.Stage.BLOCKOUT:
-		material = GreyboxMaterial.for_class(def.part_class, vp.proxy_tint)
-	if mesh == null:
+	var node := PartMeshFactory.build(
+		def, st.integrity_band, st.origin_cell, st.orientation_index
+	)
+	if node == null:
 		return
-
-	var node := MeshInstance3D.new()
 	node.name = "part_s%03d" % slot
-	node.mesh = mesh
-	if material != null:
-		node.material_override = material
-	node.transform = (
-		Transform3D(
-			OrientationTable.basis_for(st.orientation_index),
-			LatticeMath.cell_to_local(st.origin_cell)
-		)
-		* Transform3D(Basis().scaled(vp.visual_scale), vp.visual_offset_m)
-	)
-	node.layers = RenderLayers.LAYER_ASSEMBLY_VISUAL
-	node.cast_shadow = (
-		GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		if vp.casts_shadow
-		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	)
 	visual_root.add_child(node)
 	st.visual_node_path = visual_root.get_path_to(node)
 	_visuals[slot] = node
