@@ -618,6 +618,7 @@ func _disable_presentation() -> void:
         &"ui_root",
         &"ground_height_texture",    # heights kept as data; no ImageTexture
         &"assembly_interpolator",    # no rendering, no interpolation needed
+        &"part_visual",              # EXTENSION_PIPELINE.md §9; VisualRoot stays empty
         &"debris_visibility",        # no viewers, so no wreck is ever kept for one
         &"projectile_multimesh",
         &"icon_cache",
@@ -626,6 +627,8 @@ func _disable_presentation() -> void:
 ```
 
 `SubsystemGate` is a registry queried at autoload construction; disabled subsystems are never instantiated, so their `_process` and `_physics_process` never run and their memory is never allocated.
+
+`part_visual` gates `AssemblyRuntime.spawn_visual` (`EXTENSION_PIPELINE.md` §9). With it disabled the `VisualRoot` of every Assembly stays empty and no `ArrayMesh` is ever built, which on a full server roster is the largest single allocation the presentation half would otherwise make. Nothing simulated reads a mesh — Invariant I-1 is what makes that safe to assert rather than merely hope — so a server with the tag off and a client with it on step identically.
 
 `debris_visibility` is the newest entry and the one whose absence changes behaviour rather than merely omitting an object. `DEPENDENCY_TREE_GRAPH.md` §6.2 keeps a retired wreck in the world until every viewer has looked away; with the tag disabled no `VisibleOnScreenNotifier3D` is constructed, and a debris body is recycled the moment it retires. That is the correct server behaviour and not a degradation of it: the simulated half of a wreck's life — the half that makes it an obstacle — ends on the same tick either way, which is what §9.3 requires of it.
 

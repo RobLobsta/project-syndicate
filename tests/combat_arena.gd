@@ -889,13 +889,7 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 ## which index does it is a property of [OrientationTable], and the integer does
 ## not survive a change to the table (handoff §9, and watch §3.39).
 static func drive_face_orientation(face: Vector3) -> int:
-	for i: int in SyndicateConstants.ORIENTATION_COUNT:
-		var basis := OrientationTable.basis_for(i)
-		if not (basis * Vector3.FORWARD).is_equal_approx(face):
-			continue
-		if (basis * Vector3.UP).is_equal_approx(Vector3.UP):
-			return i
-	return 0
+	return OrientationTable.upright_facing(face)
 
 
 ## ===== COMBATANT =======================================================

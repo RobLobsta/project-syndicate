@@ -56,6 +56,12 @@ const ROLLING_AXIS_LOCAL: Vector3 = Vector3.RIGHT
 ## per frame.
 const TAG_INTERPOLATOR: StringName = &"assembly_interpolator"
 
+## Subsystem tag gating the part meshes (doc 12 §9.2). A dedicated server leaves
+## every [member visual_root] empty and builds no [ArrayMesh] at all — nothing
+## simulated reads a mesh, which is Architectural Invariant I-1 stated as a
+## capability rather than as a prohibition.
+const TAG_PART_VISUAL: StringName = &"part_visual"
+
 ## Identifies this Assembly in every signal it takes part in.
 ##
 ## Stored on the body rather than duplicated here: a physics query hands back a
@@ -91,6 +97,10 @@ var _shapes: Array[CollisionShape3D] = []
 ## Slot -> its suspension probes, fore to aft. Only Motive Assemblies appear,
 ## and a rotary one appears with an empty list: a disc touches nothing.
 var _probes: Dictionary = {}
+
+## Slot -> its [MeshInstance3D] under [member visual_root]. Empty on a dedicated
+## server, where the [code]part_visual[/code] tag is off and nothing is built.
+var _visuals: Dictionary = {}
 
 
 func _init() -> void:
@@ -145,9 +155,12 @@ func adopt(ctx: BuildContext) -> void:
 	# Ascending slot order, so the shape indices — and therefore the shape-index
 	# to slot map every damage query reads — are reproducible for a given
 	# blueprint on the server and on every client.
+	var visuals := SubsystemGate.is_enabled(TAG_PART_VISUAL)
 	for slot in MAX:
 		if states[slot] != null:
 			attach_part(slot)
+			if visuals:
+				spawn_visual(slot)
 		ctx.despawn_proxy(slot)
 	_assert_visual_decoupling()
 
@@ -198,6 +211,87 @@ func attach_part(slot: int) -> void:
 	_build_motive_probes(slot, def, st)
 
 
+## Builds [param slot]'s display mesh under [member visual_root]. Doc 13 §9.
+##
+## Architectural Invariant I-1, the other half of [method attach_part]: this
+## reads [member PartDefinition.visual_profile] and that reads
+## [member PartDefinition.collider_profile], and the two functions share no line.
+## They can be read side by side and there is no point at which one influences
+## the other — which is what makes "the simulation reads only the physics
+## geometry" a checkable claim rather than an intention.
+##
+## The node is a [MeshInstance3D] and therefore not a [CollisionObject3D], so it
+## cannot carry a layer or a mask at all. [method visual_decoupling_violations]
+## walks the subtree after [method adopt] and is what proves that stayed true.
+##
+## The transform is the part's placement pose composed with the authored visual
+## offset, in that order. Composing them the other way round would rotate the
+## offset by the part's orientation twice — invisible at orientation 0, which is
+## the fixture trap [code]HANDOFF.md[/code] §2.1 records for the collider path.
+func spawn_visual(slot: int) -> void:
+	var st := state(slot)
+	if st == null:
+		push_error("AssemblyRuntime: visual spawn of empty slot %d" % slot)
+		return
+	var def := PartRegistry.definition(st.part_def_id)
+	var vp := def.visual_profile
+	if vp == null:
+		push_warning(
+			"AssemblyRuntime: '%s' at slot %d has no visual profile" % [def.part_key, slot]
+		)
+		return
+
+	var mesh: Mesh = vp.mesh_for_band(st.integrity_band)
+	var material: Material = null
+	if mesh == null:
+		# STAGE_PROXY, which is every shipped part today: the mesh is generated
+		# from the primitive list, or mirrored from the collider when — as the
+		# whole shipped set does — the part authors none.
+		mesh = ProxyMeshCache.get_or_build(def)
+		material = GreyboxMaterial.for_class(def.part_class, vp.proxy_tint)
+	elif vp.stage == PartVisualProfile.Stage.BLOCKOUT:
+		material = GreyboxMaterial.for_class(def.part_class, vp.proxy_tint)
+	if mesh == null:
+		return
+
+	var node := MeshInstance3D.new()
+	node.name = "part_s%03d" % slot
+	node.mesh = mesh
+	if material != null:
+		node.material_override = material
+	node.transform = (
+		Transform3D(
+			OrientationTable.basis_for(st.orientation_index),
+			LatticeMath.cell_to_local(st.origin_cell)
+		)
+		* Transform3D(Basis().scaled(vp.visual_scale), vp.visual_offset_m)
+	)
+	node.layers = RenderLayers.LAYER_ASSEMBLY_VISUAL
+	node.cast_shadow = (
+		GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if vp.casts_shadow
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	)
+	visual_root.add_child(node)
+	st.visual_node_path = visual_root.get_path_to(node)
+	_visuals[slot] = node
+
+
+## [param slot]'s display mesh, or null when it has none — a part spawned on a
+## dedicated server, or one whose proxy could not be built.
+func visual_of(slot: int) -> MeshInstance3D:
+	var node: MeshInstance3D = _visuals.get(slot, null)
+	if node != null and is_instance_valid(node):
+		return node
+	return null
+
+
+func _set_visual_visible(slot: int, shown: bool) -> void:
+	var node := visual_of(slot)
+	if node != null:
+		node.visible = shown
+
+
 ## Takes [param slot]'s collision geometry out of the simulation.
 ##
 ## The shapes are disabled rather than removed, and that is load-bearing.
@@ -220,6 +314,12 @@ func release_part(slot: int) -> void:
 	# than freed for the same reason the shapes are: repair puts the part back,
 	# and rebuilding a probe would need the placement again.
 	_set_probes_enabled(slot, false)
+	# The mesh goes with the shapes, and this is the one place presentation is
+	# obliged to follow the simulation rather than merely permitted to. A shipped
+	# part's greybox is its collider exactly (doc 13 §2.1), so a mesh left behind
+	# by a disabled shape is geometry the player can see and cannot hit — which
+	# reads as a round passing through armour rather than as a part being gone.
+	_set_visual_visible(slot, false)
 
 
 ## Re-registers [param slot]'s collider primitives against the debris body
@@ -260,6 +360,10 @@ func detach_colliders_to(
 	# probe still sweeping from a departed part would hand the motion layer a
 	# contact for a wheel that is no longer attached.
 	_set_probes_enabled(slot, false)
+	# Same reason as [method release_part], and more visible: the island's shapes
+	# are on the debris body now and moving away, so a mesh left on this hull is
+	# a part that is simultaneously here and rolling down the road.
+	_set_visual_visible(slot, false)
 
 
 ## Re-enables geometry that [method release_part] disabled, for the repair path
@@ -272,6 +376,7 @@ func restore_part(slot: int) -> void:
 		if i >= 0 and i < _shapes.size():
 			_shapes[i].disabled = false
 	_set_probes_enabled(slot, true)
+	_set_visual_visible(slot, true)
 
 
 ## Builds [param slot]'s suspension probes under [code]MotiveProbes[/code], one
