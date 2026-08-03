@@ -30,7 +30,7 @@ If a document is silent on something, follow the closest documented precedent an
 | 08 | [`docs/COMPONENT_HEALTH_DAMAGE.md`](docs/COMPONENT_HEALTH_DAMAGE.md) | Damage packets, all five channels, `DegradationTable`, band transitions, visual damage states, repair |
 | 09 | [`docs/TERRAIN_CRATER_DEFORMER.md`](docs/TERRAIN_CRATER_DEFORMER.md) | Ground Arrays, crater profile, deformation pipeline, collision streaming, `SurfaceTable` |
 | 10 | [`docs/PROCEDURAL_STRUCTURE_SLICING.md`](docs/PROCEDURAL_STRUCTURE_SLICING.md) | Static Volumes, CSG bake, fracture decomposition, support graph, runtime convex slicing |
-| 11 | [`docs/RESPONSIVE_GARAGE_UI.md`](docs/RESPONSIVE_GARAGE_UI.md) | Scaling, breakpoints, container hierarchy, virtualised catalogue, input abstraction, theme |
+| 11 | [`docs/RESPONSIVE_GARAGE_UI.md`](docs/RESPONSIVE_GARAGE_UI.md) | Scaling, breakpoints, container hierarchy, virtualised catalogue, input abstraction, theme, **match camera, match HUD, boot flow** |
 | 12 | [`docs/HEADLESS_NETWORK_SYNC.md`](docs/HEADLESS_NETWORK_SYNC.md) | Authority matrix, channels, snapshot format, prediction, lag compensation, headless server |
 | 13 | [`docs/EXTENSION_PIPELINE.md`](docs/EXTENSION_PIPELINE.md) | Asset maturity stages, naming, DCC export contract, import config, validation, promotion workflow |
 
@@ -60,8 +60,11 @@ When a value appears in more than one place, exactly one document **owns** it an
 | `CraterProfile`, `SurfaceTable` (incl. traction multipliers) | 09 |
 | Static Volume materials, fracture budgets | 10 |
 | Breakpoints, colour tokens, **input map actions** | 11 |
+| Camera framing, lag rates, aim-ray constants | 11 |
+| Reticle states, HUD flash and feed constants | 11 |
 | Protocol version, channel layout, quantisation bits | 12 |
 | Triangle budgets, socket names, atlas layout | 13 |
+| Proxy mesh resolution, greybox class tints | 13 |
 
 ---
 
@@ -113,7 +116,9 @@ project-syndicate/
 │   │   │                             convex_hull_2d.gd, convex_hull_util.gd,
 │   │   │                             bit_writer.gd, bit_reader.gd
 │   │   ├── collections/            ← ring_buffer.gd, object_pool.gd
-│   │   └── util/                   ← mesh_util.gd, geometry helpers, hashing
+│   │   └── util/                   ← mesh_util.gd, geometry helpers, hashing,
+│   │                                 proxy_mesh_builder.gd, proxy_mesh_cache.gd,
+│   │                                 greybox_material.gd
 │   │
 │   ├── assembly/
 │   │   ├── lattice/                ← lattice_occupancy.gd, footprint_solver.gd,
@@ -167,9 +172,11 @@ project-syndicate/
 │   │                                 quat_codec.gd, blueprint_codec.gd
 │   │
 │   ├── ui/
+│   │   ├── boot/                   ← main_boot.gd
 │   │   ├── garage/                 ← garage_screen.gd, garage_layout_controller.gd,
 │   │   │                             catalogue_presenter.gd, part_card.gd,
 │   │   │                             assembly_stat_panel.gd, touch_placement_controller.gd
+│   │   ├── match/                  ← match_screen.gd, chase_camera.gd, hud_frame.gd
 │   │   ├── hud/                    ← match_hud.gd, reticle.gd, damage_indicator.gd
 │   │   └── common/                 ← meter_row.gd, stat_row.gd, toast_stack.gd
 │   │
@@ -480,6 +487,8 @@ build_cancel
 
 cam_orbit               cam_pan                cam_zoom_in
 cam_zoom_out            cam_focus_selection    cam_toggle_view
+cam_look_left           cam_look_right         cam_look_up
+cam_look_down
 
 catalogue_search        catalogue_next_class   catalogue_prev_class
 

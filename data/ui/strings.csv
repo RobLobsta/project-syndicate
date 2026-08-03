@@ -1,0 +1,9 @@
+keys,en
+hud.integrity,INTEGRITY
+hud.power,POWER
+hud.speed,M/S
+hud.rounds,ROUNDS
+hud.rounds.unlimited,∞
+hud.parts,PARTS
+hud.event.part_lost,Component %d lost
+hud.event.assembly_lost,Assembly %d destroyed

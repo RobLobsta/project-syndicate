@@ -39,6 +39,34 @@ const TEAM_B: int = 1
 
 const BRAWL_PER_SIDE: int = 10
 
+## What this fight cost before §4.13 bounded overpenetration: one round stalling
+## inside a hull took a Core Module to zero on its own, and twenty guns finished
+## in ninety-one ticks. The reversal is what the brawl is here to record.
+const BRAWL_PRE_BOUND_TICKS: int = 91
+
+## Floor on the brawl's length, and deliberately far below what it measures.
+##
+## [b]This bound was `ENGAGE_TICKS / 2` and that was not a measurement of the
+## fight.[/b] Session 20 added an integration file elsewhere in the suite that
+## spawns eight two-part Assemblies and frees them before any physics test runs,
+## and the brawl went from running out its 1200-tick window to finishing in 316 —
+## reproducibly, three runs in a row, and reproducibly again from a control file
+## that did nothing but spawn those bodies and free them. Nothing about the
+## combat layer changed.
+##
+## That is JULES.md §6.6 and handoff §3 arriving where nobody had applied them:
+## once twenty rigid bodies share one space, the solver's float ordering depends
+## on the allocation history of the whole process, so a tick count is a
+## measurement of the [i]suite[/i] and not of the engagement. Re-asserting the
+## new number would only move the fragility to the next session that adds a file.
+##
+## So the bound is set at twice the pre-fix figure — clear of every composition
+## measured (316, 338, and the full window) by a wide margin, and still an order
+## of magnitude away from the ninety-one ticks it exists to rule out. It is a
+## floor on the reversal, which is a real property, rather than a description of
+## the fight, which is not a stable one.
+const BRAWL_MIN_TICKS: int = BRAWL_PRE_BOUND_TICKS * 2
+
 ## The combined-arms roster, in the order it is fielded from the left flank.
 ## Both teams get the same five, so the composition is a constant.
 const COMBINED_ARMS: Array[int] = [
@@ -122,8 +150,8 @@ func test_every_recipe_reached_the_five_a_side_in_working_order() -> void:
 
 
 func test_ten_wheeled_builds_a_side_grind_each_other_down() -> void:
-	# Twenty Assemblies, and the one engagement of the five that now runs to its
-	# timeout rather than being over in ninety-one ticks.
+	# Twenty Assemblies, and the one engagement of the five that takes seconds
+	# rather than being over in ninety-one ticks.
 	#
 	# That reversal is the clearest single measurement of what bounding
 	# overpenetration did. Last session this was the fastest fight in the suite —
@@ -147,8 +175,11 @@ func test_ten_wheeled_builds_a_side_grind_each_other_down() -> void:
 		% e.parts_destroyed
 	)
 	check_true(
-		e.ticks > ENGAGE_TICKS / 2,
-		"and it took most of the window to do it: %d of %d ticks" % [e.ticks, ENGAGE_TICKS]
+		e.ticks > BRAWL_MIN_TICKS,
+		(
+			"and it took far longer than the %d ticks it took before the bound: %d of %d"
+			% [BRAWL_PRE_BOUND_TICKS, e.ticks, ENGAGE_TICKS]
+		)
 	)
 
 

@@ -110,7 +110,25 @@ static func _primitive_mesh(p: ProxyPrimitiveDef) -> Mesh:
             s.radial_segments = 12; s.rings = 6; return s
 ```
 
-The generated mesh is cached per `part_def_id` in `ProxyMeshCache`, so 40 instances of the same panel share one `ArrayMesh` resource.
+The generated mesh is cached per `part_def_id` in `ProxyMeshCache`, so 40 instances of the same panel share one `ArrayMesh` resource. Round primitives are built at `RADIAL_SEGMENTS = 12` and `SPHERE_RINGS = 6` rather than at Godot's defaults, which are 64 radial segments on a `CylinderMesh` — five times the triangles, for geometry whose entire purpose is to be replaced.
+
+#### Class Tints
+
+`GreyboxMaterial.for_class` gives each part class a base tint, modulated toward the part's authored `proxy_tint` by `AUTHORED_TINT_WEIGHT = 0.35`. The weight is what keeps a class recognisable: an authored tint shifts a part *within* its class rather than out of it.
+
+| Part class | Tint | Reads as |
+|---|---|---|
+| `CORE_MODULE` | `#6E7C8C` | pale steel |
+| `STRUCTURAL_COMPONENT` | `#8A8F96` | neutral |
+| `MOTIVE_ASSEMBLY` | `#4A4E55` | charcoal |
+| `PRIME_MOVER` | `#9A7A46` | brass |
+| `EFFECTOR_MODULE` | `#6B6F63` | olive gunmetal |
+| `SUPPORT_MODULE` | `#5E807A` | teal |
+| `CONTROL_SURFACE` | `#7E93A8` | pale blue |
+| `ENERGY_CELL` | `#4F8C86` | cyan-green |
+| `APPENDAGE` | `#857D74` | warm grey |
+
+The table exists for **legibility**, not decoration. A greybox Assembly rendered in a single grey is a silhouette with no parts in it: a player cannot see where the Prime Mover they are supposed to be protecting sits, and neither can anyone reading a screenshot attached to a bug report. Nine hues that survive being small, desaturated, and lit from one direction are worth more here than nine attractive ones.
 
 This mirroring default is worth dwelling on. It means the greybox build is *visually honest* — what you see is exactly what you hit. Divergence between visual and collider only appears deliberately, at `STAGE_FINAL`, and the validator in §7 measures and bounds it.
 

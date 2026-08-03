@@ -40,6 +40,24 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		+ "round covers 15.7 m per tick at muzzle velocity, so there is no "
 		+ "event to react to instead"
 	),
+	"res://src/ui/match/chase_camera.gd":
+	(
+		"doc 11 §13.2: follows the interpolated VisualRoot, which is written per "
+		+ "render frame. It reads a transform and never integrity, connectivity, "
+		+ "or attachment, so I-4's subject is untouched"
+	),
+	"res://src/ui/hud/reticle.gd":
+	(
+		"doc 11 §14.3: the brackets draw in and out over real time, which is a "
+		+ "continuous value with no event behind it. It redraws only while they "
+		+ "are moving and reads nothing but its own state"
+	),
+	"res://src/ui/hud/match_hud.gd":
+	(
+		"doc 11 §14.4: decays the damage flash and the event feed against real "
+		+ "time. Every value it displays is pushed to it — it holds no Assembly "
+		+ "reference and iterates no parts"
+	),
 	"res://src/motion/motive_system.gd":
 	(
 		"doc 05 §6.0: a force integrator, not a reactor to structural events. "

@@ -1,7 +1,7 @@
 # RESPONSIVE_GARAGE_UI.md
 
 **Project Syndicate — System Architecture Specification, Document 11 of 13**
-**Subsystem:** Garage Interface — Container Architecture, Responsive Breakpoints, Cross-Input Support
+**Subsystem:** Player-Facing Presentation — Garage Interface, Match Camera, Match HUD, Boot Flow
 **Status:** Normative.
 
 ---
@@ -470,6 +470,9 @@ These action names are normative and are duplicated in `CLAUDE.md` §7. Adding a
 | `cam_pan` | Shift+Middle Drag | D-Pad | Three-finger drag |
 | `cam_zoom_in` / `cam_zoom_out` | Wheel Up / Down | D-Pad Up / Down | Pinch |
 | `cam_focus_selection` | `F` | Right Stick Click | Double-tap empty space |
+| `cam_toggle_view` | `C` | D-Pad Right | Toolbar toggle |
+| `cam_look_left` / `cam_look_right` | — (mouse motion; §13.6) | Right Stick X | Two-finger drag, horizontal |
+| `cam_look_up` / `cam_look_down` | — (mouse motion; §13.6) | Right Stick Y | Two-finger drag, vertical |
 | `catalogue_search` | `Ctrl+F` | — | Tap search field |
 | `catalogue_next_class` | `Tab` | Right Bumper | Swipe filter row |
 | `veh_throttle` | `W` | Right Trigger | Right thumb pad, up |
@@ -491,6 +494,14 @@ collide only within a context, and the four `veh_pitch_*` / `veh_roll_*` actions
 were placed against what a *match* leaves free: the left stick's vertical axis
 and the D-pad's horizontal one. The bumpers were not available — `effector_cycle_group`
 and `effector_fire_tertiary` hold both in a match.
+
+**The four `cam_look_*` actions are the match camera's, and they are analogue.**
+They were added with §13 and are the thing this table previously asserted and
+could not express: `cam_orbit` is one action and yields one strength, which is
+enough to say "the player is orbiting" and not enough to say in which direction.
+They take the right stick in a match, where §13.6 explains why they have no
+keyboard binding — a mouse produces motion, and Godot's `InputMap` cannot bind a
+motion event to an action at all.
 
 **The four tilt actions are the rotary family's cyclic**, and `DYNAMIC_MASS_PHYSICS.md`
 §15.2 owns what they map onto. They are `veh_`-prefixed rather than given a
@@ -733,3 +744,403 @@ Reference target, `EXPANDED` tier, 400-part registry:
 8. Minimum interactive target is `44 × 44` logical units on touch tiers.
 9. Colour is never the only carrier of meaning.
 10. Placement validity colours are shared with the 3D ghost, from a single token set.
+11. The match camera reads the interpolated `VisualRoot`, never the chassis body.
+12. The camera is never a physics body and never a child of one.
+13. Continuous HUD quantities arrive as one pushed frame per tick; discrete ones arrive as `EventBus` signals. The HUD never walks an Assembly.
+14. The camera owns the aim point. No other system casts a ray to produce one.
+15. One `Camera3D` is current at a time, and the match screen is what decides which.
+16. A headless build constructs no camera, no HUD, and no viewport-dependent node.
+
+---
+
+## 13. The Match Camera
+
+### 13.1 Why the camera is specified here
+
+The camera had no owning document for nineteen sessions, and the omission was
+not an oversight so much as a gap between two reasonable readings: it is a
+`Node3D` that follows a rigid body, which sounds like `DYNAMIC_MASS_PHYSICS.md`,
+and it is the thing that decides what the player sees, which sounds like this
+one. It is specified here because of what it actually *consumes* — the `cam_*`
+half of §7.1's input map, `InputMethod` from §7.2, and the reticle geometry §14
+draws — and because of what it *produces*, which is the aim point
+`WEAPON_TARGETING_LOGIC.md` §3 requires and calls "a camera ray cast against the
+world" without saying whose job that is. Every one of those lives in this
+document. None of them lives in doc 05.
+
+Doc 05 keeps the Assembly's motion. This document keeps the observer.
+
+### 13.2 What the camera follows
+
+**The camera reads `VisualRoot`, never `ChassisBody`.** This is the single most
+important line in this section and it is the one that is easiest to get
+backwards.
+
+`DYNAMIC_MASS_PHYSICS.md` §10.1 sets `physics_jitter_fix = 0.0`, so the physics
+step is exactly 1/60 s and is never stretched to meet a render frame. The body's
+transform therefore changes 60 times a second and holds still in between.
+`AssemblyInterpolator` exists to hide that: it runs in `_process` at
+`process_priority = 1000` and writes `VisualRoot` from the previous and current
+physics transforms at `Engine.get_physics_interpolation_fraction()`, so the mesh
+the player is looking at moves smoothly at any refresh rate.
+
+A camera that reads `body.global_transform` in `_process` samples the
+*un*interpolated value. At 60 Hz the two agree and the bug is invisible. At 144 Hz
+the hull is drawn smoothly and the camera jumps between 60 discrete poses, so the
+world appears to shudder around a steady vehicle — the exact inverse of the
+artefact the interpolator was built to remove, and far harder to diagnose,
+because the vehicle looks perfect and everything else looks wrong.
+
+The camera therefore runs in `_process` at `CAMERA_PROCESS_PRIORITY = 2000`,
+after the interpolator has written every `VisualRoot` in the tree, and reads the
+node the player can see.
+
+### 13.3 Modes
+
+Two, toggled with `cam_toggle_view`.
+
+| Mode | Yaw source | Use |
+|---|---|---|
+| `CHASE` | The hull's own heading, chased with a first-order lag, plus the player's look offset | Driving. The camera settles behind the Assembly without being rigidly bolted to it. |
+| `ORBIT` | The player's look angle alone; the hull's heading is ignored | Aiming across the hull, inspecting a wreck, watching a build that is upside down |
+
+`CHASE` is the default and is what a first-time player gets.
+
+### 13.4 The horizontal-heading rule
+
+In `CHASE` the camera takes its yaw from the hull's forward vector **projected
+onto the horizontal plane**, and takes nothing else from the hull's attitude.
+
+This is not a simplification, it is a requirement. Invariant I-3 makes an
+Assembly one rigid body with no joints, so a build that noses into a crater or
+takes a recoil impulse it cannot carry rolls the *whole* Assembly — and a camera
+rigidly parented to that basis rolls the whole screen with it. §4.11 of
+`HANDOFF.md` records the shipped chassis pitching 3.6 rad/s from a single round
+of its own autocannon. Bolting the camera to that attitude turns a handling
+problem into a motion-sickness problem, and hides the handling problem behind it.
+
+The projection is degenerate when the hull's forward is within
+`HEADING_DEGENERATE_DOT` of world up — a build standing on its nose, or a rotary
+one pitched hard over. There the camera **holds its previous heading** rather
+than snapping to whatever the projection produces, because the projected vector's
+direction is numerically meaningless exactly when its length approaches zero, and
+a camera that spins wildly at the worst moment of a fight is worse than one that
+briefly stops following.
+
+```gdscript
+const HEADING_DEGENERATE_DOT := 0.985
+
+func _hull_heading(basis: Basis, previous: float) -> float:
+    var fwd := -basis.z
+    if absf(fwd.dot(Vector3.UP)) > HEADING_DEGENERATE_DOT:
+        return previous
+    var flat := Vector3(fwd.x, 0.0, fwd.z)
+    if flat.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+        return previous
+    return atan2(-flat.x, -flat.z)
+```
+
+### 13.5 Framing constants
+
+Owned here. The follow distance scales with the Assembly's own size, because a
+lattice build has no fixed silhouette: the shipped wheeled recipe is about 3 m
+long and a ten-part build is three times that, and a fixed distance either buries
+the camera in the hull or strands it in the sky.
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `CHASE_DISTANCE_BASE_M` | `6.0` | Distance at zero bounding radius |
+| `CHASE_DISTANCE_PER_RADIUS` | `2.1` | Added distance per metre of Assembly bounding radius |
+| `CHASE_DISTANCE_MAX_M` | `34.0` | Ceiling, so a 40-part build is still a vehicle and not a map |
+| `CHASE_HEIGHT_PER_RADIUS` | `0.75` | Eye height above the Assembly centre, per metre of radius |
+| `CHASE_HEIGHT_MIN_M` | `1.6` | Floor on that height |
+| `PITCH_DEFAULT_DEG` | `-12.0` | Resting look-down angle |
+| `PITCH_MIN_DEG` | `-72.0` | Looking down at the roof |
+| `PITCH_MAX_DEG` | `34.0` | Looking up; deliberately less than the down limit, because the useful information in this game is on the ground |
+| `ZOOM_MIN` / `ZOOM_MAX` | `0.55` / `2.30` | Multipliers on the solved distance |
+| `ZOOM_STEP` | `0.14` | Per `cam_zoom_in` / `cam_zoom_out` press |
+| `HEADING_LAG_HZ` | `3.2` | First-order rate at which `CHASE` yaw chases the hull heading |
+| `POSITION_LAG_HZ` | `14.0` | First-order rate at which the camera position chases its solved target |
+| `FOV_BASE_DEG` | `68.0` | Vertical field of view at rest |
+| `FOV_SPEED_GAIN_DEG` | `12.0` | Added FOV at `FOV_SPEED_REFERENCE_MPS` |
+| `FOV_SPEED_REFERENCE_MPS` | `28.0` | Speed at which the full gain is reached |
+
+The lags are expressed in hertz and applied as `1 - exp(-rate * dt)` rather than
+as a per-frame alpha. A raw alpha is frame-rate dependent — the same `0.15`
+settles four times faster at 240 Hz than at 60 — which means the camera would
+*feel* different on different machines while every simulated quantity stayed
+identical. The exponential form is the one that does not.
+
+### 13.6 Look input, and why mouse motion is read directly
+
+`CHASE` and `ORBIT` both accumulate a look offset in yaw and pitch. It has two
+sources and they are live simultaneously, because a player with a controller in
+their hands and a mouse on the desk should not have to tell the game which one
+they are using.
+
+**Gamepad** goes through four analogue actions — `cam_look_left`,
+`cam_look_right`, `cam_look_up`, `cam_look_down` — added to §7.1 in the same
+change as this section. They did not exist before it. §7.1 has asserted since it
+was written that "`cam_orbit` is the right stick in the garage and the match
+camera is the same stick", and the action set contained nothing that could
+express a two-axis look: `cam_orbit` is a single action, and a single action
+yields one strength, not a direction. The document described a control the input
+map could not produce.
+
+**Mouse** is read as `InputEventMouseMotion.relative` while the mouse is
+captured. This is the one place in the project that reads an input device
+without going through `InputMap`, and it is deliberate: CLAUDE.md §7.3 rule 1
+forbids reading a raw **key or button**, and it does so because a key has an
+action to be bound to and a rebind screen to bind it in. Mouse motion has
+neither — Godot's `InputMap` cannot bind a motion event to an action at all, so
+there is no action to read and no rebind to respect. Sensitivity is the
+rebindable quantity here, and it lives in `SyndicateSettings` where the other
+driver preferences do.
+
+| Constant | Value |
+|---|---|
+| `MOUSE_DEG_PER_PIXEL` | `0.11` |
+| `STICK_DEG_PER_SECOND` | `165.0` |
+| `LOOK_YAW_LIMIT_DEG` (`CHASE` only) | `120.0` |
+
+`CHASE` clamps the look yaw offset to `±LOOK_YAW_LIMIT_DEG` and decays it back to
+zero at `LOOK_RECENTRE_HZ = 1.4` once the input is released, so glancing sideways
+is a gesture rather than a mode. `ORBIT` neither clamps nor recentres.
+
+### 13.7 Ground avoidance
+
+The desired camera position is solved first and then tested. A sphere cast of
+radius `COLLISION_PROBE_RADIUS_M = 0.4` runs from the pivot point to the desired
+position against `MASK_GROUND | MASK_STATIC_VOLUME`, and a hit pulls the camera
+in to the hit point less `COLLISION_MARGIN_M = 0.3`.
+
+Three things this rule deliberately does **not** do:
+
+- **It does not test against `LAYER_ASSEMBLY_HULL`.** A camera that pulled in
+  every time it grazed the player's own roof would spend a fight lurching, and
+  pulling in for an *enemy* hull would hand the player a free proximity warning.
+- **It does not use a physics body.** The camera is a query, never a collider —
+  the same distinction `AssemblyRuntime._build_motive_probes` draws for
+  suspension probes, and for the same reason: Invariant I-1 is about what the
+  simulation reads, and a shape cast reads the world without presenting anything
+  to it.
+- **It does not smooth the pull-in.** The pull toward the pivot is immediate and
+  only the *release* is smoothed, at `COLLISION_RELEASE_HZ = 6.0`. A camera that
+  eases into a wall is a camera that spends several frames inside it, and one
+  frame of geometry filling the screen is worse than a hard cut.
+
+### 13.8 The aim point
+
+The camera is the sole producer of the player's aim point, which
+`WEAPON_TARGETING_LOGIC.md` §3 consumes as a world position rather than a
+direction.
+
+```gdscript
+func aim_point() -> Vector3:
+    var centre := get_viewport().get_visible_rect().size * 0.5
+    var origin := project_ray_origin(centre)
+    var dir := project_ray_normal(centre)
+    var q := PhysicsRayQueryParameters3D.create(
+        origin, origin + dir * AIM_RAY_LENGTH_M)
+    q.collision_mask = CollisionLayers.MASK_AIM_TRACE
+    q.exclude = [_own_body_rid]                    # doc 07 §3
+    var hit := _space.intersect_ray(q)
+    if hit.is_empty():
+        return origin + dir * AIM_FALLBACK_RANGE_M
+    return hit["position"]
+```
+
+`AIM_RAY_LENGTH_M = 2000.0` and `AIM_FALLBACK_RANGE_M = 220.0`. The fallback
+matters more than it looks: a ray into open sky hits nothing, and a mount handed
+`Vector3.ZERO` for its aim point does not decline to fire — it aims at the world
+origin and shoots the ground. A point at a plausible engagement range on the same
+ray is the answer that keeps the mount pointing where the reticle is.
+
+The own-body exclusion is doc 07 §3's, and it is what lets a player aim across
+their own hull instead of having the reticle snap to their own armour.
+
+### 13.9 Invariants
+
+1. The camera reads `VisualRoot`, at `_process` priority `2000`, after the
+   interpolator.
+2. The camera never derives roll from the hull, and derives yaw only from the
+   hull's horizontal projection.
+3. The camera is never a `CollisionObject3D` and is never parented to one.
+4. Ground avoidance queries ground and Static Volumes only.
+5. The aim point is produced here and nowhere else.
+6. Every rate is a hertz applied exponentially, never a per-frame alpha.
+
+---
+
+## 14. The Match HUD
+
+### 14.1 The polling rule, restated for a match
+
+§11 rule 2 says the interface never polls the Assembly, and in the garage that is
+straightforward: the build changes only when the player edits it, so every value
+has a structural event behind it. A match has no such luxury. Speed, throttle,
+and whether a mount is on target change every tick by construction, and there is
+no event that means "the vehicle is now going 14.2 m/s".
+
+The rule is therefore restated rather than relaxed:
+
+> **Continuous quantities arrive as one `HudFrame` pushed by the match screen
+> once per tick. Discrete quantities arrive as `EventBus` signals. The HUD never
+> holds a reference to an `AssemblyRuntime`, a `ChassisGraph`, or a
+> `PartInstanceState`, and never iterates parts.**
+
+The distinction is not stylistic. A HUD that walks the part array to total
+integrity is an O(parts) loop at 60 Hz that duplicates arithmetic
+`COMPONENT_HEALTH_DAMAGE.md` already owns, and it would be a second owner of a
+quantity — the failure mode `HANDOFF.md` §2.1 records nine times over. One
+producer fills one record; the HUD renders it.
+
+`HudFrame` is a `RefCounted` with no node references, for the same reason
+`AssemblyStats` is: it is a record that crosses a boundary, and a record that can
+reach back into the tree stops being a record.
+
+| Field | Source |
+|---|---|
+| `speed_mps` | `body.linear_velocity.length()` |
+| `throttle`, `steer`, `brake` | the `ControlInput` the player's `ControlSystem` wrote this tick |
+| `integrity_fraction` | running total maintained from `part_damaged` and `part_destroyed`, divided by the total captured at spawn |
+| `power_draw_pu`, `power_capacity_pu` | `PowerSystem`, on structural change only |
+| `rounds_remaining` | `AmmoLedger`, which is already a flat store |
+| `reticle_state` | §14.3 |
+| `parts_alive`, `parts_total` | maintained from the same two damage signals |
+
+### 14.2 Layout
+
+The match HUD is a `CanvasLayer` and shares the §8 theme and the §8.3 colour
+tokens. It does **not** share the §3 breakpoint tiers: a HUD has no docks to
+collapse, and the tier system exists to decide what to hide when a catalogue will
+not fit. What it shares instead is `UiScale` — `content_scale_factor` scales the
+HUD exactly as it scales the garage, so one preference governs both.
+
+```
+MatchHud                        (CanvasLayer, layer = 5)
+├── Reticle                     (Control, centred, MOUSE_FILTER_IGNORE)
+├── SafeAreaFrame               (MarginContainer)
+│   └── HudRows                 (VBoxContainer)
+│       ├── TopRow              (HBoxContainer)
+│       │   └── EventFeed       (VBoxContainer, right-aligned)
+│       ├── Spacer              (Control, EXPAND)
+│       └── BottomRow           (HBoxContainer)
+│           ├── StatusPanel     (PanelContainer)
+│           │   └── Meters      (VBoxContainer of MeterRow)
+│           ├── Spacer          (Control, EXPAND)
+│           └── SpeedPanel      (PanelContainer)
+└── DamageFlash                 (ColorRect, MOUSE_FILTER_IGNORE)
+```
+
+Every node is a standard container and §4.1's size-flag discipline applies
+unchanged.
+
+### 14.3 The reticle
+
+The reticle is the one piece of the interface a player looks at continuously, and
+it carries five states. Colour is never the only carrier (§10 rule 5) — each
+state has a distinct shape as well.
+
+| State | Condition | Token | Shape |
+|---|---|---|---|
+| `NO_EFFECTOR` | the Assembly carries no Effector Module | `text_muted` | a dot |
+| `SEEKING` | a mount exists; its solution is outside its arc, or it has not converged | `text_primary` | open brackets, wide |
+| `TRACKING` | converging, `solution_in_arc` true, not yet `on_target` | `warn` | brackets, drawn in |
+| `ON_TARGET` | `on_target` on at least one mount in the active group | `accent_secondary` | brackets closed, with a centre dot |
+| `NO_AMMO` | on target, store empty | `danger` | brackets with a diagonal bar |
+
+`SEEKING` and `TRACKING` are separated because doc 07 §4.3.1's `solution_in_arc`
+distinguishes them and a player needs that distinction: a mount that cannot
+physically reach the target is a *driving* problem — turn the hull — and a mount
+that is still slewing is a *waiting* problem. One reticle state for both would
+tell the player to do nothing in the case where they must do something.
+
+`ON_TARGET` is `accent_secondary`, the same green §8.3 gives valid placement, and
+that reuse is deliberate: in the garage it means "this will work", and it means
+the same thing here.
+
+### 14.4 Damage feedback
+
+Two mechanisms, both driven by signals rather than by a frame field.
+
+- **`DamageFlash`** is a full-screen `ColorRect` in `danger` at low alpha,
+  raised on `part_damaged` for the local Assembly and decayed at
+  `FLASH_DECAY_HZ = 4.5`. Alpha is `FLASH_ALPHA_PER_PACKET = 0.06` per packet,
+  clamped to `FLASH_ALPHA_MAX = 0.34` — a spall burst is several packets in one
+  tick (`HANDOFF.md` §7) and without the clamp a single hit would white out the
+  screen.
+- **The event feed** takes `part_destroyed`, `part_band_changed` into
+  `CRITICAL` or `DESTROYED`, and `assembly_terminated`, and prints one localised
+  line each with a `TOAST_DURATION_S` dwell borrowed from §9.2.
+
+**What is deliberately not built here is the directional damage indicator.**
+`src/ui/hud/damage_indicator.gd` is named in CLAUDE.md §2 and is not specified in
+this section, because it cannot be: `EventBus.part_damaged` carries
+`(assembly_id, slot, amount, channel)` and no position, so there is nothing to
+point an arrow along. The honest options are to add an impact position to the
+signal — a change doc 04 §8 owns — or to have the indicator subscribe to
+something that does carry one. Neither is decided, and a directional indicator
+that guessed would be worse than none.
+
+### 14.5 Invariants
+
+1. The HUD holds no reference to an `AssemblyRuntime` or to any part state.
+2. Continuous values arrive as a pushed frame; discrete values arrive as signals.
+3. The HUD uses the §8 theme and §8.3 tokens, and never a literal colour.
+4. Every reticle state is distinguishable without colour.
+5. All strings are `tr()` keys.
+
+---
+
+## 15. Boot and Screen Flow
+
+### 15.1 The main scene
+
+`scenes/boot/main.tscn` is the project's `run/main_scene`. Its only job is to
+decide what to show and to instantiate it; it holds no gameplay state and
+survives no transition.
+
+```
+Main                            (Node, src/ui/boot/main_boot.gd)
+```
+
+On `_ready` it reads the command line and the build's feature tags:
+
+| Condition | Loads |
+|---|---|
+| `OS.has_feature("dedicated_server")` or `--headless` | `scenes/net/dedicated_server.tscn` |
+| default | `scenes/match/arena_basin.tscn` |
+
+A boot node rather than setting the arena as the main scene directly is what
+keeps a headless server from constructing a camera, a HUD, and a viewport it has
+no use for. `SubsystemGate` disables the *tags*; the boot branch is what stops
+the nodes being built at all, which is the distinction doc 12 §9.2 draws between
+gating a subsystem and never instantiating it.
+
+### 15.2 Why the arena is a scene and not a fixture
+
+`tests/combat_arena.gd` builds a whole engagement and has been the reference for
+the wiring since session 14. It is not the match scene and must not become one:
+it is a `RefCounted` that drives the loop with `await physics_frame`, spawns
+nothing a player can see, and carries a test pilot in place of `src/ai/`.
+
+The match scene shares its *wiring* — the system set, the construction order, the
+per-Assembly registration — and replaces its *driver*. Where the arena calls
+`command()` on every combatant, the match scene has one Assembly with a
+`ControlSystem` on it and the rest still on the arena's pilot until `src/ai/`
+exists. Where the arena counts ticks to a verdict, the match scene draws.
+
+Keeping both is the point. The fixture asserts; the scene is played.
+
+### 15.3 The match screen
+
+`MatchScreen` (`src/ui/match/match_screen.gd`) owns the composition and nothing
+else. It constructs the shared systems in doc 12's order, spawns the Assemblies,
+attaches the camera to the local one, fills the `HudFrame` once per tick from
+`MatchClock.tick_started`, and tears everything down on exit.
+
+It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and
+that is precisely why §14.1's rule can be enforced everywhere else: there is one
+place where the two worlds meet, and it is a class whose entire job is to be that
+place.

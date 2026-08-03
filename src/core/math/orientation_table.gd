@@ -139,6 +139,29 @@ static func inverse_of(index: int) -> int:
 	return _inverse_index[index]
 
 
+## The upright member of the group whose local [constant Vector3.FORWARD] points
+## along [param face], or [constant IDENTITY_INDEX] when [param face] is not an
+## axis the group can reach while staying upright.
+##
+## "Upright" is the second condition and it is what makes the answer unique:
+## four of the twenty-four rotations carry forward onto any given horizontal
+## axis, and they differ by roll. A Motive Assembly placed with one of the other
+## three is a contact rolled onto its side, which is legal in the lattice and
+## wrong on the road.
+##
+## Lives here rather than in a caller because it is a property of the orientation
+## group, and it had two would-be owners: the arena fixture wrote it in session
+## 14 and the match scene needed the same answer.
+static func upright_facing(face: Vector3) -> int:
+	for i: int in COUNT:
+		var b := basis_for(i)
+		if not (b * Vector3.FORWARD).is_equal_approx(face):
+			continue
+		if (b * Vector3.UP).is_equal_approx(Vector3.UP):
+			return i
+	return IDENTITY_INDEX
+
+
 ## Recovers the orientation index of an integral basis, or -1 when the basis is
 ## not a member of the group. Used by blueprint import and by the tools that
 ## bake authored transforms down to an index.

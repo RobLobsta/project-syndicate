@@ -33,7 +33,7 @@ ID = os.path.join(ROOT, "src/assembly/graph/island_detacher.gd")
 
 MP = os.path.join(ROOT, "src/core/data/melee_profile.gd")
 
-BASELINE = 4486  # tools/ci/run_all_checks.sh at the commit this landed
+BASELINE = 4674  # tools/ci/run_all_checks.sh at the commit this landed
 
 FAULTS = [
     # --- DamageResolver, §4 -------------------------------------------

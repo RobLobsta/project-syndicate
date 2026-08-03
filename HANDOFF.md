@@ -4,7 +4,10 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 19 (full codebase audit and test suite verification, confirming 4486 checks passing and 0 failures).
+Last updated: session 20 — **the game renders**. A match camera, a match HUD, and
+the stage-PROXY visual chain that doc 13 specified and nobody had implemented.
+`run/main_scene` is set; a person can launch the project, see an Assembly, drive
+it, aim, and shoot. 64 files, 4674 checks, 0 failures.
 
 | § | What is in it |
 |---|---|
@@ -18,7 +21,9 @@ Last updated: session 19 (full codebase audit and test suite verification, confi
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §4.26 for how the melee sweep was landed, §8 for the suggested next steps (especially the match scene), and §9 for how to write a test here.
+**If you read three things:** §4.27 for what the first playable build showed,
+§3.51 for why a tick count in a multi-Assembly physics test measures the
+*suite* rather than the fight, and §8 for the next steps.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -56,7 +61,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**61 files, 4486 checks, 0 failures.**
+**64 files, 4674 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -203,6 +208,9 @@ restarted every tick |
 | `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
 | `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel** |
 | `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
+| `test_part_visuals` | *(session 20; no sweep run against it yet — see below)* doc 13 §2.1's collider mirroring by extent, §9's spawn, I-1 over a **populated** `VisualRoot`, the mesh cache's sharing, and the `part_visual` tag suppressing every mesh while touching no collider |
+| `test_chase_camera` | *(session 20; not yet swept)* doc 11 §13.4's heading rule including the degenerate hold, §13.5's frame-rate-independent lag, and the short-arc heading delta |
+| `test_reticle_states` | *(session 20; not yet swept)* doc 11 §14.3's five states, their tokens by value, and §10 rule 5's shape distinction |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
@@ -219,7 +227,7 @@ ran — plus session 18's 7 over doc 07 §15, for **45**. Both name what each fa
 is defending. **The survivals are worth more than the catches and are recorded
 first.**
 
-`combat_layer_sweep.py`'s baseline is **4486**. Update it in the same change as
+`combat_layer_sweep.py`'s baseline is **4674**. Update it in the same change as
 anything that moves the check count, or every fault after it reads as caught.
 
 Session 15 planted six faults over the paths the new engagement files rest on;
@@ -906,6 +914,62 @@ All verified against 4.7.1 in this repo, not recalled.
     because the leaking file passes. And **the wrapper is what caught it**
     (§3.34): the leak prints an engine error and records no failure, so the
     `.gd` runner alone would have reported a green partial and moved on.
+
+54. **A tick count in a multi-Assembly physics test measures the *suite*, not
+    the fight.** Session 20's largest finding and the one most likely to waste
+    somebody's afternoon, because it presents as a combat regression caused by a
+    change that cannot possibly have caused one.
+
+    Adding `tests/integration/test_part_visuals.gd` — which spawns eight
+    two-part Assemblies, asserts things about their meshes, and frees them all
+    before any physics test starts — took `test_team_engagement`'s twenty-a-side
+    brawl from running out its 1200-tick window to finishing in **316**.
+    Reproducibly: three runs in a row, same number. Then reproduced again from a
+    **control file that did nothing but spawn those eight Assemblies and free
+    them**, with no meshes, no `SubsystemGate` toggle, and no debris body.
+
+    It is not a leak. It was bisected against a clean worktree at the previous
+    commit, group by group — the orientation refactor, `project.godot`, the
+    runtime's visual spawn, `src/ui/`, and finally the test file — and every
+    group but the last left the brawl passing. The mechanism is JULES.md §6.6's,
+    applied one level further out than anyone had applied it: once twenty rigid
+    bodies share a space, the solver's float ordering depends on the allocation
+    history of the **whole process**, so any earlier file that creates and
+    destroys bodies shifts the outcome of a later engagement.
+
+    **So a tick count is not a property of the engagement.** `e.ticks >
+    ENGAGE_TICKS / 2` was not measuring the fight; it was measuring what the
+    suite happened to allocate before it. Re-asserting the new number would have
+    moved the fragility to whoever added the next file. The bound is now
+    `BRAWL_MIN_TICKS`, twice the documented 91-tick pre-bound figure, with the
+    whole story in a comment at the constant.
+
+    The general rule, and it applies to every file in `tests/physics/` that
+    fights more than one Assembly: **assert directions, ranges, and orderings.
+    Never a count, a duration, or an exact value.** §9's conventions already said
+    this; what was missing was the knowledge that "an unrelated file was added"
+    is one of the things that moves the number.
+
+55. **Godot's Movie Maker mode is how you look at this game from a headless
+    box.** `xvfb-run -a -s "-screen 0 1600x900x24" tools/ci/godot.sh --path .
+    --rendering-driver opengl3 --resolution 1600x900 --write-movie <dir>/f.png
+    --quit-after 240` renders a numbered PNG per frame through Mesa's llvmpipe
+    and exits on its own. It is slow — about 7% of real time, so 240 frames cost
+    a minute — and it is the only way anybody has actually *seen* this project.
+
+    Two details. `--write-movie` with a `.png` extension writes a sequence
+    rather than needing ffmpeg, and the frames are the engine's own, so what you
+    read is what a player would see. And Movie Maker pins the frame rate, so a
+    capture is deterministic in a way an interactive session is not — which
+    makes it usable for a before/after on a camera or a HUD change.
+
+56. **`PhysicsDirectSpaceState3D.cast_motion` answers `[1, 1]` for a clear path
+    and `[0, 0]` when the shape starts already overlapping.** Both are ordinary
+    answers and neither is an error, so a caller that treats "safe fraction 0" as
+    a failure will behave differently from one that treats it as "you are inside
+    something". The chase camera treats it as the latter and clamps to a minimum
+    distance, because the alternative is `look_at` with a zero-length direction,
+    which is an engine error every frame rather than a bad picture.
 
 ---
 
@@ -1635,10 +1699,112 @@ else here would see.
 
 **And one rule has four owners, which is why it cannot be tested.** See §5.
 
+### 4.27 Built — the game renders, and what the first frame showed
+
+Session 20 closed §8 item 12, which had been top of §6.5 for five sessions. The
+short version: **`run/main_scene` is set, and a person can launch the project,
+see an Assembly on ground under a sky, drive it, aim it, and fire it.**
+
+Three things had to exist and only one of them was the camera.
+
+**The visual chain was specified and unimplemented.** `AssemblyRuntime` created
+`VisualRoot` and left it empty, and nothing in the repository had ever put a mesh
+in the world. Doc 13 §2.1 publishes `ProxyMeshBuilder` and §9 publishes
+`AssemblyRuntime.spawn_visual` in full; both were written out and neither was
+built. `ProxyPrimitiveDef.build_mesh()` existed with **no caller anywhere** —
+dead code of exactly the kind JULES.md §2.3 item 3 says to look for.
+
+The useful consequence is one nobody had to design.
+`tests/integration/test_part_registry_data.gd` already asserts that every shipped
+part leaves `proxy_primitives` empty, so §2.1's collider-mirroring fallback is
+the branch that actually runs for the whole shipped set: **the greybox a player
+sees is the collider a round hits, exactly.** That is now asserted by extent in
+`test_part_visuals.gd` rather than assumed, and it is worth keeping — the first
+`STAGE_FINAL` part will break it deliberately, under §7's measured bound.
+
+**The camera had no owning document.** Nothing in `/docs/` specified it; doc 05
+owns the Assembly's motion and doc 11 was titled for the garage. It went into
+doc 11 as §13 to §15, with CLAUDE.md §1/§1.1/§2 updated in the same change,
+because doc 11 already owned everything the camera consumes — the `cam_*` input
+map, `InputMethod`, the theme, the colour tokens — and doc 07 §3 already
+required a "camera ray cast against the world" without saying whose job it was.
+
+Two things fell out of writing it down that were not obvious beforehand:
+
+- **The camera must read `VisualRoot` and not `ChassisBody`.** Doc 05 §10.1 pins
+  `physics_jitter_fix` at zero, so the body's transform steps 60 times a second
+  and the interpolator smooths `VisualRoot` per render frame. A camera on the
+  body samples the unsmoothed value — invisible at 60 Hz, and above it the hull
+  is drawn smoothly while the world shudders around it. That is the *inverse* of
+  the artefact the interpolator exists to remove and is much harder to diagnose,
+  because the vehicle looks perfect and everything else looks broken.
+- **The input map could not express a camera.** §7.1 has asserted since it was
+  written that "the match camera is the same stick", and the action set contained
+  nothing that could say so: `cam_orbit` is one action and yields one strength,
+  not a direction. Four analogue `cam_look_*` actions were added to §7.1,
+  CLAUDE.md §7.2, `project.godot` and `test_input_actions.gd` together.
+
+**The HUD needed §11 rule 2 restated rather than relaxed.** "Never poll the
+Assembly" is easy in a garage, where every value has a structural event behind
+it, and impossible in a match, where speed and on-target change every tick with
+no signal behind them. §14.1's rule is that continuous quantities arrive as one
+`HudFrame` pushed by `MatchScreen` per tick and discrete ones arrive as
+`EventBus` signals, and that the HUD holds no `AssemblyRuntime` and iterates no
+parts. That keeps doc 08 the only owner of what integrity means.
+
+#### What the first frames actually showed
+
+Captured with §3.55's Movie Maker route. Two real defects were visible in the
+first image and are fixed:
+
+- **`POWER 0 / 0`.** The fields were declared on `HudFrame` and never written.
+  Nothing failed; the meter simply told the player nothing, which is the failure
+  mode a HUD has instead of a crash.
+- **`PARTS 600 12/12`.** The ammunition count had been crammed into the parts
+  row, where it reads as six hundred parts. Split into its own row, and the
+  row-building was factored so the next one cannot drift the same way.
+
+Driving was verified end to end rather than assumed: throttle took the shipped
+wheeled build from rest to **4.45 m/s** and a held right-steer curved it through
+about a quarter-circle, with the camera following the heading through the turn
+and the reticle correctly dropping to `SEEKING` while the mount slewed.
 
 ---
 
 ## 5. Deliberate readings, and the redundancies
+
+**The camera went into doc 11 rather than into a fourteenth document.** It had
+no owner at all, and the two candidates each had a real claim: it is a `Node3D`
+following a rigid body, which sounds like doc 05, and it decides what the player
+sees, which sounds like doc 11. It went to doc 11 because of what it *consumes*
+— the `cam_*` half of §7.1's input map, `InputMethod`, the theme, and §14's
+reticle geometry — and because doc 07 §3 already required "a camera ray cast
+against the world" without saying whose job it was. Every one of those is doc
+11's. None is doc 05's, which keeps the Assembly's motion while doc 11 now keeps
+the observer.
+
+A fourteenth document was rejected deliberately. CLAUDE.md is built around
+thirteen and names them in three separate tables; a fourteenth is a change to the
+project's shape, and "the camera" is not a subsystem of that size. Doc 11's title
+line was widened instead.
+
+**`spawn_visual` reads `visual_profile` and `attach_part` reads
+`collider_profile`, and they share no line.** That is Invariant I-1's whole
+content stated as code structure rather than as a prohibition: the two functions
+can be read side by side and there is no point at which one influences the other.
+It would have been shorter to build both from one loop over one primitive list —
+and doc 13 §2.1 keeps `ProxyPrimitiveDef` and `ColliderPrimitiveDef` as separate
+types precisely so that an art edit can never move a hitbox. Merging the builders
+would put back exactly the coupling the type split exists to prevent.
+
+**A destroyed part's mesh is hidden, and that is presentation following the
+simulation rather than decorating it.** Every shipped part's greybox *is* its
+collider (doc 13 §2.1's mirroring), so a mesh left behind by a disabled shape is
+geometry a player can see and cannot hit — which reads as a round passing through
+armour rather than as a part being gone. `release_part`, `restore_part` and
+`detach_colliders_to` therefore all move the visual with the shapes. It is also
+the wrong long-term answer for a *player*, who should see a wreck; that is doc 08
+§9's `VisualDamageController` and is recorded in §6.5.
 
 **Presentation is not on `BuildContext`.** Meshes are driven by
 `EventBus.part_attached` (I-4). The **build proxies** are the exception and are
@@ -1921,7 +2087,7 @@ build one.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
-| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37, session 17's 1, session 18's 7 over §15 — §2.0. The two `PATCH-MISS` entries are re-targeted and caught; one standing survivor remains by design (§8 item 14). Baseline **4486** |
+| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37, session 17's 1, session 18's 7 over §15 — §2.0. The two `PATCH-MISS` entries are re-targeted and caught; one standing survivor remains by design (§8 item 14). Baseline **4674** |
 | `tools/ci/sweeps/engagement_sweep.py` | Session 15's six plus session 16's, over every fix — §2.0 |
 | `JULES.md` | Read-only review charter for a second agent; grants no authority |
 
@@ -1951,8 +2117,17 @@ build one.
 - `src/combat/effectors/` — `MeleeSolver`, `MeleeStrikeState`, **`HardpointState`,
   `AimSolver`, `AmmoLedger`, `EffectorSystem` (new)**.
 - `src/combat/projectiles/` — **`ProjectileRegistry`, `ProjectileSystem` (new)**.
+- `src/core/util/` — **`ProxyMeshBuilder`, `ProxyMeshCache`, `GreyboxMaterial`
+  (new)**: doc 13 §2.1's greybox chain, which had been specified and never built.
+- `src/ui/boot/` — **`MainBoot` (new)**. Branches to the match scene or to doc
+  12's server scene, and says so honestly when the latter does not exist.
+- `src/ui/match/` — **`MatchScreen`, `ChaseCamera`, `HudFrame` (new)**. Doc 11
+  §13 and §15.
+- `src/ui/hud/` — **`MatchHud`, `Reticle` (new)**. Doc 11 §14.
+- `src/ui/common/` — **`UiTokens`, `MeterRow` (new)**. Doc 11 §6.1 and §8.3.
 - `src/autoload/` — all eight singletons, complete, in the §4 order.
-- `project.godot` — autoloads, physics/display settings, all 37 input actions.
+- `project.godot` — autoloads, physics/display settings, **41** input actions,
+  `run/main_scene`, the project-wide theme, and the translation list.
 
 Session 15 changed no `src/` file and recorded everything it found. **Session 16
 changed six, and amended four documents to match** — every change traceable to a
@@ -2164,7 +2339,20 @@ families, plus the nose-mount recoil measurement),
 and **`test_team_engagement`** (five-a-side combined arms and ten wheeled builds
 a side).
 
+New in session 20: **`test_part_visuals.gd`** (integration — doc 13 §2.1 and §9,
+and Invariant I-1 asserted from the presentation side, which was a vacuous check
+until meshes existed), **`test_chase_camera.gd`** and **`test_reticle_states.gd`**
+(unit — doc 11 §13.4 to §13.6 and §14.3).
+
 `tests/generation/` is still empty.
+
+### Scenes and UI data
+| Path | Purpose |
+|---|---|
+| `scenes/boot/main.tscn` | `run/main_scene`; branches headless vs playable |
+| `scenes/match/arena_basin.tscn` | The playable match — a `MatchScreen` |
+| `data/ui/syndicate_theme.tres` | Doc 11 §8's single theme. **Generated** by `tools/author_ui_theme.gd`; edit the generator, never the `.tres` |
+| `data/ui/strings.csv` | The first localisation file in the project. Godot imports it to `strings.en.translation`, which `project.godot` registers |
 
 ---
 
@@ -2173,61 +2361,76 @@ a side).
 Recorded every session from now on, because a green suite says nothing about
 whether the thing is any good to play.
 
-**Can a person play it? No.** There is still no scene, no camera, no main scene
-set, and no way to start the game and press a key. Everything below is reachable
-only from `tests/`. This is unchanged since session 1 and it is the single
-largest gap in the project: thirteen documents of architecture, 4486 passing
-checks, and nothing a person can look at. **§8 item 12 is the answer and it
-should stop being deferred.**
+**Can a person play it? Yes — for the first time.** `godot --path .` opens on a
+match: a wheeled Assembly on a ground slab under a sky, three more standing off
+at 34 to 46 m, a chase camera behind you, and a HUD reading integrity, power,
+ammunition and part count. `W` drives it, the mouse aims it, the left button
+fires the autocannon, `C` switches the camera between chase and orbit, `Escape`
+releases the mouse. Verified by capture rather than by assertion (§3.55): the
+build accelerates to 4.45 m/s and turns.
 
-Session 18 closed last session's item 4 — the beam edge cuts now. It did not
-close item 1, and item 1 has now been top of this list for four sessions while
-the combat layer underneath it got steadily better. That ratio is the finding.
+**That closes the item that had led this list for five sessions.** What follows
+is the honest state of the thing that now exists, which is a different and
+better class of bad news than "there is nothing to look at".
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **A match scene with a camera.** Item 12. Everything else on this list is
-   invisible without it, and it has been true for long enough that it should now
-   outrank finishing anything else.
-2. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
-   §4.14). A player bolting the shipped autocannon to the shipped chassis and
-   pulling the trigger gets a vehicle on its roof. The nose mount hides it; a
-   player who mounts it on the roof, which is the obvious place, meets it
-   immediately. **This is a balance decision nobody has made and a player will
-   meet it in their first minute.**
-3. **A walking build turns 170 degrees in five seconds while commanded straight
-   ahead** (§4.21). Unplayable as a family; the arena's tactics work around it by
-   planting the Assembly before it shoots, which a player cannot do.
-4. **The edge cuts, and nothing has ever fought with one** (§4.26, §8 item 12d).
-   This is the honest bad news from this session's own work. §15.3 lands, the
-   damage is right, the impulse is right, the arm degrades the blade it holds —
-   and all of that is demonstrated by a single fixture in which the attacker is
-   frozen and the target is parked in front of it. **No `CombatArena` recipe
-   carries an arm**, so no engagement in the suite has ever been fought at
-   contact range, and every question a player would actually ask about melee is
-   unanswered: can a wheeled build close on a shooting one without dying on the
-   way in; does 640 damage a swing at one swing a second beat 120 a round at
-   seven; does an edge that shoves its target 7 m/s away ever get a second swing.
-   The weapon works and the *fight* is unproven, which is a smaller gap than
-   last session's but is a more embarrassing one to leave.
-5. **Nothing renders a wheel at its contact point** (§7). The first thing anybody
-   will notice about a moving vehicle is that its wheels are not where the
-   suspension put them.
+1. **Nothing shoots back, and nothing tells you that.** The three opponents are
+   inert: they have Effector Modules and no ammunition, no driver, and no
+   tactics, because `src/ai/` is unwritten and `CombatArena`'s test pilot lives
+   in `tests/` where it belongs. So the first thing a player does is destroy
+   three parked vehicles that never react. It is a gunnery range presented as a
+   match, and the gap between those two is now the largest one in the project.
+   §8 item 13 — and `CombatArena.command`, `_drive` and `_fly` are the shape to
+   promote.
+2. **There is no way to learn the controls.** No key prompts, no pause menu, no
+   settings screen. A player who does not read `docs/RESPONSIVE_GARAGE_UI.md`
+   §7.1 has to guess, and `C` for the camera toggle is not guessable. The
+   cheapest real fix is a dismissible control card on the first match.
+3. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
+   firing solution on wherever the aim ray landed, which is correct and is *not*
+   what a player reads: green reads as "enemy acquired". Every state below it is
+   honest, so the fix is a target indicator rather than a reticle change — the
+   aim ray already knows whether it hit `LAYER_ASSEMBLY_HULL`, and that
+   distinction is one field on `HudFrame`.
+4. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
+   §4.14). Unchanged and now reachable: a player bolting the shipped autocannon
+   to the shipped chassis and pulling the trigger gets a vehicle on its roof. The
+   match scene's nose mount hides it exactly as `CombatArena`'s does. **This is a
+   balance decision nobody has made and a player will meet it in their first
+   minute of the garage that does not exist yet.**
+5. **Nothing renders a wheel at its contact point** (§7). Now visible rather than
+   theoretical: the greybox contacts are drawn where the part was placed, not
+   where the suspension put them, so a vehicle crossing anything but flat ground
+   will have its wheels in the wrong place. Doc 05 does not cover this and should.
+6. **A walking build turns 170 degrees in five seconds while commanded straight
+   ahead** (§4.21). Unchanged, and a player cannot reach it yet because the match
+   scene spawns wheeled builds only.
+7. **The edge cuts and nothing has ever fought with one** (§4.26, §8 item 12d).
+   Unchanged from session 18 and now one place further down the list only because
+   items 1 to 3 are things a player meets in the first ten seconds.
 
-Nothing shipped is *unfair* in a way a player would notice, because nothing is
-shippable yet. The honest summary is unchanged from last session and has to be
-repeated because acting on it keeps being deferred: **this is a simulation with
-no game attached to it.** Session 18 made the simulation better again.
+Two smaller things a player would notice before a developer would. The vehicle
+is **small in frame** — about a sixth of the screen height at the default 68°
+field of view and 11 m follow distance — which is defensible for situational
+awareness and is worth an A/B against a tighter framing once there is something
+to be aware of. And **a destroyed part simply vanishes**, because
+`VisualDamageController` (doc 08 §9) is unwritten and `release_part` hides the
+mesh; that is the right behaviour for the "what you see is what you hit"
+guarantee and the wrong behaviour for a player, who should see a wreck.
+
+The honest summary has changed for the first time in twenty sessions. It is no
+longer "a simulation with no game attached to it" — it is **a game with no
+opponent in it**. That is progress, and item 1 is what makes it a fight.
 
 ---
 
 ## 7. Known gaps — deliberate, not oversights
 
 ### The motion layer
-- **Nothing drives an Assembly except a test.** `ControlSystem` produces the
-  intent and every family consumes it, but no scene constructs one, so the whole
-  chain from a key to a wheel exists and has never been run by a person. That is
-  §8's item 12, not a defect.
+- ~~**Nothing drives an Assembly except a test.**~~ Closed — session 20.
+  `MatchScreen` constructs a `ControlSystem` on the local Assembly and the chain
+  from a key to a contact has been run by a person and measured (§4.27).
 - **There is no autopilot, and a rotary Assembly needs one to exist in a test.**
   `CombatArena._fly` is three loops through `ControlInput` — collective on
   altitude, cyclic on horizontal velocity, pedal on heading — and it is the only
@@ -2262,11 +2465,12 @@ no game attached to it.** Session 18 made the simulation better again.
   per contact per tick rather than on mass recompute. Neither is wrong
   numerically — `retune` is pure and its inputs are constant between structural
   events — but §6.4 says "fires on mass recompute only" and the code does not.
-- **The visual wheel does not follow the contact.** Nothing renders a Motive
-  Assembly at its probe hit point, so a lightly loaded Assembly will draw its
-  wheels wherever the part was placed, and a walker's legs will not bend at all.
-  Doc 05 does not cover this and should — it is the one part of the motion layer
-  with no owner.
+- **The visual wheel does not follow the contact**, and as of session 20 this is
+  *visible* rather than theoretical. `spawn_visual` draws a Motive Assembly at
+  the cell it was placed in, not at its probe hit point, so suspension travel is
+  invisible and a limb does not bend. Doc 05 does not cover this and should — it
+  is the one part of the motion layer with no owner. The hook now exists:
+  `AssemblyRuntime.visual_of(slot)` returns the node to move.
 - **A tracked pivot drifts a couple of metres** rather than turning about a
   point. The flanks counter-rotate correctly but their forces do not cancel
   exactly, because the two bogies sit at slightly different offsets. Whether that
@@ -2387,9 +2591,11 @@ no game attached to it.** Session 18 made the simulation better again.
   correct and is what `CombatArena` prints as "X is destroyed" with no "by".
 
 ### Testing and scenes
-- **No scenes, and no main scene set.** What a scene still gates is the camera
-  the debris visibility mechanism has never met, and anything a human is meant to
-  look at.
+- ~~**No scenes, and no main scene set.**~~ Closed — session 20. `scenes/boot/`
+  and `scenes/match/` exist and `run/main_scene` points at the first. **The
+  debris visibility mechanism has still never met a camera**: doc 04 §6.2 keeps a
+  retired wreck alive until every viewer looks away, `DebrisPool` implements it,
+  and now that a camera exists nothing has yet checked that the two meet.
 - **`tests/generation/` is empty.** The runner walks it and finds nothing.
 - **`test_constant_ownership` is not written.**
 - **CLAUDE.md §8's prohibited terms are enforced in `src/` and nowhere else, and
@@ -2404,8 +2610,11 @@ no game attached to it.** Session 18 made the simulation better again.
   both.
 - **`run_all_checks.gd` still tolerates a runtime error on its own.** The shell
   wrapper catches it (§3.34). Worth knowing before running the `.gd` directly.
-- **`cam_orbit`/`cam_pan` have keyboard/mouse bindings only**, and several
-  actions had no binding in doc 11 §7.1.
+- **`cam_orbit` and `cam_pan` have keyboard/mouse bindings only and no consumer.**
+  Session 20 added four analogue `cam_look_*` actions for the match camera rather
+  than overloading `cam_orbit`, which is a single action and cannot express two
+  axes (§4.27). `cam_orbit` and `cam_pan` are now waiting on the garage, which is
+  where doc 11 §7.1 always intended them.
 - **The suite is about 40 seconds and `tests/physics/` is most of it.** Three of
   the four multi-Assembly files soak for hundreds of ticks by construction, and
   the two that time out — the ambulatory mirror and the five-a-side — spend their
@@ -2425,6 +2634,15 @@ no game attached to it.** Session 18 made the simulation better again.
   the timeout. Those assertions are correct today and are *supposed* to break:
   when §4.13 or §4.15 is closed, both files fail, and the fix is to re-measure
   and re-assert rather than to loosen them.
+
+  **But re-measure with §3.54 in hand.** The brawl in that same file asserted its
+  tick count against half the window, and session 20 discovered that the number
+  moves when an unrelated integration file spawns and frees Assemblies — 1200
+  down to 316, reproducibly, with no change to the combat layer. A tick count in
+  a multi-Assembly file is a measurement of the suite. The brawl's bound is now a
+  floor on the reversal from 91 ticks rather than a description of the fight, and
+  the other two assertions of this shape should be read with the same suspicion
+  before anybody re-measures them.
 
 ---
 
@@ -2449,14 +2667,8 @@ no game attached to it.** Session 18 made the simulation better again.
    the spall fraction is a **balance change to all six engagements at once**, and
    doc 01 §10.5 and doc 08 §4.4 are where it has to be argued.
 
-0. **Full Codebase Audit and Test Run (Session 19).** Verified the test suite and documented findings, confirming 4486 tests passing and establishing "A match scene with a camera" as the highest priority next step.
-
-0. **Design Contribution: `DotScheduler` (Doc 08 §7.3).**
-   Currently, `DotScheduler` is missing from `src/combat/damage/`. This class is necessary to implement Damage-Over-Time (DOT) effects like thermal damage over time. Without it, DOTs don't burn over time.
-   - It should be implemented in `src/combat/damage/dot_scheduler.gd`.
-   - It should process a flat list of `DotEntry` items at 10 Hz (as per Doc 08 §7.3).
-   - It should `DamageResolver.apply(p)` to apply the damage from the entry's `build_packet(elapsed)`.
-   - Missing class: `DotEntry` must also be defined to hold the state of a DOT (e.g. `remaining_s`, `build_packet(elapsed)` method).
+0. ~~**Audit the codebase and verify the suite (session 19).**~~ — done. It named
+   the match scene as the highest-priority next step, and session 20 built it.
 
 0a. ~~**Decide what `on_target` means for a mount on its stop.**~~ — **done,
    session 16.** Doc 07 §4.3.1's `solution_in_arc` term; §4.19.
@@ -2495,14 +2707,40 @@ no game attached to it.** Session 18 made the simulation better again.
    measurement, and the change was reverted rather than rejected. It is a
    `balance-review` decision, not an engineering one.
 
-12. **The match scene.** Still the largest thing between this project and a
-    person playing it, and every other item is easier once it exists. The wiring
-    is written out in §6 in full, and `tests/combat_arena.gd` is now a working
-    reference for all of it — ground, registry, resolver, projectiles, ammunition,
-    per-Assembly motion and effectors, spawn and teardown. What a scene still
-    gates: a camera, the debris visibility mechanism that has never met one, the
-    visual wheel that does not follow its contact, and every feel question in §7
-    that a test cannot answer, §4.14's rearward push included.
+12. ~~**The match scene.**~~ — **done, session 20.** §4.27. `MatchScreen` builds
+    the system set in doc 12's order, spawns four Assemblies through the same
+    `PlacementValidator` chain everything else uses, attaches a `ChaseCamera` to
+    the local one and fills a `HudFrame` per tick. Doc 11 §13 to §15 is the
+    architecture; `scenes/boot/main.tscn` is `run/main_scene`.
+
+    **What it opened rather than closed** is the interesting half, and it is all
+    in §6.5: nothing shoots back (item 13 below), nothing tells a player what the
+    controls are, and the wheel still does not follow its contact — which was a
+    theoretical gap and is now something you can watch.
+
+13a. **Fight something.** The single highest-value item on this list and the one
+    §6.5 leads with. `MatchScreen` spawns three opponents with Effector Modules,
+    no ammunition and no driver, so the first playable build is a gunnery range.
+    This is item 13 approached from the player's side rather than the
+    architecture's, and the cheapest honest version is not a finished `AiDriver`:
+    it is enough of `CombatArena.command` and `_drive` promoted into `src/ai/` to
+    make three wheeled builds close, aim, and shoot back. Everything the tactics
+    need already exists and is measured; what is missing is the decision about
+    what belongs in `AiDriver` and what belongs in a stability-augmentation layer
+    doc 05 does not have (§5).
+
+13b. **Tell the player what the keys are.** No prompts, no pause, no settings.
+    `C` for the camera toggle is not guessable and `Escape` releasing the mouse
+    is not discoverable. A dismissible control card on the first match is an
+    afternoon and is worth more to a first-time player than anything else at this
+    size. Doc 11 §9's toast machinery is the obvious vehicle.
+
+13c. **Distinguish "on target" from "on an enemy".** §6.5 item 3. The reticle
+    goes `ACCENT_SECONDARY` whenever the mount has a firing solution on wherever
+    the aim ray landed, which is correct and reads as "enemy acquired". The aim
+    ray already knows whether it struck `LAYER_ASSEMBLY_HULL`; carrying that as
+    one more field on `HudFrame` and drawing a target bracket is the fix, and it
+    is a change to doc 11 §14.3's table rather than to the reticle's semantics.
 
 12a. **What a wreck does.** Doc 04 §8.2's `assembly_terminated` now has a
     producer — `DamageResolver`, when slot 0 is destroyed — and `CombatArena`
