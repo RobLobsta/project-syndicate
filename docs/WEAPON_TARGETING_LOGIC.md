@@ -980,33 +980,69 @@ which is what a ram is.
 
 ### 15.3 The Sweep
 
-While `SWINGING`, the edge's transform is interpolated across the arc and the
-volume between consecutive samples is queried:
+While `SWINGING`, the edge's transform is interpolated across the arc and a
+capsule spanning the whole reach is queried at each sample:
 
 ```gdscript
 const MELEE_MASK := CollisionLayers.MASK_PROJECTILE_TARGET
 
-func _sweep_segment(st: MeleeStrikeState, mp: MeleeProfile,
-                    from_x: Transform3D, to_x: Transform3D,
-                    space: PhysicsDirectSpaceState3D) -> void:
+## A capsule runs along its own +Y and `height` is its total extent including
+## the caps, so this quarter turn is what puts it on the blade's -Z.
+const EDGE_TO_CAPSULE := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3.ZERO)
+
+func _sweep_sample(st: MeleeStrikeState, mp: MeleeProfile,
+                   edge_x: Transform3D, travel: Vector3,
+                   space: PhysicsDirectSpaceState3D) -> void:
     var shape := CapsuleShape3D.new()
     shape.radius = mp.edge_radius_m
     shape.height = mp.reach_m
     var params := PhysicsShapeQueryParameters3D.new()
     params.shape = shape
-    params.transform = from_x
-    params.motion = to_x.origin - from_x.origin
+    params.transform = edge_x * EDGE_TO_CAPSULE
     params.collision_mask = MELEE_MASK
     params.exclude = [_own_body_rid]
     for hit in space.intersect_shape(params, mp.max_targets_per_swing):
-        _resolve_strike(st, mp, hit, to_x.origin - from_x.origin)
+        _resolve_strike(st, mp, hit, travel)
 ```
 
-`swing_samples` fixes the number of segments, so the query cost of a swing is
-constant and authored rather than a function of how fast the arc happens to be
-travelling. Six samples across a 150° arc is a 25° step, and at `edge_radius_m`
-of 0.18 m the swept capsules overlap at every radius the reach covers — there is
-no gap for a target to sit in.
+The shape is a capsule spanning hand to tip, and that is the whole of §15.1's
+argument made concrete: an edge is a **volume**, and any query that samples a
+point on the blade rather than the blade itself is a ray's mistake made thicker.
+`MeleeSolver.edge_transform` centres it at half the reach, so a capsule of
+`height = reach_m` covers the blade exactly once it is turned onto the blade
+axis.
+
+**The query does not sweep, and no Godot query does what this section used to
+ask for.** The earlier version of this block set
+`PhysicsShapeQueryParameters3D.motion` and tested the volume *between* two
+samples. Measured on 4.7.1: `intersect_shape` ignores `motion` entirely, and so
+does `collide_shape`. Only `cast_motion` honours it, and it answers with a pair
+of fractions along the motion rather than with the set of bodies a swing has to
+damage — so it cannot serve a query whose entire purpose is the target set. The
+arc is therefore covered by a sequence of **static** capsules, and closing the
+gaps between them is the sample count's job rather than a free property of the
+query.
+
+`swing_samples` fixes that count, so the cost of a swing is constant and
+authored rather than a function of how fast the arc happens to be travelling.
+Consecutive placements overlap out to the radius where the arc step is no wider
+than the capsule:
+
+    r_gapless = 2 · edge_radius_m · (swing_samples − 1) / radians(swing_arc_deg)
+
+For the shipped `eff.melee.beam_edge.t4` — 16 samples across 150°, a 10° step,
+`edge_radius_m` 0.18 m — that is **2.06 m of a 2.40 m blade**. The outer 0.34 m
+carries gaps rising to 60 mm at the tip, which is an order of magnitude below the
+smallest collider primitive any part in the game authors, so nothing can sit in
+one. Closing the last 0.34 m exactly would need 19 samples against Invariant
+I-12's ceiling of 16, and buying 60 mm of tip coverage with 20% more query cost
+on every swing is not a trade worth making.
+
+Raising the count is **not** a balance change, and that is `struck_this_swing`'s
+doing rather than a happy accident — see the paragraph below. It is a fidelity
+change, and it is the reason the authored default is 16 rather than the 6 this
+section originally specified alongside an overlap claim that was arithmetically
+false at any radius past 0.69 m.
 
 `struck_this_swing` is what makes the sample count invisible to balance: an
 Assembly already struck by this swing is skipped, so a six-sample swing and a

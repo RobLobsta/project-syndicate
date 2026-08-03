@@ -40,6 +40,16 @@ const HEAT_DISSIPATION_HU_S: float = 22.0
 ## a coincidence.
 const FIRING_GROUP_COUNT: int = 3
 
+## Rotation carrying a [CapsuleShape3D]'s own +Y axis onto the blade's -Z.
+##
+## A capsule in Godot runs along local Y and [member CapsuleShape3D.height] is
+## its total extent including the caps, so a capsule of height [member
+## MeleeProfile.reach_m] centred on [method MeleeSolver.edge_transform]'s origin
+## spans exactly hand to tip once it is turned onto the blade axis. Measured
+## rather than assumed; an unrotated capsule stands vertically through the
+## wielder's own hull.
+const EDGE_TO_CAPSULE := Transform3D(Basis(Vector3(1.0, 0.0, 0.0), PI * 0.5), Vector3.ZERO)
+
 ## Assembly these modules are bolted to. Set once, before entering the tree.
 var runtime: AssemblyRuntime = null
 ## Where emitted rounds go. Null on a client that only draws them.
@@ -81,6 +91,10 @@ var _jam_chance: PackedFloat32Array = PackedFloat32Array()
 ## replayed by the network layer and must not come from the global generator.
 ## Melee stage records, slot -> [MeleeStrikeState]. Only melee modules appear.
 var _strikes: Dictionary = {}
+## Slot -> the §15.3 capsule query, built once per melee module. The shape owns a
+## physics-server RID and the profile behind it is immutable (I-11), so building
+## one per sample per tick would churn the server for a constant.
+var _melee_queries: Dictionary = {}
 ## The Appendage slot holding each module, or INVALID_SLOT when it is bolted to
 ## structure. Resolved once at registration by walking the Chassis Graph upward:
 ## a part does not change parents while it is alive, and doing this per tick
@@ -194,6 +208,7 @@ func unregister(slot: int) -> void:
 		_slots.remove_at(index)
 	_hardpoints.erase(slot)
 	_strikes.erase(slot)
+	_melee_queries.erase(slot)
 	_projectile_id[slot] = -1
 	_holder_slot[slot] = SyndicateConstants.INVALID_SLOT
 	_holder_cycle_mult[slot] = 1.0
@@ -309,8 +324,13 @@ func can_fire(slot: int, def: PartDefinition) -> bool:
 	if not hp.timers_clear():
 		return false
 	var profile := def.effector_profile
-	if profile.is_melee():
-		return false
+	# No melee guard here, deliberately. §7.1's loop hands a melee module to
+	# [method _step_melee] and continues before it ever reaches this function, so
+	# a guard on this line is unreachable from the only caller there is — and the
+	# terminal [code]_projectile_id[slot] >= 0[/code] below refuses one anyway.
+	# Session 17 deleted the guard and no assertion in 56 files moved; §5 records
+	# it as the worst of this repository's duplicated invariants and said to
+	# resolve it alongside the §15 work rather than before it.
 	if profile.magazine_rounds > 0 and hp.rounds_in_magazine <= 0:
 		return false
 	if hp.heat_hu >= heat_ceiling(profile):
@@ -540,11 +560,23 @@ func _step_melee(
 ## §15.3's swept capsule, sampled across the arc, resolving one packet per
 ## Assembly per swing.
 ##
-## The sweep is a sequence of overlapping capsule queries rather than one long
-## shape, because an edge travelling through an arc sweeps a curved volume that
-## no single convex shape describes. §15.1 records why a projectile is the wrong
-## implementation: a ray between two positions passes between two adjacent parts
-## of a lattice-built Assembly and reports a clean miss where the edge cut both.
+## The shape is a capsule spanning the whole reach, not a ball at some point on
+## it: §15.1's argument against a projectile is that an edge is a volume and a
+## ray is not, and a sphere at the blade's midpoint is a ray's mistake made
+## thicker. The capsule is authored along its own +Y, so it is rotated a quarter
+## turn onto the blade's -Z (doc 07 §7.2's muzzle convention) before it is
+## placed.
+##
+## [b]The query does not sweep, and cannot.[/b] §15.3's code block sets
+## [member PhysicsShapeQueryParameters3D.motion] and expects the segment between
+## two samples to be tested; measured on 4.7.1, [method
+## PhysicsDirectSpaceState3D.intersect_shape] ignores that field entirely, as
+## does [method PhysicsDirectSpaceState3D.collide_shape] — only [method
+## PhysicsDirectSpaceState3D.cast_motion] honours it, and it answers with a pair
+## of fractions rather than with the set of bodies a swing has to damage. So the
+## arc is covered by a sequence of [i]static[/i] capsules, and the sample count
+## is what closes the gaps between them rather than a decoration on the cost.
+## §15.3 carries the arithmetic and the radius out to which it holds.
 func _sweep_edge(
 	hp: HardpointState,
 	st: PartInstanceState,
@@ -556,28 +588,60 @@ func _sweep_edge(
 	if space == null or resolver == null:
 		return
 
-	var capsule := SphereShape3D.new()
-	capsule.radius = melee.edge_radius_m
-
-	var params := PhysicsShapeQueryParameters3D.new()
-	params.shape = capsule
-	params.collision_mask = CollisionLayers.MASK_PROJECTILE_TARGET
-	params.exclude = [runtime.body.get_rid()]
-
+	var params := _melee_query(slot, melee)
 	var mount := _edge_mount_transform(st, def, hp)
 	var samples := MeleeSolver.sample_progress(melee)
+	var previous := MeleeSolver.edge_transform(melee, mount, samples[0])
 	for i: int in samples.size():
 		if state.already_struck(SyndicateConstants.INVALID_SLOT, melee.max_targets_per_swing):
 			return
 		var edge := MeleeSolver.edge_transform(melee, mount, samples[i])
-		params.transform = edge
+		# The edge's travel, which §15.4 delivers its impulse along and §15.1
+		# names as the reason a projectile is wrong: a blade swung across a
+		# target knocks it sideways, not backwards. The first sample has no
+		# predecessor, so it borrows the segment ahead of it.
+		var travel := edge.origin - previous.origin
+		if i == 0 and samples.size() > 1:
+			travel = MeleeSolver.edge_transform(melee, mount, samples[1]).origin - edge.origin
+		if travel.is_zero_approx():
+			# §15.2's ram: an arc of zero sweeps nothing, and resolves along the
+			# Assembly's own motion instead.
+			travel = runtime.body.linear_velocity
+		params.transform = edge * EDGE_TO_CAPSULE
 		for hit: Dictionary in space.intersect_shape(params, MeleeSolver.MAX_TARGETS_PER_SWING):
-			_resolve_melee_hit(hit, edge, slot, melee, state)
+			_resolve_melee_hit(hit, edge, travel, slot, melee, state)
+		previous = edge
+
+
+
+## The cached query for [param slot]'s edge.
+##
+## Both the shape and the parameter block are built once per module and reused,
+## because a [Shape3D] owns a physics-server RID and allocating one per sample
+## per tick churns the server for a profile that Invariant I-11 makes immutable.
+func _melee_query(slot: int, melee: MeleeProfile) -> PhysicsShapeQueryParameters3D:
+	var params: PhysicsShapeQueryParameters3D = _melee_queries.get(slot)
+	if params != null:
+		return params
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = melee.edge_radius_m
+	capsule.height = maxf(melee.reach_m, melee.edge_radius_m * 2.0)
+	params = PhysicsShapeQueryParameters3D.new()
+	params.shape = capsule
+	params.collision_mask = CollisionLayers.MASK_PROJECTILE_TARGET
+	params.exclude = [runtime.body.get_rid()]
+	_melee_queries[slot] = params
+	return params
 
 
 ## Turns one swept-capsule contact into a §15.4 damage packet.
 func _resolve_melee_hit(
-	hit: Dictionary, edge: Transform3D, slot: int, melee: MeleeProfile, state: MeleeStrikeState
+	hit: Dictionary,
+	edge: Transform3D,
+	travel: Vector3,
+	slot: int,
+	melee: MeleeProfile,
+	state: MeleeStrikeState
 ) -> void:
 	var body := instance_from_id(hit.get("collider_id", 0)) as ChassisBodyRef
 	if body == null:
@@ -590,13 +654,19 @@ func _resolve_melee_hit(
 	var target_slot := body.slot_for_shape_index(int(hit.get("shape", -1)))
 	if target_slot == SyndicateConstants.INVALID_SLOT:
 		return
+	# §15.4's gate. A ram authors a positive minimum and does nothing to a target
+	# it is not driving into; a powered edge authors zero and cuts from a
+	# standstill, which is why the shipped edge never sees this branch.
+	if not MeleeSolver.closing_speed_satisfied(melee, _closing_speed_on(victim)):
+		return
 
 	state.struck_this_swing.append(victim.assembly_id)
+	state.last_strike_point_world = edge.origin
 
 	# §15.4: an edge delivers its damage split across channels by the authored
 	# mix, which is what makes an energy edge a thermal weapon and a kinetic one
 	# a penetrator without either needing a separate code path.
-	var forward := -edge.basis.z
+	var direction := travel.normalized()
 	for channel: int in PartEnums.DAMAGE_CHANNEL_COUNT:
 		var share := melee.channel_mix[channel]
 		if share <= 0.0:
@@ -608,17 +678,37 @@ func _resolve_melee_hit(
 		packet.raw_amount = melee.strike_damage * share
 		packet.penetration = melee.strike_damage * share
 		packet.impact_point_world = edge.origin
-		packet.impact_normal_world = -forward
-		packet.incoming_direction = forward
+		packet.impact_normal_world = -direction
+		packet.incoming_direction = direction
 		packet.source_assembly_id = runtime.assembly_id
 		packet.source_slot = slot
 		packet.source_tick = MatchClock.tick
 		resolver.apply(packet)
 
-	# §15.5's reaction. An edge that stops dead in a hull pushes its own Assembly
+	# §15.4's impulse on the target, at the contact rather than at its centre, so
+	# a blade landing on a flank spins the Assembly as well as shifting it.
+	victim.body.apply_impulse(
+		MeleeSolver.strike_impulse(melee, travel),
+		edge.origin - victim.body.global_transform.origin
+	)
+	# §15.4's reaction. An edge that stops dead in a hull pushes its own Assembly
 	# back, which is what stops a melee build simply driving through its target.
-	runtime.body.apply_central_impulse(
-		-forward * melee.strike_impulse_ns * melee.reaction_ratio
+	runtime.body.apply_central_impulse(MeleeSolver.reaction_impulse(melee, travel))
+
+
+## Rate at which the gap between this Assembly and [param victim] is closing, in
+## metres per second, for §15.4's minimum-closing-speed gate.
+##
+## The relative velocity projected onto the line between the two bodies, which is
+## the quantity a ram is authored against: it is positive while the wielder is
+## driving in and negative while it is backing off, whatever either of them is
+## doing sideways.
+func _closing_speed_on(victim: AssemblyRuntime) -> float:
+	var separation := victim.body.global_transform.origin - runtime.body.global_transform.origin
+	if separation.is_zero_approx():
+		return 0.0
+	return (runtime.body.linear_velocity - victim.body.linear_velocity).dot(
+		separation.normalized()
 	)
 
 

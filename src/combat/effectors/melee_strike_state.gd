@@ -28,6 +28,16 @@ var swing_t: float = 0.0
 var struck_this_swing: PackedInt32Array = PackedInt32Array()
 ## True while a sustained edge is energised and drawing power.
 var energised: bool = false
+## Where the last strike of this swing landed, in world space — the edge's own
+## origin at the sample that connected, which is [member MeleeProfile.reach_m]
+## halved along the blade from the hand.
+##
+## Diagnostics, in the same sense and for the same reason as
+## [method ProjectileSystem.strikes_of]: it is the only observable that says at
+## [i]what angle through the arc[/i] a swing connected, and without it §15.4's
+## impulse direction can only be checked against a contact angle guessed from
+## outside. Written by the resolver, read by nothing that simulates.
+var last_strike_point_world: Vector3 = Vector3.ZERO
 
 
 ## True when the module may begin a new strike.

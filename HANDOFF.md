@@ -4,8 +4,9 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 17 (the combat-layer sweep session 14 left unfinished,
-then Appendages and held weapons).
+Last updated: session 18 (landing the melee sweep — the edge cuts, and the
+reason it did not is two engine facts and a fixture that measured the wrong
+point).
 
 | § | What is in it |
 |---|---|
@@ -19,9 +20,9 @@ then Appendages and held weapons).
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §2.0 for what the combat-layer sweep found and the
-two lessons it produced, §4.25 for the four rules that turned out to have no test
-at all, and §9 for how to write a test here.
+**If you read three things:** §4.26 for how the melee sweep was landed and the
+two things that had to be measured before it could be, §3 items 51 and 52 for
+those measurements, and §9 for how to write a test here.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -59,7 +60,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**61 files, 4476 checks, 0 failures.**
+**61 files, 4486 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -204,6 +205,7 @@ restarted every tick |
 | `test_debris_body_query` | *(session 17)* a pooled debris body that never joins `LAYER_DEBRIS`, so §5.3's blast query cannot see the wreck. **Not** the transform-before-shapes fault it was written for — that one survives it, and §8 item 14 records why |
 | `test_aim_solver` | the yaw sign; the pitch sign; `direction_for` flipped; slew band multiplier ignored; yaw convergence not wrapped; pitch convergence wrapped; the spread cone uniform in angle; the cone basis degenerate; **the full-traverse escape hatch removed, once a mount authored `(0, 360)` existed to see it** |
 | `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
+| `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel** |
 | `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
@@ -297,7 +299,7 @@ output for the word `SURVIVED`. Both need re-targeting against the rewritten
 | `effector-slot-filter-dropped` | The slot filter had a test on `MotiveSystem` and none on its mirror in `EffectorSystem` | `test_band_dispatch.gd` |
 | `consume-does-not-reduce` | Every engagement spawns `UNLIMITED`, and `consume` returns on that sentinel **before** the line that subtracts | `test_ammo_ledger.gd` |
 | `ammo-never-consumed` | Same reason; the one finite store in the suite is `test_duel`'s 400 rounds, and nothing asked what was left | `test_duel.gd`, one equality |
-| `melee-modules-emit` | **Four owners.** Accepted — see §5 | nothing; it cannot be falsified |
+| `melee-modules-emit` | **Four owners.** Reduced to three in session 18, once §7.1's loop made the fourth unreachable — see §5 | still nothing; the three that remain each enforce it alone |
 | `self-immunity-always-on` | §12.3 is inert on the shipped builds in **both** directions | nothing; see below |
 
 A 38th fault was added in session 17 and it is a standing survivor:
@@ -315,7 +317,53 @@ can distinguish from either of its extremes is not being tested; it is being
 carried. The condition that makes it real is unchanged and is a **mount whose
 muzzle overhangs its own hull**, which no shipped recipe has.
 
-#### What the three sweeps taught
+#### Session 18: nine faults over the melee sweep and the two that had rotted
+
+Seven new faults over the §15 work, plus the two session 17 could not plant at
+all. **All nine caught — but three of the seven only after the fixture that was
+supposed to catch them was fixed**, and that is the session's lesson.
+
+| Fault | Result |
+|---|---|
+| `sweep-becomes-point-test` | **CAUGHT**, 29 failures across 4 files. Re-targeted onto `_sweep_and_resolve`'s `from`/`to`, which session 16 rewrote. §5 called the swept ray the one place in the combat layer where the obvious implementation is silently wrong; 29 failures says it is load-bearing in every engagement the suite has. |
+| `hit-never-releases-the-round` | **CAUGHT.** Re-targeted onto the same rewrite. |
+| `melee-sphere-not-capsule` | SURVIVED, then **CAUGHT.** See below. |
+| `melee-capsule-not-rotated` | SURVIVED, then **CAUGHT.** See below. |
+| `melee-travel-is-blade-axis` | SURVIVED, then **CAUGHT** — after being re-planted somewhere else entirely. See below. |
+| `melee-no-target-impulse` | CAUGHT, once the fixture stopped freezing the target. |
+| `melee-closing-speed-gate-always-refuses` | CAUGHT. The gate is inert on the shipped edge, which authors a zero minimum, so the fault that tests it makes it refuse everything rather than move a threshold nothing reaches. |
+| `melee-strike-not-deduplicated` | CAUGHT, by the packet count rather than by the damage. |
+| `melee-sample-count-back-to-six` | CAUGHT, by §15.3's gap arithmetic asserted by value. |
+
+**The three survivals were all one fixture mistake.** `test_held_weapon` planted
+its target at `MeleeSolver.edge_transform`'s origin — which is *half the reach*
+along the blade, and is exactly where the ball that §15.3's capsule replaced used
+to sit. A capsule spanning hand to tip finds a target there; so does a ball at
+the midpoint; so does a capsule left standing vertically on its own +Y, since its
+centre is that same point. The fixture agreed with all three implementations and
+separated none of them. Moving the target to the **full reach** — where the ball
+falls 0.40 m short and the capsule overlaps by 0.63 m — caught all three on the
+next run.
+
+This is §2.1's oldest lesson arriving in a new disguise, and worth stating in the
+form it took: **a fixture built around a helper inherits that helper's
+assumptions.** The target position was computed by calling the very function
+whose convention was under test, so the test and the code could only ever agree.
+The tell was available before the sweep and was not noticed: the fixture's own
+comment said "where the edge's own capsule sits at mid-swing", which is a
+statement about the implementation rather than about the geometry.
+
+**And one fault was planted against the wrong line.** `melee-travel-is-blade-axis`
+first patched `var direction := travel.normalized()`, which reaches only the
+damage packet's own direction fields — and since the packet's
+`impact_normal_world` is derived from that same direction, doc 08 §4's ricochet
+test sees the two exactly opposed whatever either of them is. Nothing can catch
+it; see §5. Re-planted on `MeleeSolver.strike_impulse`'s argument, where the
+direction has a consumer that can move, it is caught immediately. **Ask what
+reads the variable before planting a fault on it** — a fault on a value that only
+feeds a degenerate comparison is a fault on nothing.
+
+#### What the four sweeps taught
 
 **A closed loop hides the thing it closes over.** Session 15's two survivals were
 both of this shape: an autopilot that corrects an error every tick absorbs a
@@ -805,6 +853,59 @@ All verified against 4.7.1 in this repo, not recalled.
     inherit it.
 
     `--disable-render-loop` adds nothing worth having on top of it in headless.
+
+51. **`intersect_shape` ignores `PhysicsShapeQueryParameters3D.motion`, and so
+    does `collide_shape`.** Only `cast_motion` honours it, and it answers with a
+    pair of fractions along the motion rather than with the set of bodies it
+    passed through — so it cannot serve any query whose purpose is the target
+    set. Measured three ways on 4.7.1: a sphere parked 3 m from a hull with
+    `motion` carrying it onto the hull reports **zero** hits from
+    `intersect_shape` and **zero** contacts from `collide_shape`, while
+    `cast_motion` on the identical parameters returns `[0.768, 0.773]` — it
+    plainly knows the hull is there and the other two plainly do not ask.
+
+    This cost doc 07 §15.3 four sessions. The section specified a swept query,
+    the implementation wrote one, and the sweep silently degenerated to a static
+    test at the segment's start — which is survivable — while everyone reading
+    the code believed the volume between two samples was covered, which is not.
+    **A parameter that the engine accepts and ignores is worse than one it
+    rejects**, and the only defence is to measure the query rather than to read
+    the field name.
+
+52. **A `CapsuleShape3D` runs along its own local +Y, and `height` is its total
+    extent including the caps.** A capsule meant to lie along a -Z convention —
+    doc 07 §7.2's muzzle axis, which §15.2's edge shares — needs a quarter turn
+    about X in front of it. Without the turn it stands vertically, which on a
+    melee edge puts a 2.4 m blade through the wielder's own hull and out of the
+    top, and the query is not empty, it is *wrong*. Measured: a capsule offset
+    1.0 m along +Y from a hull hits it and one offset 1.0 m along +X does not;
+    after `Basis(Vector3.RIGHT, PI * 0.5)` the +Z offset hits and +X still does
+    not.
+
+53. **`free()` on a node with a `WorkerThreadPool` task in flight is *refused*,
+    and the node survives.** A task executing one of the node's own methods holds
+    a call on it, so `Object::free` reports "Object is locked and can't be freed"
+    and returns. The node stays in the tree, connected to the bus, holding every
+    space and body the file built.
+
+    **`_exit_tree` is not the escape hatch, because `free()` never reaches it.**
+    `MassRecomputeScheduler._exit_tree` has joined its task since it was written;
+    the lock check happens first. `remove_child` *does* reach it, so the teardown
+    order that works is remove, then free.
+
+    Session 18 saw this **once in nine identical runs**: twelve leaked
+    `GodotBody3D`/`GodotArea3D`/`GodotSpace3D` RIDs out of
+    `tests/integration/test_mass_recompute.gd`, and then
+    `test_ground_assembly` — which builds at the origin — settling its Assembly
+    on top of the wreckage and reporting **22 failures** about suspension travel,
+    load distribution, braking and steering. Every one of them read as a
+    locomotion regression and none of them was.
+
+    Two things to carry from it. **An intermittent leak presents as a physics
+    defect in an unrelated file**, which is §3.48 again with a worse disguise,
+    because the leaking file passes. And **the wrapper is what caught it**
+    (§3.34): the leak prints an engine error and records no failure, so the
+    `.gd` runner alone would have reported a green partial and moved on.
 
 ---
 
@@ -1385,11 +1486,12 @@ which is indistinguishable from a direct hit in the signal. The fixture reads th
 round's own strike record instead, which is the only observable that answers the
 question asked.
 
-### 4.26 Built — Appendages, held weapons, and a melee sweep that does not land
+### 4.26 Built — Appendages, held weapons, and a melee sweep that now lands
 
 A new part class, a new keyed connector, a new part, and the §15.3 query that had
-been computed since session 8 and never run. Three of the four work; the fourth
-is written down as it behaves.
+been computed since session 8 and never run. Session 17 built the first three and
+left the query landing nothing; session 18 landed it, and the second half of this
+section is what was actually wrong.
 
 **`PartClass.APPENDAGE`** (doc 01 §7.8). An arm is not a Motive Assembly — it
 does not propel and has no locomotion family — and not a Structural Component,
@@ -1417,41 +1519,75 @@ only degradation row in the game read against a slot other than the one that
 changed band, and it is what makes shooting the arm better than shooting the
 sword.
 
-#### The melee sweep runs and lands nothing — open
+#### The melee sweep lands — closed, session 18
 
-`EffectorSystem._step_melee` and `_sweep_edge` are written and wired: the stage
-machine advances, the trigger starts a strike only when the mount is on target
-(§4.3.1's gate, shared with direct fire), the arc is sampled, and the query runs.
-**It reports no contacts.**
+The edge cuts. `tests/physics/test_held_weapon.gd` swings a held beam edge into
+another Assembly and asserts the damage, the channel split, the impulse and the
+per-swing dedup. **The `THERMAL` channel now has a producer**, which no weapon in
+this repository had ever given it.
 
-What is measured, in `tests/physics/test_held_weapon.gd`:
+It was not one defect, it was four, and only one of them was in `src/combat/`
+where session 17 was looking.
 
-| Observation | Value |
-|---|---|
-| Mount converged | `on_target` and `solution_in_arc` both true |
-| Stage machine | reaches `SWINGING`, cycles repeatedly |
-| Capsule queries per swing | 6 |
-| Edge sample vs target origin | within **0.31 m**, against an 0.18 m capsule |
-| Contacts reported | **0** |
+**1. The query shape was a ball on a point of the blade.** `_sweep_edge` built a
+`SphereShape3D` of `edge_radius_m` and placed it at
+`MeleeSolver.edge_transform`'s origin — which is *half the reach* along the
+blade. So a 2.40 m edge was queried as a 0.36 m ball 1.20 m from the hand, and
+the other 2.04 m of it cut nothing. §15.3 specifies a **capsule of
+`height = reach_m`**, and §15.1's whole argument against a projectile is that an
+edge is a volume; a ball on a point of it is that mistake made thicker. The
+variable was even named `capsule`.
 
-The target Assembly is a real `AssemblyRuntime` on `LAYER_ASSEMBLY_HULL`, the
-mask is `MASK_PROJECTILE_TARGET`, both bodies are frozen and flushed by a stepped
-frame. So this is a fixture-or-broadphase question rather than a §15 one, and the
-next session should start by asking whether the target's *collider* is where the
-test assumes — a Core Module's box is centred on its centre of mass, most of a
-metre from the cell the blueprint calls its origin, and the fixture compensates
-for that with `com_offset_m`, which is a proxy and may not be the right one.
-`ColliderProfile`'s primitives carry their own transforms and are the authority.
+**2. A capsule runs along its own +Y** (§3 item 52), so it needs a quarter turn
+about X to lie on the blade's -Z. §15.3's code block set `params.transform` to
+the edge transform with no rotation, which stands the blade vertically through
+the wielder's own hull.
 
-**The test asserts the failure**, as §9 requires and as the ambulatory mirror
-already does: `test_the_sweep_currently_lands_no_contacts` is supposed to break,
-and the two assertions it replaced — thermal damage delivered, and more of it
-than kinetic — are in the file's history ready to go back.
+**3. §15.3's sweep does not sweep, and no Godot query does what it asked for**
+(§3 item 51). `intersect_shape` ignores `motion`; so does `collide_shape`; only
+`cast_motion` honours it and it answers with fractions rather than with the set
+of bodies a swing must damage. The section's overlap claim — "the swept capsules
+overlap at every radius the reach covers" — was therefore about a sweep that
+never happened, and with static capsules it was **arithmetically false past
+0.69 m** of a 2.40 m blade. Consecutive placements overlap only out to
+`2·edge_radius·(samples−1)/arc`, which at the authored 6 samples across 150° left
+a **1.26 m hole at the tip**.
 
-**Consequence to be honest about:** the beam edge still does no damage, so the
-energy-damage half of what the arm was built to demonstrate is not demonstrated.
-The `THERMAL` channel remains implemented, unit-tested against synthetic packets,
-and produced by nothing.
+Doc 07 §15.3 is rewritten around what the engine actually does, carries the gap
+formula, and records the measurement. `swing_samples` went from 6 to **16** —
+which is a fidelity change and not a balance one, and §15.3 is the authority for
+that: `struck_this_swing` deduplicates per swing, so a 6-sample and a 16-sample
+swing deal identical damage. At 16 the arc is gap-free over **2.06 m of the
+2.40 m blade**, and the residual at the tip is 60 mm against a smallest authored
+collider measured in decimetres. Closing the last 0.34 m exactly needs 19 samples
+against Invariant I-12's ceiling of 16, and 20% more query cost per swing is not
+worth 60 mm.
+
+**4. And the fixture was measuring the wrong point.** It placed the target by
+subtracting the Core Module's `com_offset_m` from the intended position — but a
+part's collider sits at its **origin cell plus** that offset, and
+`cell_to_local` is not zero for a part at cell (24, 8, 24). The target hull was
+**1.375 m** from where the test believed it was, of which 1.125 m was the
+uncompensated cell offset. The fixture now asks `AssemblyRuntime.part_world_position`
+where the hull is instead of reconstructing the sum, which is what that method's
+own docstring warns about happening.
+
+Two §15.4 rules were also implemented and reachable by nothing, in the shape §4.25
+named: `MeleeSolver.strike_impulse` and `MeleeSolver.closing_speed_satisfied` both
+had **no production caller at all**. The impulse on the struck Assembly was never
+applied — only the wielder's reaction — and the minimum-closing-speed gate a ram
+is authored against was never consulted. Both are wired now, and the impulse
+direction is the edge's **travel** rather than the blade's axis, which is
+§15.1's third reason a projectile is wrong: a blade swung across a target knocks
+it sideways, not backwards.
+
+**What the fixture had to change to be able to see any of it.** The target is
+left **unfrozen**, with gravity and damping off, because a frozen body takes a
+2800 N·s strike and does not move (§3.41) — so §15.4's impulse was being applied
+to a body that could not report it. And the target is planted at the **full
+reach** rather than at the blade's midpoint: parked at the midpoint it is found
+by the capsule and by the ball that capsule replaced, and separates neither. A
+fault sweep is what said so — see §2.0.
 
 ### 4.25 Found — four documented rules had no test at all, and one has no owner
 
@@ -1531,28 +1667,34 @@ against the round's own strike record and says in the comment that the assertion
 cannot currently fail. **The condition that closes this is a part with two
 collider primitives along one axis**, not a cleverer fixture.
 
-**"A melee module does not emit a projectile" has four owners, and is therefore
-untestable.** Session 17 deleted `can_fire`'s `if profile.is_melee(): return
-false` and nothing anywhere changed. It is not that the rule is uncovered — it is
-that it is over-covered, and no fixture can isolate the guard from its three
-co-owners:
+**~~"A melee module does not emit a projectile" has four owners.~~ Reduced to
+three, session 18.** Session 17 deleted `can_fire`'s `if profile.is_melee():
+return false` and nothing anywhere changed, and recorded the redundancy as the
+worst in this file — while declining to act on it, because the guard's subject is
+doc 07 §15's melee sweep and that was the next thing anybody would wire up. That
+happened, so the guard is gone. What settled it was not the count but the
+**reachability**: §7.1's emission loop now hands a melee module to `_step_melee`
+and `continue`s, so the guard sat below the only `continue` that could reach it
+and was dead from the one caller `can_fire` has. The remaining owners are all
+still true and are no longer arguable about — `register` never resolves a
+projectile id for a melee module, `eff.melee.beam_edge.t4` authors
+`projectile_key = &""`, and `can_fire` terminates on `_projectile_id[slot] >= 0`
+— but the legibility argument the deleted guard existed for is now served at the
+call site, which is a better place for it than inside a function the call never
+makes.
 
-1. `register` refuses to resolve a projectile id for a melee module, guarded on
-   the same `is_melee()` predicate;
-2. `eff.melee.beam_edge.t4` authors `projectile_key = &""`, so `id_of` answers
-   `-1` even if it were asked;
-3. `can_fire` ends with `return _projectile_id[slot] >= 0`, which catches every
-   melee module on its own;
-4. and the deleted guard.
-
-Any one of the four enforces it. **This is the tenth "two owners of one
-invariant" in this file and the worst of them**, and the honest next step is to
-reduce it to one rather than to write a test that cannot fail — the terminal
-`_projectile_id >= 0` is the load-bearing one, and the named guard is the
-legible one, so the choice is a judgement about which the reader should meet
-first. It was left alone in session 17 because deleting a guard whose subject
-(doc 07 §15's melee sweep) is the very next thing anybody will wire up (§8 item
-12b) is a change to make *with* that work and not before it.
+**A melee packet's incoming direction cannot be tested, because its normal is
+derived from it.** `_resolve_melee_hit` writes `impact_normal_world = -direction`
+and `incoming_direction = direction` out of one local, so doc 08 §4's ricochet
+test — the angle between them — is `cos = 1` for every value either could take.
+A fault on that local survives everything and did (§2.0). This is not
+carelessness: `intersect_shape` reports no surface normal, and neither does
+`collide_shape`, so there is nothing else available to write there. **The
+consequence to know is that a melee strike can never ricochet**, which is
+probably right for an edge and is undecided rather than decided. If it ever needs
+to be, the normal has to come from somewhere the query does not currently
+provide. The impulse direction is a *different* quantity out of the same travel
+vector and is tested, which is why the fault had to be re-planted there.
 
 **`ResolvedNode.is_face_paired` is over-specified, knowingly.** It tests
 adjacency in both directions *and* that the faces oppose, and any two imply the
@@ -1779,7 +1921,7 @@ build one.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
-| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37 plus session 17's 1; **all run, session 17** — §2.0. Two report `PATCH-MISS` (§8 item 0e) and one is a standing survivor (§8 item 14) |
+| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37, session 17's 1, session 18's 7 over §15 — §2.0. The two `PATCH-MISS` entries are re-targeted and caught; one standing survivor remains by design (§8 item 14). Baseline **4486** |
 | `tools/ci/sweeps/engagement_sweep.py` | Session 15's six plus session 16's, over every fix — §2.0 |
 | `JULES.md` | Read-only review charter for a second agent; grants no authority |
 
@@ -1832,17 +1974,34 @@ Two things were deliberately **not** changed and are recorded instead: doc 01
 sweep (§2.0), and every one of its nine survivals turned out to be a rule that
 was implemented correctly and defended by nothing. The work was therefore four
 new test files, three assertions added to existing ones, and the records in
-§4.25 and §5 for the two that cannot be tested. The one `src/`-adjacent
-temptation — deleting the redundant melee guard in `EffectorSystem.can_fire` —
-was declined on purpose, because doc 07 §15's melee sweep is the next thing
-anybody will wire up and that is the change to make it with.
+§4.25 and §5 for the two that cannot be tested.
+
+**Session 18 changed three, and amended two documents to match** — §4.26 is the
+measurement behind every line of it:
+
+| File | What changed | Document |
+|---|---|---|
+| `EffectorSystem` | §15.3's query is a capsule spanning the reach, turned onto the blade axis, cached per module; §15.4's impulse on the target and its closing-speed gate both get their first caller; the impulse direction is the edge's travel; the dead melee guard in `can_fire` is gone | doc 07 §15.3, §15.4 |
+| `MeleeStrikeState` | `last_strike_point_world`, so a test can ask at what angle through the arc a swing connected | doc 07 §15.2 |
+| `MeleeProfile` | `swing_samples` 6 → 16 | doc 01 §7.4.1, doc 07 §15.3 |
+
+`tests/combat_arena.gd` also gained `guns.resolver` and `guns.space`, which it
+had never set. Nothing failed for want of them because `_sweep_edge` returns
+quietly on a null space — so the arena the §6 wiring block tells a match scene to
+copy would have shipped a sword that swings through everything. **That is the
+second time a melee defect here has been silent rather than loud**, and both
+times the silence was an early return on a field nobody had noticed was
+required.
 
 `DamageResolver` covers doc 08 §3 to §8 in full: all five channels, §4's
 penetration curve and ricochet, §4.4's spall, §5's single-query blast with sorted
 resolution, §6's rate-limited impact, §7's thermal hysteresis and corrosive
 decay, §8.4's transitions and §8.5's queued detonations. The `src/combat/`
 effector and projectile set covers doc 07 §2, §3, §4, §6, §7, §8, §9 and §12 for
-**direct fire only**.
+direct fire, and **§15.2 to §15.4 for melee as of session 18** — the stage
+machine, the capsule sweep, the channel split, both impulses and the
+closing-speed gate. §15.5's sustained contact is the one part of §15 still
+unimplemented.
 
 `ChassisGraph` covers doc 04 §2–§4 in full; `DetachmentSolver` and
 `DetachmentScheduler` cover §5 and §7.2; `IslandDetacher`, `DebrisPool` and
@@ -1916,6 +2075,8 @@ var ammo := AmmoLedger.new()                      # one, shared by every Assembl
 #   guns.projectiles = projectiles
 #   guns.registry = projectile_registry
 #   guns.ammo = ammo
+#   guns.resolver = resolver          # melee only, and silent if omitted
+#   guns.space = resolver.space       # ditto — doc 07 §15.3 queries a space
 #   guns.seed_rng(match_seed ^ runtime.assembly_id)   # I-9; never the global RNG
 #   runtime.add_child(guns)
 #   for each Effector Module slot: guns.register(slot, def)
@@ -1991,6 +2152,9 @@ recorded the defect, with every assertion inverted, plus §4.24's static file of
 three hulls that makes the penetration bound reachable),
 **`test_debris_body_query`** (§3.19's ordering rule, asserted through the only
 observable that can see it — a physics query at a severed island),
+**`test_held_weapon`** (the Appendage, the GRIP keying, §8.2's cross-slot
+Appendage row, and — new in session 18 — §15.3's sweep landing, §15.4's channel
+split and impulse direction, and the gap arithmetic asserted by value),
 `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly`,
 `test_motive_force_application`, `test_inertia_coupling`,
 `test_locomotion_behaviour`, `test_duel` — two Assemblies, real parts, real
@@ -2012,14 +2176,19 @@ whether the thing is any good to play.
 **Can a person play it? No.** There is still no scene, no camera, no main scene
 set, and no way to start the game and press a key. Everything below is reachable
 only from `tests/`. This is unchanged since session 1 and it is the single
-largest gap in the project: thirteen documents of architecture, 4476 passing
+largest gap in the project: thirteen documents of architecture, 4486 passing
 checks, and nothing a person can look at. **§8 item 12 is the answer and it
 should stop being deferred.**
+
+Session 18 closed last session's item 4 — the beam edge cuts now. It did not
+close item 1, and item 1 has now been top of this list for four sessions while
+the combat layer underneath it got steadily better. That ratio is the finding.
 
 Ranked by what would most improve a first-time player's experience:
 
 1. **A match scene with a camera.** Item 12. Everything else on this list is
-   invisible without it.
+   invisible without it, and it has been true for long enough that it should now
+   outrank finishing anything else.
 2. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
    §4.14). A player bolting the shipped autocannon to the shipped chassis and
    pulling the trigger gets a vehicle on its roof. The nose mount hides it; a
@@ -2029,16 +2198,26 @@ Ranked by what would most improve a first-time player's experience:
 3. **A walking build turns 170 degrees in five seconds while commanded straight
    ahead** (§4.21). Unplayable as a family; the arena's tactics work around it by
    planting the Assembly before it shoots, which a player cannot do.
-4. **The beam edge does no damage** (§4.26). A player who builds the arm and the
-   sword — the most visually interesting thing in the part list — gets a weapon
-   that swings and does nothing.
+4. **The edge cuts, and nothing has ever fought with one** (§4.26, §8 item 12d).
+   This is the honest bad news from this session's own work. §15.3 lands, the
+   damage is right, the impulse is right, the arm degrades the blade it holds —
+   and all of that is demonstrated by a single fixture in which the attacker is
+   frozen and the target is parked in front of it. **No `CombatArena` recipe
+   carries an arm**, so no engagement in the suite has ever been fought at
+   contact range, and every question a player would actually ask about melee is
+   unanswered: can a wheeled build close on a shooting one without dying on the
+   way in; does 640 damage a swing at one swing a second beat 120 a round at
+   seven; does an edge that shoves its target 7 m/s away ever get a second swing.
+   The weapon works and the *fight* is unproven, which is a smaller gap than
+   last session's but is a more embarrassing one to leave.
 5. **Nothing renders a wheel at its contact point** (§7). The first thing anybody
    will notice about a moving vehicle is that its wheels are not where the
    suspension put them.
 
 Nothing shipped is *unfair* in a way a player would notice, because nothing is
-shippable yet. The honest summary is that this is a simulation with no game
-attached to it, and the ratio has been getting worse rather than better.
+shippable yet. The honest summary is unchanged from last session and has to be
+repeated because acting on it keeps being deferred: **this is a simulation with
+no game attached to it.** Session 18 made the simulation better again.
 
 ---
 
@@ -2112,10 +2291,22 @@ attached to it, and the ratio has been getting worse rather than better.
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **`MeleeSolver` still computes everything except the query.** `EffectorSystem`
-  now exists and owns a space, so the swept-capsule `intersect_shape` of §15.3
-  finally has somewhere to live — and `channel_mix` finally has a consumer in
-  `DamageResolver`. Wiring the two together is the cheapest combat item left.
+- ~~**`MeleeSolver` still computes everything except the query.**~~ Closed —
+  §4.26. The edge cuts, delivers its authored channel split, shoves what it hits
+  along its travel, and is deduplicated per swing.
+- **No engagement has ever been fought at contact range.** §6.5 item 4. The
+  sweep is proven by one fixture with a frozen attacker and a parked target;
+  no `CombatArena` recipe carries an Appendage, so melee's balance against the
+  autocannon is entirely unmeasured. §8 item 12d.
+- **§15.5's sustained contact is not implemented.** `eff.melee.beam_edge.t4`
+  authors `sustained = true` and 340/s, `MeleeSolver.sustained_channel_damage` is
+  written and unit-tested, and nothing calls it: `_step_melee` clears the target
+  set on entering a swing and never on a held one, so a powered edge held against
+  a hull cuts once and then idles. `energised` is likewise never set, so
+  §15.5's power draw and the brownout it is supposed to cause do not happen.
+- **A melee strike can never ricochet**, because its packet's normal is derived
+  from its own direction. Not a defect — the query reports no surface normal —
+  but see §5 before assuming doc 08 §4's angle gate means anything here.
 - **`DotScheduler` is not written.** Doc 08 §7.3. Thermal and corrosive packets
   resolve correctly *when submitted* — the hysteresis, the heat accumulation and
   the resistance decay are all there and tested — but nothing submits them over
@@ -2221,10 +2412,10 @@ attached to it, and the ratio has been getting worse rather than better.
   full budget every run on purpose. It was 4 min 15 s until §3.50; if the wall
   time ever becomes a problem again, the honest lever is closing §4.21 so the
   ambulatory mirror reaches a decision, not shortening its window.
-- **The swept ray and the round-release path are unverified.** Their two faults
-  can no longer be planted (§8 item 0e). §5 calls the swept ray the one place in
-  the combat layer where the obvious implementation is not merely slower but
-  silently wrong, so this is not a comfortable gap to leave open.
+- ~~**The swept ray and the round-release path are unverified.**~~ Closed —
+  session 18 re-targeted both faults onto the lines session 16 rewrote. The
+  swept ray turns out to be load-bearing in every engagement the suite has:
+  degrading it to a point test fails **29 checks across four files**.
 - **§12.3's self-immunity window is inert in both directions.** Setting it to
   zero and pinning it permanently on both leave the suite green, because no
   shipped recipe mounts a module whose muzzle overhangs its own hull. It is
@@ -2269,23 +2460,14 @@ attached to it, and the ratio has been getting worse rather than better.
    shipped part set (§5's melee guard, and §12.3's self-immunity, now confirmed
    inert in *both* directions).
 
-0d2. **Land the melee sweep.** §4.26. Everything around it is built and wired —
-   part class, grip, arm, held edge, stage machine, channel mix, resolver — and
-   the query returns nothing. It is the single highest-value defect open, because
-   it is the only thing standing between the game and its second weapon, its only
-   energy weapon, and the first non-KINETIC damage anything has ever produced.
-   Start with the target's collider transform, not with §15.
+0d2. ~~**Land the melee sweep.**~~ — **done, session 18.** §4.26. Four defects,
+   only one of them in `src/combat/`: the query shape, the capsule's axis, a
+   sweep parameter the engine ignores, and a fixture measuring the wrong point.
+   Doc 07 §15.3 is rewritten around what the engine does, `swing_samples` is 16,
+   and seven planted faults defend it.
 
-0e. **Re-target the two faults that could no longer be planted.**
-   `sweep-becomes-point-test` and `hit-never-releases-the-round` both address
-   lines session 16 rewrote when it closed §4.13 and §4.24, so
-   `combat_layer_sweep.py` reported `PATCH-MISS` and moved on. Those two
-   behaviours — the swept ray rather than a point test, and a round being
-   released when it stops — are therefore **unverified**, and the swept ray is
-   the one §5 calls the place where the obvious implementation is not merely
-   slower but silently wrong. Rewrite both against the current
-   `_sweep_and_resolve`. Cheap, and it is the direct lesson of §2.0's third
-   paragraph: a sweep script rots in the direction of testing less.
+0e. ~~**Re-target the two faults that could no longer be planted.**~~ — **done,
+   session 18.** Both `CAUGHT` against the current `_sweep_and_resolve`.
 
 0c. **Sweep the bounds nobody reaches.** §2.0's new lesson generalises past the
    penetration budget: Invariant I-12 lists eighteen bounds and the suite
@@ -2322,11 +2504,28 @@ attached to it, and the ratio has been getting worse rather than better.
     on losing a Core Module, only on losing a Prime Mover or an Energy Cell, and
     §4.17 is what that looks like now that it has been seen.
 
-12b. **The melee sweep query.** `MeleeSolver` has computed everything except the
-    `intersect_shape` since session 8; `EffectorSystem` owns a space and
-    `DamageResolver` consumes `channel_mix`. Both halves arrived in session 14
-    and nothing has joined them. `CombatArena` would give it a fight to be tested
-    in on the day it lands.
+12b. ~~**The melee sweep query.**~~ — **done, session 18.** §4.26.
+
+12d. **Fight with the edge.** The successor to 12b and the first item on this
+    list a player would notice. `CombatArena` has five recipes and none carries
+    an Appendage, so the weapon landed in session 18 has never been in a fight —
+    §6.5 item 4 lists the questions that are therefore unanswered. What it needs:
+    a `MELEE` recipe (the wheeled layout with `apx.arm.manipulator.t3` and
+    `eff.melee.beam_edge.t4` in place of the autocannon), a stand-off of roughly
+    zero instead of `GROUND_STAND_OFF_M` so the pilot closes to contact rather
+    than parking at range, and one duel against `WHEELED_LIGHT`. Assert ranges
+    and directions, never counts (§3.44). Expect it to be **lost** by the edge on
+    the first run and treat that as a measurement rather than a bug: 640 damage a
+    swing has to survive a 26 m approach into 120 damage a round at seven a
+    second, and §15.4's own impulse shoves the target 7 m/s clear of a second
+    swing. Whichever way it lands, it is the first thing this project has that
+    could be called a design question about *fighting* rather than about physics.
+
+12e. **§15.5's sustained contact.** The shipped edge authors it, the solver
+    computes it, and nothing calls it — §7. One line clears the target set per
+    tick instead of per swing, which §15.5 says outright; `energised` and its
+    power draw are the rest, and they are what make bringing an edge up a
+    decision that browns out the Assembly.
 
 12c. **`DotScheduler`.** Doc 08 §7.3, about sixty lines, and the difference
     between thermal damage that resolves correctly when submitted and thermal

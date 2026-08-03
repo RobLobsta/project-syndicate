@@ -38,7 +38,21 @@ func before_all() -> void:
 func after_all() -> void:
 	# A scheduler left in the tree stays connected to the bus and resolves the
 	# next test's fixture underneath it.
+	#
+	# Taken out of the tree [b]before[/b] it is freed, and that ordering is not
+	# cosmetic. A test can end with a §4.3 solve still in flight on a
+	# [WorkerThreadPool] thread, and a task executing one of this node's own
+	# methods holds a call on it — so [method Object.free] is refused with
+	# "Object is locked and can't be freed" and the scheduler survives, along with
+	# every Assembly and physics space this file built. Session 18 saw that once
+	# in nine runs: twelve leaked bodies, and `test_ground_assembly` then settling
+	# its build on top of them and reporting 22 failures that looked exactly like
+	# a suspension regression. [method Node._exit_tree] joins the task, and
+	# [method Node.remove_child] is what reaches it — a direct [method
+	# Object.free] hits the lock check first and never gets there.
 	for s in _schedulers:
+		if s.is_inside_tree():
+			s.get_parent().remove_child(s)
 		s.free()
 	_schedulers.clear()
 	for runtime in _runtimes:
