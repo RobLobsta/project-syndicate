@@ -61,6 +61,7 @@ extends Resource
 @export var support_profile: SupportModuleProfile = null
 @export var control_profile: ControlSurfaceProfile = null
 @export var energy_cell_profile: EnergyCellProfile = null
+@export var appendage_profile: AppendageProfile = null
 
 ## ===== PRESENTATION ====================================================
 @export var visual_profile: PartVisualProfile = null
@@ -165,6 +166,8 @@ func class_payload() -> Resource:
 			return support_profile
 		PartEnums.PartClass.CONTROL_SURFACE:
 			return control_profile
+		PartEnums.PartClass.APPENDAGE:
+			return appendage_profile
 		PartEnums.PartClass.STRUCTURAL_COMPONENT:
 			# Structural Components carry no class payload by design.
 			return null

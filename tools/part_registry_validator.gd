@@ -42,15 +42,19 @@ const RULE_LIMB: int = 21
 const RULE_TRACK: int = 22
 const RULE_SUSPENSION_REACH: int = 23
 const RULE_POWER_SPLIT: int = 24
+const RULE_GRIP_KEYING: int = 25
+const RULE_GRIP_RATING: int = 26
 
 ## ===== RULE CONSTANTS ==================================================
 
 ## §5.1 key grammar. The class tags are the seven directory names under
 ## [code]data/parts/[/code], in [enum PartEnums.PartClass] order.
-const CLASS_TAGS: Array[String] = ["core", "str", "mot", "pmv", "eff", "sup", "ctl", "cel"]
+const CLASS_TAGS: Array[String] = [
+	"core", "str", "mot", "pmv", "eff", "sup", "ctl", "cel", "apx"
+]
 
 const KEY_PATTERN: String = (
-	"^(core|str|mot|pmv|eff|sup|ctl|cel)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
+	"^(core|str|mot|pmv|eff|sup|ctl|cel|apx)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
 )
 
 ## §14 rule 5. A part larger than this in any axis would not fit the lattice
@@ -174,6 +178,8 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_track(def)
 	_check_suspension_reach(def)
 	_check_power_split(def)
+	_check_grip_keying(def)
+	_check_appendage(def)
 
 
 func failures() -> PackedStringArray:
@@ -1420,4 +1426,107 @@ func _check_power_split(def: PartDefinition) -> void:
 			RULE_POWER_SPLIT,
 			def.part_key,
 			"capacity_pu_s and recharge_pu_s may not be negative"
+		)
+
+
+## ===== RULE 25 — GRIP KEYING ===========================================
+
+## §14 rule 25, and doc 01 §4.3. GRIP is keyed exactly as AXLE is, and the same
+## trap applies: [code]PlacementValidator._check_mating[/code] tests
+## [code]accepts_class[/code] from both ends, so putting the hand's restriction
+## on the held module's own face makes the pair reject each other and leaves the
+## weapon unholdable by anything in the game.
+##
+## The asymmetry is the whole rule. The [i]hand[/i] restricts to
+## EFFECTOR_MODULE, because that is what an arm may pick up. The held module's
+## own grip face must admit APPENDAGE, because that is what may pick it up.
+func _check_grip_keying(def: PartDefinition) -> void:
+	for node: AttachmentNodeDef in def.attachment_nodes:
+		if node.polarity != PartEnums.AttachmentPolarity.GRIP:
+			continue
+		if def.part_class == PartEnums.PartClass.EFFECTOR_MODULE:
+			if (
+				not node.accepts_classes.is_empty()
+				and not node.accepts_classes.has(PartEnums.PartClass.APPENDAGE)
+			):
+				_fail(
+					RULE_GRIP_KEYING,
+					def.part_key,
+					(
+						"node '%s' is a held face that refuses APPENDAGE, so nothing "
+						% node.node_name
+					)
+					+ "in the game can pick this module up"
+				)
+			continue
+		if def.part_class != PartEnums.PartClass.APPENDAGE:
+			_fail(
+				RULE_GRIP_KEYING,
+				def.part_key,
+				(
+					"node '%s' is GRIP on a part of class %d; only Appendages and "
+					% [node.node_name, def.part_class]
+				)
+				+ "Effector Modules may carry one"
+			)
+			continue
+		if node.accepts_classes != PackedInt32Array(
+			[PartEnums.PartClass.EFFECTOR_MODULE]
+		):
+			_fail(
+				RULE_GRIP_KEYING,
+				def.part_key,
+				(
+					"node '%s' is a hand but does not restrict accepts_classes to "
+					% node.node_name
+				)
+				+ "EFFECTOR_MODULE, so an arm could be holding a fuel cell"
+			)
+
+
+## ===== RULE 26 — APPENDAGE =============================================
+
+## §14 rule 26, and doc 01 §7.8. An Appendage must carry its payload, must offer
+## exactly one hand, and must rate that hand for a real load.
+##
+## The single-hand rule is not arbitrary tidiness. [EffectorSystem] resolves the
+## holder of a held module by walking to the first Appendage above it, and a part
+## offering two hands would hold two modules whose swings share one
+## [member AppendageProfile.reach_m] and one degradation entry — two edges
+## reported at one hand, which is a defect that presents as damage arriving from
+## the wrong place.
+func _check_appendage(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.APPENDAGE:
+		return
+	var profile := def.appendage_profile
+	if profile == null:
+		# Rule 6 already reports the missing payload; reporting it twice would
+		# make one authoring mistake read as two.
+		return
+	if profile.grip_rating_n <= 0.0:
+		_fail(
+			RULE_GRIP_RATING,
+			def.part_key,
+			"grip_rating_n is %.1f but an Appendage that can hold nothing is not an arm"
+			% profile.grip_rating_n
+		)
+	if profile.reach_m <= 0.0:
+		_fail(
+			RULE_GRIP_RATING,
+			def.part_key,
+			(
+				"reach_m is %.3f; a hand at the shoulder puts the edge inside the "
+				% profile.reach_m
+			)
+			+ "hull it is swinging from"
+		)
+	var hands := 0
+	for node: AttachmentNodeDef in def.attachment_nodes:
+		if node.polarity == PartEnums.AttachmentPolarity.GRIP:
+			hands += 1
+	if hands != 1:
+		_fail(
+			RULE_GRIP_RATING,
+			def.part_key,
+			"carries %d GRIP nodes; an Appendage offers exactly one hand" % hands
 		)

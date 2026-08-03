@@ -41,6 +41,17 @@ const POWER_TORQUE: Array[float] = [1.00, 0.90, 0.68, 0.38, 0.00]
 const POWER_SUPPLY: Array[float] = [1.00, 0.94, 0.75, 0.45, 0.00]
 const POWER_HEAT: Array[float] = [1.00, 1.12, 1.38, 1.85, 0.00]
 
+## ===== APPENDAGE =======================================================
+## A damaged arm is slower with whatever it is holding. Read by [EffectorSystem]
+## against the [i]holder[/i]'s band rather than the held module's own, so a
+## pristine edge in a wrecked arm swings like a wrecked arm — which is the
+## behaviour that makes shooting the arm a better idea than shooting the sword.
+##
+## Rises with damage, like [constant EFF_CYCLE], because it describes a cost.
+## The two multiply: an IMPAIRED edge in an IMPAIRED arm cycles at 1.22 x 1.45.
+
+const APPENDAGE_HELD_CYCLE: Array[float] = [1.00, 1.12, 1.45, 2.20, 0.00]
+
 ## ===== SUPPORT, CONTROL, CORE, STRUCTURE ===============================
 
 const SUPPORT_MAGNITUDE: Array[float] = [1.00, 0.88, 0.62, 0.30, 0.00]
@@ -84,11 +95,12 @@ static func all_tables() -> Dictionary:
 		&"STRUCT_LOAD": STRUCT_LOAD,
 		&"STRUCT_JOINT": STRUCT_JOINT,
 		&"ARMOUR_RATING": ARMOUR_RATING,
+		&"APPENDAGE_HELD_CYCLE": APPENDAGE_HELD_CYCLE,
 	}
 
 
 ## Number of tables [method all_tables] must report.
-const TABLE_COUNT: int = 18
+const TABLE_COUNT: int = 19
 
 ## Tables that rise with damage rather than falling. Every other table is
 ## non-increasing; these describe a cost, not a capability, and a longer cycle
@@ -99,6 +111,7 @@ const NON_DECREASING: Array[StringName] = [
 	&"EFF_CYCLE",
 	&"EFF_SPREAD",
 	&"EFF_JAM",
+	&"APPENDAGE_HELD_CYCLE",
 ]
 
 

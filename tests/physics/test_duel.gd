@@ -123,6 +123,8 @@ var _destroyed: Array[Vector2i] = []
 ## Assembly ids terminated by losing slot 0, in the order they fell.
 var _terminated: PackedInt32Array = PackedInt32Array()
 var _shots_seen: int = 0
+## Shots attributed to A alone, which is what its store is asserted against.
+var _shots_by_a: int = 0
 var _fought: bool = false
 ## Distance between the two at spawn, before anything moved.
 var _initial_separation_m: float = 0.0
@@ -276,6 +278,33 @@ func test_the_rounds_that_missed_did_not_leak() -> void:
 	check_true(_shots_seen > _projectiles.active_count(), "most of what was fired has landed")
 
 
+## §9.2's ledger, asserted against the rounds that actually left the barrel.
+##
+## This fixture is the only one in the suite with a [i]finite[/i] store — every
+## engagement in [code]test_family_duels[/code] and [code]test_team_engagement[/code]
+## spawns with [constant AmmoLedger.UNLIMITED], and [method AmmoLedger.consume]
+## returns on that sentinel before it reaches the subtraction. So this is the
+## only place the ledger can be caught not doing its job, and until session 17 it
+## was not looking: both "the fire path never calls consume" and "consume never
+## subtracts" left the whole suite green.
+##
+## Asserted as an equality against the shot count rather than as "it went down".
+## A store that fell by some amount is satisfied by a module that double-charges
+## or forgets every other round, and an Assembly that quietly gets two shots per
+## round is a balance defect nothing else here would notice.
+func test_every_round_fired_came_out_of_the_store() -> void:
+	await _fight()
+	var round_id := _projectile_registry.id_of(ROUND_KEY)
+	check_true(_shots_by_a > 0, "the armed Assembly fired at all: %d rounds" % _shots_by_a)
+	check_eq(
+		_ammo.rounds_stored(_a.assembly_id, round_id),
+		LOADED_ROUNDS - _shots_by_a,
+		"%d of %d rounds left after firing %d" % [
+			_ammo.rounds_stored(_a.assembly_id, round_id), LOADED_ROUNDS, _shots_by_a
+		]
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 
@@ -401,8 +430,13 @@ func _on_band_changed(assembly_id: int, slot: int, _before: int, after: int) -> 
 		_bands_seen.append(after)
 
 
-func _on_effector_fired(_assembly_id: int, _slot: int, _tick: int) -> void:
+func _on_effector_fired(assembly_id: int, _slot: int, _tick: int) -> void:
 	_shots_seen += 1
+	# Attributed rather than assumed. B carries an identical module and no
+	# rounds, so today every shot is A's — but an assertion that silently depends
+	# on that is one the next change to the fixture breaks without saying so.
+	if _a != null and assembly_id == _a.assembly_id:
+		_shots_by_a += 1
 
 
 ## The orientation that points a disc's AXLE face inboard. Derived from the

@@ -501,7 +501,7 @@ net_diagnostics_toggle
 
 Generic engineering nomenclature is mandatory across code, data, comments, commit messages, and user-facing strings. The full table is in `docs/PART_DATA_SCHEMA.md` §2. Summary of the required terms:
 
-**Core Module** · **Structural Component** · **Motive Assembly** · **Prime Mover** · **Energy Cell** · **Effector Module** · **Support Module** · **Control Surface** · **Dynamic Ground Array** · **Static Volume** · **Assembly** · **Build Lattice** · **Attachment Node** · **Chassis Graph** · **Integrity** (not "health" in identifiers) · **Effector** (not "weapon" in identifiers)
+**Core Module** · **Structural Component** · **Motive Assembly** · **Prime Mover** · **Energy Cell** · **Effector Module** · **Support Module** · **Control Surface** · **Appendage** · **Dynamic Ground Array** · **Static Volume** · **Assembly** · **Build Lattice** · **Attachment Node** · **Chassis Graph** · **Integrity** (not "health" in identifiers) · **Effector** (not "weapon" in identifiers)
 
 Prohibited in identifiers, resource names, and localisation keys: *cabin, cockpit, armor plate, wheel, engine, weapon, gun, cannon, terrain, building, vehicle, car, health bar*.
 
@@ -515,6 +515,8 @@ stays prohibited above for the same reason *wheel* and *cannon* do. The split is
 `docs/PART_DATA_SCHEMA.md` §7.3 and §7.7.
 
 `hardpoint` is permitted **only** for the two-DOF rotational mount internal to an Effector Module.
+
+`arm`, `hand`, `grip`, and `shoulder` are permitted as **mechanism** vocabulary on the Appendage class — `apx.arm.manipulator.t3`, `AppendageProfile.grip_rating_n`, the `hand` attachment node — in exactly the way `rotor`, `limb` and `foot` already are. What stays prohibited is using them as a substitute for the class: the class is always `APPENDAGE`, never "the arms". A weapon carried in one is a **held Effector Module**, never a "weapon" in an identifier.
 
 `rotor`, `disc`, `limb`, `foot`, `hip`, `stance`, `swing`, and `gait` are permitted as **family and mechanism** vocabulary — `mot.rotor.*`, `LimbState.foot_world`, `GaitSolver` — in exactly the way `wheeled` and `tracked` already are in `mot.wheeled.*` and `MotiveKind.WHEELED_STEERED`. What stays prohibited is using any of them as a **substitute for the class**: the class is always `MOTIVE_ASSEMBLY`, never "the legs" or "the rotors". `helicopter`, `mech`, `walker`, and `aircraft` are prohibited outright — an Assembly is an Assembly regardless of how it gets around, and that is the point of §I-3's last bullet.
 
@@ -596,6 +598,19 @@ Any AI session producing code for this repository must obey the following. These
 15. **Match the surrounding code.** Comment density, naming, and idiom should be indistinguishable from the files around the change.
 
 16. **Do not stub.** Code committed to this repository is complete. `TODO`, `FIXME`, `implement later`, and `pass  # placeholder` are not acceptable in `src/`. If the full implementation is not yet possible, do not commit the partial one.
+
+17. **Play the game before you call the work done.** Before wrapping anything up, review the repository as it now stands and answer one question: **would a customer get the best possible experience from this game in this state?** Not "do the tests pass", not "is the architecture sound" — whether the thing is any good to play.
+
+    This rule is a deliberate counterweight. Every other rule in this file pushes toward internal correctness, and a project can satisfy all of them while being unplayable: no scene, no camera, a vehicle that flips on its first shot, a locomotion family that cannot hold a heading. Those findings are invisible to a green suite, and a green suite is exactly what makes them easy to stop noticing.
+
+    Ask at least:
+
+    - Can a person start it, see something, and press a key that does something?
+    - Of the things that *are* reachable, which is the most broken or the least satisfying, and why?
+    - Which single change would most improve a first-time player's experience?
+    - Does anything shipped feel unfinished, unfair, or confusing in a way a player would notice before a developer would?
+
+    **What this turns up drives the work.** It is not a report filed and forgotten: it should shape what the current session does with its remaining time and what the next session is told to do first. Findings belong in `HANDOFF.md` alongside the technical ones, and a plain-language summary of the assessment — **including the bad news** — is mandatory in the final message to the user, every session, whether or not the session's task was player-facing.
 
 ---
 

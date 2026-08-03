@@ -4,8 +4,8 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 16 (fixing everything session 15's fights found, and
-re-fighting them).
+Last updated: session 17 (the combat-layer sweep session 14 left unfinished,
+then Appendages and held weapons).
 
 | § | What is in it |
 |---|---|
@@ -19,9 +19,9 @@ re-fighting them).
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §2's opening paragraph for what a sweep costs now,
-§4.13–§4.22 for what session 16 fixed and what it found doing it, and §9 for how
-to write a test here.
+**If you read three things:** §2.0 for what the combat-layer sweep found and the
+two lessons it produced, §4.25 for the four rules that turned out to have no test
+at all, and §9 for how to write a test here.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -59,13 +59,15 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**56 files, 4341 checks, 0 failures.**
+**61 files, 4476 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
 
-**A full run takes about 24 seconds, and a fault sweep about 24 seconds per
-fault.** Both were roughly 5 minutes until session 16 found why — see §3.50. The
+**A full run takes about 40 seconds, and a fault sweep about 45 seconds per
+fault** — measured over session 17's 38, so the figure is a sweep average rather
+than an estimate. Both were roughly 5 minutes until session 16 found why — see
+§3.50. The
 short version: headless Godot paces its main loop against the wall clock, so
 `tests/physics/` was paying one real second for every sixty ticks it waited on.
 `--fixed-fps 60` disables that synchronisation without touching the physics
@@ -74,7 +76,10 @@ either way, down to the tick each Assembly dies on.
 
 **This changes how to plan a session.** The old advice was to cost a sweep before
 writing it and plant six faults instead of thirty. That constraint is gone:
-twelve faults is five minutes, and thirty is a coffee. Plant the thorough sweep.
+thirty-seven faults is under half an hour, which is what session 17 spent
+clearing the backlog session 14 had estimated at two and a half hours. Plant the
+thorough sweep, and run it in the background while writing the tests it will
+justify.
 The remaining rules still hold — do **not** add or remove a test file, and do not
 commit, while a sweep is running, because it compares check counts against a
 baseline, a new file reads as every remaining fault being caught, and a commit
@@ -90,12 +95,12 @@ See §3.36 and §3.44 before adding to `tests/physics/`.
 
 Every session verifies the suite by **planting faults one at a time and
 confirming something fails**. A test asserted only against correct code passes
-just as happily with its subject commented out. About 440 faults have been
-planted across fifteen working sessions; the table below is the accumulated
+just as happily with its subject commented out. About 490 faults have been
+planted across sixteen working sessions; the table below is the accumulated
 record, grouped by catcher rather than by session, because what matters to the
-next session is which test defends which behaviour. Session 15's six are broken
-out in §2.0, because two of them survived and the survivals are the interesting
-part.
+next session is which test defends which behaviour. The engagement and
+combat-layer sweeps of sessions 15 to 17 are broken out in §2.0, because between
+them they produced twelve survivals and the survivals are the interesting part.
 
 The lessons worth carrying, consolidated across fifteen sessions rather than
 listed per session:
@@ -193,19 +198,32 @@ listed per session:
 the within-tick continuation removed; the same part struck twice; the penetration count
 restarted every tick |
 | `test_team_engagement` | *(nothing yet — planted faults reached it through the files above)* |
+| `test_damage_application` | *(session 17)* §8.2's armour band multiplier dropped from `_compute_effective`; the integrity floor removed, read through the §8.4 signal that fires before destruction |
+| `test_ammo_ledger` | *(session 17)* `consume` not subtracting from a finite store |
+| `test_projectile_lifetime` | *(session 17)* a round that hits nothing never expiring |
+| `test_debris_body_query` | *(session 17)* a pooled debris body that never joins `LAYER_DEBRIS`, so §5.3's blast query cannot see the wreck. **Not** the transform-before-shapes fault it was written for — that one survives it, and §8 item 14 records why |
+| `test_aim_solver` | the yaw sign; the pitch sign; `direction_for` flipped; slew band multiplier ignored; yaw convergence not wrapped; pitch convergence wrapped; the spread cone uniform in angle; the cone basis degenerate; **the full-traverse escape hatch removed, once a mount authored `(0, 360)` existed to see it** |
+| `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
+| `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
 | *nothing* | anti-roll pushing both ends of an axle the same way — see §5 |
 | *nothing* | a hard-coded steer lock — see §5 |
 
-### 2.0 The sweeps of sessions 15 and 16
+### 2.0 The sweeps of sessions 15 to 17
+
+There are two committed sweep scripts and they cover different things.
+`tools/ci/sweeps/engagement_sweep.py` is sessions 15 and 16's, over the paths the
+engagement files rest on; `tools/ci/sweeps/combat_layer_sweep.py` is session 14's
+38 over the damage, effector and projectile layers, which session 17 finally ran.
+Both name what each fault is defending. **The survivals are worth more than the
+catches and are recorded first.**
 
 Session 15 planted six faults over the paths the new engagement files rest on;
 session 16 grew that to fourteen, keeping the six and adding eight against the
 code this session wrote. The script is committed at
-`tools/ci/sweeps/engagement_sweep.py` and names what each one is defending. **The
-survivals are worth more than the catches and are recorded first.**
+`tools/ci/sweeps/engagement_sweep.py` and names what each one is defending.
 
 The whole fourteen now runs in **about six minutes** (§3.50). It cost an hour
 before `--fixed-fps`, which is why session 15 planted six rather than thirty and
@@ -251,7 +269,53 @@ survivors** — and the three are not the same three.
 | `arc-gate-removed` | 3 | The rotary mirror stops reaching a decision — §4.19's gate is what makes the fire worth firing. |
 | `strikes-reset-each-tick` *(new; the defect above, replanted)* | — | Added in the same change as the fix, so the regression that hid inside `penetration-budget-removed` has a fault of its own. |
 
-#### What the two sweeps taught
+#### Session 17: the combat-layer sweep, finally run
+
+Session 14 planted 37 faults over the damage layer, the effector layer and doc 08
+§8.4's band dispatch, ran four, and left the rest. Sessions 15 and 16 did not get
+to them. Session 17 ran all 37 in **28 minutes** — the job session 14 costed at
+two and a half hours, before `--fixed-fps` made it twenty times cheaper.
+
+**35 ran, 26 caught, 9 survived, and 2 could not be planted at all.**
+
+The two that could not be planted are worth as much as the survivals.
+`sweep-becomes-point-test` and `hit-never-releases-the-round` both target lines
+that session 16 rewrote when it closed §4.13 and §4.24, so the sweep reported
+`PATCH-MISS` and moved on. **A committed sweep script rots against the code it
+defends**, silently and in the direction of testing less; the script prints
+`PATCH-MISS` rather than failing, which is the right behaviour for a tool that
+must not stop halfway, and exactly the wrong behaviour for anyone skimming the
+output for the word `SURVIVED`. Both need re-targeting against the rewritten
+`_sweep_and_resolve` — §8 item 0e.
+
+| Survivor | Why nothing noticed | Closed by |
+|---|---|---|
+| `armour-band-multiplier-dropped` | §8.2's last row — armour degrading with the band — is read only inside `_compute_effective`, and the unit file covers §4's curve as a **static** that is handed its armour figure and never asks where it came from | `test_damage_application.gd` |
+| `integrity-floor-removed` | Two other guards make the floor look redundant — `integrity_fraction` clamps and `_destroy_part` re-zeros — and its observable window is one line wide | `test_damage_application.gd` |
+| `full-traverse-clamped` | The existing test used `FULL_YAW = (-180, 180)`, where `clampf` **is** the identity over everything `angles_for` can produce | `test_aim_solver.gd`, with a mount authored `(0, 360)` |
+| `rounds-never-expire` | Every round in every engagement hits the 200 m ground slab, so expiry is never the release path | `test_projectile_lifetime.gd`, firing into an empty space |
+| `effector-slot-filter-dropped` | The slot filter had a test on `MotiveSystem` and none on its mirror in `EffectorSystem` | `test_band_dispatch.gd` |
+| `consume-does-not-reduce` | Every engagement spawns `UNLIMITED`, and `consume` returns on that sentinel **before** the line that subtracts | `test_ammo_ledger.gd` |
+| `ammo-never-consumed` | Same reason; the one finite store in the suite is `test_duel`'s 400 rounds, and nothing asked what was left | `test_duel.gd`, one equality |
+| `melee-modules-emit` | **Four owners.** Accepted — see §5 | nothing; it cannot be falsified |
+| `self-immunity-always-on` | §12.3 is inert on the shipped builds in **both** directions | nothing; see below |
+
+A 38th fault was added in session 17 and it is a standing survivor:
+`debris-transform-before-shapes`, over doc 04 §6's ordering rule. It survives for
+a reason worth knowing before anyone tries again — the physics step a test needs
+in order to read a current pose is the same step that repairs the fault. §8 item
+14 and the qualification now attached to §3.19 are the record.
+
+**§12.3's self-immunity is now confirmed dead in both directions.** §2.0 already
+recorded `self-immunity-zero` surviving — the window set to zero, so a round may
+hit its own Assembly — and explained it by the nose mount emitting 2.75 m ahead
+of the lattice origin, clear of every hull. Session 17 planted the opposite,
+`self-immunity-always-on`, and it survived too. A mechanism that no engagement
+can distinguish from either of its extremes is not being tested; it is being
+carried. The condition that makes it real is unchanged and is a **mount whose
+muzzle overhangs its own hull**, which no shipped recipe has.
+
+#### What the three sweeps taught
 
 **A closed loop hides the thing it closes over.** Session 15's two survivals were
 both of this shape: an autopilot that corrects an error every tick absorbs a
@@ -285,6 +349,30 @@ fixture is exactly the kind that a later, unrelated, correct change desensitises
 
 **Two of session 15's six faults were planted against loops rather than against
 laws.** Of session 16's twelve, one was — and it was kept knowingly.
+
+**A unit test over statics does not cover the code that calls them, and it is
+the calling that the document is usually about.** Session 17's largest finding,
+and it accounts for four of its nine survivals. `test_damage_resolver.gd` is a
+good file: it asserts §4's curve, §5's falloff, §6's impulse and §8's bands
+against figures written out by hand from the document. Every one of those is a
+`static func` taking floats. The rules that survived deletion were all in the
+*instance* path — which armour figure is handed to the curve, whether the
+subtraction is floored, whether the store is decremented — and none of them is
+reachable from a static. **Ask of each pure-function test: what chooses the
+arguments, and is that choice a rule too?**
+
+**A sentinel is a branch, and the fixtures may only ever take one side of it.**
+Both ammunition faults survived because every engagement spawns
+`AmmoLedger.UNLIMITED` and `consume` returns on the sentinel before reaching the
+line that does the work. The suite exercised the ledger constantly and executed
+that line never. Same shape as the bound nothing reached, one level down: not
+"no fixture is large enough" but "every fixture takes the early return".
+
+**A committed sweep script rots, silently, in the direction of testing less.**
+Two of session 14's faults no longer apply to code session 16 rewrote, and the
+script says `PATCH-MISS` and carries on. Read the misses as carefully as the
+survivals — a fault that cannot be planted is a defence that has been removed
+without anybody deciding to remove it.
 
 
 ### 2.1 What the uncaught faults taught
@@ -456,6 +544,15 @@ All verified against 4.7.1 in this repo, not recalled.
     `body_set_state(BODY_STATE_TRANSFORM)` on a shapeless body leaves it with the
     broadphase entry it had while empty, and every subsequent query against it
     returns **nothing**. **Assert the reject, not just the accept.**
+
+    **Qualified in session 17: "every subsequent query" means every query before
+    the next physics step.** A step rebuilds the entry from the body's current
+    shapes and pose, so the damage is confined to the frame it happened in. That
+    is why the ordering rule is real and why no test in `tests/physics/` can
+    catch a violation of it — the `await physics_frames` those tests need in
+    order to read a current pose (§3.28) is the same step that repairs it.
+    Measured both ways round; see §8 item 14 before writing a third fixture for
+    this.
 
 20. **A `Shape3D` owns its server RID and frees it on destruction.** Caching the
     bare RID and letting the Resource fall out of scope leaves every entry
@@ -1288,6 +1385,120 @@ which is indistinguishable from a direct hit in the signal. The fixture reads th
 round's own strike record instead, which is the only observable that answers the
 question asked.
 
+### 4.26 Built — Appendages, held weapons, and a melee sweep that does not land
+
+A new part class, a new keyed connector, a new part, and the §15.3 query that had
+been computed since session 8 and never run. Three of the four work; the fourth
+is written down as it behaves.
+
+**`PartClass.APPENDAGE`** (doc 01 §7.8). An arm is not a Motive Assembly — it
+does not propel and has no locomotion family — and not a Structural Component,
+because a bracket cannot swing what it carries and cannot be graded on how well
+it holds it. It adds **no joint**: I-3 holds exactly as for an ambulatory limb,
+the collider is authored and fixed, and what swings is a *query*.
+
+**`AttachmentPolarity.GRIP`** (doc 01 §4.3), keyed exactly as `AXLE` is and for
+the same stated reason — a polarity that mates with anything is `FACE_NEUTRAL`
+with extra steps. The exclusivity is what makes "held" a different joint from
+"mounted": `eff.melee.beam_edge.t4` was re-authored to a single `GRIP` node on
+its hilt, so the edge can be carried and **cannot** be bolted to a hull. Nothing
+had ever placed it, so the polarity change cost no build; its `part_key` is
+untouched, so rule 13's serialised ids are unaffected.
+
+**`apx.arm.manipulator.t3`**, 3x6x3, 128 kg, one hand, 9000 N grip rating —
+which holds the 96 kg edge and refuses the 196 kg autocannon, so a heavier weapon
+is a real choice rather than a free upgrade.
+
+**§8.2 gained its first cross-slot row.** `APPENDAGE_HELD_CYCLE` is read against
+the *holder's* band, not the module's: a pristine edge in a wrecked arm swings
+like a wrecked arm, and the two cycle multipliers compose. `EffectorSystem`
+resolves the holder once at registration by walking the graph upward. It is the
+only degradation row in the game read against a slot other than the one that
+changed band, and it is what makes shooting the arm better than shooting the
+sword.
+
+#### The melee sweep runs and lands nothing — open
+
+`EffectorSystem._step_melee` and `_sweep_edge` are written and wired: the stage
+machine advances, the trigger starts a strike only when the mount is on target
+(§4.3.1's gate, shared with direct fire), the arc is sampled, and the query runs.
+**It reports no contacts.**
+
+What is measured, in `tests/physics/test_held_weapon.gd`:
+
+| Observation | Value |
+|---|---|
+| Mount converged | `on_target` and `solution_in_arc` both true |
+| Stage machine | reaches `SWINGING`, cycles repeatedly |
+| Capsule queries per swing | 6 |
+| Edge sample vs target origin | within **0.31 m**, against an 0.18 m capsule |
+| Contacts reported | **0** |
+
+The target Assembly is a real `AssemblyRuntime` on `LAYER_ASSEMBLY_HULL`, the
+mask is `MASK_PROJECTILE_TARGET`, both bodies are frozen and flushed by a stepped
+frame. So this is a fixture-or-broadphase question rather than a §15 one, and the
+next session should start by asking whether the target's *collider* is where the
+test assumes — a Core Module's box is centred on its centre of mass, most of a
+metre from the cell the blueprint calls its origin, and the fixture compensates
+for that with `com_offset_m`, which is a proxy and may not be the right one.
+`ColliderProfile`'s primitives carry their own transforms and are the authority.
+
+**The test asserts the failure**, as §9 requires and as the ambulatory mirror
+already does: `test_the_sweep_currently_lands_no_contacts` is supposed to break,
+and the two assertions it replaced — thermal damage delivered, and more of it
+than kinetic — are in the file's history ready to go back.
+
+**Consequence to be honest about:** the beam edge still does no damage, so the
+energy-damage half of what the arm was built to demonstrate is not demonstrated.
+The `THERMAL` channel remains implemented, unit-tested against synthetic packets,
+and produced by nothing.
+
+### 4.25 Found — four documented rules had no test at all, and one has no owner
+
+Session 17's yield from running session 14's sweep. Nothing here is a defect in
+`src/`: every one of these rules was implemented correctly and was simply
+undefended, which is the failure mode a sweep exists to find and the one no
+amount of green tells you about. All four are closed.
+
+**Armour degrades with the integrity band, and nothing checked it** (doc 08
+§8.2's last row). The document states the consequence in prose — "the first hits
+are absorbed, later hits go through" — and it is a real escalation curve that
+every fight in the game rides. Deleting the multiplier changed no assertion in
+56 files. Measured on the shipped Structural Component, with a probe chosen to
+sit in §4.3's quadratic band where the term has the most to say: **6.80 damage
+at NOMINAL against 25.54 at IMPAIRED**, a factor of 3.75 from one table lookup.
+`tests/integration/test_damage_application.gd` asserts both figures, and asserts
+them across two instances of one definition rather than one instance over time,
+because a part compared against its own past cannot separate the band multiplier
+from the integrity it has already lost.
+
+**The integrity floor is observable through exactly one line.** `maxf(0.0, ...)`
+looks redundant against two other guards — `integrity_fraction` clamps to
+`[0, 1]` and `_destroy_part` assigns `0.0` unconditionally — and it is not.
+§8.4 emits `part_band_changed` **before** the destruction path runs, so every
+subscriber to that signal is handed the raw subtraction. With the floor removed
+a subscriber watching a part die reads about **-11500**. Nothing subscribes that
+reads integrity today, which is why it survived; doc 12 quantises integrity for
+the wire and would underflow on it.
+
+**A full-traverse mount is only tested if it is authored asymmetrically.** The
+existing assertion used `(-180, 180)`, and `clampf` against that is the identity
+over every bearing `angles_for` can produce — so the branch and its fallback
+agree on every input the game generates. A mount authored `(0, 360)` has the same
+span, satisfies the same condition, and there the fallback pins every port
+bearing to zero.
+
+**Ammunition was never observed to fall.** Two independent faults — the fire path
+not calling `consume`, and `consume` not subtracting — both survived, because
+every engagement spawns `UNLIMITED` and `consume` returns on that sentinel first.
+`test_duel` is the only fixture with a finite store and it never asked what was
+left. It now asserts an **equality** against the shot count rather than a
+decrease: a store that merely fell is satisfied by a module that double-charges,
+and an Assembly quietly getting two shots per round is a balance defect nothing
+else here would see.
+
+**And one rule has four owners, which is why it cannot be tested.** See §5.
+
 
 ---
 
@@ -1320,17 +1531,45 @@ against the round's own strike record and says in the comment that the assertion
 cannot currently fail. **The condition that closes this is a part with two
 collider primitives along one axis**, not a cleverer fixture.
 
+**"A melee module does not emit a projectile" has four owners, and is therefore
+untestable.** Session 17 deleted `can_fire`'s `if profile.is_melee(): return
+false` and nothing anywhere changed. It is not that the rule is uncovered — it is
+that it is over-covered, and no fixture can isolate the guard from its three
+co-owners:
+
+1. `register` refuses to resolve a projectile id for a melee module, guarded on
+   the same `is_melee()` predicate;
+2. `eff.melee.beam_edge.t4` authors `projectile_key = &""`, so `id_of` answers
+   `-1` even if it were asked;
+3. `can_fire` ends with `return _projectile_id[slot] >= 0`, which catches every
+   melee module on its own;
+4. and the deleted guard.
+
+Any one of the four enforces it. **This is the tenth "two owners of one
+invariant" in this file and the worst of them**, and the honest next step is to
+reduce it to one rather than to write a test that cannot fail — the terminal
+`_projectile_id >= 0` is the load-bearing one, and the named guard is the
+legible one, so the choice is a judgement about which the reader should meet
+first. It was left alone in session 17 because deleting a guard whose subject
+(doc 07 §15's melee sweep) is the very next thing anybody will wire up (§8 item
+12b) is a change to make *with* that work and not before it.
+
 **`ResolvedNode.is_face_paired` is over-specified, knowingly.** It tests
 adjacency in both directions *and* that the faces oppose, and any two imply the
 third. Fault injection cannot make it fail by removing one — not a test gap.
 
 **`IslandDetacher` writes the debris body's transform after its shapes, and
-nothing proves it must — but now something could.** §3.19 recorded the failure
-that rule exists for, and §3.28 used to be the reason it could not be
-re-observed. §3.28 was wrong, and `tests/physics/` can now step the engine, so
-the test to write is *a shape query at the island's centre of mass finds the
-debris body*, with the transform written before the shapes as the fault that must
-fail it. It is the cheapest remaining item in §8.
+nothing proves it must — and session 17 established that nothing in
+`tests/physics/` can.** This entry used to say the test was cheap and obvious: a
+shape query at the island's centre of mass, with the transform written before the
+shapes as the fault that must fail it. That test now exists
+(`test_debris_body_query.gd`) and the fault survives it, both as an extra early
+write and as the only write. §3.28 requires a stepped frame before the space
+answers with a current pose, and the step repairs the very broadphase entry
+§3.19's rule protects. The rule is still believed — §3.19 is a real measurement —
+but it is defended by the comment in `island_detacher.gd` rather than by a test,
+and §8 item 14 records the two attempts so the next session does not make a
+third.
 
 **`MotiveSystem._gather_contacts` is covered end to end** by
 `test_ground_assembly` through four real probes on real ground. It should stay
@@ -1540,7 +1779,7 @@ build one.
 | `tools/ci/godot.sh` | Engine wrapper with redirected XDG paths |
 | `tools/ci/run_all_checks.sh` | Reimport + suite; the command to run |
 | `tools/ci/run_all_checks.gd` | Discovery-based headless runner; awaits suspended tests (§3.36) |
-| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37 planted faults; 33 unrun — §8 item 0 |
+| `tools/ci/sweeps/combat_layer_sweep.py` | Session 14's 37 plus session 17's 1; **all run, session 17** — §2.0. Two report `PATCH-MISS` (§8 item 0e) and one is a standing survivor (§8 item 14) |
 | `tools/ci/sweeps/engagement_sweep.py` | Session 15's six plus session 16's, over every fix — §2.0 |
 | `JULES.md` | Read-only review charter for a second agent; grants no authority |
 
@@ -1588,6 +1827,15 @@ measurement in §4.13 to §4.24:
 Two things were deliberately **not** changed and are recorded instead: doc 01
 §10.5's 8° depression (§4.22), and doc 05 §13's missing heading authority
 (§4.21).
+
+**Session 17 changed no `src/` file at all.** It ran session 14's combat-layer
+sweep (§2.0), and every one of its nine survivals turned out to be a rule that
+was implemented correctly and defended by nothing. The work was therefore four
+new test files, three assertions added to existing ones, and the records in
+§4.25 and §5 for the two that cannot be tested. The one `src/`-adjacent
+temptation — deleting the redundant melee guard in `EffectorSystem.can_fire` —
+was declined on purpose, because doc 07 §15's melee sweep is the next thing
+anybody will wire up and that is the change to make it with.
 
 `DamageResolver` covers doc 08 §3 to §8 in full: all five channels, §4's
 penetration curve and ricochet, §4.4's spall, §5's single-query blast with sorted
@@ -1725,17 +1973,24 @@ Unit: `test_assembly_registry`, `test_lattice_math`, `test_orientation_table`,
 `test_mass_solver`, `test_degradation_table`, `test_suspension_solver`,
 `test_traction_solver`, **`test_traction_control`**, `test_rotor_solver`,
 `test_gait_solver`, `test_track_solver`, `test_melee_solver`,
-`test_control_system`, **`test_damage_resolver`**, **`test_aim_solver`**.
+`test_control_system`, `test_damage_resolver`, `test_aim_solver`, and — new in
+session 17 — **`test_ammo_ledger`** (doc 07 §9.2, which had no test file at all).
 
 Integration: `test_tick_ordering`, `test_part_registry_data`,
 `test_placement_validator`, `test_detachment_scheduler`, `test_assembly_runtime`,
 `test_mass_recompute`, `test_island_detachment`, `test_debris_pool`,
-`test_motive_system`.
+`test_motive_system`, `test_band_dispatch`, and — new in session 17 —
+**`test_damage_application`** (the resolver's *instance* path: §8.2's armour band
+multiplier and the integrity floor, neither of which a static test can reach) and
+**`test_projectile_lifetime`** (a round expiring in an empty space of its own,
+because every round in every engagement hits the ground slab).
 
 Physics: **`test_ambulatory_drift`** (§4.21's drift, pinned),
 **`test_overpenetration_bounds`** (§4.13's fix, guarded — the same fixture that
 recorded the defect, with every assertion inverted, plus §4.24's static file of
 three hulls that makes the penetration bound reachable),
+**`test_debris_body_query`** (§3.19's ordering rule, asserted through the only
+observable that can see it — a physics query at a severed island),
 `test_locomotion_families`, `test_physics_frame`, `test_ground_assembly`,
 `test_motive_force_application`, `test_inertia_coupling`,
 `test_locomotion_behaviour`, `test_duel` — two Assemblies, real parts, real
@@ -1746,6 +2001,44 @@ and **`test_team_engagement`** (five-a-side combined arms and ten wheeled builds
 a side).
 
 `tests/generation/` is still empty.
+
+---
+
+## 6.5 The player-experience review (CLAUDE.md §10 rule 17)
+
+Recorded every session from now on, because a green suite says nothing about
+whether the thing is any good to play.
+
+**Can a person play it? No.** There is still no scene, no camera, no main scene
+set, and no way to start the game and press a key. Everything below is reachable
+only from `tests/`. This is unchanged since session 1 and it is the single
+largest gap in the project: thirteen documents of architecture, 4476 passing
+checks, and nothing a person can look at. **§8 item 12 is the answer and it
+should stop being deferred.**
+
+Ranked by what would most improve a first-time player's experience:
+
+1. **A match scene with a camera.** Item 12. Everything else on this list is
+   invisible without it.
+2. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
+   §4.14). A player bolting the shipped autocannon to the shipped chassis and
+   pulling the trigger gets a vehicle on its roof. The nose mount hides it; a
+   player who mounts it on the roof, which is the obvious place, meets it
+   immediately. **This is a balance decision nobody has made and a player will
+   meet it in their first minute.**
+3. **A walking build turns 170 degrees in five seconds while commanded straight
+   ahead** (§4.21). Unplayable as a family; the arena's tactics work around it by
+   planting the Assembly before it shoots, which a player cannot do.
+4. **The beam edge does no damage** (§4.26). A player who builds the arm and the
+   sword — the most visually interesting thing in the part list — gets a weapon
+   that swings and does nothing.
+5. **Nothing renders a wheel at its contact point** (§7). The first thing anybody
+   will notice about a moving vehicle is that its wheels are not where the
+   suspension put them.
+
+Nothing shipped is *unfair* in a way a player would notice, because nothing is
+shippable yet. The honest summary is that this is a simulation with no game
+attached to it, and the ratio has been getting worse rather than better.
 
 ---
 
@@ -1922,12 +2215,20 @@ a side).
   wrapper catches it (§3.34). Worth knowing before running the `.gd` directly.
 - **`cam_orbit`/`cam_pan` have keyboard/mouse bindings only**, and several
   actions had no binding in doc 11 §7.1.
-- **The suite is now 4 min 15 s and `tests/physics/` is most of it.** Three of
+- **The suite is about 40 seconds and `tests/physics/` is most of it.** Three of
   the four multi-Assembly files soak for hundreds of ticks by construction, and
   the two that time out — the ambulatory mirror and the five-a-side — spend their
-  full budget every run on purpose. If the wall time becomes a problem, the
-  honest lever is closing §4.13 and §4.15 so those two reach a decision, not
-  shortening their windows.
+  full budget every run on purpose. It was 4 min 15 s until §3.50; if the wall
+  time ever becomes a problem again, the honest lever is closing §4.21 so the
+  ambulatory mirror reaches a decision, not shortening its window.
+- **The swept ray and the round-release path are unverified.** Their two faults
+  can no longer be planted (§8 item 0e). §5 calls the swept ray the one place in
+  the combat layer where the obvious implementation is not merely slower but
+  silently wrong, so this is not a comfortable gap to leave open.
+- **§12.3's self-immunity window is inert in both directions.** Setting it to
+  zero and pinning it permanently on both leave the suite green, because no
+  shipped recipe mounts a module whose muzzle overhangs its own hull. It is
+  carried, not tested.
 - **Two engagements are asserted as they fail.** `test_family_duels`'s ambulatory
   mirror and `test_team_engagement`'s five-a-side both assert that they run to
   the timeout. Those assertions are correct today and are *supposed* to break:
@@ -1960,16 +2261,31 @@ a side).
 0a. ~~**Decide what `on_target` means for a mount on its stop.**~~ — **done,
    session 16.** Doc 07 §4.3.1's `solution_in_arc` term; §4.19.
 
-0b. **Run the rest of session 14's fault sweep.** The script is committed at
-   `tools/ci/sweeps/combat_layer_sweep.py`; 4 of its 37 faults ran and were
-   caught. The other 33 cover the ricochet gate, the blast exponent, the impact
-   threshold and cap, the band boundaries, the armour band multiplier,
-   resistance, destruction, the aim signs, the fire gate, the swept ray,
-   self-immunity, and §8.4's band dispatch. **Until they run, treat every one of
-   those behaviours as untested** — §4.8 is what that assumption cost the last
-   time it was made, and §2.0's three survivals are what it cost this time. At
-   roughly four and a half minutes a fault that is two and a half hours; split it
-   across sessions if it has to be, but record which ran.
+0b. ~~**Run the rest of session 14's fault sweep.**~~ — **done, session 17.**
+   All 37 ran in 28 minutes. **35 planted, 26 caught, 9 survived, 2
+   `PATCH-MISS`** — the full record is §2.0 and the findings are §4.25. Seven of
+   the nine survivals are closed by four new test files and three assertions
+   added to existing ones; the other two are recorded as untestable with the
+   shipped part set (§5's melee guard, and §12.3's self-immunity, now confirmed
+   inert in *both* directions).
+
+0d2. **Land the melee sweep.** §4.26. Everything around it is built and wired —
+   part class, grip, arm, held edge, stage machine, channel mix, resolver — and
+   the query returns nothing. It is the single highest-value defect open, because
+   it is the only thing standing between the game and its second weapon, its only
+   energy weapon, and the first non-KINETIC damage anything has ever produced.
+   Start with the target's collider transform, not with §15.
+
+0e. **Re-target the two faults that could no longer be planted.**
+   `sweep-becomes-point-test` and `hit-never-releases-the-round` both address
+   lines session 16 rewrote when it closed §4.13 and §4.24, so
+   `combat_layer_sweep.py` reported `PATCH-MISS` and moved on. Those two
+   behaviours — the swept ray rather than a point test, and a round being
+   released when it stops — are therefore **unverified**, and the swept ray is
+   the one §5 calls the place where the obvious implementation is not merely
+   slower but silently wrong. Rewrite both against the current
+   `_sweep_and_resolve`. Cheap, and it is the direct lesson of §2.0's third
+   paragraph: a sweep script rots in the direction of testing less.
 
 0c. **Sweep the bounds nobody reaches.** §2.0's new lesson generalises past the
    penetration budget: Invariant I-12 lists eighteen bounds and the suite
@@ -2023,9 +2339,32 @@ a side).
     them is mostly a question of what belongs in `AiDriver` and what belongs in a
     stability-augmentation layer doc 05 does not have yet — see §5.
 
-14. **The debris body shape query.** §5's uncaught fault, and cheap: a shape
-    query at a severed island's centre of mass must find the debris body, and
-    writing the body's transform before its shapes must fail it.
+14. **The debris body shape query — written, and it does not do what §5 said it
+    would.** `tests/physics/test_debris_body_query.gd` exists and is worth
+    keeping: it severs an island through the real chain and asserts that doc 08
+    §5.3's blast query finds the body at its centre of mass and nothing 50 m
+    away, which is the only assertion anywhere that asks the *space* rather than
+    the node. Dropping `LAYER_DEBRIS` from the pooled body makes it fail, so it
+    is live.
+
+    **But the fault it was written for survives it**, and that is the finding.
+    §5 proposed "a shape query at the island's centre of mass, with the transform
+    written before the shapes as the fault that must fail it". Session 17 planted
+    that fault two ways — as an extra early write, and as the *only* write — and
+    the query finds the body both times. The reason is that §3.28 obliges the
+    test to `await physics_frames` before asking, and that step is itself what
+    repairs the stale broadphase entry §3.19 describes. **A test that must step
+    the engine cannot observe a fault that a step repairs.**
+
+    So the ordering rule in `IslandDetacher` is **still unverified**, and it is
+    now known to be unverifiable by the route §5 suggested rather than merely
+    unattempted. `debris-transform-before-shapes` is committed in
+    `combat_layer_sweep.py` and reports `SURVIVED` every run, deliberately, as
+    the standing record. Anything that closes it has to observe the body in the
+    frame it was built in, which §3.28 says reads a stale pose regardless — so
+    the next honest step is probably to decide the rule is defended by the
+    comment in `island_detacher.gd` and stop trying, rather than to keep
+    inventing fixtures for it.
 
 15. **A second steered wheeled row.** Makes one of §5's three surviving faults
     visible, gives rule 13 a second tier to check, and gives the garage a real
@@ -2117,6 +2456,15 @@ a side).
 ### What to assert
 - **Assert the rejection, not just the acceptance.** Every check in
   `test_placement_validator` is asserted in both directions.
+- **Ask what chooses the arguments.** A unit test over a `static func` asserts
+  the formula and says nothing about the caller that picks its inputs — and the
+  document is usually about both. Four of session 17's nine survivals lived in
+  that gap: §4's damage curve was tested exactly, and *which armour figure is
+  handed to it* was tested nowhere. When a pure function is covered, the next
+  question is which call site fills each parameter and whether that is a rule.
+- **Assert an equality against a count, not a decrease.** `test_duel` now asserts
+  the store equals `LOADED_ROUNDS - shots`, not that it went down: a store that
+  merely fell is satisfied by a module that double-charges every round.
 - **Assert a derived number, not that it moved.** Every strain, mass, inertia,
   suspension, traction, rotor, gait and track test fixes an input and asserts the
   exact value, written out as arithmetic against the published tables — never

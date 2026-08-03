@@ -93,6 +93,34 @@ func test_a_full_traverse_mount_is_not_clamped() -> void:
 	check_approx(AimSolver.clamp_yaw(-PI * 0.99, FULL_YAW), -PI * 0.99, "and so is the other side")
 
 
+## The same rule, authored the other legal way round.
+##
+## The symmetric case above cannot tell the rule from its fallback: [constant
+## FULL_YAW] is -180 to 180, so [code]clampf[/code] against it is the identity
+## over every bearing [method AimSolver.angles_for] can produce, and deleting the
+## full-traverse branch outright leaves both assertions green. Session 17's fault
+## sweep is what said so.
+##
+## A mount authored from 0 to 360 has the same span and satisfies the same
+## condition, and there the fallback is not equivalent but catastrophic: clamping
+## a bearing to port into [code][0, 2pi][/code] pins it at zero, so the mount
+## could only ever aim starboard.
+func test_a_full_traverse_authored_from_zero_is_not_clamped() -> void:
+	var from_zero := Vector2(0.0, 360.0)
+	check_approx(
+		AimSolver.clamp_yaw(-1.0, from_zero), -1.0,
+		"a bearing to port survives a mount authored 0 to 360"
+	)
+	check_approx(
+		AimSolver.clamp_yaw(-PI * 0.75, from_zero), -PI * 0.75,
+		"and so does one over the shoulder"
+	)
+	check_approx(
+		AimSolver.clamp_yaw(1.0, from_zero), 1.0,
+		"and starboard is untouched either way"
+	)
+
+
 func test_a_limited_mount_is_clamped_to_its_arc() -> void:
 	var limits := Vector2(-45.0, 45.0)
 	check_approx(
