@@ -268,6 +268,12 @@ var kills: Dictionary = {}
 ## apart from a fight where every round landed on armour that soaked it.
 var hits_landed: int = 0
 var damage_by_target: Dictionary = {}
+## assembly_id -> integrity taken off it per [enum PartEnums.DamageChannel].
+##
+## The totals above cannot tell gunfire from a collision, and once a driver
+## closes to its stand-off it is parked among wreckage and taking a little of
+## the second. An assertion that means "nothing shot at it" has to say KINETIC.
+var damage_by_channel: Dictionary = {}
 ## Ticks the last call to [method engage] actually ran for.
 var ticks_engaged: int = 0
 ## Most rounds in flight at once during it. Sampled inside the loop, because the
@@ -798,9 +804,23 @@ func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int
 		_log("%s's Core Module is CRITICAL" % name_of(assembly_id))
 
 
-func _on_part_damaged(assembly_id: int, _slot: int, amount: float, _channel: int) -> void:
+func _on_part_damaged(assembly_id: int, _slot: int, amount: float, channel: int) -> void:
 	hits_landed += 1
 	damage_by_target[assembly_id] = float(damage_by_target.get(assembly_id, 0.0)) + amount
+	if not damage_by_channel.has(assembly_id):
+		damage_by_channel[assembly_id] = PackedFloat32Array()
+		damage_by_channel[assembly_id].resize(PartEnums.DAMAGE_CHANNEL_COUNT)
+	var per: PackedFloat32Array = damage_by_channel[assembly_id]
+	per[channel] += amount
+	damage_by_channel[assembly_id] = per
+
+
+## Integrity taken off [param assembly_id] through [param channel], or 0.0.
+func damage_through(assembly_id: int, channel: PartEnums.DamageChannel) -> float:
+	if not damage_by_channel.has(assembly_id):
+		return 0.0
+	var per: PackedFloat32Array = damage_by_channel[assembly_id]
+	return per[channel]
 
 
 ## Bands [param slot] of [param assembly_id] was observed in, in order.

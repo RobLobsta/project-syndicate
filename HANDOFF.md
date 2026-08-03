@@ -4,35 +4,31 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 23 — **something shoots back.** `src/ai/` did not exist and
-the match scene was a gunnery range: three opponents with modules, no
-ammunition, no driver. It is now a fight. `AiContext`, `AiTargetSelector` and
-`AiDriver` are landed, the match scene spawns its opponents on the other side of
-a roster and hands each one a driver, and they close, aim through the identical
-`EffectorSystem` a player's trigger reaches, and shoot. **72 files, 5104 checks,
-0 failures.**
+Last updated: session 24 — **the bore is centred, and centring it did not do
+what everyone expected.** Session 23 named the shipped autocannon's half-cell
+muzzle offset "the highest-value data change in the project", on the reasoning
+that it was what stopped an Assembly driving and shooting at once. It is fixed —
+doc 01 §14 rule 27, the module re-dimensioned from 5×4×9 to 4×4×9, the bore
+measured onto the centre of mass at a millimetre — **and an Assembly still cannot
+drive and shoot.** §4.37 has the measurement that says why, and it redirects the
+next session.
 
-Building it found **three defects, none of them in the AI**, and the largest is
-the one you can watch:
+Three other things came out of it, and the third is the one to read:
 
-- **Firing on the move yaws an Assembly harder than its steering can correct**
-  (§4.34). The autocannon's muzzle sits 0.125 m off the centreline — recorded in
-  §7 for two sessions as a data question nobody had answered — and at its cadence
-  that is about 1270 N·m of yaw torque. A driver holding the trigger through its
-  approach was turned 35° off heading in one second and spent fourteen seconds
-  circling a target 40 m away, getting further from it. The same driver with the
-  trigger cold held its heading to a tenth of a degree and closed 40 m to 5.4 m.
-  Doc 05 §15.7.4 is the workaround; **centring the muzzle is the fix and it is
-  now the highest-value data change in the project.**
-- **Every death was announced twice** (§4.35). `DetachmentScheduler` still emitted
-  `assembly_terminated` alongside `DamageResolver`, which doc 04 §8.2 forbids in
-  as many words. Visible in the match HUD as a player's own destruction reported
-  twice, once credited and once to nobody. Live since session 16, and held in
-  place by a fixture that asserted the duplicate.
-- **The ambulatory drift's direction is not reproducible** (§4.36). Adding one
-  engagement file earlier in the suite flipped the neutral case from +169.6° to
-  −76.1° while leaving both commanded runs byte-identical. §3.54 again, one level
-  sharper.
+- **§15.7.1's throttle floor was outside its own window** (§4.38). The law says
+  the floor sits "between two failures"; the shipped 0.35 was on the stall side
+  of it, and a driver spawned facing away from its target settled at 0.2 m/s and
+  never came round at all. The window was mapped and the law rewritten.
+- **The fix for that broke the game, and the suite was green for it** (§4.39).
+  Raising the floor to 0.80 turns the build in 270 ticks on `CombatArena`'s flat
+  slab and stops the opponents ever reaching the player on the arena's fifteen
+  metres of relief. Caught by a capture, not by a test, and the sweep now carries
+  `breakaway-never-releases` as a standing survivor for it.
+- **Two fixtures were resting on a single lucky round** (§4.40) from the
+  ambulatory build — the family the project already records as unable to shoot.
+  A small unrelated change took it away and four assertions read zero.
+
+**72 → 73 files, 5104 → 5130 checks, 0 failures.**
 
 Session 22 made the ground terrain. Session 20 made the game render.
 
@@ -48,9 +44,9 @@ Session 22 made the ground terrain. Session 20 made the game render.
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §4.34 for why an Assembly cannot drive and shoot at
-the same time, §6.5 for what a player now meets in the first thirty seconds, and
-§8 for the next steps.
+**If you read three things:** §4.37 for why an Assembly still cannot drive and
+shoot and what would actually fix it, §4.39 for a change that was green and
+wrong, and §8 for the next steps.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -88,7 +84,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**72 files, 5104 checks, 0 failures.**
+**73 files, 5130 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -245,8 +241,10 @@ restarted every tick |
 | `test_manifold_checker` | *(session 22)* all six cases the engine's CSG was probed on, including the two a naive index-based predicate gets wrong — a split-vertex `BoxMesh` and a `SphereMesh`'s pole fans — plus a duplicated face, which a boundary-only check passes |
 | `test_ai_target_selector` | *(session 23)* doc 07 §10's four weights by value, the team filter, the range gate in both directions, the tie-break order, and §10.3's error model — reproducible at one seed, different at two, growing with range and shrinking with difficulty |
 | `test_ai_driver` | *(session 23)* doc 05 §15.7.1's bearing and its flattening, the steering sign in both directions, saturation, §15.7.2's authority ceiling and the **sign of the yaw damper**, and each family's stand-off by value |
+| `test_recoil_geometry` | *(session 24)* doc 01 §14 rule 27 in both halves — the authored bore against the footprint centre and the width parity against the Core Module's — then the same quantity off the live mount, and §4.37's finding: a traversed round yaws the hull by a multiple of an on-axis one |
 | `test_ai_engagement` | *(session 23)* the whole chain end to end: a scan, a target, a 180° turn, an approach, a mount converged, a round fired, a store decremented by exactly the shots, integrity taken off the target — plus §15.7.4's fire discipline and §10.2's arc penalty by value |
 | `test_detachment_scheduler` | …and, since session 23, that the scheduler announces **no** termination. It used to assert the opposite, which is what kept doc 04 §8.2's duplicate producer alive for seven sessions |
+| `test_part_registry_validator` *(rule 27)* | *(session 24)* a bore on the pivot rather than on an even-width footprint's centre, one half a metre off it, an odd-width direct-fire module against an even-width Core Module — and both exemptions, an arced module and a melee one |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
@@ -452,7 +450,60 @@ selection, and the check count moved. A `CAUGHT` whose blast radius does not
 match its subject is as suspicious as a `SURVIVED`: re-anchored on the return
 expression, the real fault fails exactly the two assertions written for it.
 
-#### What the five sweeps taught
+#### Session 24: fourteen faults over the same layer, and one deliberate survivor
+
+`ai_layer_sweep.py`, baseline **5130**. Session 23's ten plus three that survived the session's own churn, for
+**thirteen**. One is a deliberate standing survivor; the other twelve are caught. Two results are worth more than the rest.
+
+| Fault | Result |
+|---|---|
+| `breakaway-never-releases` | **SURVIVED, and it is kept.** See below. |
+| `aim-point-read-from-scan` | **CAUGHT** — it was session 23's standing survivor. See below. |
+| `throttle-taper-removed` | `PATCH-MISS` on the first run, because this session rewrote the function it anchors on. Re-targeted onto `approach_throttle`'s first line, and CAUGHT with 6 failures. §2.0's rot warning, arriving inside the same session that caused it. |
+| `breakaway-removed` | CAUGHT, 2 failures — the turn and the closure |
+| `bore-off-centreline` | CAUGHT, 3 failures across `test_part_registry_data` and both halves of `test_recoil_geometry` |
+| the other eight of session 23's | all CAUGHT, unchanged |
+
+**`breakaway-never-releases` is a deliberate standing survivor and the most
+useful line in this table.** It is §15.7.1's breakaway applied at every speed —
+which is to say it is *exactly the change this session shipped for an afternoon*.
+It is green on all 5130 checks. It also stops the opponents ever reaching the
+player in the real match, because `CombatArena` builds a flat slab and the arena
+has fifteen metres of relief (§4.39). **Nothing in the suite can see it and
+nothing is going to be able to**; the only instrument that reads the right
+quantity is a capture. It stays in the sweep the way
+`debris-transform-before-shapes` does: as the record of a defence that does not
+exist, rather than as a job somebody should finish.
+
+**`aim-point-read-from-scan` closed itself, and not by being aimed at.** Session
+23 left it open deliberately — collapsing §10's 2.9 Hz scan into the per-tick aim
+changes nothing when the only target anybody has ever shot at is parked. It is
+now caught, by an assertion written for something else entirely: the rounds floor
+added to catch `no-arrival-brake`. A driver parked at six metres cannot hold a
+firing solution on a 350 ms stale point, because *it* is still settling even when
+its target is not, and it gets 2 rounds away instead of 9. The condition session
+23 said was needed — an engagement where the AI's target is driving — turns out
+not to have been.
+
+**`no-arrival-brake` survived twice, for two different reasons, and the brake was
+deleted.** An arrival brake was added when the throttle floor was flat at 0.80,
+because the driver was coasting through its stand-off at 11 m/s and orbiting. It
+survived its first sweep: every range assertion in `test_ai_engagement` passes
+against an orbiting driver, and so does "the AI fired", because one gets a round
+off on each lap. The speed sample does not separate them either — an orbiting
+Assembly is slow twice a lap. What did was **how much shooting it got done**, one
+round against nine, and that assertion is still there and still worth having.
+
+Then the breakaway law replaced the flat floor, and the fault survived *again* —
+this time because the brake had stopped doing anything. Measured with and
+without: 6.4 m and 9 rounds against 5.8 m and 10. A driver that approaches on the
+taper arrives slowly enough to stop on the throttle cut alone. **§2.1's first
+question is "is this code dead?" and here the answer was yes**, so it went, with
+doc 05 §15.7.1 recording what was tried and what would bring it back. It is the
+familiar shape: a fix for a defect that a later, better fix removed, which would
+have been carried forever as prudence.
+
+#### What the six sweeps taught
 
 **A closed loop hides the thing it closes over.** Session 15's two survivals were
 both of this shape: an autopilot that corrects an error every tick absorbs a
@@ -510,6 +561,20 @@ Two of session 14's faults no longer apply to code session 16 rewrote, and the
 script says `PATCH-MISS` and carries on. Read the misses as carefully as the
 survivals — a fault that cannot be planted is a defence that has been removed
 without anybody deciding to remove it.
+
+**A fixture's ground is not the game's ground.** Session 24's, and it is the
+first lesson here that no test can enforce. Every fixture in `tests/physics/`
+stands on a flat `StaticBody3D` slab and the match runs on fifteen metres of
+relief, so a locomotion or tactics law can be measurably better on the slab and
+measurably worse in the game. It happened: a throttle constant that improved
+every number in the suite stopped the opponents ever reaching the player. For
+anything in doc 05 §13 or §15.7, run the capture.
+
+**A behaviour added without an assertion is not there yet.** `no-arrival-brake`
+survived its first run because the brake was added and nothing was written to
+notice it. The suite was green with the behaviour and green without it, which is
+the definition of untested — and it is easy to miss precisely because the
+behaviour is *visibly* working when you add it.
 
 **And read a `CAUGHT` whose blast radius does not match its subject.** Session
 23's arc-cost fault anchored on three lines that appear twice in one file, landed
@@ -2129,6 +2194,13 @@ is the opt-in route by which `src/ai/` gets into an engagement test, and
 
 ### 4.34 Found — an Assembly cannot drive and shoot at the same time
 
+**The measurement stands; the diagnosis in it was wrong. Read §4.37 with it.**
+This section attributes the whole effect to the muzzle's 0.125 m lateral offset.
+That offset is real, it is now closed, and the behaviour did not change — the
+dominant term is the recoil applied at a mount 2.25 m forward of the centre of
+mass, which yaws the hull whenever the gun is traversed. Everything below is
+still what was measured.
+
 **The session's largest finding, and it is not in the AI.** It was found by the
 first test that asked a driver to close on a target and shoot it, which is §2's
 "integration finds" for the eighth time.
@@ -2214,6 +2286,172 @@ comparison against noise. The file now asserts that the counter-steered run stil
 ends up past the drift threshold — which is the claim §4.21 actually makes — and
 compares the two *commanded* runs against each other. §4.21's finding is
 unchanged and better defended.
+
+### 4.37 Fixed, and it did not fix what it was for — the bore is centred
+
+**Doc 01 §14 rule 27, and the headline finding is that §8 item 0 was wrong about
+what centring the muzzle would buy.**
+
+The defect was real and is closed. `eff.ballistic.autocannon_30.t3` was authored
+five cells wide against a four-cell Core Module, and the two parities can never
+put one centreline on the other — Invariant I-6 makes placement integer, so there
+is no half-cell to correct it with. Measured on the reference wheeled build, the
+bore sat **0.103 m** from the centre of mass and the module's own 196 kg pulled
+the hull's centre of mass 0.022 m off its geometric centre as well. The module is
+now 4×4×9 with its bore authored on its own footprint centre, and both numbers
+are **zero to the millimetre**: the build is laterally symmetric for the first
+time.
+
+One number moved that says the fix is real rather than cosmetic.
+`test_family_duels`'s single-round recoil measurement reports **pitch** at
+0.012 rad/s where it read 0.062 before. The pitch impulse is unchanged — the
+muzzle is still 0.247 m above the centre of mass — so four fifths of that reading
+was the *yaw* impulse cross-coupling through the inertia tensor's products. It is
+gone because the yaw impulse is gone.
+
+**And an Assembly still cannot drive and shoot.** A driver holding its trigger
+through an approach, with the bore centred: never comes round at all, finishes
+59 m from a target it started 43 m from. The same driver with the trigger cold
+turns and stops on its stand-off. Identical to the measurement §4.34 attributed
+to the muzzle offset.
+
+`tests/physics/test_recoil_geometry.gd` is the new file and its second
+measurement is the answer:
+
+| Traverse | Lateral lever | Yaw from one round |
+|---|---|---|
+| 0° | −0.001 m | 0.013 rad/s |
+| 30° | 1.238 m | 0.412 rad/s |
+| 60° | 1.995 m | 0.623 rad/s |
+| **90°** | **2.250 m** | **0.845 rad/s** |
+
+Doc 07 §8 applies the recoil **at the muzzle**, and the mount sits 2.25 m forward
+of the centre of mass. Traversed square across the hull it swings its own line of
+action out to that whole distance: one round is 48°/s of yaw. **A driver turning
+toward a target is by definition firing off its own nose**, so this is the case
+that matters and it is sixty-five times the on-axis one.
+
+So the arm was never the bore's offset within the mount — it is the mount's
+position on the build. Rule 27 fixes the case where a build is already pointed at
+what it is shooting and cannot touch the other. What would remove §15.7.4's fire
+discipline is **a mount whose recoil line passes near the centre of mass**, which
+is a question about where a build puts its guns rather than about how a part is
+authored. That is a better problem than the one this replaced: it is a design
+lever a player pulls, not a number in a table.
+
+Doc 01 §10.5, doc 05 §15.7.4, `AiDriver`'s class documentation and
+`test_ai_engagement`'s all carried the old explanation and all now carry this one.
+
+### 4.38 Found — §15.7.1's throttle floor was outside its own window
+
+`APPROACH_MIN_THROTTLE` is documented as "the floor between two failures": a
+build at full throttle through a full-lock turn spirals outward, and one stopped
+dead with the lock over sits there scrubbing. The shipped 0.35 was chosen against
+the first comparison alone — 1.0 spirals, so anything well below it read as an
+improvement — and **the band between the two was never mapped**. It is on the
+stall side.
+
+Mapped, on a flat slab, one build spawned facing 180° away from a target 40 m
+off and driven for 330 ticks on this law and nothing else:
+
+| Floor | Best bearing | Turned inside 30° | Final range |
+|---|---|---|---|
+| 0.35 | 77.4° | no | 48.6 m |
+| 0.50 | 36.4° | no | 47.2 m |
+| 0.60 | 16.6° | t = 314 | 46.2 m |
+| 0.70 | 0.5° | t = 291 | 44.8 m |
+| 0.80 | 0.1° | t = 270 | 43.3 m |
+| 0.90 | 0.5° | t = 267 | 43.5 m |
+| 1.00 | 41.8° | no | 45.3 m |
+
+At 0.35 the build settles at about 0.2 m/s and never comes round. **This is not
+a subtlety: it is an AI that cannot turn around**, and it had been in the game
+since `src/ai/` landed. `test_ai_engagement` did not catch it because the fixture
+happened to sit on the good side of a cliff, and centring the bore moved it
+across — which is how it was found at all.
+
+**A constant whose document says it sits between two failures should have the
+window recorded next to it, not the value.** Doc 05 §15.7.1 now carries the
+table.
+
+### 4.39 Found — the fix for that broke the game, and the suite was green
+
+**The session's most useful finding, and the only one no test could have made.**
+
+Raising the floor to 0.80 is right by every measurement above and by the whole
+suite. It is also the change that stopped the game working. Captured with §3.55's
+route on the real match scene:
+
+| | frame 400 | frame 700 |
+|---|---|---|
+| floor 0.35 | opponents at contact range, player **44%**, 10/12 parts | — |
+| floor 0.80 | opponents milling at 40–70 m, player **100%**, 12/12 | still 100%, 12/12 |
+
+Nothing happens. The player sits untouched for fifteen seconds where the previous
+session's capture had them dead by frame 880.
+
+The cause is that `CombatArena` builds a **flat slab** and the arena has **fifteen
+metres of relief**. Sustained heavy throttle through a turn is the outward spiral
+the taper exists to prevent, and on a slope it breaks traction as well; on flat
+ground from a standing start neither shows. Every fixture in `tests/physics/` is
+on the slab.
+
+**The repair separates the two failures instead of trading them.** The taper's
+floor stays at 0.35, where terrain says it belongs, and the standing start is
+answered as what it actually is — a stalled contact needing to break away — by a
+demand that applies *only below 3 m/s* and stops the instant the Assembly is
+rolling. It is self-limiting, so it never becomes the sustained throttle that
+loses grip. Both the 330-tick turn and the match capture are back.
+
+An arrival brake was written along the way, for the overshoot the flat 0.80 floor
+produced, and then **deleted** once the breakaway law made it undetectable — see
+§2.0's `no-arrival-brake` entry, which is the better half of the story.
+
+`ai_layer_sweep.py` now carries **`breakaway-never-releases`** as a deliberate
+standing survivor: it is exactly the change that shipped, it is green on
+everything in the suite, and only a capture sees it. Read it the way §8 item 14
+reads `debris-transform-before-shapes`.
+
+**The lesson, and it generalises past this law.** A locomotion or tactics change
+can be measurably better on the fixture and measurably worse in the game, because
+the fixture's ground is not the game's ground. Rule 17's capture is not a
+courtesy at the end of a session; for anything in doc 05 §13 or §15.7 it is the
+only instrument that reads the right quantity.
+
+### 4.40 Found — two fixtures were resting on one lucky round
+
+Centring the bore made every shooter more accurate and fights more decisive —
+`test_family_duels`'s ambulatory-versus-rotary went from 207 ticks to 180, the
+five-a-side from 8 shooters to 10, the brawl from 1200 ticks to 267 — and that
+took one round away from the ambulatory build, which had been landing exactly
+one.
+
+Two files were resting on it. `test_family_duels` asserted `a_shots > 0`, and
+`test_overpenetration_bounds` used an **AMBULATORY shooter against a ROTARY
+target** for its whole engagement fixture: four assertions went to zero, and the
+one about the penetration budget survived only because it spawns its round by
+hand.
+
+Neither was measuring a locomotion family. `test_overpenetration_bounds` is about
+the projectile layer and now fires WHEELED_LIGHT at WHEELED_HEAVY — 48 packets
+over 12 slots where it used to scrape 3 over 2. `test_family_duels` now asserts
+the honest outcome: the walker's mount is converged for **1 tick in 180** and it
+fires nothing, which is §4.21's drift and §4.22's depression stated as a result.
+It is written to start failing when either is closed.
+
+**A fixture whose subject is X should not be gated on the hardest platform in the
+game getting a shot off.** One round was never a capability; it was noise, and
+§3.54's warning about chaotic quantities applies to a fixture's *inputs* as much
+as to its assertions.
+
+Two smaller repairs came out of the same pass. `test_team_engagement` compared
+**total rounds** between a 20-Assembly brawl and a 10-Assembly engagement, and
+the brawl started losing that comparison by *finishing early* — 196 rounds in 267
+ticks against 224 in 1200. Rounds is a rate and the other three rows are not;
+it is now rounds per tick. And `test_ai_engagement` asserted the attacker took no
+damage at all, which broke once it started stopping in the wreckage it had made:
+the assertion is now on the **KINETIC** channel, and `CombatArena` records damage
+per channel so that "nothing shot at it" can be said in the terms it means.
 
 ## 5. Deliberate readings, and the redundancies
 
@@ -2908,78 +3146,77 @@ finds" has held.
 
 ## 6.5 The player-experience review (CLAUDE.md §10 rule 17)
 
-Recorded every session from now on, because a green suite says nothing about
-whether the thing is any good to play.
+Recorded every session, because a green suite says nothing about whether the
+thing is any good to play. **This session it was the only instrument that worked**
+— see §4.39, where a change that improved every measurement in the suite stopped
+the game being a game.
 
-**It is a fight now.** `godot --path .` opens on a basin with 15 m of relief: a
-wheeled Assembly under a sky, three opponents standing off at 34 to 46 m, a chase
-camera behind you, a HUD reading integrity, power, ammunition and part count.
-`W` drives, the mouse aims, the left button fires, `C` switches the camera,
-`Escape` releases the mouse. And the three opponents now **drive at you and shoot
-you to pieces.**
+**It is still a fight, and it is still the best thing here.** `godot --path .`
+opens on a basin with 15 m of relief: a wheeled Assembly under a sky, three
+opponents standing off at 34 to 46 m, a chase camera behind you, a HUD reading
+integrity, power, ammunition and part count. `W` drives, the mouse aims, the left
+button fires, `C` switches the camera, `Escape` releases the mouse.
 
-Captured with §3.55's route, 900 frames, no player input at all. At frame 120 the
-three are cresting the ridge in line abreast; by 260 the nearest is at short
-range and the player is at 92%; by 450 there is a pile of wreckage a few metres
-off the nose and the player is at 45% with two parts gone; by 880 the player is
-dead and the arena is still running. **A player who does nothing dies in about
-fifteen seconds,** which is the first time this project has been able to say
-anything of the kind.
-
-That closes the item that had led this list for three sessions. What replaces it
-is a better class of bad news.
+Captured this session with §3.55's route, 900 frames, no player input at all. At
+frame 400 the three are on top of the player at contact range and the player is
+at **44%** with two components gone and the feed saying so; by 860 they are at
+**25%**, their Prime Mover and Energy Cell are gone — `POWER 0 / 117` — and they
+are sitting in a heap of wreckage at 9/12 parts. A player who does nothing is
+dismantled in about fifteen seconds.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **You cannot drive and shoot at the same time, and neither can they**
-   (§4.34). Hold the trigger while moving and the muzzle's 0.125 m lateral offset
-   yaws the hull faster than the steering can correct — 35° in the first second,
-   measured. The AI works around it by closing with cold guns; a player gets no
-   such rule and will simply find that their vehicle spins when they shoot on the
-   move. **Centring the muzzle is the highest-value data change in the project**
-   and it is one number in doc 01. Everything below this is smaller.
-2. **Nothing happens when you die.** The Core Module goes, the feed says so in
+1. **Nothing happens when you die.** The Core Module goes, the feed says so in
    red, and the match carries on with a camera bolted to a corpse. No respawn, no
    spectate, no end screen, not even a stop. §8 item 12a has had a producer for
-   the event since session 16 and still has no consumer, and this is now the most
-   obviously unfinished thing a player reaches — because they reach it, every
-   time, in the first minute.
-3. **There is no way to learn the controls.** No key prompts, no pause menu, no
-   settings screen. `C` for the camera toggle is not guessable. A dismissible
-   control card on the first match is an afternoon.
-4. **The opponents shoot each other.** Three Assemblies on one team converging on
-   one target at a six-metre stand-off put rounds through each other constantly,
-   because nothing in `src/combat/` knows what a team is (§7) — friendly fire is
-   decided by whichever hull the ray reaches first. In the capture at least one
-   opponent died to another before the player fired a shot. It is not obviously
-   wrong as a *rule*, and it is obviously wrong as a *spectacle*.
-5. **Nothing renders a wheel at its contact point** (§7). The greybox contacts are
-   drawn where the part was placed, not where the suspension put them, so on 15 m
-   of rolling terrain the wheels hang in the air on every crest. Doc 05 does not
-   cover it and should; `AssemblyRuntime.visual_of(slot)` is the hook and the
-   contact's `point_world` is the answer.
-6. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
-   firing solution on wherever the aim ray landed, which is correct and is *not*
-   what a player reads. The fix is a target indicator, not a reticle change: the
-   aim ray already knows whether it hit `LAYER_ASSEMBLY_HULL`.
-7. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§4.21), and **the edge has still never been in a fight** (§4.26). Both
-   unchanged; a player cannot reach either, because the match scene spawns wheeled
-   builds only.
+   the event since session 16 and still has no consumer. **This is now the top
+   item**: it is the most obviously unfinished thing a player reaches, and they
+   reach it every time inside a minute.
+2. **There is no way to learn the controls.** No key prompts, no pause menu, no
+   settings screen. `C` for the camera toggle is not guessable and `Escape`
+   releasing the mouse is not discoverable. A dismissible control card on the
+   first match is an afternoon and is worth more than anything else at this size.
+3. **You still cannot drive and shoot at the same time** (§4.37), and the reason
+   changed this session. It is not the muzzle offset — that is fixed — it is that
+   the recoil is applied at a mount 2.25 m forward of the centre of mass, so a
+   traversed gun yaws the hull at 48°/s a round. A player who holds the trigger
+   while turning will spin. It is one place below death-with-no-consequence
+   because it is now a **design** question with real answers (a mount nearer the
+   centre of mass, a shorter recoil, a turret ring) rather than a data defect
+   nobody had got round to.
+4. **The opponents shoot each other.** Three Assemblies converging on one target
+   at a six-metre stand-off put rounds through each other constantly, because
+   nothing in `src/combat/` knows what a team is (§7). At least one opponent dies
+   to another before the player fires. Not obviously wrong as a *rule*; obviously
+   wrong as a *spectacle*.
+5. **The camera ends up inside the wreckage.** New, and a direct consequence of
+   the fights now ending at contact range: by frame 860 the player is buried in a
+   pile of debris bodies and the chase camera is in among them, so the last thing
+   a player sees is the inside of a box. §3.56's `cast_motion` clamp is doing its
+   job; what is missing is that debris is not in `MASK_AIM_TRACE`'s spirit for
+   the camera either.
+6. **Nothing renders a wheel at its contact point** (§7). The greybox contacts
+   are drawn where the part was placed, not where the suspension put them, so on
+   15 m of rolling terrain the wheels hang in the air on every crest.
+7. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
+   firing solution on wherever the aim ray landed, which is correct and is not
+   what a player reads. The fix is a target indicator, not a reticle change.
+8. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§4.21), and **the edge has still never been in a fight** (§4.26). A player
+   cannot reach either; the match scene spawns wheeled builds only. The walker
+   got worse this session in the only sense that is measurable — it is now killed
+   before its mount converges at all (§4.40).
 
-Two smaller things a player would notice before a developer would. The vehicle is
-**small in frame** — about a sixth of the screen height — which was defensible
-when there was nothing to be aware of and is now worth an A/B, because the fight
-happens at six metres and the camera is framed for a landscape. And **a destroyed
-part simply vanishes**, because `VisualDamageController` (doc 08 §9) is unwritten;
-that is the right behaviour for "what you see is what you hit" and the wrong
-behaviour for a player, who should see a wreck.
+The vehicle is still **small in frame**, about a sixth of the screen height,
+which was defensible when there was nothing to be aware of and is now worth an
+A/B, because the fight happens at six metres. And **a destroyed part simply
+vanishes**, because `VisualDamageController` (doc 08 §9) is unwritten.
 
-The honest summary: **it is a game with an opponent in it, and no consequences.**
-The fighting works and it is the first thing here that is genuinely fun to watch.
-What it lacks now is everything that happens *around* a fight — being told how to
-play, being told when you have lost, and being able to shoot while moving without
-your own gun spinning you round.
+The honest summary, and it has not changed: **it is a game with an opponent in it
+and no consequences.** The fighting works, it resolves faster and more decisively
+than it did, and it is still the first thing here that is genuinely fun to watch.
+What it lacks is everything that happens *around* a fight — being told how to
+play, and being told when you have lost.
 
 ---
 
@@ -3058,11 +3295,18 @@ your own gun spinning you round.
   so a Prime Mover has no power band and no lag. That is doc 05 §7.5 work.
 
 ### Combat
-- **An Assembly cannot drive and fire at the same time.** §4.34, and it is the
-  first thing on §6.5's list. The muzzle's 0.125 m lateral offset is about
-  1270 N·m of yaw torque at the module's cadence, which is more than the wheeled
-  family's steering authority. `AiDriver` closes with its guns cold (doc 05
-  §15.7.4) and a **player has no such rule**. The fix is doc 01's, not doc 05's.
+- **An Assembly cannot drive and fire at the same time**, and ~~the fix is doc
+  01's~~ — it is not. §4.37. The muzzle offset that was blamed for it is closed
+  (rule 27, bore on the centre of mass to the millimetre) and the behaviour is
+  unchanged. What produces it is doc 07 §8 applying the recoil **at the muzzle**
+  of a mount 2.25 m forward of the centre of mass: traversed square across the
+  hull that is 0.845 rad/s of yaw a round against 0.013 on the nose, a factor of
+  sixty-five, and a driver turning toward something is firing off its nose by
+  definition. `AiDriver` still closes with its guns cold (doc 05 §15.7.4) and a
+  **player has no such rule**. What would close it is a mounting position, a
+  shorter recoil impulse, or a recoil that acts through the hardpoint pivot
+  rather than the muzzle — the last of which is a doc 07 §8 change and would be
+  a lie about the physics, so probably not.
 - **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
@@ -3134,14 +3378,13 @@ your own gun spinning you round.
   both are the teaching.
 - **Rule 2's reorder half is not implemented, and cannot be from data alone.** It
   needs a recorded baseline of shipped ids.
-- **An odd-width Effector Module cannot be centred on an even-width Core
-  Module**, and the resulting 0.125 m lateral muzzle offset yaws a light
-  Assembly. §4.14's last paragraph — and §4.34 measured what it actually costs,
-  which is that **no Assembly in this game can drive and shoot at once**. It is a
-  data decision in doc 01, it has not been made, and it is now the highest-value
-  one available: one number, and it removes a workaround from doc 05 §15.7.4, a
-  rule from `AiDriver`, and the worst thing a player meets in their first ten
-  seconds.
+- ~~**An odd-width Effector Module cannot be centred on an even-width Core
+  Module.**~~ Closed — §4.37. The decision taken was to re-dimension the module
+  rather than the hull, because §10.5 ships both 4- and 5-cell-wide modules and
+  no single Core Module parity centres both halves of the catalogue. §14 rule 27
+  makes it a registry rule for `BALLISTIC_DIRECT` only, with the arced, guided
+  and melee rows exempt and the reason stated. **What it did not buy is the
+  thing it was done for** — see the combat entry above.
 - **Two Effector Modules exist, one per resolution path.** Doc 02 §7.6's
   muzzle-offset half-cell discrepancy is still unresolved and still flagged
   rather than silently fixed; the autocannon authors its muzzle half a cell past
@@ -3308,20 +3551,40 @@ your own gun spinning you round.
     systems a player's trigger reaches. What it opened is item 0 below and §6.5's
     new items 2 and 4.
 
-0. **Centre the muzzle, or decide not to.** §4.34, and the highest-value change
-    on this list by a distance. The shipped autocannon's muzzle sits 0.125 m off
-    the Assembly's centreline because an odd-width Effector Module cannot be
-    centred on an even-width Core Module, and at the module's cadence that is
-    about 1270 N·m of yaw torque — more than the wheeled family's entire steering
-    authority. **No Assembly in this game can drive and shoot at the same time**,
-    and a player meets that in their first ten seconds.
+0. ~~**Centre the muzzle.**~~ — **done, session 24.** §4.37. Doc 01 §14 rule 27;
+    the module is 4×4×9 and its bore is on the centre of mass to the millimetre.
 
-    It is a data decision in doc 01 and there is more than one way to take it: an
-    even-width module, an authored muzzle offset that is not derived from the
-    footprint, or a Core Module width that admits an odd module on its
-    centreline. Whichever it is, it deletes a workaround from doc 05 §15.7.4 and
-    a rule from `AiDriver`, and it wants a `balance-review` label because every
-    engagement in `tests/physics/` is fought with that module.
+    **It did not do what this item said it would**, and the replacement is below.
+    Centring the bore removes the *on-axis* yaw and nothing else: the recoil is
+    applied at the muzzle, and a mount traversed across the hull swings its line
+    of action out to the 2.25 m it sits forward of the centre of mass. One round
+    there is 0.845 rad/s against 0.013 on the nose. §15.7.4's fire discipline
+    stays, and it is no longer waiting on a data change.
+
+0. **Decide what a build does about recoil at a traversed mount.** §4.37, and it
+    is the successor to the item above and to §6.5 item 3. Three candidates and
+    they are genuinely different games:
+
+    - **Mount position.** A gun over the centre of mass rather than on the nose.
+      Costs the pitch behaviour §4.14 chose the nose mount for, and makes where a
+      player puts a gun a real trade rather than a cosmetic one. Cheapest to try:
+      it is a cell coordinate in `CombatArena` and `MatchScreen`.
+    - **A smaller recoil impulse.** 1450 N·s is roughly three times a real 30 mm
+      round's momentum, and one round is 1.31 m/s off an 1100 kg vehicle. Probed
+      at 500 N·s: the driver fires more but still cannot turn, so this alone does
+      not close it. `balance-review`, and it moves every engagement at once.
+    - **Live with it and make it legible.** A player who understands that
+      shooting sideways spins them has a tactic; one who does not has a bug. That
+      is doc 11 work, not doc 05's.
+
+    Measure before choosing: `tests/physics/test_recoil_geometry.gd` already
+    reports the lever and the yaw per round and is the instrument.
+
+12a-first. **Read §6.5 before picking from this list.** Its top two items —
+    nothing happens when you die, and there is no way to learn the controls — are
+    now the two most valuable things on it, and neither is technically hard. They
+    are items 12a and 13b below and they have both been on this list for two
+    sessions while larger things went first.
 
 13d. **Give the AI something to do when it is not fighting.** Small, and it is
     §6.5 item 4's other half. Three opponents converging on one target at a

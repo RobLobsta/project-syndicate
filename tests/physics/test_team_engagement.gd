@@ -237,7 +237,6 @@ func test_the_brawl_is_the_bigger_engagement() -> void:
 	check_eq(_brawl.shooters, BRAWL_PER_SIDE * 2, "twenty Assemblies fired")
 	check_eq(_combined.shooters, COMBINED_ARMS.size() * 2, "against the five-a-side's ten")
 	for pair: Array in [
-		["rounds", _brawl.rounds_fired, _combined.rounds_fired],
 		["packets", _brawl.hits_landed, _combined.hits_landed],
 		["parts", _brawl.parts_destroyed, _combined.parts_destroyed],
 		["kills", _brawl.terminated, _combined.terminated],
@@ -246,6 +245,24 @@ func test_the_brawl_is_the_bigger_engagement() -> void:
 			int(pair[1]) > int(pair[2]),
 			"the brawl leads on %s: %d against %d" % [pair[0], int(pair[1]), int(pair[2])]
 		)
+	# Rounds is a [b]rate[/b] here and the three rows above are not, which is a
+	# distinction this assertion learned the hard way. Parts and kills are bounded
+	# by the roster — twenty Assemblies have more to lose than ten — so comparing
+	# the totals is comparing the engagements. Rounds fired is bounded by nothing
+	# but the clock, and the moment the brawl started reaching a decision inside a
+	# fifth of its budget while the five-a-side still ran to the timeout, the
+	# bigger engagement "lost" on rounds by having finished. §3.54's warning about
+	# tick counts in a multi-Assembly file, arriving through a quantity that is
+	# not obviously a tick count.
+	var brawl_rate := float(_brawl.rounds_fired) / maxf(float(_brawl.ticks), 1.0)
+	var combined_rate := float(_combined.rounds_fired) / maxf(float(_combined.ticks), 1.0)
+	check_true(
+		brawl_rate > combined_rate,
+		(
+			"and it leads on rounds per tick: %.3f over %d ticks against %.3f over %d"
+			% [brawl_rate, _brawl.ticks, combined_rate, _combined.ticks]
+		)
+	)
 
 
 ## ===== FIXTURES ========================================================

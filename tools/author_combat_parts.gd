@@ -43,7 +43,7 @@ func _run() -> bool:
 
 
 ## §10.5's `eff.ballistic.autocannon_30.t3` row, in full: `BALLISTIC_DIRECT`,
-## 5x4x9 cells, 196 kg, 480 integrity, 68 PU, 0.14 s cycle, 940 m/s muzzle,
+## 4x4x9 cells, 196 kg, 480 integrity, 68 PU, 0.14 s cycle, 940 m/s muzzle,
 ## 1450 N·s recoil, 7.5 HU per shot. §11's `eff.ballistic.*` resistance row.
 ##
 ## The fields §10.5 leaves open — armour, load capacity, magazine, spread — are
@@ -54,8 +54,18 @@ func _author_autocannon_30() -> String:
 	# Nine cells along -Z, which is the barrel. §7.2 fixes -Z as the direction a
 	# round leaves along and `eff.melee.beam_edge` already puts its blade there,
 	# so an edge and a barrel agree on which way forward is.
+	#
+	# Four cells wide, and the width is §14 rule 25 rather than a styling choice.
+	# A Core Module is even-width, so its centreline falls on a cell boundary; an
+	# odd-width module's own centreline falls on a cell centre, and the two can
+	# never coincide. This module was authored five wide and its bore therefore
+	# sat half a cell off the hull's centreline, which at 1450 N·s every 0.14 s is
+	# about a kilonewton-metre of steady yaw — more than the wheeled family's
+	# entire steering authority, and the reason no Assembly could drive and shoot
+	# at the same time. The other three `BALLISTIC_DIRECT` rows of §10.5 were
+	# even-width already; this one was the outlier.
 	var lo := Vector3i(-2, 0, -8)
-	var hi := Vector3i(2, 3, 0)
+	var hi := Vector3i(1, 3, 0)
 	var def := _base(&"eff.ballistic.autocannon_30.t3", PartEnums.PartClass.EFFECTOR_MODULE)
 	def.tier = PartEnums.TierGrade.REFINED
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
@@ -91,8 +101,15 @@ func _author_autocannon_30() -> String:
 	# the last occupied cell, so a round is born outside the part's own collider
 	# and §12.3's self-immunity window is belt and braces rather than the only
 	# thing keeping a build from shooting itself.
+	#
+	# Laterally the bore sits on the footprint's own centre, which for an
+	# even-width part is a quarter-cell off the pivot cell rather than on it. §14
+	# rule 25 requires exactly this equality, and it is not cosmetic: the recoil
+	# impulse is applied at the muzzle (doc 07 §8), so the bore's lateral distance
+	# from the centre of mass is the moment arm of every round fired.
+	var bore := PartAuthoring.box_centre_m(lo, hi)
 	effector.muzzle_offsets_m = PackedVector3Array([
-		Vector3(0.0, 0.0, (float(lo.z) - 0.5) * SyndicateConstants.LATTICE_UNIT_M)
+		Vector3(bore.x, 0.0, (float(lo.z) - 0.5) * SyndicateConstants.LATTICE_UNIT_M)
 	])
 	effector.projectile_key = &"proj.kinetic.ap_30"
 	effector.muzzle_velocity_mps = 940.0

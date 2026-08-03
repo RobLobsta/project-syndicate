@@ -276,12 +276,27 @@ func _measure() -> void:
 	_arena.open()
 	var at := Vector2(0.0, SEPARATION_M * 0.5)
 	var bt := Vector2(0.0, -SEPARATION_M * 0.5)
+	# Two ground builds, and the pairing is deliberate after being wrong once.
+	#
+	# This was an AMBULATORY shooter against a ROTARY target, inherited from the
+	# engagement §4.13's grind was first seen in. It should never have stayed: the
+	# assertions below are about the projectile layer and say nothing about a
+	# locomotion family, while the ambulatory build is the one the project already
+	# records as a poor gun platform — it leans past its own 8° of depression and
+	# was landing a single round in the whole window. Every measurement here rode
+	# on that one round, and a small unrelated change to the shipped module's
+	# footprint was enough to take it away and leave four assertions reading zero.
+	#
+	# A fixture whose subject is the round should not be gated on the hardest
+	# platform in the game getting a shot off. WHEELED_LIGHT fires reliably from a
+	# nose mount at the target's own height, and WHEELED_HEAVY carries the deeper
+	# hull the penetration assertions want behind the first plate.
 	_shooter = _arena.spawn(
-		CombatArena.Recipe.AMBULATORY, 0, at, CombatArena.yaw_towards(at, bt),
+		CombatArena.Recipe.WHEELED_LIGHT, 0, at, CombatArena.yaw_towards(at, bt),
 		AmmoLedger.UNLIMITED
 	)
 	_target = _arena.spawn(
-		CombatArena.Recipe.ROTARY, 1, bt, CombatArena.yaw_towards(bt, at),
+		CombatArena.Recipe.WHEELED_HEAVY, 1, bt, CombatArena.yaw_towards(bt, at),
 		AmmoLedger.UNLIMITED
 	)
 	await _arena.settle(SETTLE_TICKS)
