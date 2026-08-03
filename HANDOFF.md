@@ -4,10 +4,16 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 20 — **the game renders**. A match camera, a match HUD, and
-the stage-PROXY visual chain that doc 13 specified and nobody had implemented.
-`run/main_scene` is set; a person can launch the project, see an Assembly, drive
-it, aim, and shoot. 64 files, 4674 checks, 0 failures.
+Last updated: session 21 — **no code changed.** A measurement session over
+Godot's CSG, taken because documents 09 and 10 are the two with no implementation
+and the authoring decision for Static Volumes gates both. Four new engine facts
+(§3.57–§3.60), one of which — a non-manifold operand is *silently discarded* —
+inverts an assumption doc 10 §3.1 is built on. The decision itself is §8 item 18.
+
+Session 20 is the last one that shipped code: **the game renders**. A match
+camera, a match HUD, and the stage-PROXY visual chain that doc 13 specified and
+nobody had implemented. `run/main_scene` is set; a person can launch the project,
+see an Assembly, drive it, aim, and shoot. 64 files, 4674 checks, 0 failures.
 
 | § | What is in it |
 |---|---|
@@ -970,6 +976,78 @@ All verified against 4.7.1 in this repo, not recalled.
     something". The chase camera treats it as the latter and clamps to a minimum
     distance, because the alternative is `look_at` with a zero-length direction,
     which is an engine error every frame rather than a bad picture.
+
+57. **CSG evaluates fully under `--headless`, but `bake_static_mesh()` answers
+    `null` on the frame the tree is built.** Both halves matter for doc 10's
+    bake, and the second half is what wastes the afternoon: a bake script that
+    constructs a `CSGCombiner3D`, adds it to the tree, and bakes in the same
+    function gets `null` from every case — primitives, imported meshes,
+    intersections, everything — and reads exactly like "CSG does not work
+    headless". It does. Evaluation is deferred to the server, and the tree
+    answers on the **next** `_process` frame. Measured across every case in this
+    session's probes: **first correct answer at frame 2, never later.**
+
+    So the bake is a frame-counter script in the §3.2 shape — build on frame 1,
+    bake on frame 2 — and **not** an `await process_frame` inside `_process`,
+    which does not let the server run and returns `null` just like frame 1 does.
+    Extraction once evaluated is free: a re-bake of an already-evaluated
+    25-operand tree measured **0.001 ms**, because the boolean result is cached
+    and `bake_static_mesh` only copies it out.
+
+58. **A non-manifold CSG operand is silently discarded, not rejected.** The
+    single most expensive fact in this section for anyone landing doc 10, and it
+    is the exact opposite of what the document assumes.
+
+    Godot 4.4 replaced the CSG implementation with the Manifold library, and
+    Manifold's contract is that operands are watertight. A non-manifold one does
+    not raise, does not warn, and does not fail the bake — it **contributes
+    nothing and the tree bakes cleanly without it**. Measured three ways: an
+    open two-triangle sheet unioned with a 1 m box bakes to exactly the box; a
+    box with one face deleted bakes to nothing at all; and a 9 408-triangle
+    cylinder whose seam vertices differ by the `2.4e-16` between `sin(0)` and
+    `sin(TAU)` bakes to nothing, taking its twelve window cuts down with it.
+
+    **The failure mode is therefore a missing wall in an otherwise perfect
+    building, with a green build log.** Doc 10 §3.1 says non-manifold geometry
+    "is reported as a build error, not silently accepted"; that is a statement
+    about a `ManifoldChecker` the repository has to write, not about anything the
+    engine does. And the check has to run on the **input operands**, not on the
+    bake output, because a dropped operand leaves output that is impeccably
+    manifold and simply missing a storey.
+
+59. **The manifold test must weld by position first; index-based edge counting
+    produces false alarms on Godot's own primitives.** The obvious validator —
+    count how many triangles use each index pair, demand exactly two — reports
+    Godot's `BoxMesh` as having **24 boundary edges**, because a box's 8 corners
+    are 24 vertices once split for UVs and normals. The engine bakes that box
+    perfectly. Manifold welds by position internally, so the validator must too.
+
+    Quantise each position to a grid, weld, then count edge uses: `boundary`
+    (used once — a hole) and `excess` (used three or more — a fin or a duplicate
+    face) must both be zero. Degenerate triangles are *not* disqualifying —
+    `SphereMesh` ships 128 of them at its poles and bakes fine — so they are
+    worth reporting and wrong to reject on. At a `1/4096 m` quantum this
+    predicate agreed with the engine on **six of six** cases: `BoxMesh`,
+    `SphereMesh`, a welded grid box, the float-seam cylinder, the open sheet, and
+    the holed box.
+
+60. **`CSGMesh3D` takes an arbitrary `ArrayMesh` as a first-class operand,
+    including under `OPERATION_INTERSECTION`.** A 3 m imported solid minus a
+    cylinder bakes correctly; the same solid intersected with a box cell returns
+    exactly the half, which is doc 10 §3.2's `CsgBakeUtil.intersect_with_box`
+    working on imported geometry rather than on a CSG primitive tree. A
+    6 912-triangle operand with twelve subtractions bakes in the same single
+    frame as a bare `CSGBox3D`.
+
+    This is what makes a DCC-authored Static Volume viable: **doc 10 §2.1's
+    "permitted but discouraged" reading of `CSGMesh3D` is a performance
+    judgement from before the Manifold rewrite, and the measurement no longer
+    supports it.** Whether to amend it is §8 item 18.
+
+    One trap alongside it: `CSGShape3D.bake_collision_shape()` returns a
+    `ConcavePolygonShape3D`, which Invariant I-1 forbids on anything dynamic. It
+    is usable as an editor reference and for nothing else; doc 10 §3.4 already
+    generates Section colliders from partition geometry and is right to.
 
 ---
 
@@ -2827,6 +2905,53 @@ opponent in it**. That is progress, and item 1 is what makes it a fight.
     Effector Module leans past 20°, and `ControlInput` gives it no way to hold a
     heading while travelling somewhere else. Both are doc 05 §13 changes and
     both are what stands between the ambulatory family and being able to fight.
+
+18. **Decide how Static Volumes are authored, before writing any of doc 10.**
+    `src/world/` does not exist — documents 09 and 10 are the two with no code at
+    all — so nothing here is a rewrite, and the authoring decision is cheaper to
+    make now than after the first ten buildings exist. §3.57 to §3.60 are the
+    measurements it rests on; the question is which of three shapes the pipeline
+    takes, and they are not exclusive.
+
+    **(a) CSG-in-editor, as doc 10 §2.1 literally specifies.** Every Volume is a
+    hand-built `CSGCombiner3D` tree in a Godot scene. Costs a person per
+    building, forever, and Godot's CSG gizmos are a worse modelling environment
+    than any DCC tool. Its one real advantage is that the operand tree *is* the
+    section-boundary hint, and §10.1's promotion diff wants that.
+
+    **(b) Blender-authored solid, CSG only as the bake's intersection engine.**
+    Verified viable by §3.60: a `.glb` becomes a `CSGMesh3D` operand and
+    intersects with box cells correctly, so doc 10 §3.2's Section partition and
+    §3.3's fragment decomposition run unchanged on imported geometry. Blender's
+    booleans replace the composition step entirely, which is the part a DCC tool
+    is genuinely better at. **The whole risk is §3.58** — an unwatertight export
+    vanishes silently — so this shape is only safe with §3.59's welded manifold
+    predicate as a blocking CI gate, and that gate is the deliverable that makes
+    it low-oversight rather than the import itself.
+
+    **(c) Procedural generation from a `StructureArchetype`, doc 06's shape
+    applied to buildings.** The lowest-oversight option by a wide margin and the
+    one with a working precedent in this repository: `AutoAssembler` already
+    proves the pattern of *seeded RNG + archetype weights + an objective
+    function + bounded backtracking*, and Invariant I-9 already demands the
+    determinism a generator needs. A handful of `.tres` archetypes and a seed
+    produce as many Volumes as an arena wants, and the generator emits the CSG
+    tree so (b)'s bake consumes it without modification.
+
+    **The recommendation is (c) built on (b)'s bake, with (a) retained for the
+    two or three landmark structures a map actually needs authored.** What has to
+    be decided first, because all three depend on it: doc 10 §2.1's
+    discouragement of `CSGMesh3D` no longer matches the measurement (§3.60), and
+    doc 10 §3.1's claim that non-manifold input is reported as a build error
+    describes a checker that does not exist (§3.58). Both are document amendments
+    under CLAUDE.md rule 14, and they are the first commit of this work rather
+    than a footnote to it.
+
+    Two smaller things that fall out. `art_src/` and `assets/` are in CLAUDE.md
+    §2's normative layout and **do not exist on disk**, so whichever shape wins
+    creates them. And doc 13 §5.2's Blender export snippet is written for parts;
+    a structure export is a sibling script with a different contract, since a
+    Volume has no lattice footprint, no attachment nodes, and no fusion loop.
 
 ## 9. Conventions — follow these when adding to the suite
 
