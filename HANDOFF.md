@@ -4,10 +4,21 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 20 — **the game renders**. A match camera, a match HUD, and
-the stage-PROXY visual chain that doc 13 specified and nobody had implemented.
-`run/main_scene` is set; a person can launch the project, see an Assembly, drive
-it, aim, and shoot. 64 files, 4674 checks, 0 failures.
+Last updated: session 22 — **the ground is terrain.** `src/world/` did not
+exist; documents 09 and 10 were the only two of the thirteen with no
+implementation at all, and the match scene stood on a flat `BoxShape3D` slab its
+own docstring apologised for. Document 09 is now landed in full: a chunked
+mutable heightfield, a five-stage deformation pipeline, collision streaming, rut
+accumulation, surface reclassification, and craters that persist and change how
+the ground drives. **69 files, 4990 checks, 0 failures.**
+
+Writing it found **four defects in doc 09 itself**, all amended in the document
+in the same change and all recorded in §4.28 to §4.31. The largest is that §4.3's
+solve attenuated the crater rim to 5.8% of the height §7.1 depends on, so the
+cover-providing lip would have shipped at 23 mm.
+
+Session 21 measured Godot's CSG and changed no code (§3.57–§3.60). Session 20
+made the game render.
 
 | § | What is in it |
 |---|---|
@@ -61,7 +72,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**64 files, 4674 checks, 0 failures.**
+**69 files, 4990 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -211,6 +222,11 @@ restarted every tick |
 | `test_part_visuals` | *(session 20; no sweep run against it yet — see below)* doc 13 §2.1's collider mirroring by extent, §9's spawn, I-1 over a **populated** `VisualRoot`, the mesh cache's sharing, and the `part_visual` tag suppressing every mesh while touching no collider |
 | `test_chase_camera` | *(session 20; not yet swept)* doc 11 §13.4's heading rule including the degenerate hold, §13.5's frame-rate-independent lag, and the short-arc heading delta |
 | `test_reticle_states` | *(session 20; not yet swept)* doc 11 §14.3's five states, their tokens by value, and §10 rule 5's shape distinction |
+| `test_crater_profile` | *(session 22)* doc 09 §3.1's C0 continuity at both boundaries, the cube-root depth law, §7.1's 0.39 m rim by value, and §3.3's ejecta fraction — the last of which is what stops the amended claim being un-amended |
+| `test_ground_math` | *(session 22)* §2.1's dimensions and their mutual consistency, the centred world mapping and its no-fold rule, quantisation clamping rather than wrapping, and §2.4's shared-sample counts at a seam (2), a corner (4) and the world edge (1) |
+| `test_ground_deform` | *(session 22)* the bowl-and-rim shape, §9.2's reclassification, every copy of a shared sample agreeing, the erosion clamp asymptoting while still doing something on the fortieth shell, coalescing, §8.2's determinism by hash over two independently built arrays, and a replicated request reproducing an authored field exactly |
+| `test_ground_terrain` | *(session 22)* the collision shape agreeing with the height data at five world positions, the field not being transposed, an Assembly settling on terrain rather than through it, collision resident only near an anchor, and a contact in a crater reading `DEFORMED` |
+| `test_manifold_checker` | *(session 22)* all six cases the engine's CSG was probed on, including the two a naive index-based predicate gets wrong — a split-vertex `BoxMesh` and a `SphereMesh`'s pole fans — plus a duplicated face, which a boundary-only check passes |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
@@ -970,6 +986,109 @@ All verified against 4.7.1 in this repo, not recalled.
     something". The chase camera treats it as the latter and clamps to a minimum
     distance, because the alternative is `look_at` with a zero-length direction,
     which is an engine error every frame rather than a bad picture.
+
+57. **CSG evaluates fully under `--headless`, but `bake_static_mesh()` answers
+    `null` on the frame the tree is built.** Both halves matter for doc 10's
+    bake, and the second half is what wastes the afternoon: a bake script that
+    constructs a `CSGCombiner3D`, adds it to the tree, and bakes in the same
+    function gets `null` from every case — primitives, imported meshes,
+    intersections, everything — and reads exactly like "CSG does not work
+    headless". It does. Evaluation is deferred to the server, and the tree
+    answers on the **next** `_process` frame. Measured across every case in this
+    session's probes: **first correct answer at frame 2, never later.**
+
+    So the bake is a frame-counter script in the §3.2 shape — build on frame 1,
+    bake on frame 2 — and **not** an `await process_frame` inside `_process`,
+    which does not let the server run and returns `null` just like frame 1 does.
+    Extraction once evaluated is free: a re-bake of an already-evaluated
+    25-operand tree measured **0.001 ms**, because the boolean result is cached
+    and `bake_static_mesh` only copies it out.
+
+58. **A non-manifold CSG operand is silently discarded, not rejected.** The
+    single most expensive fact in this section for anyone landing doc 10, and it
+    is the exact opposite of what the document assumes.
+
+    Godot 4.4 replaced the CSG implementation with the Manifold library, and
+    Manifold's contract is that operands are watertight. A non-manifold one does
+    not raise, does not warn, and does not fail the bake — it **contributes
+    nothing and the tree bakes cleanly without it**. Measured three ways: an
+    open two-triangle sheet unioned with a 1 m box bakes to exactly the box; a
+    box with one face deleted bakes to nothing at all; and a 9 408-triangle
+    cylinder whose seam vertices differ by the `2.4e-16` between `sin(0)` and
+    `sin(TAU)` bakes to nothing, taking its twelve window cuts down with it.
+
+    **The failure mode is therefore a missing wall in an otherwise perfect
+    building, with a green build log.** Doc 10 §3.1 says non-manifold geometry
+    "is reported as a build error, not silently accepted"; that is a statement
+    about a `ManifoldChecker` the repository has to write, not about anything the
+    engine does. And the check has to run on the **input operands**, not on the
+    bake output, because a dropped operand leaves output that is impeccably
+    manifold and simply missing a storey.
+
+59. **The manifold test must weld by position first; index-based edge counting
+    produces false alarms on Godot's own primitives.** The obvious validator —
+    count how many triangles use each index pair, demand exactly two — reports
+    Godot's `BoxMesh` as having **24 boundary edges**, because a box's 8 corners
+    are 24 vertices once split for UVs and normals. The engine bakes that box
+    perfectly. Manifold welds by position internally, so the validator must too.
+
+    Quantise each position to a grid, weld, then count edge uses: `boundary`
+    (used once — a hole) and `excess` (used three or more — a fin or a duplicate
+    face) must both be zero. Degenerate triangles are *not* disqualifying —
+    `SphereMesh` ships 128 of them at its poles and bakes fine — so they are
+    worth reporting and wrong to reject on. At a `1/4096 m` quantum this
+    predicate agreed with the engine on **six of six** cases: `BoxMesh`,
+    `SphereMesh`, a welded grid box, the float-seam cylinder, the open sheet, and
+    the holed box.
+
+60. **`CSGMesh3D` takes an arbitrary `ArrayMesh` as a first-class operand,
+    including under `OPERATION_INTERSECTION`.** A 3 m imported solid minus a
+    cylinder bakes correctly; the same solid intersected with a box cell returns
+    exactly the half, which is doc 10 §3.2's `CsgBakeUtil.intersect_with_box`
+    working on imported geometry rather than on a CSG primitive tree. A
+    6 912-triangle operand with twelve subtractions bakes in the same single
+    frame as a bare `CSGBox3D`.
+
+    This is what makes a DCC-authored Static Volume viable: **doc 10 §2.1's
+    "permitted but discouraged" reading of `CSGMesh3D` is a performance
+    judgement from before the Manifold rewrite, and the measurement no longer
+    supports it.** Whether to amend it is §8 item 18.
+
+    One trap alongside it: `CSGShape3D.bake_collision_shape()` returns a
+    `ConcavePolygonShape3D`, which Invariant I-1 forbids on anything dynamic. It
+    is usable as an editor reference and for nothing else; doc 10 §3.4 already
+    generates Section colliders from partition geometry and is right to.
+
+61. **`HeightMapShape3D` stores `map_data[z * width + x]`, sample zero at the
+    shape's negative corner, one unit per sample, centred on the shape origin.**
+    There is no sample-spacing property — `map_width`, `map_depth` and `map_data`
+    are the whole API in 4.7.1 — so doc 09's 0.5 m spacing is a scale on the
+    shape node, and the Y component must stay 1 or heights stop being metres.
+    Verified by raying a field of `h = 0.1·x_index + 0.01·z_index`: `x=-64,z=-64`
+    answers 0.0 and `x=+64,z=+64` answers 14.08, exactly as that layout predicts.
+    A 129-sample field at 0.5 scale spans 64 m, confirmed by a hit at 31 m and a
+    miss at 33 m.
+
+    Costs are comfortable: building a 129×129 `PackedFloat32Array` is 0.565 ms
+    and assigning it to `map_data` is 0.065 ms, against doc 09 §11's 1.40 ms
+    budget for the pair.
+
+62. **A shape reachable only through a physics RID is freed when the last
+    reference drops, and the body then silently stops colliding.**
+    `PhysicsServer3D.body_add_shape(body, shape.get_rid())` keeps the RID and not
+    the resource. A `HeightMapShape3D` held in a local variable is destroyed when
+    the function returns, and every subsequent query against that body answers
+    nothing — which reads exactly like §3.19's transform-before-shapes fault and
+    is a different bug. This cost a probe run: rays that should have hit a ramp
+    at `y=64` all missed, while a second body built inside the querying function
+    worked perfectly. `GroundChunk` holds `collision_shape` for this reason.
+
+63. **Godot 4 exposes no `RWLock` to GDScript.** `Mutex`, `Semaphore`, `Thread`
+    and `WorkerThreadPool` are the entire threading surface. Doc 09 §8.1 rule 3
+    specified an `RWLock`; the document is amended and `GroundArray.lock` is a
+    plain mutex. At this access pattern — writes only inside a deformation solve,
+    readers a handful of sample lookups per contact per tick — serialising two
+    readers costs less than a GDScript-level reader-writer lock would.
 
 ---
 
@@ -1771,6 +1890,134 @@ and the reticle correctly dropping to `SEEKING` while the mount slewed.
 
 ---
 
+### 4.28 Found and fixed — doc 09 §4.3's solve destroyed the crater rim
+
+The largest of four defects landing document 09 turned up, and the one that
+would have shipped.
+
+§4.3 blends the whole crater profile through one `lerp` toward the blast's
+ground plane, weighted `1 - smoothstep(0, 1, u)`. The weight exists to level the
+**bowl** so a crater on a hillside becomes a flat shelf rather than a tilted dish
+a vehicle slides out of. But it attenuates everything by distance from the
+centre, and the rim lives at `u ∈ [0.68, 1]` where that weight has almost reached
+zero. At the rim's peak, `u = 0.84`, the weight is `0.0686`; multiplied by
+`SLOPE_LEVEL_STRENGTH = 0.85` the rim comes out at **5.8% of the height §3.1
+specifies**.
+
+§7.1 depends on the number this destroys: "at `RIM_RATIO = 0.28` of a typical
+1.4 m deep crater, the rim is 0.39 m high, which is enough to unsettle a light
+Assembly at speed and enough to provide hull-down cover for a low-profile one."
+Under §4.3's formula that rim is **0.023 m** and provides neither. The whole
+tactical argument for craters being terrain features rather than decals rests on
+a lip that would not have existed.
+
+**Fixed** by separating the two concerns the formula had merged. Levelling
+decides the *datum* and falls to zero at `RIM_BOUNDARY`; the profile is added on
+top of it. Continuous everywhere on any terrain — at `u = RIM_BOUNDARY` both the
+weight and the profile are zero, so both sides evaluate to the current height —
+and the bowl still flattens toward `ground_y - D` on a slope, which was the point.
+Ejecta landing on whatever surface is there is also the physically ordinary
+reading.
+
+**The lesson is the familiar one in a new place: a formula that is right about
+one term can be wrong about another it was never asked about.** §4.3 was written
+about slopes and is correct about slopes. Nobody checked what it did to the rim,
+because the rim is §3.1's business and the two sections are four pages apart.
+
+### 4.29 Found and fixed — §3.3's volume-conservation claim was false
+
+§3.3 claimed the bowl and rim volumes matched to within 1.2%, on coefficients of
+`0.253` and `0.256`, and said "the constants were chosen for this property".
+
+Neither number is what the integrals evaluate to. The bowl coefficient is
+`0.124973` and the rim integral is `0.171123`, so at `RIM_RATIO = 0.28` the
+ejecta fraction is **0.3834** — the rim holds 38% of what the bowl gave up, not
+100%. Conserving volume would need `RIM_RATIO = 0.730309`.
+
+**The constant is right and the justification was wrong**, which is the more
+interesting outcome. Shipping 0.73 puts a **1.02 m wall** around a typical
+crater, and a crater a player cannot drive out of is a worse artefact than one
+that has lost some spoil. §7.1 is where that is refused. Losing 62% of the
+ejecta is also the physically ordinary case — real cratering throws most of its
+spoil clear of the continuous blanket.
+
+§3.3 now states the ejecta fraction, says outright that `RIM_RATIO` is a gameplay
+constant rather than a derived one, and keeps
+`CraterProfile.rim_ratio_for_volume_match()` as the tool that prints the
+conserving value if either shape constant changes. `tests/unit/test_crater_profile.gd`
+asserts the fraction, §7.1's 0.39 m rim, **and** that the shipped ratio is below
+the conserving one — so restoring the old claim fails.
+
+### 4.30 Found and fixed — §5's streaming order dropped an Assembly through the world
+
+Doc 09 §5 caps collision acquisition at four chunks per evaluation to spread
+instantiation across ticks, and iterates `wanted.keys()` — a raw `Dictionary`
+order, which I-9 forbids on its own.
+
+The obvious repair is to sort by chunk index, and that is what shipped first. It
+is **worse than the bug**. Ascending chunk index acquires the lowest-indexed
+corner of the wanted region, which is the chunk furthest from the anchor in the
+direction nothing is travelling. `tests/physics/test_ground_terrain.gd` dropped
+an Assembly 140 m from the origin and it fell straight through the terrain: 49
+chunks were wanted, the four acquired were 180 m away, and the chunk it was
+standing on was 45th in the queue.
+
+**Fixed**: nearest-anchor-first by squared distance, ties broken on chunk index
+for determinism. The chunk something is standing on is acquired first and the one
+it is about to reach second, which is what makes a four-per-evaluation cap safe
+rather than a lottery. `prime()` acquires the whole wanted set at once for scene
+construction and for a fixture, neither of which is inside a frame budget — the
+same reasoning that gives `GroundDeformSystem` its `flush()`.
+
+**A capped queue is only as good as its ordering, and "deterministic" is not the
+same as "correct".** The index sort satisfied I-9 completely and still put the
+player through the floor.
+
+### 4.31 Amended — §2.1's memory figure, and the array that did not need to exist
+
+§2.1 said the world costs 33 MB because height is `uint16`. §2.2 declares the
+arrays as `PackedInt32Array`, which is 4 bytes per sample, so the full 32×32 grid
+is roughly **220 MB** — not affordable, and not what the document thought it was
+asking for.
+
+Narrowing to a real `uint16` means manual bit packing in a `PackedByteArray` and
+a shift-and-mask on every read in the solve. The cheaper answer is not to
+allocate terrain nobody visits: chunks are materialised on first touch and a
+match reaches a few dozen, so the live cost is single-digit megabytes.
+
+That makes one contract load-bearing that the document treated as incidental —
+**the baseline must be a pure function of sample position**. Two peers
+materialise chunks in whatever order they happen to drive, so a baseline drawn
+from a sequential RNG would give them different terrain from the same seed.
+`GroundSource` is therefore integer-hashed value noise indexed by position, with
+no draw order at all. An unmaterialised chunk has never been deformed, so its
+live height *is* its baseline and every query falls through to the source, which
+is why the sparse representation needs no special case anywhere else.
+
+§2.2's `erosion` array is also gone: it stored `base_heights - live_heights`,
+which is a subtraction of two values the chunk already holds.
+
+### 4.32 Observed — the first look at terrain, and what it cost to make it read
+
+Rule 17, and it changed the work twice.
+
+The first capture showed the vehicles correctly settled on a heightfield and two
+things wrong with it. The ground read as **a flat plane** — at 6.5 m of relief
+over the noise's 110 m wavelength the slope is about 3°, which is drivable and
+invisible, and the whole Array looked like the slab it replaced. Amplitude is now
+15 m.
+
+The second was **speckle crawling over the terrain at grazing angles**, which
+looked like z-fighting and was not. It was the surface classification flickering
+between `COMPACTED` and `LOOSE` sample to sample: `GroundSource.surface_at`
+measured the gradient across a single 0.5 m step, which samples the finest noise
+octave. A slope is a metres-scale feature and spoil collects on it at that scale,
+so the stencil now spans 4 m and the classification comes out in coherent bands.
+
+**Neither was visible in any test and both are the first thing a player sees.**
+The suite was green for both, and the physics file proved the collision agreed
+with the data to 12 cm while the thing looked like a car park.
+
 ## 5. Deliberate readings, and the redundancies
 
 **The camera went into doc 11 rather than into a fourteenth document.** It had
@@ -2261,6 +2508,28 @@ var ammo := AmmoLedger.new()                      # one, shared by every Assembl
 #           guns.set_trigger(0, <effector_fire_primary held>)
 ```
 
+**`src/world/ground/` — the Dynamic Ground Array (doc 09).** Nine files.
+`GroundConstants` and `GroundMath` hold the dimensions and the centred
+coordinate mapping; `GroundSource` provides the authored baseline as a pure
+function of sample position, which is what makes lazy chunk allocation safe;
+`GroundChunk` is one chunk's arrays; `GroundArray` owns the chunk store, the
+shared-edge writes, the mutex, and the collision and render attachments;
+`CraterProfile` and `SurfaceTable` are §3 and §9's tables; `DeformRequest` and
+`DeformResult` carry a deformation through the pipeline; `GroundDeformSystem`
+runs all five stages, the coalescing, the erosion clamp, the rut batching and
+the rate limit; `GroundCollisionStreamer` decides which chunks carry collision.
+`src/vfx/shaders/ground_array.gdshader` displaces the chunk mesh from an R16
+height texture and colours it from an R8 splat.
+
+**What consumes it.** `MotiveSystem` reads the surface classification where the
+contact is resolved and offers loaded contacts to the rut accumulator;
+`DamageResolver` requests a crater for every blast, before and independently of
+the part query, so a shell into open ground still leaves a hole; `MatchScreen`
+builds all three and drops its spawns onto the terrain.
+
+**`src/core/util/manifold_checker.gd`** is doc 10 §3.1's gate — the only thing
+standing between a DCC-authored Static Volume and a silently missing wall.
+
 ### Data
 Eleven definitions, in manifest order. **Append only** — `part_def_id` is the
 manifest index and is serialised.
@@ -2373,6 +2642,13 @@ build accelerates to 4.45 m/s and turns.
 is the honest state of the thing that now exists, which is a different and
 better class of bad news than "there is nothing to look at".
 
+**Session 22 changed what you are standing on.** The flat slab is a Dynamic
+Ground Array: a basin with 15 m of relief, sand on the slopes and packed earth in
+the hollows, and craters that persist and grip worse than the ground they
+replaced. Verified by capture (§4.32) as well as by assertion. It does not change
+the ranking below, because the thing wrong with this game is still that nothing
+in it is trying to kill you.
+
 Ranked by what would most improve a first-time player's experience:
 
 1. **Nothing shoots back, and nothing tells you that.** The three opponents are
@@ -2399,10 +2675,15 @@ Ranked by what would most improve a first-time player's experience:
    match scene's nose mount hides it exactly as `CombatArena`'s does. **This is a
    balance decision nobody has made and a player will meet it in their first
    minute of the garage that does not exist yet.**
-5. **Nothing renders a wheel at its contact point** (§7). Now visible rather than
-   theoretical: the greybox contacts are drawn where the part was placed, not
-   where the suspension put them, so a vehicle crossing anything but flat ground
-   will have its wheels in the wrong place. Doc 05 does not cover this and should.
+5. **Nothing renders a wheel at its contact point** (§7), and session 22 made
+   this materially worse rather than merely visible. The greybox contacts are
+   drawn where the part was placed, not where the suspension put them — which on
+   a flat slab was a theoretical complaint, and on 15 m of rolling terrain is a
+   vehicle whose wheels visibly hang in the air on every crest and sink into
+   every hollow. **Landing the terrain promoted this from seventh to the most
+   obvious unfinished thing about the vehicle.** Doc 05 does not cover it and
+   should; `AssemblyRuntime.visual_of(slot)` is the hook and the contact's
+   `point_world` is the answer.
 6. **A walking build turns 170 degrees in five seconds while commanded straight
    ahead** (§4.21). Unchanged, and a player cannot reach it yet because the match
    scene spawns wheeled builds only.
@@ -2419,9 +2700,10 @@ to be aware of. And **a destroyed part simply vanishes**, because
 mesh; that is the right behaviour for the "what you see is what you hit"
 guarantee and the wrong behaviour for a player, who should see a wreck.
 
-The honest summary has changed for the first time in twenty sessions. It is no
-longer "a simulation with no game attached to it" — it is **a game with no
-opponent in it**. That is progress, and item 1 is what makes it a fight.
+The honest summary is unchanged from session 20 and that is the point: it is
+still **a game with no opponent in it**. Session 22 built the ground that fight
+would happen on, which is real progress and is not the fight. Item 1 is still
+what makes it one, and it has now led this list for three sessions.
 
 ---
 
@@ -2453,9 +2735,12 @@ opponent in it**. That is progress, and item 1 is what makes it a fight.
   downforce, and Control Surfaces have never acted on a moving Assembly. It is
   complete and matches doc 05 §8; what it needs is a per-part pressure-centre
   pass in `MotiveSystem` and a part to hang it on.
-- **`_surface_multiplier` returns 1.0 unconditionally.** The Ground Array of
-  document 09 answers it. Routed through one named function so landing that
-  document is a single edit.
+- ~~**`_surface_multiplier` returns 1.0 unconditionally.**~~ Closed — session 22.
+  It reads `SurfaceTable.multiplier(contact.surface_id)`, and the surface id is
+  filled from the Ground Array where the contact is resolved. An Assembly on a
+  fixture with no Array still reads the reference surface, which is what every
+  measurement in `tests/physics/` was taken against. The single-edit prediction
+  held.
 - ~~**`PowerSystem.recompute` has no production caller.**~~ Closed —
   `MotiveSystem` subscribes to `part_destroyed` and re-solves the budget on the
   event. Band changes deliberately do not trigger it: no table in doc 08 scales
@@ -2827,6 +3112,59 @@ opponent in it**. That is progress, and item 1 is what makes it a fight.
     Effector Module leans past 20°, and `ControlInput` gives it no way to hold a
     heading while travelling somewhere else. Both are doc 05 §13 changes and
     both are what stands between the ambulatory family and being able to fight.
+
+18. ~~**Decide how Static Volumes are authored.**~~ — **decided, session 22.**
+    Procedural generation from a `StructureArchetype`, consuming a bake whose
+    operands may be DCC-authored solids. Doc 10 §2.1 and §3.1 are amended for
+    what the engine measurably does, and `ManifoldChecker` — the blocking gate
+    that makes DCC authoring survivable at all — is built and tested against all
+    six cases the engine's behaviour was probed on.
+
+    **What is not built is the rest of document 10**, and it is comparable in
+    size to what document 09 just cost. In dependency order:
+
+    - **The CSG bake** (§3.1–§3.2). A frame-counter script in the §3.2 shape
+      (build on frame 1, bake on frame 2 — §3.57), calling `ManifoldChecker`
+      on every operand before it goes near a combiner. `intersect_with_box`
+      against an imported solid is verified working (§3.60).
+    - **Fragment decomposition** (§3.3). Poisson-disc sites, Voronoi cells,
+      intersected per Section. Worth knowing before starting: a Voronoi cell is
+      an intersection of half-spaces, so for a *convex* Section this is repeated
+      plane slicing and needs no CSG at all — and `ConvexSlicer` (§6.1) has to be
+      written anyway. Non-convex Sections still need the CSG path. Whether that
+      split is worth the two code paths is an open question, not a decision.
+    - **Support graph and collapse** (§3.5, §5). Structurally analogous to
+      `ChassisGraph`, which is a good sign and a trap: the analogy is close
+      enough that copying it will look right and the ground-anchor rule is
+      genuinely different.
+    - **Runtime slicing** (§6) and **fragment bodies** (§7).
+    - **The `StructureArchetype` generator.** `AutoAssembler` is the precedent —
+      seeded RNG, archetype weights, objective function, bounded backtracking —
+      and I-9 already demands the determinism it needs.
+
+19. **Make the wheels follow their contacts.** §6.5 item 5, and landing the
+    terrain promoted it. On a flat slab a visual wheel drawn at its lattice cell
+    was defensible; on 15 m of relief it hangs in the air on every crest. This is
+    the cheapest large improvement to how the game *looks* that is currently
+    available, it is doc 05 work with no owner, and the hook already exists.
+
+20. **Doc 09 §10.1's wire codec.** Deliberately deferred rather than missed: the
+    net layer is `net_channels.gd` and nothing else, and `BitWriter`/`BitReader`
+    do not exist, so a 34-byte `DeformRequest` encoder would be two speculative
+    layers rather than one. Everything it needs on this side is ready — the
+    solve is deterministic, `apply_replicated` exists and is tested to reproduce
+    an authored field exactly, and the ordered log is kept. It lands with doc 12.
+
+21. **Ruts have never been seen.** The batching, the load floor, the surface
+    gate and the flush are all implemented and tested, and `MotiveSystem` offers
+    every loaded contact to the accumulator every tick. But the shipped arena's
+    baseline is `COMPACTED`, which is not ruttable, so nothing in a real match
+    has ever deposited one. Either the arena wants `LOOSE` regions a vehicle
+    actually crosses — the slope rule produces them on the hillsides, so this may
+    already work and simply not have been looked at — or the threshold wants
+    revisiting. **Go and look before changing anything.**
+
+---
 
 ## 9. Conventions — follow these when adding to the suite
 

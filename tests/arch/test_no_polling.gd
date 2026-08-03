@@ -64,6 +64,19 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		+ "It reads cached band multipliers and never structural state, and "
 		+ "§9's dynamic factor is explicitly per-tick work"
 	),
+	"res://src/world/ground/ground_deform_system.gd":
+	(
+		"doc 09 §4.7: the commit budget IS the per-frame callback. Deformation "
+		+ "results arrive from a worker pool at no particular time, and the "
+		+ "1.5 ms cap that makes a hitch structurally impossible only means "
+		+ "anything if something measures it once per frame"
+	),
+	"res://src/world/ground/ground_collision_streamer.gd":
+	(
+		"doc 09 §5: the resident collision set is a function of where things "
+		+ "currently are, and movement emits no event. It re-evaluates at 2 Hz "
+		+ "and reads only body positions, never integrity or connectivity"
+	),
 }
 
 

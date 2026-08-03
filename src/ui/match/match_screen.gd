@@ -14,13 +14,10 @@ extends Node3D
 ## replaces its [i]driver[/i]. The arena counts ticks to a verdict; this draws.
 ## Keeping both is the point — the fixture asserts, the scene is played.
 ##
-## [b]Two things here are standing in for systems that do not exist yet[/b], and
-## they are named so nobody mistakes them for a design:
+## [b]One thing here is standing in for a system that does not exist yet[/b], and
+## it is named so nobody mistakes it for a design:
 ##
 ## [enum]
-## [*] [b]The ground is a [StaticBody3D] slab.[/b] Document 09 owns Dynamic
-##     Ground Arrays and nothing here pre-empts it. The arena's fixture makes the
-##     same admission for the same reason.
 ## [*] [b]The builds are laid out in code.[/b] They should come from a blueprint
 ##     in [code]data/[/code] through the identical [PlacementValidator] chain
 ##     (CLAUDE.md §10 rule 9) — which they already do, part by part; what is
@@ -35,10 +32,19 @@ extends Node3D
 
 ## ===== ARENA ===========================================================
 
-const GROUND_SPAN_M: float = 400.0
-const GROUND_HALF_HEIGHT_M: float = 2.0
-## Height above the slab the builds are dropped from, so they settle onto their
-## own contacts rather than being placed at a pose somebody guessed.
+## Seed for the arena's terrain. Fixed rather than drawn, so the basin is the
+## same basin every launch — Invariant I-9, and also the difference between a
+## map and a lottery.
+const GROUND_SEED: int = 20260803
+## Peak-to-trough relief of the arena floor, in metres.
+##
+## Raised from 6.5 after looking at it: at that amplitude the noise's 110 m
+## wavelength produces about 3 degrees of slope, which is drivable but reads as a
+## flat plane from the chase camera and made the whole Ground Array look like the
+## slab it replaced. Terrain nobody can see is terrain nobody fights over.
+const GROUND_AMPLITUDE_M: float = 15.0
+## Height above the ground the builds are dropped from, so they settle onto
+## their own contacts rather than being placed at a pose somebody guessed.
 const DROP_HEIGHT_M: float = 1.4
 
 const PLAYER_SPAWN_XZ := Vector2(0.0, 0.0)
@@ -106,7 +112,9 @@ var hud: MatchHud = null
 var _detachment: DetachmentScheduler = null
 var _mass: MassRecomputeScheduler = null
 var _debris: DebrisPool = null
-var _ground: StaticBody3D = null
+var ground: GroundArray = null
+var ground_deform: GroundDeformSystem = null
+var ground_streamer: GroundCollisionStreamer = null
 
 var _player: AssemblyRuntime = null
 var _player_guns: EffectorSystem = null
@@ -132,9 +140,21 @@ func _ready() -> void:
 	_build_ground()
 	_build_systems()
 
+	# Collision has to exist before anything is dropped onto it. The streamer
+	# normally anchors on the Assemblies, so the first evaluation is seeded with
+	# the spawn points instead — there is nothing else to be near yet.
+	_build_ground_streaming()
+	ground_streamer.extra_anchors = _spawn_anchors()
+	# prime() rather than evaluate(): the per-evaluation cap exists to spread
+	# instantiation across ticks, and there are no ticks yet. Four chunks would
+	# leave the spawns hanging over unstreamed ground.
+	ground_streamer.prime()
+
 	_player = _spawn(PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, true)
 	for xz: Vector2 in TARGET_SPAWN_XZ:
 		_spawn(xz, _yaw_towards(xz, PLAYER_SPAWN_XZ), 0, false)
+	# The Assemblies now anchor it themselves.
+	ground_streamer.extra_anchors = PackedVector3Array()
 
 	_build_camera()
 	_build_hud()
@@ -207,34 +227,50 @@ func _build_environment() -> void:
 
 
 func _build_ground() -> void:
-	_ground = StaticBody3D.new()
-	_ground.name = "Ground"
-	_ground.collision_layer = CollisionLayers.LAYER_GROUND
-	_ground.collision_mask = 0
+	# Doc 09. The Dynamic Ground Array replaced the flat slab this scene used to
+	# stand on; the basin is what makes the arena read as a place rather than a
+	# plane, and the craters that appear in it are the reason it is a heightfield
+	# rather than a mesh.
+	ground = GroundArray.new()
+	ground.name = "GroundArray"
+	ground.source = GroundSource.basin(GROUND_SEED, GROUND_AMPLITUDE_M)
+	ground.present_visuals = SubsystemGate.is_enabled(&"ground_height_texture")
+	add_child(ground)
 
-	var box := BoxShape3D.new()
-	box.size = Vector3(GROUND_SPAN_M, GROUND_HALF_HEIGHT_M * 2.0, GROUND_SPAN_M)
-	var shape := CollisionShape3D.new()
-	shape.shape = box
-	_ground.add_child(shape)
+	ground_deform = GroundDeformSystem.new()
+	ground_deform.name = "GroundDeform"
+	ground_deform.array = ground
+	add_child(ground_deform)
 
-	var mesh := BoxMesh.new()
-	mesh.size = box.size
-	var material := StandardMaterial3D.new()
-	material.albedo_color = GROUND_ALBEDO
-	material.roughness = 1.0
-	var visual := MeshInstance3D.new()
-	visual.name = "GroundVisual"
-	visual.mesh = mesh
-	visual.material_override = material
-	visual.layers = RenderLayers.LAYER_WORLD
-	# A sibling of the shape, not a child of the body's collider: the same
-	# separation Invariant I-1 requires of an Assembly, kept here so the scene
-	# does not model the habit it is meant to demonstrate.
-	_ground.add_child(visual)
 
-	add_child(_ground)
-	_ground.global_position = Vector3(0.0, -GROUND_HALF_HEIGHT_M, 0.0)
+## Streams collision in around the spawned Assemblies.
+##
+## Separate from [method _build_ground] and called after the spawns, because the
+## streamer's resident set is a function of where things are and there is
+## nothing to be near until they exist. Doc 09 §5.
+func _build_ground_streaming() -> void:
+	ground_streamer = GroundCollisionStreamer.new()
+	ground_streamer.name = "GroundStreaming"
+	ground_streamer.array = ground
+	ground_streamer.registry = registry
+	add_child(ground_streamer)
+
+
+## Ground height at [param xz], for placing a spawn on the terrain rather than
+## at a fixed altitude.
+func _ground_height_at(xz: Vector2) -> float:
+	if ground == null:
+		return 0.0
+	return ground.height_at_world(Vector3(xz.x, 0.0, xz.y))
+
+
+## Every spawn point, as collision-streaming anchors for the first evaluation.
+func _spawn_anchors() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	out.push_back(Vector3(PLAYER_SPAWN_XZ.x, 0.0, PLAYER_SPAWN_XZ.y))
+	for xz: Vector2 in TARGET_SPAWN_XZ:
+		out.push_back(Vector3(xz.x, 0.0, xz.y))
+	return out
 
 
 ## Doc 12's construction order, and the order matters: the debris pool must have
@@ -266,6 +302,9 @@ func _build_systems() -> void:
 	resolver = DamageResolver.new()
 	resolver.registry = registry
 	resolver.space = world.direct_space_state
+	# Doc 09 §4.1. Every blast this resolver handles now leaves a hole, whether
+	# or not it found anything to damage.
+	resolver.ground_deform = ground_deform
 	add_child(resolver)
 
 	projectiles = ProjectileSystem.new()
@@ -317,6 +356,10 @@ func _spawn(
 	var motion := MotiveSystem.new()
 	motion.runtime = runtime
 	motion.input = ControlInput.new()
+	# Doc 09 §7.3 and §6: contacts resolve their surface against the Array, and
+	# a loaded contact on ruttable ground deposits into the batch.
+	motion.ground = ground
+	motion.ground_deform = ground_deform
 	motion.power = PowerSystem.new()
 	motion.power.recompute(runtime.states, runtime.graph.alive)
 	runtime.add_child(motion)
@@ -345,9 +388,12 @@ func _spawn(
 			gun_slot = slot
 	motion.reassign_gait_phases()
 
+	# Dropped relative to the terrain under the spawn, not to y = 0: the arena
+	# floor is a basin now and a fixed altitude would bury the builds on the
+	# rises and drop them from a height into the hollows.
 	runtime.body.global_transform = Transform3D(
 		Basis.from_euler(Vector3(0.0, yaw_rad, 0.0)),
-		Vector3(ground_xz.x, DROP_HEIGHT_M, ground_xz.y)
+		Vector3(ground_xz.x, _ground_height_at(ground_xz) + DROP_HEIGHT_M, ground_xz.y)
 	)
 
 	if rounds != 0:

@@ -39,7 +39,11 @@ const COLLISION_STREAM_RADIUS_M: float = 180.0
 const MAX_COLLISION_CHUNKS: int = 64
 ```
 
-Height is stored as `uint16` with a `7.81 mm` quantum. That is finer than any gameplay-relevant height difference and half the size of a float32 heightfield — 33 MB for the entire world rather than 67 MB.
+Height is stored with a `7.81 mm` quantum, which is finer than any gameplay-relevant height difference.
+
+**Amended: chunks are allocated lazily, and the 33 MB figure this paragraph used to quote was wrong.** §2.2 declares the height arrays as `PackedInt32Array`, which is 4 bytes per sample and not 2, so a chunk costs about 215 KB across its three arrays and the full 32×32 grid would cost roughly 220 MB — not 33 MB, and not affordable. Narrowing the storage to a genuine `uint16` would need manual bit packing in `PackedByteArray` and would put a shift-and-mask on every sample read in the deformation solve.
+
+The cheaper answer is not to allocate terrain nobody visits. `GroundArray` materialises a chunk the first time something reads or writes it and fills its baseline from a `GroundSource`; a match touches a few dozen chunks, so the live cost is single-digit megabytes. This is what makes the `GroundSource` contract in §2.2 load-bearing: the baseline must be a **pure function of sample position**, because two peers materialise chunks in whatever order they happen to drive, and a baseline drawn from a sequential RNG would give them different terrain. An unmaterialised chunk has never been deformed, so its live height is its baseline and every query falls through to the source — which is why the sparse representation needs no special case anywhere else.
 
 ### 2.2 Chunk
 
@@ -55,8 +59,7 @@ var base_heights: PackedInt32Array = PackedInt32Array()     # uint16 values
 var live_heights: PackedInt32Array = PackedInt32Array()
 ## Per-sample surface classification (see Section 9).
 var surface_ids: PackedByteArray = PackedByteArray()
-## Accumulated depth removed, in quanta, for the accumulation clamp.
-var erosion: PackedInt32Array = PackedInt32Array()
+## Accumulated depth removed. Derived rather than stored — see below.
 
 var dirty_min: Vector2i = Vector2i(9999, 9999)
 var dirty_max: Vector2i = Vector2i(-1, -1)
@@ -78,7 +81,11 @@ func clear_dirty() -> void:
     dirty_max = Vector2i(-1, -1)
 ```
 
-Keeping `base_heights` alongside `live_heights` costs 33 MB more but buys three things: an exact reset for round restarts, a cheap "total deformation" query for the accumulation clamp, and a trivially correct network resync (send the delta against a known baseline rather than the absolute field).
+Keeping `base_heights` alongside `live_heights` doubles a chunk's height storage but buys three things: an exact reset for round restarts, a cheap "total deformation" query for the accumulation clamp, and a trivially correct network resync (send the delta against a known baseline rather than the absolute field).
+
+**Amended: there is no separate `erosion` array.** It would be a third full-size array carrying `base_heights[i] - live_heights[i]`, which is a subtraction of two values the chunk already holds. `GroundChunk.erosion_at()` performs that subtraction, `§4.4`'s clamp calls it, and the 66 KB per chunk is not spent. The field is listed above as derived so that nothing tries to reintroduce it as storage.
+
+A chunk also carries a `surface_texture` alongside `height_texture`: §9.2's splat map is committed in Stage 5 exactly as the height image is, and it needs somewhere to live.
 
 ### 2.3 Coordinate Mapping
 
@@ -205,16 +212,30 @@ static func depth_for(blast_damage: float, hardness: float) -> float:
     return minf(d / maxf(hardness, 0.15), CRATER_MAX_DEPTH_M)
 ```
 
-### 3.3 Volume Conservation
+### 3.3 Ejecta Fraction
 
-The rim's ejecta volume should roughly match the bowl's excavated volume, or craters look like someone pressed a thumb into clay. Integrating the profile over the annulus:
+The rim carries part of the excavated spoil back out onto the surface. Integrating the profile over the annulus:
 
 ```
 V_bowl = 2π R² D ∫₀^{u_r} u (1 − (u/u_r)²)^p du
 V_rim  = 2π R² H ∫_{u_r}^{1} u sin(π(u−u_r)/(1−u_r)) du
 ```
 
-With the shipping constants (`u_r = 0.68`, `p = 0.85`, `RIM_RATIO = 0.28`) these evaluate to `V_bowl ≈ 0.253 · 2πR²D` and `V_rim ≈ 0.256 · 2πR²D`, a match to within 1.2%. The constants were chosen for this property; changing `RIM_BOUNDARY` or `BOWL_EXPONENT` requires re-deriving `RIM_RATIO`, and `tools/derive_rim_ratio.gd` does exactly that, printing the corrected value.
+With the shipping constants (`u_r = 0.68`, `p = 0.85`) the two integrals evaluate to `0.124973` and `0.171123`. At `RIM_RATIO = 0.28` that gives:
+
+| Quantity | Coefficient of `2πR²D` |
+|---|---|
+| `V_bowl` | `0.124973` |
+| `V_rim` | `0.047915` |
+| **Ejecta fraction** `V_rim / V_bowl` | **`0.3834`** |
+
+**The rim deliberately does not conserve volume, and `RIM_RATIO` is a gameplay constant rather than a derived one.**
+
+This section previously claimed the two volumes matched to within 1.2% on coefficients of `0.253` and `0.256`. Those figures are not what the integrals evaluate to and the claim was false in the direction that matters: the value it purported to justify, `0.28`, is right, but for a different reason. Volume conservation would require `RIM_RATIO = 0.730309`, and §7.1 is where that number is refused — a conserving rim on a typical `1.4 m` crater stands `1.02 m` high, which is not a lip that unsettles a light Assembly at speed but a wall that traps it at the bottom of every shell hole on the map. A crater the player cannot drive out of is a worse artefact than a crater that has lost some of its spoil.
+
+Losing 62% of the ejecta is also the physically ordinary case. Real explosive cratering throws a large fraction of its spoil clear of the continuous ejecta blanket entirely, and compacts more of it into the bowl walls; a rim holding everything the bowl gave up is the unusual outcome, not the default.
+
+`CraterProfile.rim_ratio_for_volume_match()` computes the conserving value from whatever `RIM_BOUNDARY` and `BOWL_EXPONENT` currently are. It exists so the trade-off stays visible when either shape constant is changed — the ratio it prints is the value that would conserve volume, and shipping it is a decision about whether players can leave craters, not a correction. `tests/unit/test_crater_profile.gd` asserts the shipped ejecta fraction and the §7.1 rim height by value, so a change to any of the three constants fails there and has to be argued rather than absorbed.
 
 ---
 
@@ -334,6 +355,26 @@ const SLOPE_LEVEL_STRENGTH := 0.85
 
 Levelling toward the blast's ground plane is a genuine gameplay decision: a crater on a hillside becomes a flat shelf, which is a usable firing position. A crater that merely subtracted a bowl from the slope would leave a tilted depression that vehicles slide out of.
 
+**Amended: the listing above destroys the rim, and the corrected form separates levelling from the profile.**
+
+Blending the whole profile through `lerpf(current, ground_y + delta, blend * SLOPE_LEVEL_STRENGTH)` with `blend = 1 - smoothstep(0, 1, u)` attenuates every part of the crater by its distance from the centre — including the rim, which lives at `u ∈ [0.68, 1]` where `blend` has almost reached zero. At the rim's peak (`u = 0.84`) the weight is `0.0686`, so on flat ground the rim comes out at **5.8% of the height §3.1 specifies for it**. §7.1's worked example — a `0.39 m` rim on a `1.4 m` crater, "enough to unsettle a light Assembly at speed and enough to provide hull-down cover for a low-profile one" — would ship at `0.023 m` and provide neither.
+
+Levelling and the profile are separate concerns. Levelling decides *what datum the crater is cut into*, and is only meaningful inside the bowl; the profile is the crater itself and is added on top. The corrected solve:
+
+```gdscript
+var current := _sample_height_m(s)
+# Levelling falls to zero at the bowl's edge, so the rim is deposited on
+# whatever surface is actually there — which is also what ejecta does.
+var level := 1.0 - smoothstep(0.0, CraterProfile.RIM_BOUNDARY, u)
+var datum := lerpf(current, ground_y, level * SLOPE_LEVEL_STRENGTH)
+var new_h := datum + CraterProfile.delta_height(u, req.depth_m)
+new_h = _apply_erosion_clamp(s, new_h)
+```
+
+This is continuous everywhere on any terrain: at `u = RIM_BOUNDARY` the levelling weight and the profile are both zero, so both sides of the boundary evaluate to `current`; at `u = 1` the profile is zero again. The bowl floor still flattens toward `ground_y - D` on a slope, which is the whole point of §4.3, and the rim is now exactly `RIM_RATIO · D` above the local surface as §3.1 and §7.1 both assume.
+
+`tests/integration/test_ground_deform.gd` asserts the rim stands above datum after the solve, and `tests/unit/test_crater_profile.gd` asserts §7.1's `0.39 m` figure by value, so restoring the old formula fails both.
+
 ### 4.4 Erosion Accumulation Clamp
 
 Without a limit, repeated bombardment of the same spot digs an arbitrarily deep pit that swallows vehicles and eventually punches through the world floor. Each sample tracks cumulative erosion and the deformation is attenuated as it approaches the limit:
@@ -394,7 +435,9 @@ func _build_height_image(chunk: GroundChunk) -> Image:
 Normals are derived in the fragment shader from the height texture, so no normal data is transferred:
 
 ```glsl
-// src/world/ground/ground_array.gdshader (excerpt)
+// src/vfx/shaders/ground_array.gdshader (excerpt)
+// CLAUDE.md §2 puts every .gdshader under src/vfx/shaders/; this document
+// previously named a path inside src/world/ground/, which that layout forbids.
 uniform sampler2D u_height : hint_default_black, filter_linear, repeat_disable;
 uniform float u_height_min = -128.0;
 uniform float u_height_range = 512.0;
@@ -494,6 +537,14 @@ func _physics_process(dt: float) -> void:
 
 `_acquire_collision` builds the `PackedFloat32Array` on a worker thread and assigns it on commit, using the same pipeline as a deformation. Streaming in a chunk therefore also cannot hitch.
 
+**Amended: the acquisition order must be by distance to the nearest anchor.**
+
+The listing above iterates `wanted.keys()` and breaks after four acquisitions, so which four are acquired is whatever order a `Dictionary` yields. That is non-deterministic, which Invariant I-9 forbids on its own — but the obvious repair, sorting by chunk index, is actively worse and was measured failing. Ascending chunk index acquires the **lowest-indexed corner of the wanted region**, which is the chunk furthest from the anchor in the direction nothing is heading. An Assembly dropped 140 m from the world origin fell straight through the terrain: 49 chunks were wanted, the four acquired were 180 m away, and the chunk it was standing on was 45th in the queue.
+
+Order by squared distance from the chunk centre to the nearest anchor, and break ties on chunk index so the result is still reproducible. The chunk something is standing on is then always acquired first and the chunk it is about to reach second, which is what makes a four-per-evaluation cap safe rather than a lottery.
+
+**A scene or a test placing something on the ground before the first tick needs the whole wanted set at once**, not four of it. `GroundCollisionStreamer.prime()` acquires up to `MAX_COLLISION_CHUNKS` in one call and is the construction-time path; `evaluate()` keeps the cap and is the steady-state one. Neither the match scene's setup nor a fixture is inside a frame budget, which is the same reasoning that gives `GroundDeformSystem` its `flush()`.
+
 A chunk deformed while unstreamed carries its dirty state; when it is later streamed in, the collision array is built from `live_heights`, which already includes every deformation. Deformation and streaming are fully independent.
 
 ---
@@ -574,7 +625,9 @@ const MAX_IN_FLIGHT_DEFORMS := 3
 
 1. Only one deform task writes to any given chunk at a time — `_dispatch_pending` checks chunk overlap against in-flight requests and defers a conflicting request to the next dispatch.
 2. Nothing on the main thread reads `live_heights` during a match. The main thread reads only the committed `HeightMapShape3D` and the committed texture.
-3. `_sample_height_m` queries used by gameplay (rut accumulation, surface lookup) read through a `RWLock` held for the duration of `_apply_to_chunk_arrays`.
+3. `_sample_height_m` queries used by gameplay (rut accumulation, surface lookup) read through a lock held for the duration of `_apply_to_chunk_arrays`.
+
+**Amended: the lock is a `Mutex`, not an `RWLock`.** Godot 4 exposes `Mutex`, `Semaphore`, `Thread` and `WorkerThreadPool` to GDScript and nothing else; there is no scripting-level reader-writer lock to use. Verified against 4.7.1. The substitution costs nothing measurable at this system's access pattern — writes happen only inside a deformation solve, a few times a second at worst, and readers are a handful of sample lookups per contact per tick — so serialising two readers that could have run concurrently is cheaper than the GDScript-level reader-writer lock that would avoid it. `GroundArray.lock` is that mutex and every query goes through it.
 
 ```gdscript
 func _overlaps_in_flight(req: DeformRequest) -> bool:

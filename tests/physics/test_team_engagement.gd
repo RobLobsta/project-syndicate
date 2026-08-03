@@ -67,6 +67,27 @@ const BRAWL_PRE_BOUND_TICKS: int = 91
 ## the fight, which is not a stable one.
 const BRAWL_MIN_TICKS: int = BRAWL_PRE_BOUND_TICKS * 2
 
+## Assemblies the five-a-side must destroy for the fight to count as decided.
+##
+## [b]This is a bound, not a measurement, and the distinction is the whole
+## point.[/b] It was `spawned / 2` — five of ten — and that number sat inside the
+## fixture's natural spread rather than below it. Observed terminations across
+## runs: 7 (three survivors at the timeout), 5 (one team standing at 654 ticks),
+## and 4 (after `tests/physics/test_ground_terrain.gd` was added). Nothing about
+## the fight changed between the last two; §3.54 of the handoff is the mechanism,
+## and it is that once twenty rigid bodies have shared a space the solver's float
+## ordering depends on the allocation history of the whole process, so any
+## earlier file that creates and destroys bodies moves the outcome here.
+##
+## §3.54 predicted this exact failure — "re-asserting the new number would have
+## moved the fragility to whoever added the next file" — so the fix is not to
+## re-centre on 4. Three of ten is comfortably under every run anybody has
+## observed and still fails hard if combat regresses to a stalemate, which is the
+## only thing this assertion was ever defending. The qualitative claims above it
+## — every Assembly opened fire, rounds landed, Core Modules were lost, more
+## parts died than Assemblies — carry the rest.
+const COMBINED_MIN_TERMINATED: int = 3
+
 ## The combined-arms roster, in the order it is fielded from the left flank.
 ## Both teams get the same five, so the composition is a constant.
 const COMBINED_ARMS: Array[int] = [
@@ -122,12 +143,12 @@ func test_five_a_side_combined_arms_fights_itself_to_pieces() -> void:
 	# combined-arms line that fights itself to pieces — and an exact assertion on
 	# either would be asserting float ordering inside the physics server.
 	check_true(
-		e.terminated >= e.spawned / 2,
-		"at least half the field was destroyed: %d of %d" % [e.terminated, e.spawned]
+		e.terminated >= COMBINED_MIN_TERMINATED,
+		"a decisive share of the field was destroyed: %d of %d" % [e.terminated, e.spawned]
 	)
 	check_true(
-		e.survivors_total < e.spawned / 2,
-		"and fewer than half were left: %d" % e.survivors_total
+		e.survivors_total <= e.spawned - COMBINED_MIN_TERMINATED,
+		"and that many fewer were left standing: %d" % e.survivors_total
 	)
 
 

@@ -42,7 +42,13 @@ StaticVolumeSource                    (Node3D, editor only)
     └── Cut_Interior_Void             (CSGBox3D,      operation SUBTRACTION)
 ```
 
-Authoring uses only `CSGBox3D`, `CSGCylinder3D`, `CSGSphere3D`, `CSGTorus3D`, `CSGPolygon3D`, and nested `CSGCombiner3D`. `CSGMesh3D` is permitted but discouraged — arbitrary mesh operands make the fracture bake substantially slower and can produce non-manifold results.
+Authoring uses `CSGBox3D`, `CSGCylinder3D`, `CSGSphere3D`, `CSGTorus3D`, `CSGPolygon3D`, nested `CSGCombiner3D`, and `CSGMesh3D`.
+
+**Amended: `CSGMesh3D` is a first-class operand, not a discouraged one.** This paragraph previously discouraged it on the grounds that arbitrary mesh operands make the bake substantially slower and can produce non-manifold results. The first half is no longer true and the second half was pointing at the wrong risk.
+
+Godot 4.4 replaced the CSG implementation with the Manifold library. Measured against 4.7.1: a 6 912-triangle `ArrayMesh` operand with twelve subtractions bakes in the same single frame as a bare `CSGBox3D`, and an imported solid intersected with a box cell returns exactly the expected half — which is what §3.2's `intersect_with_box` needs. There is no longer a speed argument against a DCC-authored solid.
+
+The real risk is §3.1's, and it is worse than "can produce non-manifold results": a non-manifold operand is **silently discarded**. See the amendment there before authoring anything in a DCC tool.
 
 ### 2.2 Baked Runtime Structure
 
@@ -98,6 +104,16 @@ func _weld_and_validate(mesh: ArrayMesh) -> ArrayMesh:
 ```
 
 Non-manifold geometry is reported as a build error, not silently accepted. A non-manifold Volume produces fragments with inverted normals and inside-out collision hulls, and the failure mode is far cheaper to catch here than in a playtest.
+
+**Amended: `ManifoldChecker` is ours to write, and the engine does the opposite of what this section assumed.** Measured against 4.7.1: a non-manifold operand does not raise, does not warn, and does not fail the bake. It contributes nothing and the tree bakes cleanly without it. An open two-triangle sheet unioned with a 1 m box bakes to exactly the box; a box with one face deleted bakes to nothing at all; a cylinder whose seam vertices differ by the `2.4e-16` between `sin(0)` and `sin(TAU)` bakes to nothing and takes its twelve window cuts with it.
+
+**The failure mode is a missing wall in an otherwise perfect building, with a green build log.** That is why the check is blocking rather than advisory, and why it runs on the **input operands** rather than on the bake output — a dropped operand leaves output that is impeccably manifold and simply missing a storey.
+
+The predicate has one non-obvious requirement: **it must weld by position before counting edges.** Index-based edge counting reports Godot's own `BoxMesh` as having 24 boundary edges, because a box is 24 vertices once split for UVs and normals, and the engine bakes that box perfectly — Manifold welds by position internally. Degenerate triangles must *not* disqualify: `SphereMesh` ships 128 of them at its poles and bakes fine. Quantise positions to a grid, weld, and require zero edges used once (a hole) and zero used three or more times (a fin or duplicate face). At a `1/4096 m` quantum this agrees with the engine on `BoxMesh`, `SphereMesh`, a welded grid box, a float-seam cylinder, an open sheet, and a holed box.
+
+One further engine fact the bake script depends on: `bake_static_mesh()` returns `null` on the frame the CSG tree is built. Evaluation is deferred to the server and the tree answers on the **next** `_process` frame, always frame 2 and never later. An `await process_frame` inside `_process` does not let the server run and returns `null` just as frame 1 does, so the bake is a frame-counter script rather than a coroutine. Extraction once evaluated is free — re-baking an already-evaluated 25-operand tree measures `0.001 ms`.
+
+Finally, `CSGShape3D.bake_collision_shape()` returns a `ConcavePolygonShape3D`, which Invariant I-1 forbids on anything dynamic. It is usable as an editor reference and for nothing else; §3.4 generates Section colliders from partition geometry and is right to.
 
 ### 3.2 Stage 2 — Section Partition
 
