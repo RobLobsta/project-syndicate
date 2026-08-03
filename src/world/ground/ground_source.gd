@@ -42,6 +42,16 @@ const BASIN_DEPTH_M: float = 9.0
 ## rise per metre of run.
 const LOOSE_SLOPE_THRESHOLD: float = 0.34
 
+## Half-width of the gradient stencil, in samples.
+##
+## [b]Not 1.[/b] Measuring the slope across a single 0.5 m step samples the
+## finest noise octave, so ground near the threshold flips class from one sample
+## to the next and the splat map comes out as speckle rather than as regions —
+## which at a grazing angle reads as static crawling over the terrain. A slope is
+## a metres-scale feature and spoil collects on it at that scale, so the stencil
+## spans 4 m and the classification comes out in coherent patches.
+const SLOPE_STENCIL_SAMPLES: int = 4
+
 var kind: Kind = Kind.FLAT
 var seed: int = 0
 ## Height of [constant Kind.FLAT], and the datum the other kinds vary about.
@@ -93,9 +103,10 @@ func height_at(s: Vector2i) -> float:
 func surface_at(s: Vector2i) -> int:
 	if kind == Kind.FLAT:
 		return default_surface
-	var spacing := GroundConstants.SAMPLE_SPACING_M
-	var dx := (height_at(s + Vector2i(1, 0)) - height_at(s - Vector2i(1, 0))) / (2.0 * spacing)
-	var dz := (height_at(s + Vector2i(0, 1)) - height_at(s - Vector2i(0, 1))) / (2.0 * spacing)
+	var n := SLOPE_STENCIL_SAMPLES
+	var run := 2.0 * float(n) * GroundConstants.SAMPLE_SPACING_M
+	var dx := (height_at(s + Vector2i(n, 0)) - height_at(s - Vector2i(n, 0))) / run
+	var dz := (height_at(s + Vector2i(0, n)) - height_at(s - Vector2i(0, n))) / run
 	var slope := sqrt(dx * dx + dz * dz)
 	if slope > LOOSE_SLOPE_THRESHOLD:
 		return SurfaceTable.Surface.LOOSE

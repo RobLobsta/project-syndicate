@@ -36,10 +36,13 @@ extends Node3D
 ## same basin every launch — Invariant I-9, and also the difference between a
 ## map and a lottery.
 const GROUND_SEED: int = 20260803
-## Peak-to-trough relief of the arena floor, in metres. Modest deliberately: the
-## wheeled recipe has 0.34 m of suspension travel and the point of the first
-## terrain build is that it is drivable, not that it is dramatic.
-const GROUND_AMPLITUDE_M: float = 6.5
+## Peak-to-trough relief of the arena floor, in metres.
+##
+## Raised from 6.5 after looking at it: at that amplitude the noise's 110 m
+## wavelength produces about 3 degrees of slope, which is drivable but reads as a
+## flat plane from the chase camera and made the whole Ground Array look like the
+## slab it replaced. Terrain nobody can see is terrain nobody fights over.
+const GROUND_AMPLITUDE_M: float = 15.0
 ## Height above the ground the builds are dropped from, so they settle onto
 ## their own contacts rather than being placed at a pose somebody guessed.
 const DROP_HEIGHT_M: float = 1.4
