@@ -107,6 +107,9 @@ var registry: AssemblyRegistry = null
 ## a unit test over direct packets does not need one, and §5.3 is the only
 ## consumer.
 var space: PhysicsDirectSpaceState3D = null
+## Where a blast's crater goes, per doc 09 §4.1. Null on a resolver with no
+## terrain: a blast still damages everything it reaches, it just leaves no hole.
+var ground_deform: GroundDeformSystem = null
 ## Sink for a destroyed part's island work. The scheduler already listens to
 ## [signal EventBusService.part_destroyed]; this is here so a test can observe
 ## the resolver without one.
@@ -188,7 +191,15 @@ func resolve_blast(
 	source_slot: int,
 	chain_depth: int
 ) -> void:
-	if space == null or registry == null or radius_m <= 0.0:
+	if radius_m <= 0.0:
+		return
+	# Doc 09 §4.1. Before the part query and independent of it: a shell that
+	# lands in open ground hits nothing and must still leave a crater, which is
+	# the whole reason the terrain is destructible. The system's own authority
+	# check (Invariant 1) decides whether this peer may author it.
+	if ground_deform != null:
+		ground_deform.request_crater(centre, radius_m, damage, source_assembly_id)
+	if space == null or registry == null:
 		return
 	var sphere := SphereShape3D.new()
 	sphere.radius = radius_m

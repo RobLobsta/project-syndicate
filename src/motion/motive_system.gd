@@ -45,6 +45,14 @@ var power: PowerSystem = null
 ## network input channel; read by every family.
 var input: ControlInput = null
 
+## The terrain contacts are resolved against, for doc 09 §7.3's surface lookup.
+## Null on a fixture with no Ground Array, which reads the reference surface —
+## see [method _surface_multiplier].
+var ground: GroundArray = null
+## Where doc 09 §6's rut deposits go. Null disables rut accumulation entirely,
+## which is correct for the garage and for every solver test.
+var ground_deform: GroundDeformSystem = null
+
 ## Slot -> locomotion family, cached at registration. The dispatch table.
 var _family: PackedByteArray = PackedByteArray()
 ## Slot -> traction/thrust multiplier from the part's band. Written only by
@@ -290,6 +298,7 @@ func step(dt: float) -> void:
 	# this tick. Running it first would couple last tick's roll into this one.
 	_apply_anti_roll()
 	_update_kappa(dt)
+	_deposit_ruts()
 
 
 ## ===== INSPECTION ======================================================
@@ -892,6 +901,33 @@ func _gather_contacts() -> void:
 			c.forward = -xform.basis.z
 			c.lateral = xform.basis.x
 			c.velocity_world = _point_velocity(c.point_world)
+			# Doc 09 §7.3. The classification is a property of the ground, so it
+			# is read where the contact is resolved rather than derived later
+			# from a position the solvers would have to keep hold of.
+			if ground != null:
+				c.surface_id = ground.surface_at_world(c.point_world)
+
+
+## Doc 09 §6. Offers each loaded contact to the rut accumulator.
+##
+## Runs after the families, so [member MotiveContact.normal_force_n] is this
+## tick's suspension result rather than last tick's. The accumulator does its
+## own filtering — load floor, surface gate, and one deposit per sample per
+## contact — and batches to a single request per second, so this loop is a
+## handful of comparisons and never a deformation request.
+func _deposit_ruts() -> void:
+	if ground_deform == null:
+		return
+	for slot: int in _motive_slots:
+		var contacts: Array = _contacts.get(slot, [])
+		for c: MotiveContact in contacts:
+			if not c.grounded:
+				continue
+			# The track key has to distinguish contacts across the whole match,
+			# not just within this Assembly, or two Assemblies parked on the
+			# same sample would suppress each other's deposits.
+			var key := (runtime.assembly_id * 256 + slot) * 16 + c.station_index
+			ground_deform.accumulate_rut(c.point_world, c.normal_force_n, c.surface_id, key)
 
 
 func _point_velocity(point_world: Vector3) -> Vector3:
@@ -1127,8 +1163,14 @@ func _height_above_ground_m() -> float:
 
 ## Surface friction multiplier for a contact.
 ##
-## Constant until the Ground Array of document 09 exists to answer it. Named and
-## routed through one function so that landing that document is a single edit
-## rather than a search for every place a surface was assumed.
-func _surface_multiplier(_contact: MotiveContact) -> float:
-	return 1.0
+## Answered by [SurfaceTable], whose [constant SurfaceTable.TRACTION] array doc
+## 09 §9.1 owns and doc 05 §7.3 indexes. There is one definition of that table
+## and this is its only consumer.
+##
+## An Assembly on an Array-less fixture — a unit test over the solvers, or the
+## garage — reads the reference surface, which is what every measurement in
+## `tests/physics/` was taken against.
+func _surface_multiplier(contact: MotiveContact) -> float:
+	if ground == null:
+		return 1.0
+	return SurfaceTable.multiplier(contact.surface_id)
