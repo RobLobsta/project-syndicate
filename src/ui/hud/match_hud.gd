@@ -25,8 +25,8 @@ const HUD_LAYER: int = 5
 ## ===== DAMAGE FLASH (§14.4) ============================================
 
 const FLASH_ALPHA_PER_PACKET: float = 0.06
-## A spall burst is several packets in one tick (HANDOFF.md §4's note on spall). Without the clamp a
-## single kinetic hit would white out the screen.
+## A spall burst is several packets in one tick (HANDOFF.md §4's note on spall).
+## Without the clamp a single kinetic hit would white out the screen.
 const FLASH_ALPHA_MAX: float = 0.34
 const FLASH_DECAY_HZ: float = 4.5
 
@@ -117,9 +117,15 @@ func _process(dt: float) -> void:
 ## §14.6's toggle. The card is the one piece of this interface a player asks for
 ## rather than being shown, so it is the one piece that reads the input map.
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(ACTION_TOGGLE_CARD):
-		_control_card.toggle()
-		get_viewport().set_input_as_handled()
+	if not event.is_action_pressed(ACTION_TOGGLE_CARD):
+		return
+	# Not once the match is over. §16.2 takes the card down at the conclusion, and
+	# raising it again would put a panel of driving controls behind the card
+	# explaining that there is nothing left to drive.
+	if _end_card.is_raised():
+		return
+	_control_card.toggle()
+	get_viewport().set_input_as_handled()
 
 
 ## §14.1. The whole continuous half of the interface, once per tick.

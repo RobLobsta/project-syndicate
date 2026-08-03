@@ -144,9 +144,11 @@ is read out of `InputMap` at the moment the card is raised, so a rebind is on it
 Captured with `LEARNED_FACTS.md` §1 fact 55's route, 900 frames, no player input
 at all. The card is legible from frame 1. By frame 340 the three are at contact
 range, the player is at 51% with a component gone and the feed saying so, and the
-target bracket is lighting on a hull. At about frame 615 the Core Module goes, the
-end card comes up in `danger` reading CORE MODULE DESTROYED, the controls come off
-the wreck and the camera goes to orbit.
+target bracket is lighting on a hull. Somewhere in the last third — frame 615 on
+one capture and 520 on the next, which is `LEARNED_FACTS.md` §1 fact 44 and not a
+defect — the Core Module goes, the end card comes up in `danger` reading CORE
+MODULE DESTROYED, the reticle goes with it, the controls come off the wreck and
+the camera goes to orbit.
 
 **And then the wreck flies away at ninety metres a second**, which is the
 session's largest finding and the one nobody could have seen before, because
@@ -228,8 +230,10 @@ documented decision. The question the document does not answer is whether the
 
 Two things to have in hand first: the measurement above, repeated with
 `test_family_duels`' losers rather than only the player's build, and the mass the
-body is left holding once its islands have detached. `LEARNED_FACTS.md` §4's note
-on the mass floor is the likely mechanism and is not yet the confirmed one.
+body is left holding once its islands have detached. `MassSolver.MASS_FLOOR_KG`
+is 0.001 kg and `LEARNED_FACTS.md` §1 fact 24 records that the engine refuses a
+zero mass outright, so a body sitting near that floor with an ordinary suspension
+force still on it is the likely mechanism — **likely, and not yet confirmed.**
 
 ### 3.2 A way to play again
 
