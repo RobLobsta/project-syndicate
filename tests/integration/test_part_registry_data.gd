@@ -101,6 +101,7 @@ const SHIPPED_KEYS: Array[String] = [
 	"mot.wheeled.fixed_rear.t2",
 	"cel.static.standard.t3",
 	"eff.ballistic.autocannon_30.t3",
+	"apx.arm.manipulator.t3",
 ]
 
 

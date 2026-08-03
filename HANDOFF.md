@@ -4,8 +4,8 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 17 (running the combat-layer sweep session 14 left
-unfinished, and covering what survived it).
+Last updated: session 17 (the combat-layer sweep session 14 left unfinished,
+then Appendages and held weapons).
 
 | § | What is in it |
 |---|---|
@@ -59,7 +59,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**60 files, 4405 checks, 0 failures.**
+**61 files, 4476 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (§3.34).
@@ -1385,6 +1385,74 @@ which is indistinguishable from a direct hit in the signal. The fixture reads th
 round's own strike record instead, which is the only observable that answers the
 question asked.
 
+### 4.26 Built — Appendages, held weapons, and a melee sweep that does not land
+
+A new part class, a new keyed connector, a new part, and the §15.3 query that had
+been computed since session 8 and never run. Three of the four work; the fourth
+is written down as it behaves.
+
+**`PartClass.APPENDAGE`** (doc 01 §7.8). An arm is not a Motive Assembly — it
+does not propel and has no locomotion family — and not a Structural Component,
+because a bracket cannot swing what it carries and cannot be graded on how well
+it holds it. It adds **no joint**: I-3 holds exactly as for an ambulatory limb,
+the collider is authored and fixed, and what swings is a *query*.
+
+**`AttachmentPolarity.GRIP`** (doc 01 §4.3), keyed exactly as `AXLE` is and for
+the same stated reason — a polarity that mates with anything is `FACE_NEUTRAL`
+with extra steps. The exclusivity is what makes "held" a different joint from
+"mounted": `eff.melee.beam_edge.t4` was re-authored to a single `GRIP` node on
+its hilt, so the edge can be carried and **cannot** be bolted to a hull. Nothing
+had ever placed it, so the polarity change cost no build; its `part_key` is
+untouched, so rule 13's serialised ids are unaffected.
+
+**`apx.arm.manipulator.t3`**, 3x6x3, 128 kg, one hand, 9000 N grip rating —
+which holds the 96 kg edge and refuses the 196 kg autocannon, so a heavier weapon
+is a real choice rather than a free upgrade.
+
+**§8.2 gained its first cross-slot row.** `APPENDAGE_HELD_CYCLE` is read against
+the *holder's* band, not the module's: a pristine edge in a wrecked arm swings
+like a wrecked arm, and the two cycle multipliers compose. `EffectorSystem`
+resolves the holder once at registration by walking the graph upward. It is the
+only degradation row in the game read against a slot other than the one that
+changed band, and it is what makes shooting the arm better than shooting the
+sword.
+
+#### The melee sweep runs and lands nothing — open
+
+`EffectorSystem._step_melee` and `_sweep_edge` are written and wired: the stage
+machine advances, the trigger starts a strike only when the mount is on target
+(§4.3.1's gate, shared with direct fire), the arc is sampled, and the query runs.
+**It reports no contacts.**
+
+What is measured, in `tests/physics/test_held_weapon.gd`:
+
+| Observation | Value |
+|---|---|
+| Mount converged | `on_target` and `solution_in_arc` both true |
+| Stage machine | reaches `SWINGING`, cycles repeatedly |
+| Capsule queries per swing | 6 |
+| Edge sample vs target origin | within **0.31 m**, against an 0.18 m capsule |
+| Contacts reported | **0** |
+
+The target Assembly is a real `AssemblyRuntime` on `LAYER_ASSEMBLY_HULL`, the
+mask is `MASK_PROJECTILE_TARGET`, both bodies are frozen and flushed by a stepped
+frame. So this is a fixture-or-broadphase question rather than a §15 one, and the
+next session should start by asking whether the target's *collider* is where the
+test assumes — a Core Module's box is centred on its centre of mass, most of a
+metre from the cell the blueprint calls its origin, and the fixture compensates
+for that with `com_offset_m`, which is a proxy and may not be the right one.
+`ColliderProfile`'s primitives carry their own transforms and are the authority.
+
+**The test asserts the failure**, as §9 requires and as the ambulatory mirror
+already does: `test_the_sweep_currently_lands_no_contacts` is supposed to break,
+and the two assertions it replaced — thermal damage delivered, and more of it
+than kinetic — are in the file's history ready to go back.
+
+**Consequence to be honest about:** the beam edge still does no damage, so the
+energy-damage half of what the arm was built to demonstrate is not demonstrated.
+The `THERMAL` channel remains implemented, unit-tested against synthetic packets,
+and produced by nothing.
+
 ### 4.25 Found — four documented rules had no test at all, and one has no owner
 
 Session 17's yield from running session 14's sweep. Nothing here is a defect in
@@ -1936,6 +2004,44 @@ a side).
 
 ---
 
+## 6.5 The player-experience review (CLAUDE.md §10 rule 17)
+
+Recorded every session from now on, because a green suite says nothing about
+whether the thing is any good to play.
+
+**Can a person play it? No.** There is still no scene, no camera, no main scene
+set, and no way to start the game and press a key. Everything below is reachable
+only from `tests/`. This is unchanged since session 1 and it is the single
+largest gap in the project: thirteen documents of architecture, 4476 passing
+checks, and nothing a person can look at. **§8 item 12 is the answer and it
+should stop being deferred.**
+
+Ranked by what would most improve a first-time player's experience:
+
+1. **A match scene with a camera.** Item 12. Everything else on this list is
+   invisible without it.
+2. **The wheeled build cannot fire its own weapon without a heavy hull** (§4.11,
+   §4.14). A player bolting the shipped autocannon to the shipped chassis and
+   pulling the trigger gets a vehicle on its roof. The nose mount hides it; a
+   player who mounts it on the roof, which is the obvious place, meets it
+   immediately. **This is a balance decision nobody has made and a player will
+   meet it in their first minute.**
+3. **A walking build turns 170 degrees in five seconds while commanded straight
+   ahead** (§4.21). Unplayable as a family; the arena's tactics work around it by
+   planting the Assembly before it shoots, which a player cannot do.
+4. **The beam edge does no damage** (§4.26). A player who builds the arm and the
+   sword — the most visually interesting thing in the part list — gets a weapon
+   that swings and does nothing.
+5. **Nothing renders a wheel at its contact point** (§7). The first thing anybody
+   will notice about a moving vehicle is that its wheels are not where the
+   suspension put them.
+
+Nothing shipped is *unfair* in a way a player would notice, because nothing is
+shippable yet. The honest summary is that this is a simulation with no game
+attached to it, and the ratio has been getting worse rather than better.
+
+---
+
 ## 7. Known gaps — deliberate, not oversights
 
 ### The motion layer
@@ -2162,6 +2268,13 @@ a side).
    added to existing ones; the other two are recorded as untestable with the
    shipped part set (§5's melee guard, and §12.3's self-immunity, now confirmed
    inert in *both* directions).
+
+0d2. **Land the melee sweep.** §4.26. Everything around it is built and wired —
+   part class, grip, arm, held edge, stage machine, channel mix, resolver — and
+   the query returns nothing. It is the single highest-value defect open, because
+   it is the only thing standing between the game and its second weapon, its only
+   energy weapon, and the first non-KINETIC damage anything has ever produced.
+   Start with the target's collider transform, not with §15.
 
 0e. **Re-target the two faults that could no longer be planted.**
    `sweep-becomes-point-test` and `hit-never-releases-the-round` both address

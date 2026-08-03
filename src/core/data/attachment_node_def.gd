@@ -46,13 +46,14 @@ func has_axis_normal() -> bool:
 ## selector and the auto-assembler both read this per candidate node pair, and an
 ## integer-keyed [Dictionary] pays a hash for a lookup that is two adds.
 ##
-##          male   female neutral axle   deck
+##          male   female neutral axle   deck   grip
 const POLARITY_MATRIX: Array[bool] = [
-	false, true, true, false, true,  # FACE_MALE
-	true, false, true, false, false,  # FACE_FEMALE
-	true, true, true, false, true,  # FACE_NEUTRAL
-	false, false, false, true, false,  # AXLE
-	true, false, true, false, false,  # DECK
+	false, true, true, false, true, false,  # FACE_MALE
+	true, false, true, false, false, false,  # FACE_FEMALE
+	true, true, true, false, true, false,  # FACE_NEUTRAL
+	false, false, false, true, false, false,  # AXLE
+	true, false, true, false, false, false,  # DECK
+	false, false, false, false, false, true,  # GRIP
 ]
 
 
@@ -62,6 +63,12 @@ const POLARITY_MATRIX: Array[bool] = [
 ## is an upward-facing mounting surface, so it accepts a protruding or neutral
 ## face but never a recess and never a second deck: two decks facing each other
 ## describe no physical joint.
+##
+## GRIP is exclusive for the same reason AXLE is, and doc 01 §4.3 records the
+## consequence: a held Effector Module offers GRIP and nothing else, so it cannot
+## be bolted to a hull, and an Appendage's hand offers GRIP and nothing else, so
+## it cannot be used as a general bracket. The keying is what makes "held" a
+## distinct thing from "mounted" rather than a label on the same joint.
 static func polarity_compatible(
 	a: PartEnums.AttachmentPolarity, other: PartEnums.AttachmentPolarity
 ) -> bool:

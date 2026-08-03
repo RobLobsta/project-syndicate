@@ -219,6 +219,16 @@ Three reasons this is the right reading rather than the convenient one:
 2. **It makes the drive train a build decision.** A wheel is not glue. Mounting one costs a hub, mass, and a mount station, which is exactly the trade the rest of the schema makes the player reason about.
 3. **One station serves all three families.** The 24-orientation group points the station's drive axis anywhere, so the same part carries a wheel on a horizontal axis, a rotor mast on a vertical one, and a limb hip on a downward one. Rotary and ambulatory locomotion cost no new connector vocabulary at all — which is the strongest available evidence that the three families really are one class.
 
+### 4.3 `GRIP` Is a Keyed Connector — Held Weapons
+
+`AttachmentPolarity.GRIP` mates only with `GRIP`, exactly as `AXLE` does in §4.2, and it exists to make **held** a different joint from **mounted**.
+
+Until now every Effector Module was bolted to structure. A module bolted to a hull and one carried in a hand are not the same object mechanically — the carried one swings from a point well outboard of the chassis, and it degrades with the arm rather than only with itself — so the difference belongs in the type system rather than in a flag.
+
+**The keying is exclusive in both directions.** An `APPENDAGE`'s hand carries `GRIP` and nothing else, so an arm cannot be used as a general bracket and cannot be stacked into a ladder of brackets. A held Effector Module carries `GRIP` and nothing else, so it cannot be welded to a roof. `eff.melee.beam_edge.t4` was re-authored to a single `GRIP` node on its `+Z` hilt face for exactly this reason; nothing in the repository had placed it, so the polarity change costs no existing build, and its `part_key` is untouched so §5.2's serialised ids are unaffected.
+
+**The two `accepts_classes` lists are not the same list**, and §14 rule 25 enforces both halves for the same reason rule 18 does on `AXLE`. The *hand* restricts to `EFFECTOR_MODULE`, because that is what an arm may pick up. The held module's own face must admit `APPENDAGE`, because that is what may pick it up. Putting the hand's restriction on the weapon makes the pair reject each other and leaves the weapon unholdable by anything in the game.
+
 ---
 
 ## 5. Identity and the Registry
@@ -832,6 +842,33 @@ extends Resource
 ```
 
 `capacity_pu_s` and `recharge_pu_s` have no consumer yet. `PowerSystem` reads the sustained figures and `available_fraction` gates a rotor's spool; the reserve is what will cover a transient overdraw — a salvo and a spool in the same tick — and it belongs with the brownout handling of `COMPONENT_HEALTH_DAMAGE.md`, which is unwritten. They are authored now because §10.4 publishes them and because a cell with no reserve is a supply figure with extra steps.
+
+### 7.8 `AppendageProfile`
+
+The class payload for `PartClass.APPENDAGE`. An Appendage is an articulated arm that *carries* an Effector Module rather than bolting it to structure.
+
+```gdscript
+class_name AppendageProfile
+extends Resource
+
+## Static load the hand transmits before the joint is over-rated, newtons.
+@export var grip_rating_n: float = 9000.0
+## Shoulder to hand, metres. The held module's edge starts here, not at the
+## module's own pivot.
+@export var reach_m: float = 1.60
+## Whether damage to this Appendage degrades the module it holds (§8.2).
+@export var degrades_held_effector: bool = true
+```
+
+**It is not a Motive Assembly.** It does not propel the Assembly, has no locomotion family, and is never handed to a solver in `DYNAMIC_MASS_PHYSICS.md`. It is not a Structural Component either: a bracket cannot swing what it carries and cannot be graded on how well it holds it.
+
+**It adds no joint.** Architectural Invariant I-3 holds exactly as it does for an ambulatory limb — the arm's articulation is inverse kinematics under `VisualRoot`, its collider is authored and fixed from placement to destruction, and what actually swings is the melee sweep *query* of `WEAPON_TARGETING_LOGIC.md` §15.3. A query is not a body, which is the same distinction that lets a hardpoint rotate without I-1 noticing.
+
+**Unarmed capability is deliberately absent.** Block, punch, grab and throw are the obvious next thing an arm wants and none of their parameters are authored here, because CLAUDE.md §10 rule 16 forbids fields nothing reads. `WEAPON_TARGETING_LOGIC.md` §16 records the design.
+
+### 7.9 Degradation
+
+An Appendage's band scales the **cycle time of the module it holds**, through `DegradationTable.APPENDAGE_HELD_CYCLE`, and the two multipliers compose: an `IMPAIRED` edge in an `IMPAIRED` arm cycles at `1.22 x 1.45`. This is what makes shooting the arm a better idea than shooting the sword, and it is the only degradation row in the game that is read against a slot other than the one that changed band.
 
 ## 8. Runtime Instance State
 

@@ -11,14 +11,17 @@ extends TestCase
 ## on purpose: a test that imports the table it is testing asserts only that the
 ## table equals itself.
 const EXPECTED: Array[bool] = [
-	false, true, true, false, true,  # FACE_MALE
-	true, false, true, false, false,  # FACE_FEMALE
-	true, true, true, false, true,  # FACE_NEUTRAL
-	false, false, false, true, false,  # AXLE
-	true, false, true, false, false,  # DECK
+	false, true, true, false, true, false,  # FACE_MALE
+	true, false, true, false, false, false,  # FACE_FEMALE
+	true, true, true, false, true, false,  # FACE_NEUTRAL
+	false, false, false, true, false, false,  # AXLE
+	true, false, true, false, false, false,  # DECK
+	false, false, false, false, false, true,  # GRIP
 ]
 
-const NAMES: Array[String] = ["FACE_MALE", "FACE_FEMALE", "FACE_NEUTRAL", "AXLE", "DECK"]
+const NAMES: Array[String] = [
+	"FACE_MALE", "FACE_FEMALE", "FACE_NEUTRAL", "AXLE", "DECK", "GRIP"
+]
 
 
 func test_matrix_matches_the_document_cell_by_cell() -> void:
@@ -56,6 +59,29 @@ func test_axle_is_exclusive_to_axle() -> void:
 		check_false(
 			AttachmentNodeDef.polarity_compatible(axle, other),
 			"axle must not mate with %s" % NAMES[other]
+		)
+
+
+## Doc 01 §4.3. GRIP is keyed exactly as AXLE is, and for the same reason: a
+## polarity that mates with anything is FACE_NEUTRAL with extra steps.
+##
+## The exclusivity is what makes "held" a different joint from "mounted". A held
+## Effector Module offers GRIP and nothing else, so it cannot be welded to a
+## hull, and an Appendage's hand offers GRIP and nothing else, so it cannot be
+## used as a general bracket. Both halves fail if this row leaks.
+func test_grip_is_exclusive_to_grip() -> void:
+	var grip := PartEnums.AttachmentPolarity.GRIP
+	check_true(AttachmentNodeDef.polarity_compatible(grip, grip), "a hand closes on a hilt")
+	for other in PartEnums.ATTACHMENT_POLARITY_COUNT:
+		if other == grip:
+			continue
+		check_false(
+			AttachmentNodeDef.polarity_compatible(grip, other),
+			"grip must not mate with %s" % NAMES[other]
+		)
+		check_false(
+			AttachmentNodeDef.polarity_compatible(other, grip),
+			"nor %s with grip" % NAMES[other]
 		)
 
 

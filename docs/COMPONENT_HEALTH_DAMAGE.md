@@ -481,9 +481,12 @@ This is the canonical table. Every subsystem indexes it by band. No subsystem de
 | | Speed cap multiplier | 1.00 | 1.00 | 0.90 | 0.72 |
 | `STRUCTURAL_COMPONENT` | Load capacity multiplier | 1.00 | 0.90 | 0.65 | 0.30 |
 | | Joint strength multiplier | 1.00 | 0.92 | 0.70 | 0.35 |
+| `APPENDAGE` | Held-module cycle multiplier | 1.00 | 1.12 | 1.45 | 2.20 |
 | **All classes** | Armour rating multiplier | 1.00 | 0.94 | 0.80 | 0.58 |
 
 The two mandated behaviours appear here verbatim: a Motive Assembly below 50% integrity enters `IMPAIRED`, loses 40% of its traction (multiplier `0.60`), and sparks; an Effector Module below 30% enters `CRITICAL` and gains an 18% per-shot jam chance.
+
+The `APPENDAGE` row is the only one in this table read against a slot **other than the one whose band changed**: it scales the cycle time of the Effector Module the arm is *holding*, not the arm's own. `EffectorSystem` resolves the holder by walking the Chassis Graph up from the module at registration, and the two cycle multipliers compose — an `IMPAIRED` edge in an `IMPAIRED` arm cycles at `1.22 x 1.45`. This is what makes shooting the arm a better idea than shooting the sword.
 
 Note the last row. Armour rating degrades with integrity across all classes, which means a battered panel becomes progressively easier to penetrate. This creates a natural escalation: the first hits are absorbed, later hits go through.
 

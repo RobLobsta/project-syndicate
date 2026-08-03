@@ -15,6 +15,9 @@ enum PartClass {
 	SUPPORT_MODULE = 5,
 	CONTROL_SURFACE = 6,
 	ENERGY_CELL = 7,
+	## An articulated appendage that carries an Effector Module in a GRIP rather
+	## than bolting it to structure. Doc 01 §7.8.
+	APPENDAGE = 8,
 }
 
 enum MotiveKind {
@@ -92,6 +95,10 @@ enum AttachmentPolarity {
 	FACE_NEUTRAL = 2,  # mates with any face type
 	AXLE = 3,  # Motive Assemblies only
 	DECK = 4,  # upward-facing Effector/Support mounting surface
+	## An Appendage's hand. Keyed exactly as AXLE is (doc 01 §4.2): it mates only
+	## with another GRIP, so a held Effector Module cannot be bolted to structure
+	## and a bolted one cannot be picked up. Doc 01 §4.3.
+	GRIP = 5,
 }
 
 enum OcclusionProfile {
@@ -105,10 +112,10 @@ enum OcclusionProfile {
 const INTEGRITY_BAND_COUNT: int = 5
 
 ## Number of part classes; sizes the per-class bucket arrays in PartRegistry.
-const PART_CLASS_COUNT: int = 8
+const PART_CLASS_COUNT: int = 9
 
 ## Number of attachment polarities; sizes the mating matrix in [AttachmentNodeDef].
-const ATTACHMENT_POLARITY_COUNT: int = 5
+const ATTACHMENT_POLARITY_COUNT: int = 6
 
 ## Number of Motive Assembly kinds. Asserted against
 ## [constant LOCOMOTION_OF_MOTIVE_KIND]'s length so that appending a kind

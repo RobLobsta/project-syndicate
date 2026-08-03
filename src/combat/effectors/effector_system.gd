@@ -48,6 +48,13 @@ var projectiles: ProjectileSystem = null
 var registry: ProjectileRegistry = null
 ## Shared store. One ledger serves every Assembly in the match.
 var ammo: AmmoLedger = null
+## Resolver for melee strikes. §15.3 delivers damage directly rather than
+## through a round, so unlike direct fire this system needs the resolver itself.
+var resolver: DamageResolver = null
+## Space the §15.3 swept-capsule query runs in. Null disables melee resolution
+## and leaves everything else working, which is what a headless build with
+## [SubsystemGate] off wants.
+var space: PhysicsDirectSpaceState3D = null
 ## World-space point every hardpoint converges on. §4.2: the same point, not a
 ## shared direction, so two spaced modules toe in on a near target rather than
 ## firing parallel lines that never meet.
@@ -72,6 +79,17 @@ var _jam_chance: PackedFloat32Array = PackedFloat32Array()
 
 ## Seeded per Assembly. Invariant I-9 and doc 07 §11.2: spread and jam rolls are
 ## replayed by the network layer and must not come from the global generator.
+## Melee stage records, slot -> [MeleeStrikeState]. Only melee modules appear.
+var _strikes: Dictionary = {}
+## The Appendage slot holding each module, or INVALID_SLOT when it is bolted to
+## structure. Resolved once at registration by walking the Chassis Graph upward:
+## a part does not change parents while it is alive, and doing this per tick
+## would be a graph walk in the firing loop.
+var _holder_slot: PackedInt32Array = PackedInt32Array()
+## §8.2's Appendage row at the holder's band, cached exactly as the module's own
+## multipliers are. 1.0 for a bolted module, which is what makes the join free.
+var _holder_cycle_mult: PackedFloat32Array = PackedFloat32Array()
+
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
@@ -83,9 +101,13 @@ func _ready() -> void:
 	_cycle_mult.resize(count)
 	_spread_mult.resize(count)
 	_jam_chance.resize(count)
+	_holder_slot.resize(count)
+	_holder_cycle_mult.resize(count)
 	_slew_mult.fill(1.0)
 	_cycle_mult.fill(1.0)
 	_spread_mult.fill(1.0)
+	_holder_slot.fill(SyndicateConstants.INVALID_SLOT)
+	_holder_cycle_mult.fill(1.0)
 	triggers.resize(FIRING_GROUP_COUNT)
 
 
@@ -114,6 +136,12 @@ func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int
 		return
 	if _hardpoints.has(slot):
 		on_band_changed(slot, after)
+		return
+	# Not one of ours — but it may be the arm holding one of ours. §8.2's
+	# Appendage row is the only case where a band change on a slot this system
+	# does not own still has to write into its arrays.
+	if _holder_slot.count(slot) > 0:
+		on_holder_band_changed(slot, after)
 
 
 ## Seeds this Assembly's combat generator.
@@ -142,6 +170,12 @@ func register(slot: int, def: PartDefinition) -> void:
 		_slots.push_back(slot)
 		_slots.sort()
 	hp.reset(profile)
+	if profile.is_melee():
+		var state := MeleeStrikeState.new()
+		state.slot = slot
+		_strikes[slot] = state
+	_holder_slot[slot] = _resolve_holder(slot)
+	_holder_cycle_mult[slot] = 1.0
 	_projectile_id[slot] = -1
 	if registry != null and not profile.is_melee():
 		_projectile_id[slot] = registry.id_of(profile.projectile_key)
@@ -159,7 +193,10 @@ func unregister(slot: int) -> void:
 	if index >= 0:
 		_slots.remove_at(index)
 	_hardpoints.erase(slot)
+	_strikes.erase(slot)
 	_projectile_id[slot] = -1
+	_holder_slot[slot] = SyndicateConstants.INVALID_SLOT
+	_holder_cycle_mult[slot] = 1.0
 
 
 ## §8.4's handler. Writes this band's multipliers into the flat arrays the tick
@@ -169,6 +206,42 @@ func on_band_changed(slot: int, band: int) -> void:
 	_cycle_mult[slot] = DegradationTable.EFF_CYCLE[band]
 	_spread_mult[slot] = DegradationTable.EFF_SPREAD[band]
 	_jam_chance[slot] = DegradationTable.EFF_JAM[band]
+
+
+## §8.2's Appendage row, written when the [b]holder[/b] changes band.
+##
+## Separate from [method on_band_changed] because the slot that changed is not
+## the slot whose arrays are written: damage to an arm degrades the module in its
+## hand, and that module's own integrity has not moved.
+func on_holder_band_changed(holder: int, band: int) -> void:
+	for slot: int in _slots:
+		if _holder_slot[slot] != holder:
+			continue
+		_holder_cycle_mult[slot] = DegradationTable.APPENDAGE_HELD_CYCLE[band]
+
+
+## The Appendage slot holding [param slot], or INVALID_SLOT when it is bolted.
+##
+## Walks the Chassis Graph toward the Core Module and stops at the first
+## Appendage. Stopping at the first is deliberate: an arm carried by an arm is a
+## legal build and the hand that holds the edge is the one that swings it.
+func _resolve_holder(slot: int) -> int:
+	if runtime == null or runtime.graph == null:
+		return SyndicateConstants.INVALID_SLOT
+	var parent := int(runtime.graph.parent[slot])
+	# Bounded by the slot count: a graph is a tree and cannot be longer, and the
+	# guard is what stops a corrupt parent array spinning the firing loop.
+	var guard := 0
+	while parent != SyndicateConstants.INVALID_SLOT \
+			and guard < SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
+		var def := runtime.definition_at(parent)
+		if def != null and def.part_class == PartEnums.PartClass.APPENDAGE:
+			if def.appendage_profile != null and def.appendage_profile.degrades_held_effector:
+				return parent
+			return SyndicateConstants.INVALID_SLOT
+		parent = int(runtime.graph.parent[parent])
+		guard += 1
+	return SyndicateConstants.INVALID_SLOT
 
 
 ## Assigns [param slot] to a firing group. §6.
@@ -210,6 +283,13 @@ func step(dt: float) -> void:
 		hp.on_target = hp.solution_in_arc and AimSolver.is_converged(
 			hp.yaw_rad, hp.yaw_target_rad, hp.pitch_rad, hp.pitch_target_rad
 		)
+
+		if profile.is_melee():
+			# §15 resolves by swept volume rather than by emission, so melee
+			# leaves the gate above entirely and runs its own stage machine. The
+			# trigger starts a strike; it does not hold one open.
+			_step_melee(hp, st, def, slot, dt, triggers[_group[slot]] != 0)
+			continue
 
 		if triggers[_group[slot]] == 0:
 			continue
@@ -407,6 +487,160 @@ func _apply_recoil(profile: EffectorModuleProfile, muzzle: Transform3D, directio
 ## Its [code]-Z[/code] is the direction a round leaves along, which is why the
 ## emission path takes the direction from this basis rather than recomputing it
 ## from the angles.
+## ===== MELEE (§15) =====================================================
+
+
+## The strike record for [param slot], or null when the slot holds no melee
+## module. Diagnostics and tests.
+func strike_state(slot: int) -> MeleeStrikeState:
+	return _strikes.get(slot)
+
+
+## Cycle multiplier actually applied to [param slot]'s swing, after the holder.
+##
+## §8.2's Effector row and the Appendage row multiply: a pristine edge in a
+## wrecked arm swings like a wrecked arm. Exposed so a test can read the join
+## without reaching into either array.
+func effective_cycle_multiplier(slot: int) -> float:
+	return _cycle_mult[slot] * _holder_cycle_mult[slot]
+
+
+## One tick of the §15.2 stage machine, and the §15.3 sweep on the swing.
+func _step_melee(
+	hp: HardpointState,
+	st: PartInstanceState,
+	def: PartDefinition,
+	slot: int,
+	dt: float,
+	trigger_held: bool
+) -> void:
+	var state: MeleeStrikeState = _strikes[slot]
+	var melee := def.effector_profile.melee_profile
+	if melee == null:
+		return
+
+	# A strike begins only from READY and only on the same gate direct fire
+	# uses, so an edge pinned outside its arc holds off exactly as a barrel does
+	# (§4.3.1). Once begun the swing runs to completion whatever the trigger
+	# does: a committed swing is the whole reason melee trades reach for damage.
+	if trigger_held and state.can_start() and hp.on_target and hp.timers_clear():
+		state.begin()
+		EventBus.effector_fired.emit(runtime.assembly_id, slot, MatchClock.tick)
+
+	var before := state.stage
+	var stage := MeleeSolver.advance(state, melee, effective_cycle_multiplier(slot), dt)
+	if stage != MeleeStrikeState.Stage.SWINGING:
+		return
+	if before != MeleeStrikeState.Stage.SWINGING:
+		# Entering the swing: the previous swing's victims stop being immune.
+		state.struck_this_swing = PackedInt32Array()
+	_sweep_edge(hp, st, def, slot, melee, state)
+
+
+## §15.3's swept capsule, sampled across the arc, resolving one packet per
+## Assembly per swing.
+##
+## The sweep is a sequence of overlapping capsule queries rather than one long
+## shape, because an edge travelling through an arc sweeps a curved volume that
+## no single convex shape describes. §15.1 records why a projectile is the wrong
+## implementation: a ray between two positions passes between two adjacent parts
+## of a lattice-built Assembly and reports a clean miss where the edge cut both.
+func _sweep_edge(
+	hp: HardpointState,
+	st: PartInstanceState,
+	def: PartDefinition,
+	slot: int,
+	melee: MeleeProfile,
+	state: MeleeStrikeState
+) -> void:
+	if space == null or resolver == null:
+		return
+
+	var capsule := SphereShape3D.new()
+	capsule.radius = melee.edge_radius_m
+
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = capsule
+	params.collision_mask = CollisionLayers.MASK_PROJECTILE_TARGET
+	params.exclude = [runtime.body.get_rid()]
+
+	var mount := _edge_mount_transform(st, def, hp)
+	var samples := MeleeSolver.sample_progress(melee)
+	for i: int in samples.size():
+		if state.already_struck(SyndicateConstants.INVALID_SLOT, melee.max_targets_per_swing):
+			return
+		var edge := MeleeSolver.edge_transform(melee, mount, samples[i])
+		params.transform = edge
+		for hit: Dictionary in space.intersect_shape(params, MeleeSolver.MAX_TARGETS_PER_SWING):
+			_resolve_melee_hit(hit, edge, slot, melee, state)
+
+
+## Turns one swept-capsule contact into a §15.4 damage packet.
+func _resolve_melee_hit(
+	hit: Dictionary, edge: Transform3D, slot: int, melee: MeleeProfile, state: MeleeStrikeState
+) -> void:
+	var body := instance_from_id(hit.get("collider_id", 0)) as ChassisBodyRef
+	if body == null:
+		return
+	var victim := resolver.registry.get_runtime(body.assembly_id) if resolver.registry else null
+	if victim == null or victim.assembly_id == runtime.assembly_id:
+		return
+	if state.already_struck(victim.assembly_id, melee.max_targets_per_swing):
+		return
+	var target_slot := body.slot_for_shape_index(int(hit.get("shape", -1)))
+	if target_slot == SyndicateConstants.INVALID_SLOT:
+		return
+
+	state.struck_this_swing.append(victim.assembly_id)
+
+	# §15.4: an edge delivers its damage split across channels by the authored
+	# mix, which is what makes an energy edge a thermal weapon and a kinetic one
+	# a penetrator without either needing a separate code path.
+	var forward := -edge.basis.z
+	for channel: int in PartEnums.DAMAGE_CHANNEL_COUNT:
+		var share := melee.channel_mix[channel]
+		if share <= 0.0:
+			continue
+		var packet := DamagePacket.new()
+		packet.target_assembly_id = victim.assembly_id
+		packet.target_slot = target_slot
+		packet.channel = channel as PartEnums.DamageChannel
+		packet.raw_amount = melee.strike_damage * share
+		packet.penetration = melee.strike_damage * share
+		packet.impact_point_world = edge.origin
+		packet.impact_normal_world = -forward
+		packet.incoming_direction = forward
+		packet.source_assembly_id = runtime.assembly_id
+		packet.source_slot = slot
+		packet.source_tick = MatchClock.tick
+		resolver.apply(packet)
+
+	# §15.5's reaction. An edge that stops dead in a hull pushes its own Assembly
+	# back, which is what stops a melee build simply driving through its target.
+	runtime.body.apply_central_impulse(
+		-forward * melee.strike_impulse_ns * melee.reaction_ratio
+	)
+
+
+## World transform of the hand the edge swings from.
+##
+## For a bolted module this is the mount itself. For one held in an Appendage's
+## GRIP it is the hand, one [member AppendageProfile.reach_m] along the arm —
+## which is the entire mechanical difference between carrying a sword and
+## welding it to the roof.
+func _edge_mount_transform(
+	st: PartInstanceState, def: PartDefinition, hp: HardpointState
+) -> Transform3D:
+	var mount := muzzle_world_transform(runtime, st, def, 0, hp.yaw_rad, hp.pitch_rad)
+	var holder := _holder_slot[st.slot]
+	if holder == SyndicateConstants.INVALID_SLOT:
+		return mount
+	var holder_def := runtime.definition_at(holder)
+	if holder_def == null or holder_def.appendage_profile == null:
+		return mount
+	return mount.translated_local(holder_def.appendage_profile.held_edge_origin_offset())
+
+
 static func muzzle_world_transform(
 	assembly: AssemblyRuntime,
 	st: PartInstanceState,

@@ -1098,3 +1098,20 @@ the server never moved.
 The wielder's own reaction impulse is predicted because it is a force on the
 Assembly the client already owns and predicts, and omitting it would make a
 local melee swing feel weightless for a full round trip.
+
+
+---
+
+## 16. Unarmed Appendage Mechanics — Design, Not Yet Built
+
+An Appendage (`PART_DATA_SCHEMA.md` §7.8) is useful with an empty hand, and the four things it should be able to do are recorded here so that the arm's authored data does not grow speculative fields before anything reads them (CLAUDE.md §10 rule 16). **None of this is implemented.** The arm ships holding an edge, and that is the whole of its current behaviour.
+
+**Block.** A raised arm intercepts packets bound for the parts behind it. The natural implementation is not a new damage path but an occlusion one: §5.2 of `COMPONENT_HEALTH_DAMAGE.md` already walks parts to decide how much metal is in the way of a blast, and a blocking arm is metal that has moved. It needs an arm pose the damage layer can see, which is the first thing on this list that the visual-only articulation of I-3 makes genuinely hard — the pose is presentation, and presentation may not decide damage. The honest answer is probably a **block state** on the Appendage rather than a queried arm position: a discrete, replicated flag with a documented arc, which is a simulation quantity and does not read the visual skeleton.
+
+**Punch.** The cheapest of the four, and it needs no new architecture at all: it is a melee strike whose `MeleeProfile` lives on the Appendage instead of on a held module. §15's stage machine, arc sampling and channel mix apply unchanged. What it wants from the schema is the ability for a non-`EFFECTOR_MODULE` part to carry a `MeleeProfile`, which today is an Effector Module payload.
+
+**Grab.** The first one that is not a damage event. A grab is a *constraint* between two Assemblies, and Invariant I-3 forbids the joint that would model it directly. The reading consistent with the rest of the architecture is a **mutual state**, not a physical link: both Assemblies record the grab, and each applies a corrective force toward the other every tick — the same shape as the ambulatory stance spring, which is a force pair standing in for a joint that does not exist. Release is a discrete event; the failure mode to design against is two Assemblies grabbing each other and integrating into orbit.
+
+**Throw.** Only meaningful once grab exists, and it is the one with a real balance question behind it: a thrown Assembly is a projectile with an Assembly's mass, and `MAX_PENETRATIONS` and the impact channel of §6 were both tuned against rounds. A throw is an impulse and a release, and the damage it does on landing is §6's impact resolution doing its existing job — so the work is in the constraint and the balance, not in a new channel.
+
+The order to build them in is punch, grab, throw, block: punch needs no new architecture, grab needs the state model, throw needs grab, and block needs a decision about how a pose becomes a simulation quantity without violating I-1.
