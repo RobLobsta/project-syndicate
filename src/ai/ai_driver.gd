@@ -1,0 +1,399 @@
+class_name AiDriver
+extends Node
+## Drives one Assembly that has no player on it, owned by
+## [code]docs/DYNAMIC_MASS_PHYSICS.md[/code] §15.7 and
+## [code]docs/WEAPON_TARGETING_LOGIC.md[/code] §10.
+##
+## The second of §15's three producers of a [ControlInput]. It writes the same
+## eight numbers [ControlSystem] writes, out of world state rather than out of the
+## input map, and no locomotion family can tell which of them produced the record
+## it is reading. That indistinguishability is the contract: everything this
+## class does reaches the simulation through [ControlInput],
+## [member EffectorSystem.aim_point_world] and a firing-group trigger, which are
+## exactly the three surfaces a person with a keyboard reaches the same systems
+## through. A driver that could do more would fly a build a player cannot, and
+## the first thing anybody learned from watching it fight would be false.
+##
+## [b]It reacts to [signal MatchClockService.tick_started] and declares no
+## per-frame callback[/b], for §15.1's reason: the intent a family reads has to
+## have been produced on the tick it is being solved for, and making that a
+## property of the clock rather than of scene-construction order is what stops
+## one build having a frame of lag the next one does not.
+##
+## [b]It reads no integrity per tick.[/b] Invariant I-5 keeps integrity and band
+## derivation out of hot loops. §10's scoring does read a Core Module's integrity
+## fraction, and that read happens inside [method _scan] on §10's 2.9 Hz
+## interval; the per-tick path reads a body transform and nothing else.
+##
+## [b]The rotary family is deliberately not driven here[/b] — §15.7.3. Holding a
+## hover is three closed loops that resolve a demand into a world-space thrust
+## direction and invert §12.3 back out into swash angles, and a human flying a
+## rotary build needs exactly the same loops. That belongs in a stability
+## augmentation layer sitting between [i]both[/i] producers and the motion layer,
+## which doc 05 does not have yet. Asked to drive a rotary Assembly this aims and
+## fires but writes a neutral motion record rather than a wrong one;
+## [code]tests/combat_arena.gd[/code] carries the only implementation of the
+## hover and names itself a fixture.
+##
+## [b]It closes with its guns cold[/b] — §15.7.4, and the one rule here that is a
+## workaround rather than a tactic. The shipped autocannon's muzzle sits 0.125 m
+## off the centreline, which at its cadence is about 1270 N·m of yaw torque, and
+## a driver that fires on the move is turned off its heading faster than it can
+## steer back. The document has the measurement and names the data defect it is
+## covering for.
+
+## ===== §15.7.1's TACTIC ================================================
+## The arithmetic is the whole of the driving, and it is exposed as statics so
+## that a unit test — and [code]tests/combat_arena.gd[/code], which runs its own
+## command loop over five recipes — can assert it without a node, a clock, or an
+## Assembly. Two owners of these gains would be two answers to how a bot drives.
+
+## Heading error, in radians, at which the steering demand saturates.
+const STEER_SATURATION_RAD: float = 0.35
+## The same, for the ambulatory family, which turns far more slowly.
+const AMBULATORY_TURN_SATURATION_RAD: float = 0.60
+## Steering demand per radian per second of hull yaw, opposing it. §15.7.2: this
+## is what holds an ambulatory hull under the ~30°/s its own mount can track.
+const AMBULATORY_YAW_DAMPING: float = 0.55
+## Ceiling on an ambulatory steering demand. Below one because §13.5 spends the
+## same number on the lateral half of the desired velocity, and a saturated
+## demand walks the Assembly 45° off its own nose — a circle rather than an
+## approach.
+const AMBULATORY_STEER_AUTHORITY: float = 0.5
+## Metres from its target a wheeled or tracked driver stops closing at.
+const GROUND_STAND_OFF_M: float = 6.0
+## The same, for the ambulatory family, and further out for a reason that is
+## about gunnery rather than survivability — §15.7.2.
+const AMBULATORY_STAND_OFF_M: float = 20.0
+## Metres from its target a rotary driver would hold station at. Carried for the
+## day §15.7.3's augmentation layer exists; this class does not fly.
+const ROTARY_STAND_OFF_M: float = 22.0
+## Throttle a ground driver crawls at while its target is off its nose, and the
+## reason §15.7.1 has a throttle law at all rather than a boolean.
+##
+## Measured. Full throttle held through the turn drives a wheeled build round an
+## arc wider than the range it is trying to close: spawned facing away from a
+## target 40 m off it turned 53° in two and a half seconds, and the range grew
+## from 40 m to 46 m while the bearing sat at 135° — an outward spiral, which is
+## what pure pursuit does when the turn radius exceeds the range. Tapering the
+## throttle on the heading error tightens the arc until it converges.
+##
+## It cannot taper to zero. A steered contact needs road speed to make any
+## lateral force at all, and an Assembly stopped dead with the lock over sits
+## there: at 0.35 through a full-lock turn the shipped build settles at 0.2 m/s
+## and stops turning, which is the other failure this floor sits between.
+const APPROACH_MIN_THROTTLE: float = 0.35
+
+## ===== WIRING ==========================================================
+## Set before the node enters the tree. The match layer owns every one of these
+## and hands them over; nothing here resolves a node by path or searches the tree.
+
+## The Assembly being driven.
+var runtime: AssemblyRuntime = null
+## The record this driver writes. Shared with the [MotiveSystem] that reads it —
+## the same arrangement [ControlSystem] has, and for the same reason.
+var input: ControlInput = null
+## The motion layer, read only for [method MotiveSystem.family_of]. The driver
+## needs to know how the Assembly gets around and nothing else about it.
+var motion: MotiveSystem = null
+## The Effector Modules. Null on an Assembly that carries none, which then drives
+## and never fires rather than failing.
+var guns: EffectorSystem = null
+## Slot of the mount §10.2's arc cost is asked about, and the one the trigger is
+## held on.
+var effector_slot: int = SyndicateConstants.INVALID_SLOT
+## Where candidates come from.
+var registry: AssemblyRegistry = null
+## Assembly id -> team. Owned by the match layer; see [AiContext].
+var roster: Dictionary = {}
+
+## ===== SETTINGS ========================================================
+
+## §10's difficulty, in [code][0, 1][/code]. 1.0 aims at the Core Module almost
+## exactly; 0.0 misses by 2.4 m at a hundred metres. It is an aim-point offset
+## and never a damage or rate-of-fire multiplier.
+var difficulty: float = 0.75
+## Range this driver stops closing at, in metres. Negative means "take the
+## family's default at [method _enter_tree]"; set it before then to override.
+var stand_off_m: float = -1.0
+## §7.6's aid authority, carried onto the record exactly as [ControlSystem]
+## carries it. A bot drives with the aids a player has, no more and no fewer.
+var aid_authority: float = 1.0
+
+## ===== STATE ===========================================================
+
+var _context: AiContext = null
+var _rng := RandomNumberGenerator.new()
+## Seconds until the next scan. Seeded from the Assembly id by §10.4 so that
+## several drivers spawned on one tick do not scan together forever after.
+var _scan_countdown_s: float = 0.0
+## Id of the current target, or 0. Held by id rather than by handle so that a
+## selection made two hundred milliseconds ago can never be aimed at after the
+## Assembly it names has been destroyed.
+var _target_id: int = 0
+## Where that target's Core Module was this tick. Only meaningful when
+## [method _resolve_target] has just answered true.
+var _target_point: Vector3 = Vector3.ZERO
+## §10.3's offset, rolled once per scan and held between them.
+var _aim_error: Vector3 = Vector3.ZERO
+## Locomotion family, cached at [method _enter_tree] from the lowest-slotted
+## Motive Assembly. A build carrying two families is driven as whichever that
+## slot carries, which is the same discipline §6.0 rule 1 asks of the force side:
+## each family reads what it uses and ignores the rest.
+var _family: int = PartEnums.LocomotionMode.GROUND
+## Whether this tick's drive demand was an approach rather than station-keeping.
+## §15.7.4's trigger reads it: an [AiDriver] closes with its guns cold.
+var _closing: bool = false
+
+
+func _enter_tree() -> void:
+	# A driver with no record writes its intent into nothing sixty times a second,
+	# which presents as an Assembly that sits still rather than as anything
+	# diagnosable — the identical failure ControlSystem asserts against.
+	assert(input != null, "AiDriver.input must be set before it enters the tree")
+	assert(runtime != null, "AiDriver.runtime must be set before it enters the tree")
+	_family = _resolve_family()
+	if stand_off_m < 0.0:
+		stand_off_m = default_stand_off_m(_family)
+	# Invariant I-9. Two drivers must not miss in lockstep, and the same match
+	# must replay identically.
+	_rng.seed = runtime.assembly_id
+	_scan_countdown_s = AiTargetSelector.initial_scan_offset_s(runtime.assembly_id)
+	_context = AiContext.new()
+	_context.assembly_id = runtime.assembly_id
+	_context.team = int(roster.get(runtime.assembly_id, 0))
+	_context.effectors = guns
+	_context.effector_slot = effector_slot
+	MatchClock.tick_started.connect(_on_tick_started)
+
+
+func _exit_tree() -> void:
+	MatchClock.tick_started.disconnect(_on_tick_started)
+
+
+## ===== PER TICK ========================================================
+
+
+## One tick of intent. Separable from the clock so that a test can drive one
+## tick without running the engine, through the identical path the clock uses.
+func step(dt: float) -> void:
+	if not _is_alive():
+		idle()
+		return
+
+	_scan_countdown_s -= dt
+	if _scan_countdown_s <= 0.0:
+		_scan_countdown_s += AiTargetSelector.SCAN_INTERVAL_S
+		_scan()
+
+	if not _resolve_target():
+		# Nothing left to shoot at. An Assembly with no target holds still rather
+		# than driving at the last place it saw one: this is the state a match
+		# ends in, and an arena of vehicles circling a memory reads as broken
+		# rather than as finished.
+		idle()
+		return
+
+	# Driving first, because §15.7.4's trigger is a function of what the drive
+	# demand turned out to be. The mount is aimed either way: a driver that only
+	# aimed when it was allowed to shoot would arrive at its stand-off with the
+	# barrel still pointing where it set off from.
+	_drive_toward(_target_point)
+	if guns != null and effector_slot != SyndicateConstants.INVALID_SLOT:
+		guns.aim_point_world = _target_point + _aim_error
+		# §15.7.4. It closes with its guns cold, because the shipped module's
+		# muzzle is 0.125 m off the centreline and firing on the move yaws the
+		# Assembly harder than its steering can correct. Measured; the document
+		# has the numbers and records it as a workaround for a data defect.
+		guns.set_trigger(0, not _closing)
+
+
+## Drops the trigger and centres the controls.
+func idle() -> void:
+	if guns != null:
+		guns.set_trigger(0, false)
+	_centre_controls()
+
+
+## The id this driver is currently shooting at, or 0. Diagnostics and tests.
+func target_id() -> int:
+	return _target_id
+
+
+## The context as of the last scan. Diagnostics and tests; a caller that mutates
+## it is lying to the next scan, which overwrites it wholesale anyway.
+func context() -> AiContext:
+	return _context
+
+
+## ===== THE STATICS =====================================================
+
+
+## Signed heading error from [param basis]'s forward to [param offset], about the
+## world up, in radians. Flattened: a target up a hill is not a target to the
+## left, and pitching the bearing into the steering demand makes it one.
+static func bearing_to(basis: Basis, offset: Vector3) -> float:
+	var forward := Vector3(-basis.z.x, 0.0, -basis.z.z)
+	var flat := Vector3(offset.x, 0.0, offset.z)
+	if forward.is_zero_approx() or flat.is_zero_approx():
+		return 0.0
+	return forward.normalized().signed_angle_to(flat.normalized(), Vector3.UP)
+
+
+## §15.7.1's steering demand for a wheeled or tracked Assembly.
+##
+## [b]The negation is the rule.[/b] Positive steer is right and a right turn is a
+## negative rotation about the world up, so the demand is the negated bearing
+## error. Any assertion that only checks the Assembly turned passes against the
+## sign that drives it away from its target.
+static func steer_demand(bearing_rad: float) -> float:
+	return clampf(-bearing_rad / STEER_SATURATION_RAD, -1.0, 1.0)
+
+
+## §15.7.2's steering demand for an ambulatory Assembly: a yaw [i]rate[/i]
+## command rather than a heading command, damped on the hull's own yaw so that it
+## never turns faster than its own mount can track.
+static func ambulatory_steer_demand(bearing_rad: float, yaw_rate_rad_s: float) -> float:
+	return (
+		clampf(
+			-bearing_rad / AMBULATORY_TURN_SATURATION_RAD
+			+ yaw_rate_rad_s * AMBULATORY_YAW_DAMPING,
+			-1.0,
+			1.0
+		)
+		* AMBULATORY_STEER_AUTHORITY
+	)
+
+
+## §15.7.1's throttle law: full ahead on the nose, tapering to a crawl as the
+## target moves onto the beam and behind.
+##
+## The cosine is the projection of the approach onto the direction the Assembly
+## can actually travel in, which is why it is a cosine rather than a ramp: at 60°
+## off the nose only half the speed is closing the range and the rest is widening
+## the arc.
+static func approach_throttle(bearing_rad: float) -> float:
+	return clampf(cos(bearing_rad), APPROACH_MIN_THROTTLE, 1.0)
+
+
+## The stand-off a family fights at by default.
+static func default_stand_off_m(family: int) -> float:
+	match family:
+		PartEnums.LocomotionMode.AMBULATORY:
+			return AMBULATORY_STAND_OFF_M
+		PartEnums.LocomotionMode.ROTARY:
+			return ROTARY_STAND_OFF_M
+	return GROUND_STAND_OFF_M
+
+
+## ===== PRIVATE =========================================================
+
+
+func _on_tick_started(_tick: int) -> void:
+	step(SyndicateConstants.PHYSICS_DT)
+
+
+func _drive_toward(aim: Vector3) -> void:
+	if _family == PartEnums.LocomotionMode.ROTARY:
+		# §15.7.3. Not flying it is the decision; flying it badly would be the bug.
+		# A rotary Assembly this driver cannot fly is still a mount that can shoot.
+		_centre_controls()
+		_closing = false
+		return
+
+	var body := runtime.body
+	var offset := aim - body.global_position
+	offset.y = 0.0
+	input.brake = 0.0
+	input.traction_control = clampf(aid_authority, 0.0, 1.0)
+	if offset.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+		input.throttle = 0.0
+		input.steer = 0.0
+		_closing = false
+		return
+
+	var bearing := bearing_to(body.global_transform.basis, offset)
+	var closing := offset.length() > stand_off_m
+	_closing = closing
+	if _family == PartEnums.LocomotionMode.AMBULATORY:
+		# An ambulatory Assembly walks in the direction §13.5's placement law is
+		# given, not along its own nose, so a heading error does not widen its
+		# approach and the taper would only slow it down.
+		input.throttle = 1.0 if closing else 0.0
+		input.steer = ambulatory_steer_demand(bearing, body.angular_velocity.y)
+		return
+	input.throttle = approach_throttle(bearing) if closing else 0.0
+	input.steer = steer_demand(bearing)
+
+
+func _centre_controls() -> void:
+	if input == null:
+		return
+	input.throttle = 0.0
+	input.steer = 0.0
+	input.brake = 0.0
+	input.collective = 0.0
+	input.cyclic = Vector2.ZERO
+	input.yaw = 0.0
+
+
+## §10's scan: rebuild the candidate set, score it, and roll the aim error for
+## the interval that follows.
+func _scan() -> void:
+	if registry == null:
+		return
+	_context.rescan(registry, roster)
+	var choice := AiTargetSelector.select(_context)
+	if choice == null:
+		_target_id = 0
+		_aim_error = Vector3.ZERO
+		return
+	_target_id = choice.id
+	_aim_error = AiTargetSelector.difficulty_error(
+		choice.position.distance_to(_context.position), difficulty, _rng
+	)
+
+
+## Writes this tick's aim point into [member _target_point], resolved fresh from
+## the registry rather than read off the scan's handle. False when the target is
+## gone, which drops the trigger this tick and leaves the next scan to pick again.
+##
+## §10 runs selection at 2.9 Hz and aim solving every tick, and this is the
+## difference between the two. A handle's position is 350 ms old at worst, which
+## at a closing speed of 4 m/s is more than a metre of error in the wrong
+## direction — an AI shooting at where its target used to be would look like a
+## targeting defect and would in fact be a scheduling one.
+func _resolve_target() -> bool:
+	if _target_id == 0 or registry == null:
+		return false
+	var target := registry.get_runtime(_target_id)
+	if target == null:
+		_target_id = 0
+		return false
+	var st := target.state(SyndicateConstants.CORE_SLOT)
+	if st == null or st.has_flag(PartFlags.FLAG_DESTROYED):
+		_target_id = 0
+		return false
+	_target_point = target.part_world_position(SyndicateConstants.CORE_SLOT)
+	return true
+
+
+## Invariant I-2, read from the part rather than from a flag this class keeps, so
+## that nothing here can disagree with [DamageResolver].
+func _is_alive() -> bool:
+	if runtime == null or not is_instance_valid(runtime):
+		return false
+	var core := runtime.state(SyndicateConstants.CORE_SLOT)
+	return core != null and not core.has_flag(PartFlags.FLAG_DESTROYED)
+
+
+## The family of the lowest-slotted Motive Assembly, or GROUND when there is
+## none — a build with no way of moving still aims and fires, and driving it is
+## then a no-op rather than a special case.
+func _resolve_family() -> int:
+	if motion == null:
+		return PartEnums.LocomotionMode.GROUND
+	var slots := motion.motive_slots()
+	if slots.is_empty():
+		return PartEnums.LocomotionMode.GROUND
+	return motion.family_of(slots[0])

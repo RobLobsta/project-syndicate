@@ -25,10 +25,12 @@ extends Node3D
 ##     [code]BuildCommand[/code] and the blueprint codec are where that lands.
 ## [/enum]
 ##
-## The opponent has no driver at all. [code]src/ai/[/code] is unwritten (§8 item
-## 13 of the handoff) and the arena's test pilot lives in [code]tests/[/code],
-## where it belongs until somebody promotes it. A stationary opponent is an
-## honest gunnery target and is not pretending to be an enemy.
+## Each opponent carries an [AiDriver] — doc 05 §15.7 — on the other side of a
+## roster this class owns and every driver shares. They close, aim through the
+## identical [EffectorSystem] the player's trigger reaches, and shoot back with a
+## finite store. Nothing about them is privileged: the same eight numbers, the
+## same aim point, the same jam chance, and a miss that puts a real round into
+## the terrain.
 
 ## ===== ARENA ===========================================================
 
@@ -53,6 +55,28 @@ const TARGET_SPAWN_XZ: Array[Vector2] = [
 ]
 
 const PLAYER_ROUNDS: int = 600
+## What each opponent is given. Finite, and a third of the player's, because the
+## asymmetry is the difficulty setting nobody has built a screen for yet: three
+## Assemblies firing seven rounds a second at one is an unwinnable first minute
+## if all three can do it indefinitely, and a store that runs out is a fight that
+## turns rather than a wall that does not.
+const TARGET_ROUNDS: int = 200
+
+## Which side each spawn is on. Doc 07 §10.1: the roster is the match layer's,
+## because nothing in [code]src/combat/[/code] knows what a team is and the AI
+## layer is the first system that needs to.
+const PLAYER_TEAM: int = 0
+const OPPONENT_TEAM: int = 1
+
+## §10's difficulty for the opponents, in [code][0, 1][/code]. An aim-point
+## offset and nothing else — an AI miss here is a real round going somewhere
+## real, which can hit the terrain, a wreck, or another opponent.
+##
+## 0.55 is about half a metre of spread at forty metres, which is a hit on a hull
+## and a miss on a Motive Assembly. It was picked by watching the fight rather
+## than by arithmetic: at 0.9 the three of them converge on the same Core Module
+## and the match is over before a player has turned round.
+const OPPONENT_DIFFICULTY: float = 0.55
 
 ## ===== BUILD ===========================================================
 ## The wheeled recipe, on the lattice. Integer coordinates throughout
@@ -126,6 +150,10 @@ var _round_id: int = 0
 var _runtimes: Array[AssemblyRuntime] = []
 var _contexts: Array[BuildContext] = []
 var _next_assembly_id: int = 1
+## Assembly id -> team, handed to every [AiDriver] and shared with all of them.
+## One dictionary rather than a copy each: a driver spawned before its opponents
+## has to see them when it first scans.
+var _roster: Dictionary = {}
 
 var _frame: HudFrame = null
 var _integrity_total: float = 0.0
@@ -150,9 +178,11 @@ func _ready() -> void:
 	# leave the spawns hanging over unstreamed ground.
 	ground_streamer.prime()
 
-	_player = _spawn(PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, true)
+	_player = _spawn(PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, PLAYER_TEAM, true)
 	for xz: Vector2 in TARGET_SPAWN_XZ:
-		_spawn(xz, _yaw_towards(xz, PLAYER_SPAWN_XZ), 0, false)
+		_spawn(
+			xz, _yaw_towards(xz, PLAYER_SPAWN_XZ), TARGET_ROUNDS, OPPONENT_TEAM, false
+		)
 	# The Assemblies now anchor it themselves.
 	ground_streamer.extra_anchors = PackedVector3Array()
 
@@ -336,10 +366,11 @@ func _build_hud() -> void:
 
 
 func _spawn(
-	ground_xz: Vector2, yaw_rad: float, rounds: int, is_player: bool
+	ground_xz: Vector2, yaw_rad: float, rounds: int, team: int, is_player: bool
 ) -> AssemblyRuntime:
 	var assembly_id := _next_assembly_id
 	_next_assembly_id += 1
+	_roster[assembly_id] = team
 
 	var ctx := BuildContext.with_physics(assembly_id)
 	_contexts.append(ctx)
@@ -409,8 +440,31 @@ func _spawn(
 		_controls.input = motion.input
 		runtime.add_child(_controls)
 		_capture_condition_baseline(runtime)
+	else:
+		_attach_driver(runtime, motion, guns, gun_slot)
 
 	return runtime
+
+
+## Doc 05 §15.7's producer, on an Assembly with nobody in it.
+##
+## Every field is set before the node enters the tree, because [AiDriver] caches
+## its locomotion family, its stand-off, its RNG seed and its scan phase there —
+## a driver configured afterwards has already chosen how it drives.
+func _attach_driver(
+	runtime: AssemblyRuntime, motion: MotiveSystem, guns: EffectorSystem, gun_slot: int
+) -> void:
+	var driver := AiDriver.new()
+	driver.name = "AiDriver"
+	driver.runtime = runtime
+	driver.input = motion.input
+	driver.motion = motion
+	driver.guns = guns
+	driver.effector_slot = gun_slot
+	driver.registry = registry
+	driver.roster = _roster
+	driver.difficulty = OPPONENT_DIFFICULTY
+	runtime.add_child(driver)
 
 
 func _lay_out(ctx: BuildContext) -> void:
@@ -545,8 +599,9 @@ static func _bounding_radius(runtime: AssemblyRuntime) -> float:
 		if st == null:
 			continue
 		seen = true
-		lo = Vector3i(mini(lo.x, st.origin_cell.x), mini(lo.y, st.origin_cell.y), mini(lo.z, st.origin_cell.z))
-		hi = Vector3i(maxi(hi.x, st.origin_cell.x), maxi(hi.y, st.origin_cell.y), maxi(hi.z, st.origin_cell.z))
+		var cell := st.origin_cell
+		lo = Vector3i(mini(lo.x, cell.x), mini(lo.y, cell.y), mini(lo.z, cell.z))
+		hi = Vector3i(maxi(hi.x, cell.x), maxi(hi.y, cell.y), maxi(hi.z, cell.z))
 	if not seen:
 		return DEFAULT_BOUNDING_RADIUS_M
 	var extent := Vector3(hi - lo) * SyndicateConstants.LATTICE_UNIT_M

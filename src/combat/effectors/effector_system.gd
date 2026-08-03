@@ -33,6 +33,12 @@ const HEAT_CEILING_SHOTS: float = 14.0
 ## Heat shed per second while not firing.
 const HEAT_DISSIPATION_HU_S: float = 22.0
 
+## Squared range below which a target is on top of the muzzle and there is no
+## aim direction to solve for. Ten centimetres: inside that the normalisation is
+## numerically worthless, and a mount asked to point at its own muzzle should
+## hold the angles it has rather than snap to whatever the noise says.
+const MINIMUM_AIM_RANGE_SQ_M2: float = 0.01
+
 ## §6's three groups: primary, secondary, tertiary. The count lives here rather
 ## than in [SyndicateConstants] because CLAUDE.md §1.1 makes doc 07 the owner of
 ## effector timing and grouping, and it is exactly one more than the number of
@@ -355,6 +361,39 @@ func slots() -> PackedInt32Array:
 	return _slots.duplicate()
 
 
+## True when [param slot]'s mount could point at [param point_world] without
+## sitting on a stop.
+##
+## This is §4.3.1's [member HardpointState.solution_in_arc] asked [i]ahead of
+## time[/i], about a point the mount is not converging on — which is what doc 07
+## §10.2's arc cost needs, because a target selector has to know whether a
+## candidate is reachable before it commits the mount to slewing at it. It runs
+## the identical decomposition rather than an approximation of it: an arc test
+## that disagreed with the one the fire gate makes would produce a driver that
+## picks targets it then refuses to shoot.
+##
+## An unregistered slot answers false. A mount that is not there cannot reach
+## anything, and the alternative — true, on the grounds that nothing stopped it —
+## reads as a firing solution to every caller.
+func reaches(slot: int, point_world: Vector3) -> bool:
+	var hp: HardpointState = _hardpoints.get(slot)
+	if hp == null:
+		return false
+	var st: PartInstanceState = runtime.states[slot]
+	var def := runtime.definition_at(slot)
+	if st == null or def == null or def.effector_profile == null:
+		return false
+	var dir_rest := _rest_direction(hp, st, def, point_world)
+	if dir_rest.is_zero_approx():
+		return false
+	var angles := AimSolver.angles_for(dir_rest)
+	var profile := def.effector_profile
+	return (
+		is_equal_approx(AimSolver.clamp_yaw(angles.x, profile.yaw_limit_deg), angles.x)
+		and is_equal_approx(AimSolver.clamp_pitch(angles.y, profile.pitch_limit_deg), angles.y)
+	)
+
+
 ## ===== INSPECTION ======================================================
 ## Read-only views of the cached band multipliers. They exist so that a test, the
 ## garage's stat panel, and the diagnostics overlay can read this system without
@@ -383,17 +422,30 @@ func jam_chance(slot: int) -> float:
 ## ===== PRIVATE =========================================================
 
 
+## The direction from [param slot]'s muzzle to [param point_world], in the
+## module's own rest frame, or [constant Vector3.ZERO] when the point is on top
+## of the muzzle and there is no direction to be had.
+##
+## Out of the world, out of the chassis, and out of the lattice orientation the
+## builder placed the module at. A module mounted facing backwards has to arrive
+## at the same answer as one facing forwards, which is the whole reason the
+## decomposition happens in the rest frame rather than in the world.
+func _rest_direction(
+	hp: HardpointState, st: PartInstanceState, def: PartDefinition, point_world: Vector3
+) -> Vector3:
+	var muzzle := muzzle_world_transform(runtime, st, def, 0, hp.yaw_rad, hp.pitch_rad)
+	var to_target := point_world - muzzle.origin
+	if to_target.length_squared() < MINIMUM_AIM_RANGE_SQ_M2:
+		return Vector3.ZERO
+	var dir_chassis := runtime.body.global_transform.basis.inverse() * to_target.normalized()
+	return OrientationTable.basis_for(st.orientation_index).inverse() * dir_chassis
+
+
 ## §4.2. Every mount converges on [member aim_point_world].
 func _solve_aim(hp: HardpointState, st: PartInstanceState, def: PartDefinition) -> void:
-	var muzzle := muzzle_world_transform(runtime, st, def, 0, hp.yaw_rad, hp.pitch_rad)
-	var to_target := aim_point_world - muzzle.origin
-	if to_target.length_squared() < 0.01:
+	var dir_rest := _rest_direction(hp, st, def, aim_point_world)
+	if dir_rest.is_zero_approx():
 		return
-	# Into the module's own rest frame: out of the world, out of the chassis, and
-	# out of the lattice orientation the builder placed it at. A module mounted
-	# facing backwards has to arrive at the same answer as one facing forwards.
-	var dir_chassis := runtime.body.global_transform.basis.inverse() * to_target.normalized()
-	var dir_rest := OrientationTable.basis_for(st.orientation_index).inverse() * dir_chassis
 	var angles := AimSolver.angles_for(dir_rest)
 	var profile := def.effector_profile
 	hp.yaw_target_rad = AimSolver.clamp_yaw(angles.x, profile.yaw_limit_deg)

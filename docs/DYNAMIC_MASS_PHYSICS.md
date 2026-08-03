@@ -1625,3 +1625,156 @@ authority is a dial and this is where the dial's position lives until
 `ControlInput`. Which Assembly reads that record is the match scene's wiring
 (§6 of the handoff's assembly recipe), and a spectator or a dead player is a
 `ControlSystem` that was never constructed rather than a flag tested per tick.
+
+### 15.7 The Second Producer: `AiDriver`
+
+`src/ai/ai_driver.gd` is the second of §15's three producers. It writes the same
+eight numbers as `ControlSystem`, from world state instead of from the input map,
+and a locomotion family cannot tell the two apart. That indistinguishability is
+the contract, and it is what makes an AI Assembly a genuine test of the motion
+layer rather than a second, easier physics.
+
+**Where it runs is identical to §15.1's answer.** `AiDriver` connects to
+`MatchClock.tick_started` and declares no per-frame callback of its own, for the
+same reason `ControlSystem` does: the intent a family reads must have been
+produced on the tick it is being solved for, and making that a property of the
+clock rather than of scene-construction order is what stops one build having a
+frame of lag the next one does not.
+
+**What it may not do.** It may not apply a force, write a hardpoint angle, or
+call into a solver. Everything it does reaches the simulation through
+`ControlInput` and through `EffectorSystem.aim_point_world` and the firing-group
+trigger — which are exactly the two surfaces a human player reaches the same
+systems through. An `AiDriver` that could do more would be able to fly a build a
+player cannot fly, and the first thing anybody would learn from watching it
+fight would be false.
+
+**It may not read integrity per tick.** Invariant I-5 forbids a hot loop reading
+integrity or deriving a band. Target scoring does read a Core Module's integrity
+fraction — `WEAPON_TARGETING_LOGIC.md` §10 scores a wounded target higher — and
+that read happens on the scan interval of that section, at 2.9 Hz, never in the
+per-tick path. The per-tick path reads a body transform and nothing else.
+
+#### 15.7.1 The Ground Tactic
+
+One law, and it is the whole of the driving:
+
+```gdscript
+bearing := forward.signed_angle_to(to_target_flat, Vector3.UP)
+input.steer = clampf(-bearing / STEER_SATURATION_RAD, -1.0, 1.0)
+input.throttle = (
+    clampf(cos(bearing), APPROACH_MIN_THROTTLE, 1.0)
+    if to_target_flat.length() > stand_off_m else 0.0)
+```
+
+Positive steer is right and a right turn is a **negative** rotation about the
+world up, so the demand is the negated bearing error. That sign is the one thing
+in this section a test must assert in both directions; it is invisible to any
+assertion that only checks the Assembly turned.
+
+The throttle is a **cosine of the heading error**, not a boolean, and that is
+measured rather than tidy. At full throttle through a full-lock turn a wheeled
+build drives an arc wider than the range it is closing: spawned facing away from
+a target 40 m off it turned 53° in two and a half seconds, and the range *grew*
+from 40 m to 46 m while the bearing sat at 135° — an outward spiral at constant
+bearing, which is what pure pursuit does when the turn radius exceeds the range.
+The cosine is the projection of the approach onto the direction the Assembly can
+actually travel in: at 60° off the nose half the speed is closing the range and
+the rest is widening the arc.
+
+It cannot taper to zero. A steered contact needs road speed to generate any
+lateral force at all, and an Assembly stopped dead with the lock over sits there:
+`APPROACH_MIN_THROTTLE` is the floor it crawls at.
+
+The ambulatory family is exempt and holds full throttle, because §13.5's
+placement law walks it in the direction it is given rather than along its own
+nose — a heading error does not widen its approach, so the taper would only slow
+it down.
+
+| Constant | Value | What it is |
+|---|---|---|
+| `STEER_SATURATION_RAD` | 0.35 | Heading error at which the steering demand saturates |
+| `APPROACH_MIN_THROTTLE` | 0.35 | Throttle floor while the target is off the nose |
+| `GROUND_STAND_OFF_M` | 6.0 | Range a wheeled or tracked driver stops closing at |
+| `AMBULATORY_TURN_SATURATION_RAD` | 0.60 | The same as the first row, for a family that turns far more slowly |
+| `AMBULATORY_YAW_DAMPING` | 0.55 | Steering demand per radian per second of hull yaw, opposing it |
+| `AMBULATORY_STEER_AUTHORITY` | 0.5 | Ceiling on an ambulatory steering demand |
+| `AMBULATORY_STAND_OFF_M` | 20.0 | Range an ambulatory driver plants and shoots from |
+
+#### 15.7.2 Why the Ambulatory Family Is Steered on a Rate
+
+An ambulatory Assembly is flown onto a **yaw rate**, not onto a heading, and the
+reason is a hard number rather than a preference. `WEAPON_TARGETING_LOGIC.md`
+§4.3 converges a mount at half a degree and §3.3 slews it at 65°/s, so a hull
+turning faster than about 30°/s can never be tracked by its own gun: the mount
+closes 1.08° a tick and the demand moves further than that. An ambulatory
+Assembly steered like a wheeled one turns at exactly that rate and spends the
+engagement one step behind its own target. `AMBULATORY_YAW_DAMPING` is what
+holds it under the limit.
+
+`AMBULATORY_STEER_AUTHORITY` is below one because §13.5 spends the same number on
+the lateral half of the desired velocity: a saturated demand walks the Assembly
+45° off its own nose, which is a circle rather than an approach.
+
+The stand-off is longer for the same family, and that is gunnery rather than
+survivability. Standing, §13.4 puts every foot down at once and the hull is
+level to within a degree — the steadiest mount in the game. Walking, §13.8
+allows no balance authority beyond foot placement, the hull bobs, and the gait
+carries an intrinsic yaw drift no steering demand can null. So an ambulatory
+driver plants and shoots, and the stand-off is set outside the range it is
+likely to spawn at so that it takes a step or two to square up and then stops.
+
+#### 15.7.3 What Is Deliberately Not Here
+
+**The rotary family has no `AiDriver` tactic, and this is a decision rather than
+a gap.** Holding a hover is not a tactic: it is three closed loops — collective
+on altitude, cyclic on horizontal velocity, pedal on heading — that resolve a
+demand into a world-space thrust direction and invert §12.3 back out into swash
+angles. A **human** flying a rotary build needs precisely the same loops, so
+putting them in `AiDriver` would give a bot stability augmentation a player does
+not have, which §15.7 above forbids in as many words.
+
+That controller therefore belongs in a stability-augmentation layer this document
+does not yet have, sitting between *both* producers and the motion layer. Until
+it exists, `tests/combat_arena.gd` carries the only implementation, as a fixture,
+and says so. An `AiDriver` asked to drive a rotary Assembly writes a neutral
+record rather than a wrong one.
+
+**No pathfinding, no cover, no formation.** The driver closes on a bearing and
+stops at a stand-off. `AUTO_ASSEMBLE_ALGORITHM.md`-scale decision machinery over
+terrain is a system nobody has specified, and inventing it here would be worse
+than the gap.
+
+#### 15.7.4 Fire Discipline: An `AiDriver` Closes With Its Guns Cold
+
+The trigger is held only while the driver is **not** closing — that is, once it
+is inside its stand-off. This is not a preference about when a bot should shoot;
+it is the difference between a driver that arrives and one that spirals, and the
+number is large.
+
+`WEAPON_TARGETING_LOGIC.md` §10.5 authors 1450 N·s of recoil a round and the
+shipped autocannon's muzzle sits 0.125 m off the Assembly's centreline, because
+an odd-width Effector Module cannot be centred on an even-width Core Module. At
+the module's cadence that is roughly **1270 N·m of steady yaw torque** on an 1100
+kg vehicle. Measured, a driver holding the trigger through its approach was
+turned 35° off its heading in the first second, could not recover, and circled a
+target 40 m away for fourteen seconds while the range grew. The identical driver
+with the trigger cold held its heading to a tenth of a degree, accelerated to
+13.4 m/s, closed 40 m to 5.4 m, and stopped on its stand-off.
+
+So the recoil yaw is not a disturbance the steering can trim out — it is larger
+than the steering authority the family has. Shooting from a halt is the doctrine
+that falls out of that, and it is the same one §15.7.2 already reaches for the
+ambulatory family from a different direction.
+
+**This is a workaround and is recorded as one.** The defect is the lateral muzzle
+offset, it belongs to `PART_DATA_SCHEMA.md`, and the day a module can be centred
+on its Core Module this rule should be revisited rather than kept out of habit.
+The cost of carrying it is real and a player will see it: an AI Assembly chasing
+a target that keeps running away never fires.
+
+**A human player has no such rule and is not given one.** They can hold the
+trigger while driving, and they will meet exactly the same yaw. That is honest —
+both producers write the same eight numbers into the same physics — and it is
+the strongest argument in this document for fixing the offset rather than the
+driver.

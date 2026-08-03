@@ -237,10 +237,21 @@ func _terminate(assembly_id: int, graph: ChassisGraph, destroyed: PackedByteArra
 			if graph.is_alive(slot):
 				graph.remove_node(slot)
 		_announce(assembly_id, component)
-	# Attribution belongs to the damage layer, which is the only thing that knows
-	# who fired the packet that reached zero. Until it does, terminations are
-	# unattributed; doc 04 §8.2 records 0 as that value.
-	EventBus.assembly_terminated.emit(assembly_id, 0)
+	# And nothing is emitted here. Doc 04 §8.2: "the producer is therefore
+	# `DamageResolver`, and it is the only one … nothing else may emit it."
+	#
+	# This used to emit `assembly_terminated(assembly_id, 0)`, with a comment
+	# saying attribution belonged to the damage layer "until it does". It does:
+	# `DamageResolver` has emitted the attributed event since session 16, on the
+	# same tick, from the destruction of slot 0 that is the only thing that can
+	# bring `_terminate` here in the first place — CLAUDE.md §10 rule 10 lets
+	# nothing else write integrity. So this line was not a fallback, it was a
+	# second announcement of every death, and it was visible in the match HUD as
+	# a player's own destruction reported twice: once by whoever killed them and
+	# once by nobody.
+	#
+	# Two producers of one invariant is worse than either alone, and this is the
+	# tenth time that has been true in this repository.
 
 
 func _announce(assembly_id: int, island: PackedByteArray) -> void:
