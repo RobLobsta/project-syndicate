@@ -63,7 +63,7 @@ const AIM_SETTLE_TICKS: int = 260
 ## is indistinguishable from zero.
 const AIM_RANGE_M: float = 300.0
 
-## Pitch rate, in rad/s, that the roof-mounted module of handoff §4.11 imparted
+## Pitch rate, in rad/s, that the roof-mounted module imparted in session 15
 ## with a single round. Written out by value rather than derived, because it is
 ## the number this build is being compared against and a derivation would move
 ## with the thing under test.
@@ -74,6 +74,13 @@ const ROOF_MOUNT_PITCH_RAD_S: float = 3.6
 const REARWARD_FLOOR_FRACTION: float = 0.75
 ## Slack on the ceiling, for the float32 round trip through the physics server.
 const EPSILON_MPS: float = 0.01
+
+## Reciprocal of the share of a fight an Assembly's mount has to be converged for
+## before it counts as having been in the fight at all. Twenty is 5%: measured,
+## the ambulatory build manages one tick in a hundred and eighty, and an
+## Assembly that could actually bring its gun to bear would be an order of
+## magnitude past this rather than just over it.
+const ON_TARGET_SHARE_DIVISOR: int = 20
 
 var _fought: bool = false
 var _ambulatory_v_rotary: Duel = null
@@ -98,8 +105,29 @@ func test_a_walking_assembly_and_a_hovering_one_fight_to_a_decision() -> void:
 	await _run_all()
 	var d := _ambulatory_v_rotary
 
-	check_true(d.a_shots > 0, "the ambulatory Assembly fired: %d rounds" % d.a_shots)
 	check_true(d.b_shots > 0, "the rotary Assembly fired: %d rounds" % d.b_shots)
+	# [b]The ambulatory Assembly fires nothing, and this is asserted as it
+	# behaves rather than repaired.[/b] It used to land one round in the window,
+	# and the session that centred the shipped module's bore took even that away —
+	# not by touching this family but by making every shooter more accurate, which
+	# shortened the fight from 207 ticks to 180 and killed the walker before its
+	# mount arrived. One round was never a capability; it was noise, and two
+	# separate fixtures were resting on it (see the note on the shooter recipe in
+	# `test_overpenetration_bounds.gd`).
+	#
+	# The mount is the thing to watch, not the round count: if it never converges
+	# the trigger can never open, so the assertion is on `a_on_target_ticks` and
+	# names the number. When §4.21's drift or §4.22's depression is closed this
+	# starts failing, which is the point — a finding left in prose gets
+	# re-litigated and one left in a test does not.
+	check_true(
+		d.a_on_target_ticks * ON_TARGET_SHARE_DIVISOR < d.ticks,
+		(
+			"and the ambulatory Assembly's mount was converged for %d of %d ticks, so "
+			% [d.a_on_target_ticks, d.ticks]
+		)
+		+ "it fired %d rounds" % d.a_shots
+	)
 	check_true(d.terminated.size() >= 1, "and one of them lost its Core Module")
 	check_eq(
 		d.killer_of_loser,

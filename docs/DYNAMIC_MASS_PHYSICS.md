@@ -1660,11 +1660,10 @@ per-tick path. The per-tick path reads a body transform and nothing else.
 One law, and it is the whole of the driving:
 
 ```gdscript
+closing := to_target_flat.length() > stand_off_m
 bearing := forward.signed_angle_to(to_target_flat, Vector3.UP)
 input.steer = clampf(-bearing / STEER_SATURATION_RAD, -1.0, 1.0)
-input.throttle = (
-    clampf(cos(bearing), APPROACH_MIN_THROTTLE, 1.0)
-    if to_target_flat.length() > stand_off_m else 0.0)
+input.throttle = approach_throttle(bearing, speed) if closing else 0.0
 ```
 
 Positive steer is right and a right turn is a **negative** rotation about the
@@ -1683,10 +1682,67 @@ actually travel in: at 60° off the nose half the speed is closing the range and
 the rest is widening the arc.
 
 It cannot taper to zero. A steered contact needs road speed to generate any
-lateral force at all, and an Assembly stopped dead with the lock over sits there:
-`APPROACH_MIN_THROTTLE` is the floor it crawls at.
+lateral force at all, and an Assembly stopped dead with the lock over sits there
+scrubbing its front contacts. `APPROACH_MIN_THROTTLE` is the floor it crawls at.
 
-The ambulatory family is exempt and holds full throttle, because §13.5's
+**The floor alone does not answer the standing start, and raising it is the wrong
+fix.** Driven on the taper alone from 180° of heading error the reference build
+settles at about 0.2 m/s and never comes round at all. The window between the two
+failures was mapped on a flat slab, one build spawned facing away from a target
+40 m off and driven for 330 ticks:
+
+| Floor | Best bearing reached | Turned inside 30° | Final range |
+|---|---|---|---|
+| 0.35 | 77.4° | no | 48.6 m |
+| 0.50 | 36.4° | no | 47.2 m |
+| 0.60 | 16.6° | t = 314 | 46.2 m |
+| 0.70 | 0.5° | t = 291 | 44.8 m |
+| 0.80 | 0.1° | t = 270 | 43.3 m |
+| 0.90 | 0.5° | t = 267 | 43.5 m |
+| 1.00 | 41.8° | no | 45.3 m |
+
+**And then 0.80 was shipped, and it broke the match.** On the arena's fifteen
+metres of relief the opponents stopped reaching the player at all: milling about
+at forty to seventy metres for the whole capture where the same scene at 0.35 had
+them at contact range by frame 400 with the player down to 44%. Sustained heavy
+throttle through a turn is the outward spiral this taper exists to prevent, and
+on a slope it breaks traction as well. **The flat fixture could not see any of
+it, and the suite was green.**
+
+So the two failures get two different treatments, because they are two different
+failures. The taper's floor stays at 0.35, which is what terrain says it can
+carry. The standing start is answered as what it is — a stalled contact needing
+to break away — by a demand that applies **only while the Assembly is barely
+moving**:
+
+```gdscript
+demand := clampf(cos(bearing), APPROACH_MIN_THROTTLE, 1.0)
+if speed < APPROACH_BREAKAWAY_SPEED_MPS:
+    demand = maxf(demand, APPROACH_BREAKAWAY_THROTTLE)
+```
+
+It is self-limiting: it stops the instant the Assembly is rolling, so it never
+becomes the sustained throttle that loses grip on a slope. Measured, the build
+comes onto its bearing inside the same 330 ticks and the match plays as it did.
+
+**The lesson is worth more than the constant.** A fixture on a flat slab and a
+match on real ground are different physics, and a locomotion law tuned against
+the first can be measurably better there and measurably worse in the game. Any
+change to this section wants a capture, not just a green run.
+
+**There is no brake on arrival, and one was tried.** Cutting the throttle at the
+stand-off leaves the Assembly coasting through it, which under the flat 0.80
+floor meant arriving at 11 m/s, running to 3.1 m, and setting off on another lap
+— and §15.7.4 keeps the guns cold for every metre of one, so an orbiting driver
+fires almost nothing. A brake demand on arrival fixed that. It was then measured
+against the breakaway law that replaced the floor and makes no difference at all:
+6.4 m and 9 rounds with it, 5.8 m and 10 rounds without, because a driver that
+approaches on the taper arrives slowly enough to stop on the throttle cut alone.
+It was removed rather than carried — a demand nothing can distinguish from its
+absence is not a rule. What brings it back is an approach that ends fast: a
+downhill arrival, a heavier build, or any change that raises the closing speed.
+
+The ambulatory family is exempt from both and holds full throttle, because §13.5's
 placement law walks it in the direction it is given rather than along its own
 nose — a heading error does not widen its approach, so the taper would only slow
 it down.
@@ -1695,6 +1751,8 @@ it down.
 |---|---|---|
 | `STEER_SATURATION_RAD` | 0.35 | Heading error at which the steering demand saturates |
 | `APPROACH_MIN_THROTTLE` | 0.35 | Throttle floor while the target is off the nose |
+| `APPROACH_BREAKAWAY_SPEED_MPS` | 3.0 | Speed below which the taper is overridden to break away from a standstill |
+| `APPROACH_BREAKAWAY_THROTTLE` | 0.80 | The demand it is overridden to |
 | `GROUND_STAND_OFF_M` | 6.0 | Range a wheeled or tracked driver stops closing at |
 | `AMBULATORY_TURN_SATURATION_RAD` | 0.60 | The same as the first row, for a family that turns far more slowly |
 | `AMBULATORY_YAW_DAMPING` | 0.55 | Steering demand per radian per second of hull yaw, opposing it |
@@ -1752,26 +1810,40 @@ is inside its stand-off. This is not a preference about when a bot should shoot;
 it is the difference between a driver that arrives and one that spirals, and the
 number is large.
 
-`WEAPON_TARGETING_LOGIC.md` §10.5 authors 1450 N·s of recoil a round and the
-shipped autocannon's muzzle sits 0.125 m off the Assembly's centreline, because
-an odd-width Effector Module cannot be centred on an even-width Core Module. At
-the module's cadence that is roughly **1270 N·m of steady yaw torque** on an 1100
-kg vehicle. Measured, a driver holding the trigger through its approach was
-turned 35° off its heading in the first second, could not recover, and circled a
-target 40 m away for fourteen seconds while the range grew. The identical driver
-with the trigger cold held its heading to a tenth of a degree, accelerated to
-13.4 m/s, closed 40 m to 5.4 m, and stopped on its stand-off.
+`WEAPON_TARGETING_LOGIC.md` §10.5 authors 1450 N·s of recoil a round and §8
+applies it **at the muzzle**. On the reference wheeled build one round is 1.31
+m/s of the Assembly's own speed, and a driver holding the trigger through its
+approach cannot get out of its own way: measured, it never came round at all and
+finished 59 m from a target it had started 43 m from, while the identical driver
+with the trigger cold turned onto the bearing in 270 ticks, closed to its
+stand-off and stopped there.
 
-So the recoil yaw is not a disturbance the steering can trim out — it is larger
-than the steering authority the family has. Shooting from a halt is the doctrine
-that falls out of that, and it is the same one §15.7.2 already reaches for the
-ambulatory family from a different direction.
+So the recoil is not a disturbance the steering can trim out — it is larger than
+the authority the family has. Shooting from a halt is the doctrine that falls out
+of that, and it is the same one §15.7.2 already reaches for the ambulatory family
+from a different direction.
 
-**This is a workaround and is recorded as one.** The defect is the lateral muzzle
-offset, it belongs to `PART_DATA_SCHEMA.md`, and the day a module can be centred
-on its Core Module this rule should be revisited rather than kept out of habit.
-The cost of carrying it is real and a player will see it: an AI Assembly chasing
-a target that keeps running away never fires.
+**This was recorded as a workaround for a data defect, and that reading was
+wrong.** The defect named was the shipped autocannon's bore sitting half a cell
+off the hull's centreline, on the reasoning that centring it would remove the yaw
+and with it the need for this rule. `PART_DATA_SCHEMA.md` §14 rule 27 has since
+centred it — measured at a millimetre of lateral lever — and the approach still
+fails exactly as before.
+
+`tests/physics/test_recoil_geometry.gd` is where the real number is. A driver
+turning toward a target is by definition firing off its own nose, and a traversed
+mount swings the recoil's line of action out to the 2.25 m it sits forward of the
+centre of mass: one round at 90° of traverse yaws the hull at **0.85 rad/s**
+against **0.013** for the same round fired dead ahead, a factor of sixty-five.
+Centring the bore fixes the on-axis case and cannot reach that one.
+
+**So this rule is not waiting on a data change.** What would remove it is a mount
+whose recoil passes near the centre of mass, which is a question about where a
+build puts its guns rather than about how a part is authored — and it is a real
+design lever, because a player choosing a mounting point is choosing this.
+
+The cost of carrying the rule is real and a player will see it: an AI Assembly
+chasing a target that keeps running away never fires.
 
 **A human player has no such rule and is not given one.** They can hold the
 trigger while driving, and they will meet exactly the same yaw. That is honest —

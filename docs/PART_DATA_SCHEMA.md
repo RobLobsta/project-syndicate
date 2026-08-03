@@ -1095,7 +1095,7 @@ change worth shipping. The finding is recorded; the decision is open.
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Draw (PU) | Cycle (s) | Muzzle (m/s) | Recoil (N·s) | Heat/shot |
 |---|---|---|---|---|---|---|---|---|---|
 | `eff.ballistic.autocannon_20.t2` | `BALLISTIC_DIRECT` | 4×3×7 | 118 | 340 | 42 | 0.11 | 880 | 980 | 5.4 |
-| `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 5×4×9 | 196 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
+| `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 4×4×9 | 196 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
 | `eff.ballistic.rifle_long.t3` | `BALLISTIC_DIRECT` | 4×3×12 | 165 | 400 | 55 | 1.35 | 1180 | 4200 | 14.0 |
 | `eff.ballistic.scatter_short.t2` | `BALLISTIC_DIRECT` | 4×3×5 | 88 | 300 | 30 | 0.72 | 460 | 2600 | 9.2 |
 | `eff.arced.mortar_medium.t3` | `BALLISTIC_ARCED` | 5×5×5 | 210 | 420 | 60 | 2.10 | 190 | 3100 | 12.5 |
@@ -1106,6 +1106,37 @@ change worth shipping. The finding is recorded; the decision is open.
 | `eff.melee.rotor_blade.t4` | `KINETIC_MELEE` | 6×4×3 | 245 | 1300 | 90 | 0.00 | 0 | 0 | 4.5 |
 | `eff.melee.beam_edge.t3` | `ENERGY_MELEE` | 3×3×6 | 68 | 290 | 98 | 0.00 | 0 | 0 | 8.0 |
 | `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 3×3×8 | 96 | 420 | 145 | 0.00 | 0 | 0 | 11.0 |
+
+**Every `BALLISTIC_DIRECT` row is even-width, and §14 rule 27 requires it.** The
+`autocannon_30` was authored at 5×4×9 and is the reason the rule exists. A Core
+Module is even-width, so its centreline falls on a cell boundary; an odd-width
+module's own centreline falls on a cell centre, and Invariant I-6 makes placement
+integer, so the two can never coincide at any placement. That left the shipped
+module's bore half a cell — 0.125 m — off the hull's centreline.
+
+`WEAPON_TARGETING_LOGIC.md` §8 applies the recoil impulse **at the muzzle**, so
+that offset is the moment arm of every round fired. At this row's cadence it is
+about a kilonewton-metre of steady yaw torque on an 1100 kg vehicle, which is
+more than the wheeled family's entire steering authority. The other three
+direct-fire rows were even-width already; this one was the outlier, and it was
+re-dimensioned to 4×4×9 rather than the Core Module being widened, because the
+same table also ships 4-cell-wide arced, guided and melee modules and no single
+Core Module parity can centre both halves of the catalogue.
+
+The rule is scoped to `BALLISTIC_DIRECT` for that reason. The odd-width rows here
+are `eff.arced.mortar_medium.t3` (5 wide, 3100 N·s at a 2.1 s cycle),
+`eff.guided.pod_quad.t3` (5 wide, 640 N·s at 0.35 s) and the melee rows (no
+recoil at all). Their sustained torque through the same half-cell arm is an order
+of magnitude below the autocannon's, and they stay as they are.
+
+**Centring the bore does not make an Assembly able to drive and shoot**, and that
+was expected of it. `tests/physics/test_recoil_geometry.gd` measures why: the
+recoil is applied at the muzzle, and a mount traversed square across the hull
+swings its own line of action out to the 2.25 m it sits forward of the centre of
+mass. One round at 90° of traverse yaws the reference build **sixty-five times
+harder** than the same round fired dead ahead — 0.85 rad/s against 0.013. Rule 27
+fixes the on-axis case and cannot touch that one, which is a mount-position
+question and belongs to whoever designs the build.
 
 The `Cycle`, `Muzzle`, and `Recoil` columns are zero on every melee row and are required to be (§14 rule 20). Melee timing is `wind_up_s + swing_duration_s + recovery_s` on `MeleeProfile`, and there is no muzzle and no projectile. `Draw (PU)` is non-zero on the powered edges because an energised edge draws continuously, which is the trade that distinguishes it from a spike: a ram spike costs no power and needs the Assembly to be moving, a beam edge costs 145 PU of the budget and cuts from a standstill.
 
@@ -1259,7 +1290,15 @@ Defined in `HEADLESS_NETWORK_SYNC.md` §5. `PART_DATA_SCHEMA.md` fixes only the 
 21. An `AMBULATORY_LIMB` Motive Assembly has a non-zero `suspension_*` field; or `limb_profile.duty_factor` outside `(0.0, 1.0)`, `leg_length_m <= 0.0`, `stance_height_ratio` outside `(0.0, 1.0]`, `max_cadence_hz < nominal_cadence_hz`, or `max_step_length_m > 2 · leg_length_m` — a step longer than twice the leg cannot be taken with a foot on the ground at either end of it.
 22. A `TRACKED_SEGMENT` Motive Assembly has a non-zero `max_steer_angle_deg` — a track steers by differential drive, and one that angled its hub would be a wheel; or `track_profile.road_stations` outside `[1, MAX_ROAD_STATIONS]`, `patch_length_m <= 0.0`, `differential_authority` outside `[0.0, 1.0]`, `internal_loss` outside `[0.0, 1.0)`, or `lateral_grip_ratio <= 0.0`.
 
+23. A `WHEELED_*` or `TRACKED_SEGMENT` Motive Assembly has `motive_profile.suspension_rest_length_m <= motive_profile.contact_radius_m`. `DYNAMIC_MASS_PHYSICS.md` §6.2 reads compression as `rest_length - distance` and a part standing on its own authored collider puts that distance at one `contact_radius_m`, so a rest length at or below the radius clamps compression to zero for every tick the part is on the ground: no normal force, so no traction, so no drive force, and an Assembly at full throttle that does not move. Nothing appears in the logs, because every one of those zeroes is a value some airborne contact produces legitimately. Both shipped ground rows were authored below the radius; §6.1's recommended convention is `radius + travel_limit`, but the rule enforces only the hard requirement, because a shorter travel is a legitimate tuning choice and an inert spring is not.
+
 24. A `PRIME_MOVER` has `prime_mover_profile.drive_torque_nm <= 0.0` — a Prime Mover that makes no torque is an Energy Cell in the wrong class — or an `ENERGY_CELL` has `power_supply_pu <= 0.0` or `energy_cell_profile.discharge_limit_pu <= 0.0`, supply being the whole of what a cell contributes, or negative `capacity_pu_s` or `recharge_pu_s`.
+
+25. A `GRIP` attachment node is keyed in the wrong direction. `GRID_SNAPPING_LOGIC.md`'s `PlacementValidator._check_mating` tests `accepts_classes` from *both* ends, so the restriction has to be asymmetric: the **hand** — the `GRIP` node on an `APPENDAGE` — restricts to `EFFECTOR_MODULE`, because that is what an arm may pick up, and the **held** module's own `GRIP` face must admit `APPENDAGE`, because that is what may pick it up. A held face carrying the hand's restriction makes the pair refuse each other and leaves the module unholdable by anything in the game. This is §18's trap in a second place; see §4.3.
+
+26. An `APPENDAGE` has `appendage_profile.grip_rating_n <= 0.0` — an arm that can hold nothing is not an arm — or `reach_m <= 0.0`, which puts the hand at the shoulder and the held edge inside the hull it is swinging from; or it carries other than exactly one `GRIP` node, an Appendage offering exactly one hand.
+
+27. A `BALLISTIC_DIRECT` Effector Module authors any entry of `effector_profile.muzzle_offsets_m` whose `x` is not the footprint's own lateral centre, `(bounds_min_cell.x + bounds_max_cell.x) / 2 · LATTICE_UNIT_M`, within 1 mm; or its `bounds_size_cells.x` does not share a parity with the widest `CORE_MODULE` in the registry. `WEAPON_TARGETING_LOGIC.md` §8 applies the recoil impulse at the muzzle, so the bore's lateral distance from the centre of mass is the moment arm of every round fired, and both halves are needed: a bore off its own footprint's centre is off-centre wherever it is mounted, and a footprint of the wrong parity cannot be centred on the hull at any placement, because Invariant I-6 leaves no half-cell to correct it with. Scoped to `BALLISTIC_DIRECT` — see §10.5 for why the arced, guided and melee rows stay odd-width. The parity half is a property of the registry rather than of one part, so it runs after every definition is loaded rather than inside the manifest loop: §5.2 makes manifest order append-only and therefore arbitrary, and a rule that read it would start passing when somebody added a part.
 
 The validator emits `res://.build/part_registry_report.md` summarising totals per class, mass histograms, integrity-per-kilogram outliers, and every exception note. This report is a required review artefact for any balance change.
 

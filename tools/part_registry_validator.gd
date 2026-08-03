@@ -44,6 +44,7 @@ const RULE_SUSPENSION_REACH: int = 23
 const RULE_POWER_SPLIT: int = 24
 const RULE_GRIP_KEYING: int = 25
 const RULE_GRIP_RATING: int = 26
+const RULE_BORE_CENTRING: int = 27
 
 ## ===== RULE CONSTANTS ==================================================
 
@@ -100,6 +101,10 @@ const PROFILE_SUFFIXES: Array[String] = [".visual.tres", ".collider.tres", ".fus
 ## §14 rule 15. Below this a Core Module cannot carry a usable loadout.
 const MIN_CORE_MOUNT_BUDGET: int = 8
 
+## §14 rule 27. A bore this far off the footprint's lateral centre is a rounding
+## artefact rather than an authoring decision; anything larger is half a cell.
+const BORE_CENTRING_TOLERANCE_M: float = 0.001
+
 ## Parts needed before the integrity-per-kilogram spread carries any signal.
 const OUTLIER_MIN_SAMPLE: int = 4
 
@@ -151,6 +156,7 @@ func validate_registry(manifest_path: String = PartRegistryService.MANIFEST_PATH
 
 	_check_for_unlisted_definitions(manifest)
 	_check_tier_scaling()
+	_check_bore_parity()
 	return _failures.is_empty()
 
 
@@ -180,6 +186,24 @@ func validate_definition(def: PartDefinition) -> void:
 	_check_power_split(def)
 	_check_grip_keying(def)
 	_check_appendage(def)
+	_check_bore_centring(def)
+
+
+## Every per-part rule over [param defs], then the rules that need more than one
+## part to answer: §14 rule 13's tier scaling and rule 27's width parity.
+##
+## [method validate_definition] cannot reach either, because both are questions
+## about a [i]set[/i], and until this existed the only way to run them was to
+## load the shipped manifest — which is a fixture that fails for reasons a fault
+## test cannot tell apart from the fault it planted (§9). The caller bakes.
+func validate_set(defs: Array[PartDefinition]) -> void:
+	reset()
+	for def: PartDefinition in defs:
+		_definitions.push_back(def)
+	for def: PartDefinition in defs:
+		validate_definition(def)
+	_check_tier_scaling()
+	_check_bore_parity()
 
 
 func failures() -> PackedStringArray:
@@ -1530,3 +1554,110 @@ func _check_appendage(def: PartDefinition) -> void:
 			def.part_key,
 			"carries %d GRIP nodes; an Appendage offers exactly one hand" % hands
 		)
+
+
+## ===== RULE 27 — DIRECT-FIRE BORE CENTRING =============================
+
+## §14 rule 27, and it exists because of a measurement rather than a symmetry
+## preference. Doc 07 §8 applies the recoil impulse [i]at the muzzle[/i], so the
+## bore's lateral distance from the Assembly's centre of mass is the moment arm
+## of every round fired. A `BALLISTIC_DIRECT` module firing at cadence turns that
+## arm into steady yaw torque, and on the reference wheeled build half a cell of
+## it was more than the whole steering authority of the family.
+##
+## Two things have to hold for a module to be [i]capable[/i] of being centred,
+## and this rule checks both because either alone is satisfiable while the bore
+## still sits off the hull's centreline.
+##
+## [b]The bore is on the module's own lateral centre.[/b] `muzzle_offsets_m` is
+## authored in metres and is free of the footprint, which is what lets an
+## even-width part put its bore on a cell boundary at all — and equally what lets
+## an author put it anywhere. For an even-width footprint the centre is a quarter
+## cell off the pivot, not on it, so a bore left at `x = 0` is off-centre by
+## exactly the amount that reads as "obviously centred".
+##
+## [b]The footprint's width has the same parity as the Core Module's.[/b] An
+## even-width Core Module's centreline falls on a cell boundary and an odd-width
+## module's own centreline falls on a cell centre; the two can never coincide, at
+## any placement, because Invariant I-6 makes placement integer. So this is read
+## from the registry rather than hard-coded: the rule is that the two agree, not
+## that either is even.
+##
+## Scoped to `BALLISTIC_DIRECT` deliberately. §10.5's arced, guided and melee rows
+## are odd-width and stay that way — a mortar at a 2.1 s cycle and a pod at 0.35 s
+## put an order of magnitude less sustained torque through the same arm, and a
+## melee module authors no recoil at all. The three other direct-fire rows of
+## §10.5 were even-width already; the one that was not is what this rule was
+## written from.
+func _check_bore_centring(def: PartDefinition) -> void:
+	if def.part_class != PartEnums.PartClass.EFFECTOR_MODULE:
+		return
+	var profile := def.effector_profile
+	if profile == null:
+		return  # Rule 6 has already reported the missing payload.
+	if profile.kind != PartEnums.EffectorKind.BALLISTIC_DIRECT:
+		return
+
+	var centre_x := (
+		float(def.bounds_min_cell.x + def.bounds_max_cell.x)
+		* 0.5
+		* SyndicateConstants.LATTICE_UNIT_M
+	)
+	for i: int in profile.muzzle_offsets_m.size():
+		var bore_x := profile.muzzle_offsets_m[i].x
+		if absf(bore_x - centre_x) <= BORE_CENTRING_TOLERANCE_M:
+			continue
+		_fail(
+			RULE_BORE_CENTRING,
+			def.part_key,
+			(
+				"muzzle %d authors x = %.4f against a footprint centre of %.4f; "
+				% [i, bore_x, centre_x]
+			)
+			+ "doc 07 §8 applies the recoil at the muzzle, so an off-centre bore is "
+			+ "steady yaw torque on everything that mounts this module"
+		)
+
+
+## The parity half of rule 27, over the whole registry rather than per part.
+##
+## It cannot be a per-definition check: the answer depends on a [i]second[/i]
+## part, and running it inside the manifest loop would make it depend on whether
+## the Core Module happened to be listed before the module being judged. §5.2
+## makes manifest order append-only and therefore arbitrary, so a rule that reads
+## it is a rule that starts passing when somebody adds a part.
+func _check_bore_parity() -> void:
+	var core_width := _core_module_width_cells()
+	if core_width <= 0:
+		return  # No Core Module in the registry; the manifest rules own that.
+	for def: PartDefinition in _definitions:
+		if def.part_class != PartEnums.PartClass.EFFECTOR_MODULE:
+			continue
+		var profile := def.effector_profile
+		if profile == null or profile.kind != PartEnums.EffectorKind.BALLISTIC_DIRECT:
+			continue
+		if def.bounds_size_cells.x % 2 == core_width % 2:
+			continue
+		_fail(
+			RULE_BORE_CENTRING,
+			def.part_key,
+			(
+				"is %d cells wide against a Core Module %d cells wide; "
+				% [def.bounds_size_cells.x, core_width]
+			)
+			+ "the two parities put this module's centreline half a cell off the "
+			+ "hull's at every legal placement, and Invariant I-6 leaves no "
+			+ "half-cell to correct it with"
+		)
+
+
+## Width in cells of the widest Core Module in the registry, or 0 when none has
+## been loaded. Read rather than assumed: the parity that matters is the one the
+## shipped hull actually has.
+func _core_module_width_cells() -> int:
+	var widest := 0
+	for def: PartDefinition in _definitions:
+		if def.part_class != PartEnums.PartClass.CORE_MODULE:
+			continue
+		widest = maxi(widest, def.bounds_size_cells.x)
+	return widest

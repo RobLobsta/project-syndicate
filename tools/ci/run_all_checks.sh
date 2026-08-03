@@ -9,8 +9,25 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT="$REPO_ROOT/tools/ci/godot.sh"
 
-echo "== importing resources =="
-"$GODOT" --headless --path "$REPO_ROOT" --import 2>&1 | (grep -Ev '^$' || true)
+# Anything passed to this script is forwarded to the runner after `--`.
+# `--no-import` is consumed here instead: it skips the reimport below, which is
+# ~14 s of the ~95 s a run costs and is only load-bearing when something under
+# data/ or assets/ has changed. tools/ci/sweeps/ uses it for the faults it
+# plants in source, and never for the ones it plants in a .tres.
+RUNNER_ARGS=()
+DO_IMPORT=1
+for arg in "$@"; do
+	if [[ "$arg" == "--no-import" ]]; then
+		DO_IMPORT=0
+	else
+		RUNNER_ARGS+=("$arg")
+	fi
+done
+
+if [[ "$DO_IMPORT" == "1" ]]; then
+	echo "== importing resources =="
+	"$GODOT" --headless --path "$REPO_ROOT" --import 2>&1 | (grep -Ev '^$' || true)
+fi
 
 echo "== test suite =="
 # Tee'd rather than run directly, because the runner's exit code is not the
@@ -50,7 +67,7 @@ set +e
 # 0.333 s — at which point a 940 m/s round advances 313 m per step and every
 # spring in doc 05 explodes.
 "$GODOT" --headless --path "$REPO_ROOT" --fixed-fps 60 \
-	--script res://tools/ci/run_all_checks.gd 2>&1 \
+	--script res://tools/ci/run_all_checks.gd -- "${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"}" 2>&1 \
 	| tee "$SUITE_LOG"
 SUITE_STATUS="${PIPESTATUS[0]}"
 set -e

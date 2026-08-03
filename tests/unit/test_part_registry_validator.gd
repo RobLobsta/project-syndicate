@@ -1011,6 +1011,98 @@ func test_rule_24_ignores_the_classes_it_does_not_own() -> void:
 	)
 
 
+## ===== RULE 27 — DIRECT-FIRE BORE CENTRING =============================
+
+
+## The authored half. Doc 07 §8 applies the recoil impulse at the muzzle, so a
+## bore off the module's own lateral centre is a moment arm on everything that
+## mounts it — and for an even-width footprint the centre is a quarter cell off
+## the pivot, which is exactly the value an author leaves at zero by default.
+func test_a_direct_fire_bore_off_the_footprint_centre_is_rejected() -> void:
+	var def := _make_direct_fire()
+	def.effector_profile.muzzle_offsets_m = PackedVector3Array([Vector3(0.0, 0.0, -0.6)])
+	check_true(
+		_rules_broken_by(def).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"a bore on the pivot rather than on an even-width footprint's centre is half a cell out"
+	)
+	# The other direction, and it is the half that stops the rule from being a
+	# ban on non-zero offsets: a bore deliberately placed off-centre the other
+	# way is just as wrong.
+	var far := _make_direct_fire()
+	far.effector_profile.muzzle_offsets_m = PackedVector3Array([Vector3(0.5, 0.0, -0.6)])
+	check_true(
+		_rules_broken_by(far).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"and so is one half a metre off it"
+	)
+
+
+func test_a_centred_direct_fire_bore_passes() -> void:
+	check_false(
+		_rules_broken_by(_make_direct_fire()).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"the fixture authors its bore on the footprint centre and must validate"
+	)
+
+
+## Rule 27 is scoped to BALLISTIC_DIRECT, and the scope is the decision rather
+## than an oversight: §10.5's arced, guided and melee rows are odd-width and put
+## an order of magnitude less sustained torque through the same arm. A rule that
+## fired on all of them would fail the shipped registry.
+func test_rule_27_ignores_the_effector_kinds_it_does_not_own() -> void:
+	var arced := _make_direct_fire()
+	arced.effector_profile.kind = PartEnums.EffectorKind.BALLISTIC_ARCED
+	arced.effector_profile.muzzle_offsets_m = PackedVector3Array([Vector3(0.0, 0.0, -0.6)])
+	check_false(
+		_rules_broken_by(arced).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"an arced module's bore offset is not rule 27's business"
+	)
+	check_false(
+		_rules_broken_by(_make_melee()).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"and a melee module has no bore at all"
+	)
+
+
+## The parity half, which no single definition can answer. It needs a Core
+## Module to compare against, so it runs over a set — and the fixture assertion
+## comes first, because a set with no Core Module in it passes vacuously.
+func test_a_direct_fire_module_of_the_wrong_width_parity_is_rejected() -> void:
+	var core := _make_core()
+	check_eq(core.bounds_size_cells.x, 2, "the fixture Core Module is even-width")
+
+	var odd := _make_direct_fire()
+	odd.occupancy_cells = PackedVector3Array([
+		Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(2, 0, 0),
+		Vector3(0, 0, 1), Vector3(1, 0, 1), Vector3(2, 0, 1)
+	])
+	_bake(odd)
+	odd.collider_profile = _box_collider(odd)
+	# Its bore on its own centre, so the only thing left for rule 27 to find is
+	# the parity. Without this the test passes against a validator that never
+	# implemented the parity check at all.
+	odd.effector_profile.muzzle_offsets_m = PackedVector3Array([
+		Vector3(SyndicateConstants.LATTICE_UNIT_M, 0.0, -0.6)
+	])
+	check_false(
+		_rules_broken_by(odd).has(PartRegistryValidator.RULE_BORE_CENTRING),
+		"the odd-width module's own bore is centred, so the per-part half is silent"
+	)
+
+	var validator := PartRegistryValidator.new()
+	validator.validate_set([core, odd] as Array[PartDefinition])
+	check_true(
+		validator.failed_rule(PartRegistryValidator.RULE_BORE_CENTRING),
+		"a three-cell module against a two-cell Core Module can never centre on it"
+	)
+
+
+func test_matching_width_parities_pass() -> void:
+	var validator := PartRegistryValidator.new()
+	validator.validate_set([_make_core(), _make_direct_fire()] as Array[PartDefinition])
+	check_false(
+		validator.failed_rule(PartRegistryValidator.RULE_BORE_CENTRING),
+		"two even-width parts can put one centreline on the other"
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 ## The rules that [param def] breaks. Each call gets a fresh validator so no
@@ -1074,6 +1166,18 @@ func _make_effector() -> PartDefinition:
 
 ## A melee Effector Module that passes every rule, arranged the way
 ## `eff.melee.beam_edge.t4` is: no emission fields, a mix summing to one.
+## A BALLISTIC_DIRECT module that passes rule 27: two cells wide, with its bore
+## on the footprint's own lateral centre — which for an even width is a quarter
+## cell off the pivot rather than on it.
+func _make_direct_fire() -> PartDefinition:
+	var def := _make_effector()
+	def.effector_profile.kind = PartEnums.EffectorKind.BALLISTIC_DIRECT
+	def.effector_profile.muzzle_offsets_m = PackedVector3Array([
+		Vector3(SyndicateConstants.LATTICE_UNIT_M * 0.5, 0.0, -0.6)
+	])
+	return def
+
+
 func _make_melee() -> PartDefinition:
 	var def := _make_panel()
 	def.part_key = &"eff.melee.beam_edge.t4"

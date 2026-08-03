@@ -9,7 +9,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TOOLING_DIR="$REPO_ROOT/.tooling"
 
-GODOT_BIN="$(find "$TOOLING_DIR/godot" -maxdepth 1 -name 'Godot_v*_linux.x86_64' -type f 2>/dev/null | sort | tail -1)"
+# SYNDICATE_GODOT_DIR lets a throwaway copy of the project share the engine
+# binary that bootstrap_env.sh put in the original checkout, instead of needing
+# its own 75 MB download. tools/ci/sweeps/sweeplib.py uses it to run several
+# copies of the suite at once. The XDG paths below still come from *this*
+# checkout's .tooling, so concurrent engines never share a shader cache.
+GODOT_DIR="${SYNDICATE_GODOT_DIR:-$TOOLING_DIR/godot}"
+GODOT_BIN="$(find "$GODOT_DIR" -maxdepth 1 -name 'Godot_v*_linux.x86_64' -type f 2>/dev/null | sort | tail -1)"
 if [[ -z "$GODOT_BIN" ]]; then
 	echo "godot.sh: engine not provisioned; run tools/ci/bootstrap_env.sh" >&2
 	exit 1

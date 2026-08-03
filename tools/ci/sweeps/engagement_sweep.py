@@ -3,7 +3,7 @@
 
 Six faults, chosen rather than enumerated, because a sweep now costs about four
 and a half minutes a fault: the suite grew three engagement files and its
-physics tests wait on real ticks at 60 Hz (handoff §2). Six is twenty-seven
+physics tests wait on real ticks at 60 Hz (LEARNED_FACTS.md §1). Six is twenty-seven
 minutes, which is affordable in one session; thirty would not have been, and an
 unfinished sweep is worse than a small finished one.
 
@@ -30,15 +30,21 @@ Caught is a non-zero exit, a recorded failure, *or* a check count that differs
 from the baseline -- the last of those is what catches a fault that truncates the
 suite into a green partial pass.
 """
-import subprocess, sys, os, re
+import os
+import sys
 
-ROOT = "/home/user/project-syndicate"
-PS = os.path.join(ROOT, "src/combat/projectiles/projectile_system.gd")
-ES = os.path.join(ROOT, "src/combat/effectors/effector_system.gd")
-AS = os.path.join(ROOT, "src/combat/effectors/aim_solver.gd")
-ARENA = os.path.join(ROOT, "tests/combat_arena.gd")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sweeplib
 
-BASELINE = 4342  # tools/ci/run_all_checks.sh at the commit this landed
+PS = "src/combat/projectiles/projectile_system.gd"
+ES = "src/combat/effectors/effector_system.gd"
+AS = "src/combat/effectors/aim_solver.gd"
+ARENA = "tests/combat_arena.gd"
+
+# The check count at the commit this last ran clean. sweeplib measures the real
+# one and warns if this disagrees, so a stale value here is a printed warning
+# rather than a sweep that reports CAUGHT for everything.
+BASELINE = 4342
 
 FAULTS = [
     # A round may hit the Assembly that fired it the instant it leaves the
@@ -87,24 +93,24 @@ FAULTS = [
     # stop, and the finding recorded in the ambulatory mirror match evaporates.
     # §13.4's standing state: every foot planted. Without the re-plant an
     # Assembly commanded to stand from spawn never establishes a foot at all.
-    ("standing-never-replants", os.path.join(ROOT, "src/motion/motive_system.gd"),
+    ("standing-never-replants", "src/motion/motive_system.gd",
      "	if now_stance and (not was_planted or (standing and slack)):",
      "	if now_stance and not was_planted:"),
 
     # §13.5's turn command back to the sign that walked an Assembly left on a
     # demand to go right.
-    ("gait-turn-sign-flipped", os.path.join(ROOT, "src/motion/gait_solver.gd"),
+    ("gait-turn-sign-flipped", "src/motion/gait_solver.gd",
      "		var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)",
      "		var yaw := deg_to_rad(profile.turn_rate_deg_s * turn_command * stance_s)"),
 
     # The placement law handed the chassis speed cap again, ten times what any
     # gait can deliver, which saturates the correction term permanently.
-    ("gait-chases-chassis-speed", os.path.join(ROOT, "src/motion/motive_system.gd"),
+    ("gait-chases-chassis-speed", "src/motion/motive_system.gd",
      "	return minf(_speed_cap_mps(), GaitSolver.top_speed_mps(profile))",
      "	return _speed_cap_mps()"),
 
     # Doc 04 §8.2's producer removed. Nothing announces a terminated Assembly.
-    ("no-assembly-terminated", os.path.join(ROOT, "src/combat/damage/damage_resolver.gd"),
+    ("no-assembly-terminated", "src/combat/damage/damage_resolver.gd",
      "	if st.slot == SyndicateConstants.CORE_SLOT:\n		EventBus.assembly_terminated.emit(",
      "	if false:\n		EventBus.assembly_terminated.emit("),
 
@@ -134,35 +140,5 @@ FAULTS = [
 ]
 
 
-def run():
-    p = subprocess.run(["tools/ci/run_all_checks.sh"], cwd=ROOT,
-                       capture_output=True, text=True)
-    tail = p.stdout + p.stderr
-    m = re.search(r"run_all_checks: (\d+) checks, (\d+) failures across (\d+)/(\d+) files", tail)
-    return p.returncode, m.groups() if m else None, tail
-
-
-only = sys.argv[1:] if len(sys.argv) > 1 else None
-for name, path, old, new in FAULTS:
-    if only and name not in only:
-        continue
-    src = open(path).read()
-    if old not in src:
-        print(f"{name}: PATCH-MISS", flush=True)
-        continue
-    open(path, "w").write(src.replace(old, new, 1))
-    try:
-        rc, g, tail = run()
-    finally:
-        open(path, "w").write(src)
-    if g is None:
-        print(f"{name}: rc={rc} NO-SUMMARY (crash/parse)", flush=True)
-        continue
-    checks, failures, badfiles, files = g
-    caught = rc != 0 or int(failures) > 0 or int(checks) != BASELINE
-    print(f"{name}: {'CAUGHT' if caught else 'SURVIVED'} "
-          f"rc={rc} checks={checks} failures={failures}", flush=True)
-    if caught and int(failures) > 0:
-        for line in tail.splitlines():
-            if "FAIL" in line or line.strip().startswith("test_"):
-                print("    " + line.strip(), flush=True)
+if __name__ == "__main__":
+    raise SystemExit(sweeplib.run_sweep(FAULTS, BASELINE, __doc__))

@@ -117,7 +117,7 @@ const GROUND_CELL := Vector3i(24, 4, 29)
 ## fore-aft offset is parallel to the recoil and contributes no moment at all.
 ##
 ## On the roof the muzzle sits two metres up and one round is 3.6 rad/s of pitch
-## (handoff §4.11). Here it sits about a quarter of a metre above the centre of
+## (measured in session 15; see CHANGE_LOG.md). Here it sits about a quarter of a metre above the centre of
 ## mass on every ground recipe and within a hand's breadth of it on the rotary
 ## one, so the same round is a rock rather than a backflip and the fight lasts
 ## long enough to be a fight. The rearward push is untouched and is meant to be:
@@ -131,7 +131,7 @@ const WHEEL_ORIGINS: Array[Vector3i] = [
 	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
-## on which every contact steers crabs instead of turning (handoff §4.4).
+## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
 const FRONT_AXLE_Z: int = 24
 
 const TRACK_HUBS: Array[Vector3i] = [Vector3i(22, 2, 24), Vector3i(26, 2, 24)]
@@ -268,6 +268,12 @@ var kills: Dictionary = {}
 ## apart from a fight where every round landed on armour that soaked it.
 var hits_landed: int = 0
 var damage_by_target: Dictionary = {}
+## assembly_id -> integrity taken off it per [enum PartEnums.DamageChannel].
+##
+## The totals above cannot tell gunfire from a collision, and once a driver
+## closes to its stand-off it is parked among wreckage and taking a little of
+## the second. An assertion that means "nothing shot at it" has to say KINETIC.
+var damage_by_channel: Dictionary = {}
 ## Ticks the last call to [method engage] actually ran for.
 var ticks_engaged: int = 0
 ## Most rounds in flight at once during it. Sampled inside the loop, because the
@@ -798,9 +804,23 @@ func _on_part_band_changed(assembly_id: int, slot: int, _before: int, after: int
 		_log("%s's Core Module is CRITICAL" % name_of(assembly_id))
 
 
-func _on_part_damaged(assembly_id: int, _slot: int, amount: float, _channel: int) -> void:
+func _on_part_damaged(assembly_id: int, _slot: int, amount: float, channel: int) -> void:
 	hits_landed += 1
 	damage_by_target[assembly_id] = float(damage_by_target.get(assembly_id, 0.0)) + amount
+	if not damage_by_channel.has(assembly_id):
+		damage_by_channel[assembly_id] = PackedFloat32Array()
+		damage_by_channel[assembly_id].resize(PartEnums.DAMAGE_CHANNEL_COUNT)
+	var per: PackedFloat32Array = damage_by_channel[assembly_id]
+	per[channel] += amount
+	damage_by_channel[assembly_id] = per
+
+
+## Integrity taken off [param assembly_id] through [param channel], or 0.0.
+func damage_through(assembly_id: int, channel: PartEnums.DamageChannel) -> float:
+	if not damage_by_channel.has(assembly_id):
+		return 0.0
+	var per: PackedFloat32Array = damage_by_channel[assembly_id]
+	return per[channel]
 
 
 ## Bands [param slot] of [param assembly_id] was observed in, in order.
@@ -893,7 +913,7 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 ## The orientation carrying a part's own `-Z` drive face onto [param face],
 ## upright. Derived from the 24-orientation group rather than written down:
 ## which index does it is a property of [OrientationTable], and the integer does
-## not survive a change to the table (handoff §9, and watch §3.39).
+## not survive a change to the table (LEARNED_FACTS.md §3, and watch fact 39).
 static func drive_face_orientation(face: Vector3) -> int:
 	return OrientationTable.upright_facing(face)
 

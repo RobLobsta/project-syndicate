@@ -77,7 +77,9 @@ This layout is normative. Do not create top-level directories not listed here wi
 ```
 project-syndicate/
 ├── CLAUDE.md                       ← this file
-├── HANDOFF.md                      ← session state; see Section 10 rule 1
+├── HANDOFF.md                      ← the work queue; see Section 10 rule 1
+├── LEARNED_FACTS.md                ← engine facts, testing rules, settled readings
+├── CHANGE_LOG.md                   ← what each session did, and what each test defends
 ├── JULES.md                        ← read-only review charter for an external
 │                                     analyst agent. Claude ignores it.
 ├── README.md                       ← user-facing overview
@@ -573,12 +575,15 @@ Any AI session producing code for this repository must obey the following. These
 
 1. **The Session Lifecycle Contract.** Every AI session works this loop, in this order, and none of the four steps is optional.
 
-   - **Initialisation.** Read `HANDOFF.md` before taking any other action — before reading source, before running the suite, before answering. It carries what the last session measured, what it decided and why, which findings are open, and which engine facts cost somebody an afternoon. A session that skips it re-derives all of that at full price and usually re-derives it wrong.
-   - **Execution.** Do the work, under every rule in this file and every document in Section 1.
-   - **Consolidation.** Before reporting, rewrite `HANDOFF.md` so it describes the repository as it now stands. **Consolidate; do not append.** A finding that has been fixed becomes a struck-through line in the record of what was fixed, not a live item; a next-step that has been taken leaves the queue. The file is a working state, not a changelog — if it only ever grows, it has failed.
+   - **Initialisation.** Read `HANDOFF.md` before taking any other action — before reading source, before running the suite, before answering. It is the work queue: what to do next, in the order it is worth doing, plus the standing player-experience review that sets that order. Then read **`LEARNED_FACTS.md` §1 before writing any code and §3 before writing any test**. A session that skips these re-derives them at full price and usually re-derives them wrong.
+   - **Execution.** Do the work, under every rule in this file and every document in Section 1. Consult `CHANGE_LOG.md` when you need to know when something changed and why.
+   - **Consolidation.** Before reporting, update all three files so they describe the repository as it now stands, and **consolidate; do not append**:
+     - `HANDOFF.md` — a queue. A step that has been taken leaves it. If it only ever grows, it has failed. Keep it short enough to read in full.
+     - `LEARNED_FACTS.md` — durable knowledge only. A fact belongs here when it would cost the next session time to rediscover, and it is written once rather than re-stated per session. Prune anything the code now enforces.
+     - `CHANGE_LOG.md` — one short entry per session, and the per-test fault record. Compress older entries as they stop mattering; the git history holds the long version.
    - **Reporting.** The final message to the user is a plain-language description of what was built and what comes next. Not a diff summary, not a list of file paths, and not the commit message again.
 
-   `HANDOFF.md` is the only memory that survives a context window. Treat a stale or inflated one as a defect of the same order as a stale document under Section 1, because the next session's first hour is spent believing it.
+   These three files are the only memory that survives a context window. Treat a stale or inflated one as a defect of the same order as a stale document under Section 1, because the next session's first hour is spent believing it. **Splitting them further, or merging them back, is a change to this section** — the division is by *lifetime*: a queue that empties, knowledge that accumulates, and a record that compresses.
 
 2. **Read the relevant `/docs/` document before writing code that touches its subsystem.** Do not infer the design from surrounding code alone.
 

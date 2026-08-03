@@ -24,3 +24,6 @@
 Thumbs.db
 *.swp
 *~
+
+# Python bytecode from the sweep scripts.
+__pycache__/

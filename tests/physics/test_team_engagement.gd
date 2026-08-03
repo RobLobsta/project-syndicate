@@ -54,7 +54,8 @@ const BRAWL_PRE_BOUND_TICKS: int = 91
 ## that did nothing but spawn those bodies and free them. Nothing about the
 ## combat layer changed.
 ##
-## That is JULES.md §6.6 and handoff §3 arriving where nobody had applied them:
+## That is JULES.md §6.6 and LEARNED_FACTS.md §1 fact 54 arriving where nobody had
+## applied them:
 ## once twenty rigid bodies share one space, the solver's float ordering depends
 ## on the allocation history of the whole process, so a tick count is a
 ## measurement of the [i]suite[/i] and not of the engagement. Re-asserting the
@@ -74,12 +75,12 @@ const BRAWL_MIN_TICKS: int = BRAWL_PRE_BOUND_TICKS * 2
 ## fixture's natural spread rather than below it. Observed terminations across
 ## runs: 7 (three survivors at the timeout), 5 (one team standing at 654 ticks),
 ## and 4 (after `tests/physics/test_ground_terrain.gd` was added). Nothing about
-## the fight changed between the last two; §3.54 of the handoff is the mechanism,
+## the fight changed between the last two; LEARNED_FACTS.md §1 fact 54 is the mechanism,
 ## and it is that once twenty rigid bodies have shared a space the solver's float
 ## ordering depends on the allocation history of the whole process, so any
 ## earlier file that creates and destroys bodies moves the outcome here.
 ##
-## §3.54 predicted this exact failure — "re-asserting the new number would have
+## That fact predicted this exact failure — "re-asserting the new number would have
 ## moved the fragility to whoever added the next file" — so the fix is not to
 ## re-centre on 4. Three of ten is comfortably under every run anybody has
 ## observed and still fails hard if combat regresses to a stalemate, which is the
@@ -117,7 +118,7 @@ func test_five_a_side_combined_arms_fights_itself_to_pieces() -> void:
 	# Ten Assemblies, five recipes a side, and it now produces a result: most of
 	# the field dies. One run ended at 654 ticks with a single team holding the
 	# ground; the next ran the clock out with three survivors between the two
-	# sides. Same fight, different float ordering (§3.44).
+	# sides. Same fight, different float ordering (LEARNED_FACTS.md §3).
 	#
 	# It did not, last session. What changed is not the roster and not the
 	# tactics — it is that overpenetration is bounded (doc 07 §12.2.2), so a
@@ -237,7 +238,6 @@ func test_the_brawl_is_the_bigger_engagement() -> void:
 	check_eq(_brawl.shooters, BRAWL_PER_SIDE * 2, "twenty Assemblies fired")
 	check_eq(_combined.shooters, COMBINED_ARMS.size() * 2, "against the five-a-side's ten")
 	for pair: Array in [
-		["rounds", _brawl.rounds_fired, _combined.rounds_fired],
 		["packets", _brawl.hits_landed, _combined.hits_landed],
 		["parts", _brawl.parts_destroyed, _combined.parts_destroyed],
 		["kills", _brawl.terminated, _combined.terminated],
@@ -246,6 +246,24 @@ func test_the_brawl_is_the_bigger_engagement() -> void:
 			int(pair[1]) > int(pair[2]),
 			"the brawl leads on %s: %d against %d" % [pair[0], int(pair[1]), int(pair[2])]
 		)
+	# Rounds is a [b]rate[/b] here and the three rows above are not, which is a
+	# distinction this assertion learned the hard way. Parts and kills are bounded
+	# by the roster — twenty Assemblies have more to lose than ten — so comparing
+	# the totals is comparing the engagements. Rounds fired is bounded by nothing
+	# but the clock, and the moment the brawl started reaching a decision inside a
+	# fifth of its budget while the five-a-side still ran to the timeout, the
+	# bigger engagement "lost" on rounds by having finished. §3.54's warning about
+	# tick counts in a multi-Assembly file, arriving through a quantity that is
+	# not obviously a tick count.
+	var brawl_rate := float(_brawl.rounds_fired) / maxf(float(_brawl.ticks), 1.0)
+	var combined_rate := float(_combined.rounds_fired) / maxf(float(_combined.ticks), 1.0)
+	check_true(
+		brawl_rate > combined_rate,
+		(
+			"and it leads on rounds per tick: %.3f over %d ticks against %.3f over %d"
+			% [brawl_rate, _brawl.ticks, combined_rate, _combined.ticks]
+		)
+	)
 
 
 ## ===== FIXTURES ========================================================

@@ -35,12 +35,15 @@ extends Node
 ## [code]tests/combat_arena.gd[/code] carries the only implementation of the
 ## hover and names itself a fixture.
 ##
-## [b]It closes with its guns cold[/b] — §15.7.4, and the one rule here that is a
-## workaround rather than a tactic. The shipped autocannon's muzzle sits 0.125 m
-## off the centreline, which at its cadence is about 1270 N·m of yaw torque, and
-## a driver that fires on the move is turned off its heading faster than it can
-## steer back. The document has the measurement and names the data defect it is
-## covering for.
+## [b]It closes with its guns cold[/b] — §15.7.4. The recoil is applied at the
+## muzzle, so a mount traversed toward a target off the nose swings its line of
+## action out to the two and a quarter metres it sits forward of the centre of
+## mass: one round there yaws the reference hull sixty-five times harder than the
+## same round fired dead ahead, and a driver that fires on the move is turned off
+## its heading faster than it can steer back. This was recorded as a workaround
+## for the shipped module's off-centre bore; the bore has since been centred and
+## the approach still fails, so what it is really waiting on is a mounting
+## position rather than a data fix. The document has the numbers.
 
 ## ===== §15.7.1's TACTIC ================================================
 ## The arithmetic is the whole of the driving, and it is exposed as statics so
@@ -78,11 +81,33 @@ const ROTARY_STAND_OFF_M: float = 22.0
 ## what pure pursuit does when the turn radius exceeds the range. Tapering the
 ## throttle on the heading error tightens the arc until it converges.
 ##
-## It cannot taper to zero. A steered contact needs road speed to make any
-## lateral force at all, and an Assembly stopped dead with the lock over sits
-## there: at 0.35 through a full-lock turn the shipped build settles at 0.2 m/s
-## and stops turning, which is the other failure this floor sits between.
+## The floor is what stops the taper reaching zero, because a steered contact
+## needs road speed to make any lateral force at all.
 const APPROACH_MIN_THROTTLE: float = 0.35
+
+## Speed, in m/s, below which the taper above is overridden outright.
+##
+## [b]The floor alone is not enough, and raising it is not the answer.[/b] A
+## build stopped dead with the lock over sits there scrubbing its front contacts:
+## driven on the taper alone from 180° of heading error it settled at about
+## 0.2 m/s and never came round at all. Driving that case off a higher floor was
+## tried and measured — 0.80 turns it in 270 ticks on a flat slab — and it
+## [i]broke the match[/i], because on the arena's fifteen metres of relief a
+## ground build under sustained heavy throttle breaks traction on every slope it
+## crosses and the opponents never reached the player at all. A flat fixture
+## cannot see that, and the suite was green for it.
+##
+## So the two failures get the two different treatments they need. The taper's
+## floor stays where terrain says it belongs, and the stall is answered by what
+## it actually is — a standing start — with a breakaway demand that applies only
+## while the Assembly is barely moving and stops applying the moment it is.
+const APPROACH_BREAKAWAY_SPEED_MPS: float = 3.0
+
+## Throttle demanded below that speed. High enough to break a scrubbing contact
+## away from a standstill, and self-limiting: it stops the instant the Assembly
+## is rolling, so it never becomes the sustained heavy throttle that loses grip
+## on a slope.
+const APPROACH_BREAKAWAY_THROTTLE: float = 0.80
 
 ## ===== WIRING ==========================================================
 ## Set before the node enters the tree. The match layer owns every one of these
@@ -201,10 +226,11 @@ func step(dt: float) -> void:
 	_drive_toward(_target_point)
 	if guns != null and effector_slot != SyndicateConstants.INVALID_SLOT:
 		guns.aim_point_world = _target_point + _aim_error
-		# §15.7.4. It closes with its guns cold, because the shipped module's
-		# muzzle is 0.125 m off the centreline and firing on the move yaws the
-		# Assembly harder than its steering can correct. Measured; the document
-		# has the numbers and records it as a workaround for a data defect.
+		# §15.7.4. It closes with its guns cold, because recoil applied at a
+		# muzzle two metres forward of the centre of mass yaws the Assembly
+		# harder than its steering can correct the moment the mount is traversed
+		# — which is every moment it is driving toward something. Measured; the
+		# document has the numbers.
 		guns.set_trigger(0, not _closing)
 
 
@@ -272,8 +298,11 @@ static func ambulatory_steer_demand(bearing_rad: float, yaw_rate_rad_s: float) -
 ## can actually travel in, which is why it is a cosine rather than a ramp: at 60°
 ## off the nose only half the speed is closing the range and the rest is widening
 ## the arc.
-static func approach_throttle(bearing_rad: float) -> float:
-	return clampf(cos(bearing_rad), APPROACH_MIN_THROTTLE, 1.0)
+static func approach_throttle(bearing_rad: float, speed_mps: float) -> float:
+	var demand := clampf(cos(bearing_rad), APPROACH_MIN_THROTTLE, 1.0)
+	if speed_mps < APPROACH_BREAKAWAY_SPEED_MPS:
+		return maxf(demand, APPROACH_BREAKAWAY_THROTTLE)
+	return demand
 
 
 ## The stand-off a family fights at by default.
@@ -322,7 +351,9 @@ func _drive_toward(aim: Vector3) -> void:
 		input.throttle = 1.0 if closing else 0.0
 		input.steer = ambulatory_steer_demand(bearing, body.angular_velocity.y)
 		return
-	input.throttle = approach_throttle(bearing) if closing else 0.0
+	input.throttle = (
+		approach_throttle(bearing, body.linear_velocity.length()) if closing else 0.0
+	)
 	input.steer = steer_demand(bearing)
 
 

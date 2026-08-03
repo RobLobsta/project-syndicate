@@ -108,7 +108,7 @@ const BUILD_WHEELS: Array[Vector3i] = [
 	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
-## on which every contact steers crabs instead of turning (handoff §4.4).
+## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
 const FRONT_AXLE_Z: int = 24
 
 ## ===== PRESENTATION ====================================================

@@ -25,7 +25,7 @@ const HUD_LAYER: int = 5
 ## ===== DAMAGE FLASH (§14.4) ============================================
 
 const FLASH_ALPHA_PER_PACKET: float = 0.06
-## A spall burst is several packets in one tick (handoff §7). Without the clamp a
+## A spall burst is several packets in one tick (HANDOFF.md §4's note on spall). Without the clamp a
 ## single kinetic hit would white out the screen.
 const FLASH_ALPHA_MAX: float = 0.34
 const FLASH_DECAY_HZ: float = 4.5
