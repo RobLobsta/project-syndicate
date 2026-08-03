@@ -96,14 +96,14 @@ See §3.36 and §3.44 before adding to `tests/physics/`.
 
 Every session verifies the suite by **planting faults one at a time and
 confirming something fails**. A test asserted only against correct code passes
-just as happily with its subject commented out. About 490 faults have been
-planted across sixteen working sessions; the table below is the accumulated
+just as happily with its subject commented out. About 500 faults have been
+planted across seventeen working sessions; the table below is the accumulated
 record, grouped by catcher rather than by session, because what matters to the
 next session is which test defends which behaviour. The engagement and
-combat-layer sweeps of sessions 15 to 17 are broken out in §2.0, because between
-them they produced twelve survivals and the survivals are the interesting part.
+combat-layer sweeps of sessions 15 to 18 are broken out in §2.0, because between
+them they produced fifteen survivals and the survivals are the interesting part.
 
-The lessons worth carrying, consolidated across fifteen sessions rather than
+The lessons worth carrying, consolidated across seventeen sessions rather than
 listed per session:
 
 - **A test that reads the same constant the source does asserts nothing.** The
@@ -213,14 +213,18 @@ restarted every tick |
 | *nothing* | anti-roll pushing both ends of an axle the same way — see §5 |
 | *nothing* | a hard-coded steer lock — see §5 |
 
-### 2.0 The sweeps of sessions 15 to 17
+### 2.0 The sweeps of sessions 15 to 18
 
 There are two committed sweep scripts and they cover different things.
 `tools/ci/sweeps/engagement_sweep.py` is sessions 15 and 16's, over the paths the
 engagement files rest on; `tools/ci/sweeps/combat_layer_sweep.py` is session 14's
-38 over the damage, effector and projectile layers, which session 17 finally ran.
-Both name what each fault is defending. **The survivals are worth more than the
-catches and are recorded first.**
+38 over the damage, effector and projectile layers — which session 17 finally
+ran — plus session 18's 7 over doc 07 §15, for **45**. Both name what each fault
+is defending. **The survivals are worth more than the catches and are recorded
+first.**
+
+`combat_layer_sweep.py`'s baseline is **4486**. Update it in the same change as
+anything that moves the check count, or every fault after it reads as caught.
 
 Session 15 planted six faults over the paths the new engagement files rest on;
 session 16 grew that to fourteen, keeping the six and adding eight against the
