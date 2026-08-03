@@ -130,6 +130,10 @@ var _speed_mps: float = 0.0
 
 var _probe_shape: SphereShape3D = null
 
+## Whether the last [method aim_point] ended on an Assembly hull. Written there
+## and read by [MatchScreen]; see [member HudFrame.target_acquired].
+var _aim_on_hull: bool = false
+
 
 func _ready() -> void:
 	process_priority = CAMERA_PROCESS_PRIORITY
@@ -187,7 +191,12 @@ func _process(dt: float) -> void:
 
 ## World position the player is aiming at. §13.8, and the sole producer of the
 ## aim point doc 07 §3 consumes.
+##
+## Also the sole producer of [method aim_on_hull], because the two answers come
+## out of one ray and asking twice would be a second query per tick for a fact
+## the first one already had.
 func aim_point() -> Vector3:
+	_aim_on_hull = false
 	var vp := get_viewport()
 	if vp == null:
 		return global_position - global_transform.basis.z * AIM_FALLBACK_RANGE_M
@@ -204,7 +213,26 @@ func aim_point() -> Vector3:
 	var hit := world.direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return origin + dir * AIM_FALLBACK_RANGE_M
+	_aim_on_hull = is_hull(hit.get("collider", null) as CollisionObject3D)
 	return hit["position"]
+
+
+## Whether the last [method aim_point] ray ended on an Assembly hull rather than
+## on ground, on a Static Volume, or on nothing. §14.3's target bracket.
+func aim_on_hull() -> bool:
+	return _aim_on_hull
+
+
+## Whether [param body] presents on [constant CollisionLayers.LAYER_ASSEMBLY_HULL].
+##
+## Read off the body's own layer rather than by resolving it to an
+## [AssemblyRuntime]: the camera holds no registry and §13's whole arrangement is
+## that it reads the world and knows nothing about who is in it. The own body is
+## already excluded from the ray, so a hull here is somebody else's.
+static func is_hull(body: CollisionObject3D) -> bool:
+	if body == null:
+		return false
+	return (body.collision_layer & CollisionLayers.LAYER_ASSEMBLY_HULL) != 0
 
 
 ## Speed of the followed node, in m/s. Derived from the interpolated position
@@ -213,8 +241,24 @@ func speed_mps() -> float:
 	return _speed_mps
 
 
+## §13.3. Switches mode without moving the picture.
+##
+## The two modes solve the same yaw out of different terms — chase adds the look
+## offset to the hull's heading, orbit uses the look offset alone — so assigning
+## the mode on its own swings the camera by the whole hull heading in one frame,
+## which at any heading but due north is a hard cut in the middle of a fight. The
+## offset is rebased instead, so the view direction is identical either side of
+## the press and every subsequent frame differs only in what the camera follows.
+##
+## Coming back to chase, §13.6's clamp and recentre then pull the offset back
+## onto the hull's line, which is what chase mode is for.
 func toggle_mode() -> void:
-	mode = Mode.ORBIT if mode == Mode.CHASE else Mode.CHASE
+	if mode == Mode.CHASE:
+		mode = Mode.ORBIT
+		_look_yaw_rad = wrapf(_look_yaw_rad + _heading_rad, -PI, PI)
+	else:
+		mode = Mode.CHASE
+		_look_yaw_rad = wrapf(_look_yaw_rad - _heading_rad, -PI, PI)
 
 
 ## Drops the look offset back to the resting pose. [code]cam_focus_selection[/code].

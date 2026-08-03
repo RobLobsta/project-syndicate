@@ -688,6 +688,32 @@ cross-reference and the numbers are stable; nothing here is in priority order.
     changes no measurement at all. A full sweep went from about twenty minutes to
     two.
 
+66. **`DisplayServer.keyboard_get_keycode_from_physical` is unimplemented
+    headless, and it reports that by pushing an engine error rather than by
+    returning a fallback.** "Not supported by this display server" once per call,
+    which the suite wrapper fails the whole run on (fact 34) — so a HUD label
+    that resolves a key glyph turns every green run red. The physical keycode is
+    the right fallback, because it is the US layout that doc 11 §7.1's table is
+    written against. `InputPrompt._layout_keycode` branches on
+    `DisplayServer.get_name() == "headless"`, which is the same guard
+    `InputMethodService._set_method` already needed for `Input.mouse_mode`.
+
+    The general shape is worth more than the call: **a `DisplayServer` method
+    that is meaningful only with a window may be a hard error headless rather
+    than a no-op**, and the suite is the only place that difference is visible.
+
+67. **A freed object passed into a typed parameter is a type error before the
+    function body runs, so an `is_instance_valid` guard inside it can never
+    fire.** "The Object-derived class of argument 1 (previously freed) is not a
+    subclass of the expected argument class" — the check happens at the call
+    boundary. Iterating an `Array[Node]` that holds a freed entry fails the same
+    way, for the same reason.
+
+    So a teardown helper cannot be written as "call it on everything and let it
+    sort out what is already gone". The pattern that works is for the helper to
+    **drop its own handle**: `_release` erases the entry before freeing, and
+    `after_all` drains what is left, which is by construction still live.
+
 ---
 
 ## 2. What fault injection taught
@@ -1375,6 +1401,30 @@ the placement.** The second rotor disc is refused if the Energy Cell that covers
 its draw has not been bolted on yet. That is the same rule a player meets in the
 garage and the same order they have to build in; it is not a validator quirk, and
 a layout function has to place supply before draw.
+
+**`match_concluded` is a signal on `MatchState`, not an entry in `EventBus`.**
+Doc 04 §8's list is the project's cross-system contract, and every addition to it
+permanently widens what any class in the project may listen to. This one has a
+single producer and a single consumer, both inside the match layer, and the
+`MatchScreen` that owns the object is the only thing that ever connects. The bar
+CLAUDE.md §4 sets for an autoload is the bar this applies to a global signal: a
+concept that two systems share belongs on the bus, and a concept one system tells
+its own owner about does not. `DamageResolver` and `ProjectileRegistry` being
+objects rather than autoloads is the same judgement one level down.
+
+**The mouse stays captured when a match ends, and releasing it was tried first.**
+It reads as the obvious courtesy — the player is finished, give them their cursor
+back — and it makes the end of the match worse, because doc 11 §13.6 reads mouse
+motion for the camera look, so a released mouse is an orbit camera that cannot
+orbit. The end card names the binding that releases it instead, which is §14.6's
+answer for every other control nobody can guess.
+
+**The wreck stays where it fell.** Doc 11 §16.2 records it as a decision rather
+than as work not yet done: an Assembly that despawned on losing its Core Module
+would take the debris, the craters and the hulk with it, and the orbit camera
+§16.2 hands the player would then be circling an empty basin. It also costs
+nothing — the runtime is already inert once slot 0 is destroyed — which is the
+part that makes "leave it" the cheap answer as well as the right one.
 
 **`tests/physics/` builds its ground out of a `StaticBody3D` slab and says so.**
 Document 09 owns Dynamic Ground Arrays and nothing in a test may pre-empt it. The

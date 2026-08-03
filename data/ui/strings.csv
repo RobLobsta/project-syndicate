@@ -7,3 +7,30 @@ hud.rounds.unlimited,∞
 hud.parts,PARTS
 hud.event.part_lost,Component %d lost
 hud.event.assembly_lost,Assembly %d destroyed
+hud.controls.title,CONTROLS
+hud.controls.drive,Drive / brake
+hud.controls.steer,Steer
+hud.controls.aim,Aim
+hud.controls.fire,Fire
+hud.controls.camera,Camera view
+hud.controls.zoom,Zoom
+hud.controls.release_mouse,Release mouse
+hud.controls.toggle_hint,%s shows this again
+hud.outcome.victory,LAST ONE STANDING
+hud.outcome.defeat,CORE MODULE DESTROYED
+hud.outcome.draw,NOTHING LEFT STANDING
+hud.outcome.detail.victory,Every opposing Assembly has lost its Core Module.
+hud.outcome.detail.defeat,Your Assembly is finished. Nothing here despawns — the wreckage is still out there.
+hud.outcome.detail.draw,No Assembly in this match is still standing.
+hud.outcome.hint,The camera is free — %s orbits it and %s releases the mouse.
+input.mouse.left,Left Mouse
+input.mouse.right,Right Mouse
+input.mouse.middle,Middle Mouse
+input.mouse.wheel_up,Wheel Up
+input.mouse.wheel_down,Wheel Down
+input.mouse.other,Mouse %d
+input.mouse.motion,Mouse
+input.modifier.ctrl,Ctrl
+input.modifier.shift,Shift
+input.modifier.alt,Alt
+input.unbound,—

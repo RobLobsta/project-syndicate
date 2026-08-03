@@ -29,7 +29,16 @@ const LINE_WIDTH_PX: float = 2.0
 ## doc 11 §13.5 gives.
 const SPREAD_LAG_HZ: float = 11.0
 
+## §14.3's target bracket: half-width of the four corner ticks drawn outside the
+## reticle when the aim ray is on a hull. Outside the brackets rather than
+## replacing them, because the two answer different questions and a player needs
+## both at once — "my gun is ready" and "I am pointing it at something".
+const TARGET_BRACKET_SPREAD_PX: float = 34.0
+const TARGET_BRACKET_LENGTH_PX: float = 7.0
+
 var state: HudFrame.ReticleState = HudFrame.ReticleState.NO_EFFECTOR
+## Whether the aim ray ended on an Assembly hull. See [member HudFrame.target_acquired].
+var target_acquired: bool = false
 
 var _spread_px: float = SPREAD_MAX_PX
 
@@ -56,6 +65,17 @@ func set_state(next: HudFrame.ReticleState) -> void:
 	queue_redraw()
 
 
+## Applies [param next], redrawing only on a change, exactly as
+## [method set_state] does. Separate from the state because it is a separate
+## question: doc 07 §4.3.1's answers are about the mount and this one is about
+## what is under the crosshair.
+func set_target_acquired(next: bool) -> void:
+	if next == target_acquired:
+		return
+	target_acquired = next
+	queue_redraw()
+
+
 ## Token for [param s], §14.3's table.
 static func colour_for(s: HudFrame.ReticleState) -> Color:
 	match s:
@@ -75,6 +95,12 @@ static func colour_for(s: HudFrame.ReticleState) -> Color:
 func _draw() -> void:
 	var c := size * 0.5
 	var col := colour_for(state)
+
+	if target_acquired:
+		# Drawn before the reticle and in its own token, so that "there is a hull
+		# under the crosshair" is legible whatever the mount is doing — including
+		# in the state a player most needs it, an empty store over a live target.
+		_draw_target_bracket(c)
 
 	if state == HudFrame.ReticleState.NO_EFFECTOR:
 		# A dot and nothing else. An Assembly with no Effector Module has nothing
@@ -100,6 +126,23 @@ func _draw() -> void:
 		# in greyscale.
 		var d := Vector2(s, s) * 0.7
 		draw_line(c - d, c + d, col, LINE_WIDTH_PX)
+
+
+## §14.3's target bracket. Four corner ticks in [constant UiTokens.ACCENT_PRIMARY]
+## — the one accent the reticle does not already use, so it cannot be read as any
+## of the five mount states.
+func _draw_target_bracket(c: Vector2) -> void:
+	var s := TARGET_BRACKET_SPREAD_PX
+	var l := TARGET_BRACKET_LENGTH_PX
+	for sx: int in [-1, 1] as Array[int]:
+		for sy: int in [-1, 1] as Array[int]:
+			var corner := c + Vector2(sx * s, sy * s)
+			draw_line(
+				corner, corner - Vector2(sx * l, 0.0), UiTokens.ACCENT_PRIMARY, LINE_WIDTH_PX
+			)
+			draw_line(
+				corner, corner - Vector2(0.0, sy * l), UiTokens.ACCENT_PRIMARY, LINE_WIDTH_PX
+			)
 
 
 ## Wide brackets mean "no solution yet"; drawn-in brackets mean converged.

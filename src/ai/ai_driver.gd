@@ -109,6 +109,32 @@ const APPROACH_BREAKAWAY_SPEED_MPS: float = 3.0
 ## on a slope.
 const APPROACH_BREAKAWAY_THROTTLE: float = 0.80
 
+## §15.7.5. Extra stand-off, in metres, for each friendly Assembly already closer
+## to this driver's target than this driver is.
+##
+## Three opponents converging on one target at a six-metre stand-off end up in a
+## heap, firing through each other: nothing in [code]src/combat/[/code] knows what
+## a team is, so a round that clips a friend on the way past does full damage, and
+## at least one of them dies to another before the player fires a shot. Not
+## obviously wrong as a rule — friendly fire is doc 08's question and a larger one
+## — but plainly wrong as a spectacle.
+##
+## The ladder is what fixes the geometry rather than the rule. Each driver counts
+## only the friends [i]nearer[/i] the target than itself, so the set is a strict
+## ordering by range and the demands are consistent: the nearest holds at the base
+## stand-off, the second at one step out, the third at two. Nobody negotiates,
+## nothing is shared, and the arrangement is stable because a driver that
+## overtakes its neighbour inherits the shorter stand-off in the same swap that
+## gives the neighbour the longer one.
+##
+## One step is a little over an Assembly's own length, which is the smallest
+## spacing at which a hull is not between a friend and the target.
+const ALLY_STAND_OFF_STEP_M: float = 4.5
+## Cap on the ladder, in steps. Past this the extra range costs more accuracy than
+## the spacing buys, and doc 07 §10 does not model a target being obscured, so a
+## driver held at sixty metres would be shooting at a hull it cannot resolve.
+const ALLY_STAND_OFF_MAX_STEPS: int = 3
+
 ## ===== WIRING ==========================================================
 ## Set before the node enters the tree. The match layer owns every one of these
 ## and hands them over; nothing here resolves a node by path or searches the tree.
@@ -138,8 +164,9 @@ var roster: Dictionary = {}
 ## exactly; 0.0 misses by 2.4 m at a hundred metres. It is an aim-point offset
 ## and never a damage or rate-of-fire multiplier.
 var difficulty: float = 0.75
-## Range this driver stops closing at, in metres. Negative means "take the
-## family's default at [method _enter_tree]"; set it before then to override.
+## Range this driver stops closing at, in metres, before §15.7.5's ladder. Negative
+## means "take the family's default at [method _enter_tree]"; set it before then
+## to override.
 var stand_off_m: float = -1.0
 ## §7.6's aid authority, carried onto the record exactly as [ControlSystem]
 ## carries it. A bot drives with the aids a player has, no more and no fewer.
@@ -169,6 +196,10 @@ var _family: int = PartEnums.LocomotionMode.GROUND
 ## Whether this tick's drive demand was an approach rather than station-keeping.
 ## §15.7.4's trigger reads it: an [AiDriver] closes with its guns cold.
 var _closing: bool = false
+## §15.7.5's laddered stand-off, resolved once per scan. Per scan rather than per
+## tick because it is a function of where everybody is, which §10.1 samples on the
+## scan interval and this class may not go behind.
+var _stand_off_now_m: float = 0.0
 
 
 func _enter_tree() -> void:
@@ -180,6 +211,9 @@ func _enter_tree() -> void:
 	_family = _resolve_family()
 	if stand_off_m < 0.0:
 		stand_off_m = default_stand_off_m(_family)
+	# Until the first scan there is no candidate list to count friends in, and a
+	# driver spawned inside its own stand-off must not spend that interval closing.
+	_stand_off_now_m = stand_off_m
 	# Invariant I-9. Two drivers must not miss in lockstep, and the same match
 	# must replay identically.
 	_rng.seed = runtime.assembly_id
@@ -244,6 +278,12 @@ func idle() -> void:
 ## The id this driver is currently shooting at, or 0. Diagnostics and tests.
 func target_id() -> int:
 	return _target_id
+
+
+## §15.7.5's laddered stand-off as of the last scan, in metres. Diagnostics and
+## tests; [member stand_off_m] is the base it was derived from.
+func stand_off_now_m() -> float:
+	return _stand_off_now_m
 
 
 ## The context as of the last scan. Diagnostics and tests; a caller that mutates
@@ -315,6 +355,33 @@ static func default_stand_off_m(family: int) -> float:
 	return GROUND_STAND_OFF_M
 
 
+## §15.7.5's ladder: [param base_m] pushed out one step per friend already closer
+## to the target, capped at [constant ALLY_STAND_OFF_MAX_STEPS].
+static func laddered_stand_off_m(base_m: float, closer_allies: int) -> float:
+	var steps := clampi(closer_allies, 0, ALLY_STAND_OFF_MAX_STEPS)
+	return base_m + float(steps) * ALLY_STAND_OFF_STEP_M
+
+
+## How many Assemblies on [param context]'s own side are nearer [param target]
+## than [param context] is.
+##
+## Counted off the scan's candidate list rather than off the registry, so it costs
+## nothing per tick and reads only what §10.1 already sampled. Ties are not broken
+## — two friends at exactly equal range both count as not-closer, which puts them
+## on the same rung and is the correct answer for two Assemblies abreast.
+static func closer_allies(context: AiContext, target: AiContext.TargetHandle) -> int:
+	if context == null or target == null:
+		return 0
+	var own := context.position.distance_squared_to(target.position)
+	var count := 0
+	for handle: AiContext.TargetHandle in context.visible_assemblies:
+		if handle.team != context.team or handle.id == target.id:
+			continue
+		if handle.position.distance_squared_to(target.position) < own:
+			count += 1
+	return count
+
+
 ## ===== PRIVATE =========================================================
 
 
@@ -342,7 +409,7 @@ func _drive_toward(aim: Vector3) -> void:
 		return
 
 	var bearing := bearing_to(body.global_transform.basis, offset)
-	var closing := offset.length() > stand_off_m
+	var closing := offset.length() > _stand_off_now_m
 	_closing = closing
 	if _family == PartEnums.LocomotionMode.AMBULATORY:
 		# An ambulatory Assembly walks in the direction §13.5's placement law is
@@ -378,11 +445,15 @@ func _scan() -> void:
 	if choice == null:
 		_target_id = 0
 		_aim_error = Vector3.ZERO
+		_stand_off_now_m = stand_off_m
 		return
 	_target_id = choice.id
 	_aim_error = AiTargetSelector.difficulty_error(
 		choice.position.distance_to(_context.position), difficulty, _rng
 	)
+	# §15.7.5. Recomputed here rather than per tick: it is a function of where
+	# every Assembly is, and the candidate list is sampled on this interval.
+	_stand_off_now_m = laddered_stand_off_m(stand_off_m, closer_allies(_context, choice))
 
 
 ## Writes this tick's aim point into [member _target_point], resolved fresh from

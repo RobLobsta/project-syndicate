@@ -132,6 +132,8 @@ var projectiles: ProjectileSystem = null
 var resolver: DamageResolver = null
 var camera: ChaseCamera = null
 var hud: MatchHud = null
+## Doc 11 §16. Counts the teams out and says once that the match is over.
+var match_state: MatchState = null
 
 var _detachment: DetachmentScheduler = null
 var _mass: MassRecomputeScheduler = null
@@ -144,6 +146,12 @@ var _player: AssemblyRuntime = null
 var _player_guns: EffectorSystem = null
 var _player_power: PowerSystem = null
 var _controls: ControlSystem = null
+## The player's record. Held here as well as on [member _controls] because §16.2
+## takes the controls off the Assembly when the match ends and the HUD still has
+## to read what the last tick demanded.
+var _player_input: ControlInput = null
+## Doc 11 §16.2. Set once, in [method _on_match_concluded].
+var _concluded: bool = false
 var _gun_slot: int = SyndicateConstants.INVALID_SLOT
 var _round_id: int = 0
 
@@ -167,6 +175,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_ground()
 	_build_systems()
+	_build_match_state()
 
 	# Collision has to exist before anything is dropped onto it. The streamer
 	# normally anchors on the Assemblies, so the first evaluation is seeded with
@@ -344,6 +353,17 @@ func _build_systems() -> void:
 	add_child(projectiles)
 
 
+## Doc 11 §16.1. Built before the spawns, because every spawn registers with it
+## and an Assembly that reached the arena unregistered is one whose destruction
+## cannot end the match.
+func _build_match_state() -> void:
+	match_state = MatchState.new()
+	match_state.name = "MatchState"
+	match_state.local_team = PLAYER_TEAM
+	match_state.match_concluded.connect(_on_match_concluded)
+	add_child(match_state)
+
+
 func _build_camera() -> void:
 	camera = ChaseCamera.new()
 	camera.name = "ChaseCamera"
@@ -371,6 +391,7 @@ func _spawn(
 	var assembly_id := _next_assembly_id
 	_next_assembly_id += 1
 	_roster[assembly_id] = team
+	match_state.register(assembly_id, team)
 
 	var ctx := BuildContext.with_physics(assembly_id)
 	_contexts.append(ctx)
@@ -434,6 +455,7 @@ func _spawn(
 		_player_guns = guns
 		_player_power = motion.power
 		_gun_slot = gun_slot
+		_player_input = motion.input
 		_controls = ControlSystem.new()
 		# Must be set before it enters the tree: a ControlSystem with no record
 		# samples the input map sixty times a second and discards all of it.
@@ -510,11 +532,12 @@ static func _place(
 func _on_tick_started(tick: int) -> void:
 	if _player == null or not is_instance_valid(_player):
 		return
-	if camera != null and _player_guns != null:
+	if camera != null and _player_guns != null and not _concluded:
 		_player_guns.aim_point_world = camera.aim_point()
 		_player_guns.set_trigger(0, Input.is_action_pressed(&"effector_fire_primary"))
+	_frame.target_acquired = camera != null and camera.aim_on_hull() and not _concluded
 
-	var input := _controls.input
+	var input := _player_input
 	_frame.tick = tick
 	_frame.speed_mps = _player.body.linear_velocity.length()
 	_frame.throttle = input.throttle
@@ -555,6 +578,51 @@ func _reticle_state() -> HudFrame.ReticleState:
 	if not ammo.has_rounds(_player.assembly_id, _round_id):
 		return HudFrame.ReticleState.NO_AMMO
 	return HudFrame.ReticleState.ON_TARGET
+
+
+## ===== THE END OF THE MATCH ============================================
+
+
+## Doc 11 §16.2. The one thing that happens when a side is gone.
+##
+## Three effects and each one answers something a player would otherwise read as
+## a fault. The controls come off the Assembly, because a [ControlSystem] left
+## sampling the input map writes a throttle demand into a wreck sixty times a
+## second and a build that still has its Motive Assemblies drives itself off into
+## the terrain with nobody at the controls. The camera goes to
+## [constant ChaseCamera.Mode.ORBIT], because §13.3's chase mode chases a heading
+## that no longer changes and the last thing a player sees should be something
+## they chose to look at. And the card says so.
+##
+## [b]The mouse stays captured.[/b] Releasing it here was the obvious courtesy
+## and it is the wrong one: §13.6 reads mouse motion for the look, so a released
+## mouse is an orbit camera that cannot orbit. The card names the binding that
+## releases it, which is the same answer §14.6 gives for every other control
+## nobody can guess.
+func _on_match_concluded(outcome: int, _winning_team: int) -> void:
+	_concluded = true
+	if _player_guns != null:
+		_player_guns.set_trigger(0, false)
+	if _controls != null:
+		# Removed before it is freed. The node disconnects from the clock in
+		# `_exit_tree`, and `queue_free` alone would leave it sampling for the rest
+		# of the frame — LEARNED_FACTS.md §1 fact 53's ordering, for a different reason.
+		_controls.get_parent().remove_child(_controls)
+		_controls.queue_free()
+		_controls = null
+	if _player_input != null:
+		_player_input.throttle = 0.0
+		_player_input.steer = 0.0
+		_player_input.brake = 0.0
+		_player_input.collective = 0.0
+		_player_input.cyclic = Vector2.ZERO
+		_player_input.yaw = 0.0
+	if camera != null and camera.mode == ChaseCamera.Mode.CHASE:
+		# Through the toggle, so the picture does not cut: §13.3 rebases the look
+		# offset across the switch and assigning the mode directly would not.
+		camera.toggle_mode()
+	if hud != null:
+		hud.present_outcome(outcome)
 
 
 ## ===== CONDITION =======================================================

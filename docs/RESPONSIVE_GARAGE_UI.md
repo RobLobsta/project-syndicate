@@ -1,7 +1,7 @@
 # RESPONSIVE_GARAGE_UI.md
 
 **Project Syndicate — System Architecture Specification, Document 11 of 13**
-**Subsystem:** Player-Facing Presentation — Garage Interface, Match Camera, Match HUD, Boot Flow
+**Subsystem:** Player-Facing Presentation — Garage Interface, Match Camera, Match HUD, Boot Flow, Match Outcome
 **Status:** Normative.
 
 ---
@@ -1060,6 +1060,36 @@ tell the player to do nothing in the case where they must do something.
 that reuse is deliberate: in the garage it means "this will work", and it means
 the same thing here.
 
+**The five states describe the mount, and a player reads them as describing the
+world.** `ON_TARGET` means the mount has a firing solution on wherever §13.8's
+aim ray landed — which over empty ground it correctly does, and which a player
+reads as "enemy acquired". Every playtest since the reticle landed recorded the
+same complaint, and it was recorded as a reticle defect for three sessions. It is
+not one: the state is right and the question the player is asking is a different
+one.
+
+So the answer is a **sixth quantity rather than a sixth state**. `HudFrame`
+carries `target_acquired`, set when the aim ray ended on
+`LAYER_ASSEMBLY_HULL` rather than on ground, on a Static Volume, or on nothing,
+and the reticle draws four corner ticks outside the brackets in `accent_primary`
+— the one accent the five states do not use, so it can never be mistaken for any
+of them.
+
+| Quantity | Answers | Drawn as |
+|---|---|---|
+| `reticle_state` | can this mount take the shot? | the brackets, in the state's token |
+| `target_acquired` | is there a hull under the crosshair? | corner ticks outside them, in `accent_primary` |
+
+The two are independent and both are needed at once. The combination that makes
+the case: `NO_AMMO` over a live target is a player who must break off, and
+`ON_TARGET` over bare hillside is a player who must keep looking.
+
+The camera is the sole producer, because it already casts the ray: `aim_point()`
+records whether the body it struck presents on the hull layer and
+`aim_on_hull()` answers with it. Asking again would be a second query per tick
+for a fact the first one already had, and asking the registry instead would give
+the camera a roster, which §13 exists to keep it away from.
+
 ### 14.4 Damage feedback
 
 Two mechanisms, both driven by signals rather than by a frame field.
@@ -1090,6 +1120,60 @@ that guessed would be worse than none.
 3. The HUD uses the §8 theme and §8.3 tokens, and never a literal colour.
 4. Every reticle state is distinguishable without colour.
 5. All strings are `tr()` keys.
+6. The HUD declares exactly one per-frame callback, and every dwell, fade and
+   decay in this section is aged from it. A second timer on a second node is a
+   second answer to how long a message stays up.
+
+### 14.6 The control card
+
+**A player had no way to learn the controls.** No prompts, no pause menu, no
+settings screen. `C` for the camera toggle is not guessable and `Escape`
+releasing the mouse is not discoverable, and a player who finds neither plays a
+materially worse game than the one that was built — with a camera stuck behind
+the hull and a mouse they cannot get back.
+
+`ControlCard` is a centred panel raised on entry to a match, listing one row per
+control that a first-time player needs and cannot infer:
+
+| Row | Action(s) |
+|---|---|
+| Drive / brake | `veh_throttle`, `veh_brake` |
+| Steer | `veh_steer_left`, `veh_steer_right` |
+| Aim | — (mouse motion; §13.6 says why there is no action) |
+| Fire | `effector_fire_primary` |
+| Camera view | `cam_toggle_view` |
+| Zoom | `cam_zoom_in`, `cam_zoom_out` |
+| Release mouse | `build_cancel` |
+
+**Every binding on it is read from `InputMap`, never from §7.1's table.** §7.1 is
+the *default* binding; CLAUDE.md §7.3 rule 3 stores rebinds in
+`SyndicateSettings` and applies them through `InputMap` at startup. A card built
+from a hard-coded list would be wrong for every player who has rebound anything,
+and wrong silently, which is the worst way for a control hint to fail.
+`InputPrompt` is the one place that conversion happens.
+
+`InputPrompt` picks the event that matches the active `InputMethod` (§7.2), so a
+player holding a controller is shown buttons and a player on a keyboard is shown
+keys, and falls back to the first bound event for an action bound to only one
+device. Glyph names come from the engine — `OS.get_keycode_string` on the
+**physical** keycode, and `InputEvent.as_text()` for a joypad button — rather than
+from the string table, because a keyboard layout is not a translation: a French
+player pressing the key §7.1 calls `W` wants to read `Z`, which no `tr()` key
+could know. The captions beside them are localised in the ordinary way.
+
+**Timing.** The card stays up for `DWELL_S = 11.0` seconds and fades out over the
+last `FADE_S = 0.35`, which is §9.2's toast fade so that everything in this
+interface that goes away goes away at the same speed. Eleven seconds is long
+enough to read seven rows unhurried and short enough to be gone before the
+opponents arrive — they close in about fifteen. `hud_toggle_stats` raises it
+again at any time, and that is the first consumer that action has ever had: in a
+match the card *is* the HUD's expanded panel, because there is no separate stat
+panel to expand.
+
+It is raised unconditionally rather than on a first-run flag, because there is
+nowhere yet to store "they have seen it". A card that goes away by itself costs a
+returning player eleven seconds of translucent panel; a card nobody ever sees
+costs a new player the whole game.
 
 ---
 
@@ -1144,3 +1228,130 @@ It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and
 that is precisely why §14.1's rule can be enforced everywhere else: there is one
 place where the two worlds meet, and it is a class whose entire job is to be that
 place.
+
+---
+
+## 16. The End of a Match
+
+### 16.1 What decides it
+
+`EventBus.assembly_terminated` had a producer from session 16 and **no consumer
+at all** until session 25. That was a tidy architectural gap while nothing could
+kill the player. Once `src/ai/` landed, the opponents killed them every time
+inside a minute, and the match carried on with a camera bolted to a corpse — the
+most obviously unfinished thing a player could reach, and they reached it every
+time.
+
+`MatchState` (`src/world/match/match_state.gd`) is the consumer doc 04 §8.2 names
+first. It holds the roster the match layer already owns, counts a team out when
+its last Assembly loses its Core Module (Invariant I-2), and emits
+`match_concluded(outcome, winning_team)` once.
+
+The whole rule is one static over a list of standing teams:
+
+```gdscript
+static func resolve_outcome(standing: PackedInt32Array, local_team: int) -> int:
+    if standing.size() >= 2:
+        return Outcome.UNDECIDED
+    if standing.is_empty():
+        return Outcome.DRAW
+    return Outcome.VICTORY if standing[0] == local_team else Outcome.DEFEAT
+```
+
+| Standing teams | Outcome |
+|---|---|
+| two or more | `UNDECIDED` |
+| exactly one, the local team | `VICTORY` |
+| exactly one, somebody else | `DEFEAT` |
+| none | `DRAW` |
+
+A static over the list rather than a method over the roster, because a rule
+reachable only through a signal is a rule that can only be tested by staging a
+death — and two of the four rows, the draw and the one-team match, are states
+nothing in an arena can currently produce.
+
+Three properties are load-bearing:
+
+- **The list is sorted.** Invariant I-9: it is the sole argument to the rule, and
+  an answer that depended on which team happened to spawn first is one a server
+  and a client can disagree about.
+- **An unregistered Assembly cannot end a match.** Same discipline `AiContext`
+  applies to a candidate whose side nobody stated: a team inferred from silence
+  is a team that decides a match by accident.
+- **A match concludes once.** Two Assemblies destroyed on the same tick raise two
+  signals, and a second conclusion would put a second end card over the first.
+- **An Assembly is counted out once.** Doc 04 §8.2 makes `DamageResolver` the
+  only producer and it emits once per Assembly, so this guards a contract rather
+  than a known bug — but the failure it prevents is silent and total. Written
+  without it, a repeated termination takes a live team's count to zero and ends
+  the match against a side that is still standing; `test_match_conclusion`
+  planted exactly that and caught it on the first run, which is why the guard is
+  a set of counted-out ids rather than a floor on the count.
+
+**The signal is on `MatchState`, not on `EventBus`.** Doc 04 §8's list is the
+project's cross-system contract and every addition to it permanently widens what
+any class may listen to. This has one producer and one consumer, both inside the
+match layer, and the `MatchScreen` that owns the object is the only thing that
+ever connects.
+
+`MatchState` declares no `_process` and no `_physics_process`. A match nobody
+dies in costs it nothing at all.
+
+### 16.2 What it does
+
+Three effects, and each one answers something a player would otherwise read as a
+fault.
+
+1. **The controls come off the Assembly.** `MatchScreen` removes the
+   `ControlSystem` and centres the record. A control system left sampling the
+   input map writes a throttle demand into a wreck sixty times a second, and a
+   build that still has its Motive Assemblies then drives itself off into the
+   terrain with nobody at the controls.
+2. **The camera goes to `ORBIT`** (§13.3), through `toggle_mode()` so that the
+   picture does not cut. §13.4's chase heading no longer changes, and the last
+   thing a player sees should be something they chose to look at rather than the
+   back of a hulk.
+3. **`MatchEndCard` is raised**, fading up over `FADE_IN_S = 0.9` s: a title, one
+   line of detail, and the bindings that orbit the camera and release the mouse.
+
+| Outcome | Title | Token |
+|---|---|---|
+| `VICTORY` | LAST ONE STANDING | `accent_secondary` |
+| `DEFEAT` | CORE MODULE DESTROYED | `danger` |
+| `DRAW` | NOTHING LEFT STANDING | `warn` |
+
+§10 rule 5 is satisfied by the words — three different sentences — so the token
+is emphasis and never the only carrier.
+
+**The mouse stays captured.** Releasing it was the obvious courtesy and it is the
+wrong one: §13.6 reads mouse motion for the look, so a released mouse is an orbit
+camera that cannot orbit. The card names the binding that releases it, which is
+the same answer §14.6 gives for every other control nobody can guess.
+
+**Nothing despawns.** This is a decision, not a deferral. An Assembly that
+vanished when its Core Module went would take with it the debris, the craters and
+the hulk that are the entire visible record of the fight, and the camera would
+then be orbiting an empty basin.
+
+**It does not follow that the wreck holds still, and the card must not say it
+does.** `MotiveSystem.step` has no liveness guard: a build whose Core Module has
+gone keeps solving suspension and traction against contacts it no longer has the
+mass to load, and the capture that first showed this end card also showed the
+remains going from 17 m/s at the moment of the conclusion to **92 m/s** fifty
+frames later. The detail line was written as "the wreck stays where it fell" and
+was wrong within a second of appearing. It now says only that nothing despawns,
+which is true. The behaviour itself is `HANDOFF.md` §3's, and it wants a
+measurement rather than a guess — doc 05 deliberately keeps the coupling torque
+running on a wreck (§3.4), and whether the *families* should keep running is a
+different question that section does not answer.
+
+### 16.3 What is deliberately not here
+
+- **No respawn and no restart.** Both need a screen flow §15 does not have — there
+  is one scene and no way back to it — and inventing one here would be worse than
+  the gap. `SpawnDirector` is named in CLAUDE.md §2 and is unwritten.
+- **No scoring.** `killer_id` arrives on the signal and this section does not read
+  it. A scoreboard is the third consumer doc 04 §8.2 names and is a section of its
+  own when there is a second match to compare.
+- **No pause.** The simulation runs on after the conclusion, which is what lets
+  the debris settle and the ground finish deforming while the card fades up.

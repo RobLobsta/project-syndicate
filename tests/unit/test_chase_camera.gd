@@ -170,3 +170,40 @@ func test_the_follow_distance_grows_with_the_assembly_and_then_stops() -> void:
 		minf(large, ChaseCamera.CHASE_DISTANCE_MAX_M) == ChaseCamera.CHASE_DISTANCE_MAX_M,
 		"and the ceiling binds before the build gets absurd"
 	)
+
+
+## ===== §13.8 WHAT THE AIM RAY STRUCK ===================================
+
+
+## §14.3's target bracket asks one question of the ray's collider and the whole
+## of the answer is a layer test. Asserted in both directions, because a
+## predicate that answered true for everything would light the bracket over open
+## ground — which is the exact confusion the bracket was added to remove.
+func test_only_a_body_on_the_hull_layer_reads_as_a_target() -> void:
+	var hull := StaticBody3D.new()
+	hull.collision_layer = CollisionLayers.LAYER_ASSEMBLY_HULL
+	var ground := StaticBody3D.new()
+	ground.collision_layer = CollisionLayers.LAYER_GROUND
+	var volume := StaticBody3D.new()
+	volume.collision_layer = CollisionLayers.LAYER_STATIC_VOLUME
+
+	check_true(ChaseCamera.is_hull(hull), "a chassis body is a target")
+	check_false(ChaseCamera.is_hull(ground), "streamed ground is not")
+	check_false(ChaseCamera.is_hull(volume), "a Static Volume section is not")
+	check_false(ChaseCamera.is_hull(null), "and a ray that hit nothing is not")
+
+	hull.free()
+	ground.free()
+	volume.free()
+
+
+## A body presenting on more than one layer still counts, which is what stops the
+## predicate being an equality test that happens to pass against the shipped
+## chassis body's single layer.
+func test_a_body_on_several_layers_still_reads_as_a_target() -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = (
+		CollisionLayers.LAYER_ASSEMBLY_HULL | CollisionLayers.LAYER_TRIGGER_VOLUME
+	)
+	check_true(ChaseCamera.is_hull(body), "the hull bit is tested, not the whole mask")
+	body.free()
