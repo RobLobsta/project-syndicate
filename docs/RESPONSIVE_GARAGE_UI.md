@@ -187,7 +187,7 @@ func _apply_tier(t: Breakpoint.Tier, initial: bool) -> void:
             _set_docked(true, 380.0, 380.0)
             catalogue_grid.columns = 4
             _set_toolbar_labels(true)
-    stat_dock.visible = t >= Breakpoint.Tier.EXPANDED
+    stat_dock.visible = t >= Breakpoint.Tier.MEDIUM      # amended; see below
     EventBus.ui_breakpoint_changed.emit(t)
     if not initial:
         CataloguePresenter.reflow()
@@ -268,6 +268,10 @@ Layout correctness comes almost entirely from disciplined size flags. The rules:
 | Cards in a `GridContainer` | `FILL | EXPAND` | `SHRINK_CENTER` |
 | Stat rows | `FILL | EXPAND` | `SHRINK_BEGIN` |
 | The 3D viewport container | `FILL | EXPAND` | `FILL | EXPAND` |
+
+> **Amendment — the snippet above disagreed with §3.2's table, and the table was right.** The table gives the medium tier a stat panel "docked below inspector"; the code hid it below `EXPANDED`. Hiding wins nothing: a 1366×768 window is the medium tier, it is the commonest window there is, and a player in one was shown a garage with no mass, no power and no rollover figure at all. Only the compact tier collapses them, and there they belong to the bottom sheet.
+>
+> **The column counts in §3.2 are also amended, to 1 / 1 / 2 / 3.** They are written for the icon-first `PartCard` of §5.3 — a rendered thumbnail with a short name under it. `PartIconCache` is not written, so the shipped card is text-first, and a text-first card in a 220-unit dock at two columns is 106 units wide: it showed "Compac" and "Medium" when it was first looked at. One fewer column per tier until the icon lands.
 
 `custom_minimum_size` is set only on docks and on `PartCard`. Everywhere else, minimum size is derived from content, so a longer localised string widens its row rather than being clipped.
 
@@ -396,6 +400,10 @@ func bind(def: PartDefinition) -> void:
 
 `PartIconCache` renders icons once into an atlas on first request, using a dedicated `SubViewport` with the part's proxy or final mesh, and persists the atlas to `user://icon_cache/`. Icons are never rendered per frame and never re-rendered across sessions unless the registry hash changes.
 
+> **Amendment — four of the bindings above name things that do not exist, and the shipped card does without them.** `PartIconCache`, `TierPalette`, `Inventory` and `PartTooltipBuilder` are unwritten, and three of them are systems rather than helpers: an icon cache is a `SubViewport` render and an atlas on disk, and an inventory is an entitlement model this project has not decided on. The shipped `PartCard` shows doc 13 §2.3's greybox class tint in place of the icon — the same colour the part is drawn in on the lattice beside it — writes the tier as the `T2` of its own part key, and composes its tooltip from the definition's localised description. Nothing is gated: every registered part is placeable.
+>
+> What §5 is actually about is untouched. The pool sized to the screen plus two rows of overscan, the windowed binding, the selection held on the *presenter* rather than on a card — all of it is implemented, because that is the part a later icon cache cannot retrofit. A garage built on "a card and a part are the same object" is a garage that has to be rewritten to get one.
+
 ---
 
 ## 6. Event-Driven Stat Panel
@@ -432,6 +440,10 @@ func _on_stats_ready(stats: AssemblyStats) -> void:
 ```
 
 `assembly_stats_ready` is emitted by a worker-thread stat solver that runs on structural change. The panel therefore updates once per edit, and the brief pending state is honest feedback rather than a stall.
+
+That solver is `AssemblyStatSolver` (`src/assembly/runtime/assembly_stat_solver.gd`). It follows `MassRecomputeScheduler`'s shape deliberately — dirty on the structural signals, capture and launch on `MatchClock.tick_started`, join on the next one — because two schedulers with different disciplines for the same job is how one of them ends up reading a half-written snapshot. It works from a `BuildContext` rather than from an `AssemblyRuntime`: the garage has no rigid body, no contacts and no world, and every figure this section asks for is derivable from the lattice. That is what lets the panel answer before the build has ever been driven.
+
+Two details worth stating. The panel dims on `part_attached` and `part_removed` as well as on `assembly_structure_changed`, because the latter is emitted by `DetachmentScheduler` when an island comes off — a match event — and the thing a player does in a garage is attach and remove parts. And `rollover_lateral_g` takes its half-track from the outermost Motive Assembly rather than from a convex hull of contacts: the widest point of a hull in x *is* the outermost of the points it was built from, so for this figure the two agree by construction and building the hull would be arithmetic with no consequence.
 
 ### 6.1 Meter Over-Budget Presentation
 
@@ -546,6 +558,8 @@ func _input(event: InputEvent) -> void:
 ```
 
 A player on a laptop who picks up a controller sees the interface switch to gamepad hints without changing the layout tier. A player who plugs a keyboard into a tablet gets the desktop interaction model on a compact layout. These are orthogonal axes and the code treats them that way.
+
+`InputMethod` also owns `set_mouse_mode` and `mouse_mode`. Every screen wants one — the garage a visible cursor, a match a captured one — and `Input.mouse_mode` is one of the `DisplayServer`-backed properties that is a hard *error* headless rather than a no-op. A screen that wrote it directly was a screen that could not be constructed in a test, because the suite wrapper fails a run on any engine error. The guard lives here because this class already needed it for its own use, and two owners of one branch is how one of them drifts.
 
 ### 7.3 Touch Placement Model
 
@@ -1179,55 +1193,85 @@ costs a new player the whole game.
 
 ## 15. Boot and Screen Flow
 
-### 15.1 The main scene
+### 15.1 The main scene and the shell
 
-`scenes/boot/main.tscn` is the project's `run/main_scene`. Its only job is to
-decide what to show and to instantiate it; it holds no gameplay state and
-survives no transition.
-
-```
-Main                            (Node, src/ui/boot/main_boot.gd)
-```
-
-On `_ready` it reads the command line and the build's feature tags:
+`scenes/boot/main.tscn` is the project's `run/main_scene`. Its only job is to decide, once, between a client and a server:
 
 | Condition | Loads |
 |---|---|
 | `OS.has_feature("dedicated_server")` or `--headless` | `scenes/net/dedicated_server.tscn` |
-| default | `scenes/match/arena_basin.tscn` |
+| default | a `ShellRoot` |
 
-A boot node rather than setting the arena as the main scene directly is what
-keeps a headless server from constructing a camera, a HUD, and a viewport it has
-no use for. `SubsystemGate` disables the *tags*; the boot branch is what stops
-the nodes being built at all, which is the distinction doc 12 §9.2 draws between
-gating a subsystem and never instantiating it.
+A boot node rather than a screen as the main scene directly is what keeps a headless server from constructing a camera, a HUD, and a viewport it has no use for. `SubsystemGate` disables the *tags*; the boot branch is what stops the nodes being built at all, which is the distinction doc 12 §9.2 draws between gating a subsystem and never instantiating one.
 
-### 15.2 Why the arena is a scene and not a fixture
+`ShellRoot` (`src/ui/boot/shell_root.gd`) owns everything after that decision.
 
-`tests/combat_arena.gd` builds a whole engagement and has been the reference for
-the wiring since session 14. It is not the match scene and must not become one:
-it is a `RefCounted` that drives the loop with `await physics_frame`, spawns
-nothing a player can see, and carries a test pilot in place of `src/ai/`.
+```
+Main                  (Node,  src/ui/boot/main_boot.gd)
+└── ShellRoot         (Node,  src/ui/boot/shell_root.gd)
+    └── one of        MainMenu | GarageScreen | MatchScreen
+```
 
-The match scene shares its *wiring* — the system set, the construction order, the
-per-Assembly registration — and replaces its *driver*. Where the arena calls
-`command()` on every combatant, the match scene has one Assembly with a
-`ControlSystem` on it and the rest still on the arena's pilot until `src/ai/`
-exists. Where the arena counts ticks to a verdict, the match scene draws.
+**Exactly one screen exists at a time**, and the shell retires the outgoing one before building the incoming one. That is a rule about physics-server RIDs rather than about tidy code: an RID is not reference counted, and a garage opened and closed a hundred times without a `dispose()` leaks a hundred spaces that go on stepping for the life of the process. Every screen here is written to be retired — the garage disposes its `BuildContext`, the match disposes its four and joins its schedulers — and `_present` is what guarantees the ordering:
+
+```gdscript
+func _present(screen: Screen, node: Node) -> void:
+    if _current != null and is_instance_valid(_current):
+        remove_child(_current)      # runs _exit_tree: joins tasks, disposes contexts
+        _current.queue_free()       # released at the end of the frame
+    _current = node
+    _screen = screen
+    add_child(node)
+```
+
+Both halves were paid for. **Remove before releasing**, because a screen may hold a node with a `WorkerThreadPool` task in flight and `Object.free` on one of those is *refused* — the node survives, still connected to the bus, still holding every space it built. **Release deferred**, because every transition is raised by the screen being left — a button in the garage, a key on the end card — so the call arrives inside a signal the outgoing screen is still emitting, and freeing it there tears down the object whose method is running. The removal is what makes deferral safe rather than merely later: a node out of the tree can do nothing further whether it has been deleted yet or not.
+
+**Not `change_scene_to_file`.** The engine's scene switch frees the old scene on its own schedule at the end of the frame, and the ordering that matters here is the opposite one: a match's Assemblies and the garage's build proxies are on the physics server, and a new screen constructed before the old one has released its RIDs is two builds in one space.
+
+### 15.2 The flow, and the one thing that survives it
+
+```
+MainMenu ──ENTER THE GARAGE──▸ GarageScreen ──TEST DRIVE──▸ MatchScreen
+    ◂────────MENU──────────────────┘                            │
+                       ▲                                        │
+                       └──────────Escape (after the end)────────┤
+                                                                │
+                       MatchScreen ◂───Enter (after the end)────┘
+```
+
+**The blueprint is the only state that crosses a transition.** Everything else about a screen dies with it. The shell holds one `Blueprint` for the session; the garage is given a copy to edit, and a *test drive* is what promotes the garage's copy to the session's build. A player who tries something, dislikes it and leaves through the menu comes back to what they last drove, which is what makes experimenting safe.
+
+Every crossing rebuilds through `PlacementValidator` (doc 02 §9.4). That is the point rather than an inefficiency: this is the path a build will take from a client to a server.
+
+### 15.3 The main menu
+
+`MainMenu` (`src/ui/boot/main_menu.gd`) is a title, one line of what the game is, and two buttons. It holds no game state and survives no transition.
+
+The garage is the only way into a match, deliberately. A player dropped straight into a fight does not know the game has a build screen, and the build screen is the game.
+
+### 15.4 The garage screen
+
+`GarageScreen` (`src/ui/garage/garage_screen.gd`) owns the `BuildContext` the session edits, composes §4's container tree, and turns a pointer into a placement through §6's chain. `GaragePreview` is the 3D half: the Build Lattice, the Assembly on it, the orbit camera and the ghost. The split is that the screen decides and the preview draws — doc 02 §12 invariant 1 gives exactly one chain the right to accept a placement, and the preview is not it.
+
+Presentation inside the garage follows the same rule as everywhere else: a commit emits `EventBus.part_attached` and the preview draws in response, so a part cannot be committed without appearing and cannot appear without being committed.
+
+Three things the garage consumes that nothing did before: `cam_orbit` and `cam_zoom_*` (§7.1 always intended them here — the match camera took analogue `cam_look_*` actions instead), `build_place` / `build_remove` / `build_rotate_yaw`, and `EventBus.assembly_stats_ready`, whose producer is §6's `AssemblyStatSolver`.
+
+### 15.5 The match screen
+
+`MatchScreen` (`src/ui/match/match_screen.gd`) owns the composition and nothing else. It constructs the shared systems in doc 12's order, rebuilds the player's blueprint, spawns the opponents, attaches the camera to the local Assembly, fills the `HudFrame` once per tick from `MatchClock.tick_started`, and tears everything down on exit.
+
+It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and that is precisely why §14.1's rule can be enforced everywhere else: there is one place where the two worlds meet, and it is a class whose entire job is to be that place.
+
+The opponents are spawned from the shipped starter rather than from the player's build. A test run against three copies of whatever the player just made is a different game every time and is not a measurement of anything; doc 06's generator is what eventually varies them.
+
+### 15.6 Why the arena is a scene and not a fixture
+
+`tests/combat_arena.gd` builds a whole engagement and has been the reference for the wiring since session 14. It is not the match scene and must not become one: it is a `RefCounted` that drives the loop with `await physics_frame`, spawns nothing a player can see, and carries a test pilot in place of `src/ai/`.
+
+The match scene shares its *wiring* — the system set, the construction order, the per-Assembly registration — and replaces its *driver*. Where the arena counts ticks to a verdict, the match scene draws.
 
 Keeping both is the point. The fixture asserts; the scene is played.
-
-### 15.3 The match screen
-
-`MatchScreen` (`src/ui/match/match_screen.gd`) owns the composition and nothing
-else. It constructs the shared systems in doc 12's order, spawns the Assemblies,
-attaches the camera to the local one, fills the `HudFrame` once per tick from
-`MatchClock.tick_started`, and tears everything down on exit.
-
-It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and
-that is precisely why §14.1's rule can be enforced everywhere else: there is one
-place where the two worlds meet, and it is a class whose entire job is to be that
-place.
 
 ---
 
@@ -1312,7 +1356,11 @@ fault.
    thing a player sees should be something they chose to look at rather than the
    back of a hulk.
 3. **`MatchEndCard` is raised**, fading up over `FADE_IN_S = 0.9` s: a title, one
-   line of detail, and the bindings that orbit the camera and release the mouse.
+   line of detail, the binding that changes the view, and — as the last line and
+   the largest — **the two ways out**. `ui_accept` fights the same build again;
+   `build_cancel` returns to the garage. Those are the answer to the question a
+   player has at that moment, and until §15 had a screen to leave to there was no
+   answer to give.
 
 | Outcome | Title | Token |
 |---|---|---|
@@ -1323,35 +1371,50 @@ fault.
 §10 rule 5 is satisfied by the words — three different sentences — so the token
 is emphasis and never the only carrier.
 
-**The mouse stays captured.** Releasing it was the obvious courtesy and it is the
-wrong one: §13.6 reads mouse motion for the look, so a released mouse is an orbit
-camera that cannot orbit. The card names the binding that releases it, which is
-the same answer §14.6 gives for every other control nobody can guess.
+**The mouse stays captured**, and that is what makes both exits keys. Releasing
+it was the obvious courtesy and it is the wrong one: §13.6 reads mouse motion for
+the look, so a released mouse is an orbit camera that cannot orbit. The card
+names the bindings instead, which is the same answer §14.6 gives for every other
+control nobody can guess.
+
+**`build_cancel` therefore means two things, and which one is decided by whether
+the match is over.** During the match it releases the mouse, because a captured
+mouse with no way out is the oldest bad manner a 3D game has. After the
+conclusion it leaves for the garage — where the mouse is released anyway, so the
+first meaning has nothing left to do.
 
 **Nothing despawns.** This is a decision, not a deferral. An Assembly that
 vanished when its Core Module went would take with it the debris, the craters and
 the hulk that are the entire visible record of the fight, and the camera would
 then be orbiting an empty basin.
 
-**It does not follow that the wreck holds still, and the card must not say it
-does.** `MotiveSystem.step` has no liveness guard: a build whose Core Module has
-gone keeps solving suspension and traction against contacts it no longer has the
-mass to load, and the capture that first showed this end card also showed the
-remains going from 17 m/s at the moment of the conclusion to **92 m/s** fifty
-frames later. The detail line was written as "the wreck stays where it fell" and
-was wrong within a second of appearing. It now says only that nothing despawns,
-which is true. The behaviour itself is `HANDOFF.md` §3's, and it wants a
-measurement rather than a guess — doc 05 deliberately keeps the coupling torque
-running on a wreck (§3.4), and whether the *families* should keep running is a
-different question that section does not answer.
+**The wreck holds still, and it did not always.** `MotiveSystem.step` had no
+liveness guard: a build whose Core Module had gone kept solving suspension and
+traction against contacts it no longer had the mass to load, and the capture that
+first showed this end card also showed the remains going from 17 m/s at the
+moment of the conclusion to **92 m/s** fifty frames later. The detail line was
+written as "the wreck stays where it fell" and was wrong within a second of
+appearing; it was cut back to "nothing despawns", which was true either way. Doc
+05 §3.6 is the rule that closed it, and the sentence would now be true again.
 
 ### 16.3 What is deliberately not here
 
-- **No respawn and no restart.** Both need a screen flow §15 does not have — there
-  is one scene and no way back to it — and inventing one here would be worse than
-  the gap. `SpawnDirector` is named in CLAUDE.md §2 and is unwritten.
+- **No respawn.** Losing the Core Module ends the Assembly (Invariant I-2) and
+  the match with it; a player who wants another one goes round §15.2's loop.
+  `SpawnDirector` is named in `CLAUDE.md` §2 and is unwritten.
 - **No scoring.** `killer_id` arrives on the signal and this section does not read
-  it. A scoreboard is the third consumer doc 04 §8.2 names and is a section of its
-  own when there is a second match to compare.
+  it. A scoreboard is the third consumer doc 04 §8.2 names, and it is a section of
+  its own now that there *is* a second match to compare against.
 - **No pause.** The simulation runs on after the conclusion, which is what lets
   the debris settle and the ground finish deforming while the card fades up.
+
+**The restart is no longer on this list.** It was, and the reason given was that
+it needed a screen flow §15 did not have — one scene, and no way back to it.
+§15.1's shell is that flow, and both exits above go through it.
+
+**The wreck no longer accelerates either.** This section used to record, as an
+open defect, that `MotiveSystem.step` had no liveness guard and that the remains
+went from 17.3 m/s at the conclusion to 92.0 m/s fifty frames later. Doc 05 §3.6
+is the rule that closed it: the motion layer stops when slot 0 does. What §16.2
+says is still exactly what it said — nothing despawns — and it is now true of a
+hulk that stays where it fell rather than of one crossing the basin.

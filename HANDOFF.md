@@ -48,14 +48,19 @@ thirteen documents in `/docs/`, named just before it.
 
 ## Where this stands
 
-**It is a game with a beginning and an end, and no second one.** `godot --path .`
-opens on a basin with 15 m of relief, tells you which keys do what, and puts
-three opponents on you. They shoot you to pieces in about a minute, a card says
-so, and the camera lets go of the wreck. The fighting works and is still the best
-thing in the project. What it now lacks is the thing immediately after the
-ending: **there is no way to play again except to relaunch.**
+**It is a game with a loop.** `godot --path .` opens on a menu. The menu opens a
+garage, where a wheeled Assembly is standing on the Build Lattice with a
+catalogue of thirteen parts beside it and its mass, power, mounts, top speed,
+integrity and rollover threshold on the right. TEST DRIVE puts that build — the
+one on the screen, whatever the player has done to it — into a basin with 15 m of
+relief against three opponents. They fight. A card says which way it went and
+names the two keys that fight again or go back to the garage.
 
-**76 files, 5258 checks, 0 failures.**
+**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
+no undo, and a garage in which nothing tells a player what a part *does* until
+they have driven it.
+
+**82 files, 5496 checks, 0 failures.**
 
 ---
 
@@ -88,15 +93,24 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**76 files, 5258 checks, 0 failures.**
+**82 files, 5496 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
-on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34).
+on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
+nothing in `src/` may `push_error` on a state a test deliberately exercises — a
+blueprint naming an unknown part warns instead.
 
-**A full run is about 95 seconds** — 14 s of reimport and 78 s of suite. Two
-files are most of it: `integration/test_ground_deform.gd` at 30 s and
-`physics/test_ground_terrain.gd` at 27 s. The runner prints per-file timings, so
-check before assuming where the cost is.
+**A full run is about 170 seconds** — 14 s of reimport and the rest suite. Three
+files are most of it: `physics/test_ground_terrain.gd` at 41 s,
+`integration/test_screen_flow.gd` at 57 s and `integration/test_ground_deform.gd`
+at 30 s. The runner prints per-file timings, so check before assuming where the
+cost is.
+
+`test_screen_flow` is expensive because it opens a real [MatchScreen] once — a
+Ground Array, primed collision streaming and four Assemblies — and that is a
+budget rather than an oversight: the one assertion worth spending it on is that
+what the garage produced is what the match was given. It opens exactly one and
+says so at the top of the file.
 
 `tools/ci/run_all_checks.sh` takes two flags, both for sweeps rather than for
 people: `--no-import` skips the reimport when nothing under `data/` changed, and
@@ -129,77 +143,60 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 ## 2. The player-experience review (CLAUDE.md §10 rule 17)
 
 Recorded every session, because a green suite says nothing about whether the
-thing is any good to play. **Section 3's ordering comes from here**, and in
-session 24 this was the only instrument that caught a change which had improved
-every measurement in the suite and stopped the game being a game.
+thing is any good to play. **Section 3's ordering comes from here.**
 
-**It is still a fight, and it is still the best thing here.** `godot --path .`
-opens on a basin with 15 m of relief: a wheeled Assembly under a sky, three
-opponents standing off at 34 to 46 m, a chase camera behind you, a HUD reading
-integrity, power, ammunition and part count — and now a card, up for eleven
-seconds, that says `W / S`, `A / D`, `Mouse`, `Left Mouse`, `C`, `Wheel Up /
-Wheel Down`, `Escape`, and that `Tab` shows it again. Every one of those strings
-is read out of `InputMap` at the moment the card is raised, so a rebind is on it.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the menu, the
+garage, and 900 frames of a match with no player input at all.
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route, 900 frames, no player input
-at all. The card is legible from frame 1. By frame 340 the three are at contact
-range, the player is at 51% with a component gone and the feed saying so, and the
-target bracket is lighting on a hull. Somewhere in the last third — frame 615 on
-one capture and 520 on the next, which is `LEARNED_FACTS.md` §1 fact 44 and not a
-defect — the Core Module goes, the end card comes up in `danger` reading CORE
-MODULE DESTROYED, the reticle goes with it, the controls come off the wreck and
-the camera goes to orbit.
-
-**And then the wreck flies away at ninety metres a second**, which is the
-session's largest finding and the one nobody could have seen before, because
-until this session the camera was bolted to a corpse and nobody was looking at
-what the corpse did next.
+**It is a game you can start, build in, and play again.** The menu is legible
+from frame 1 and its one green button says ENTER THE GARAGE. The garage opens on
+a build that is already a working machine rather than on an empty lattice — which
+matters more than it sounds, because Invariant I-2's "every Assembly has exactly
+one Core Module" is a rule nothing on the screen states and a player starting
+from nothing would have to guess. The stat panel fills a tick after any edit. The
+match is the same fight it was, and **the wreck now stays where it fell**: the
+capture that ended session 25 at 92 m/s and climbing ends this one at 0.0 m/s
+with the end card up.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **A destroyed Assembly's remains accelerate instead of settling.** Measured off
-   the capture: 17.3 m/s at the conclusion, 18.1 m/s ten frames later, **92.0 m/s
-   at frame 670** — the hulk crossing the basin and climbing. `MotiveSystem.step`
-   has no liveness guard, so a build whose Core Module has gone keeps solving
-   suspension and traction against contacts it no longer has the mass to load.
-   This is now the last thing a player sees, every time. Owned by §3.1.
-2. **There is no way to play again.** The match ends properly now and then stops
-   being a game: no restart, no menu, no return to anything, because §15's screen
-   flow has exactly one scene in it. A player who loses in a minute must quit the
-   process and relaunch. A direct consequence of finishing the previous session's
-   top item — the ending exposed the absence of everything after it.
-3. **You still cannot drive and shoot at the same time** (§3.3). Unchanged and
-   still a design question with real answers: the recoil is applied at a mount
-   2.25 m forward of the centre of mass, so a traversed gun yaws the hull at
-   48°/s a round and a player who holds the trigger while turning will spin.
-4. **The control card covers the screen for the whole approach.** Eleven seconds
-   is the right length to read it and most of the time the fight takes, so on the
-   capture it is up from the spawn to first contact. It was centred over the
-   player's own Assembly until the capture showed it; it now sits in the upper two
-   fifths. Whether it should also shorten, or dismiss on the first command input,
-   wants a second look with somebody actually playing.
-5. **The vehicle is small in frame**, about a sixth of the screen height, and the
-   fight now happens at six metres. Still worth an A/B.
-6. **Nothing renders a wheel at its contact point** (§3.4). The greybox contacts
-   are drawn where the part was placed, not where the suspension put them, so on
-   15 m of rolling terrain the wheels hang in the air on every crest.
-7. **The opponents still shoot each other**, though less. §15.7.5's ladder spaces
-   three converging drivers at 6 m, 10.5 m and 15 m instead of stacking them, so
-   they are no longer in each other's line for the whole engagement — but nothing
-   in `src/combat/` knows what a team is and a round that reaches a friend still
-   does full damage (§3.5).
-8. **A destroyed part simply vanishes**, because `VisualDamageController`
-   (doc 08 §9) is unwritten. More noticeable now that the camera is pointed at the
-   wreck on purpose.
-9. **A walking build turns 170° in five seconds while commanded straight ahead**,
-   and **the edge has still never been in a fight** (§3.7). A player cannot reach
-   either; the match scene spawns wheeled builds only.
+1. **A player cannot tell what a part will do before they fit it.** The card says
+   a name, a class, a tier, a cost and a mass; the tooltip says one sentence. What
+   it does not say is that a Prime Mover has a torque figure, that an Effector
+   Module has an arc, or that this Motive Assembly steers and that one does not.
+   Doc 11 §4's `InspectorDock` is the answer and it is the largest unbuilt thing
+   in the garage.
+2. **There is no undo.** Doc 02 §9.3's `BuildCommand` is unwritten, so a misclick
+   is permanent until RESET, which throws away everything. This is the single
+   cheapest thing on the list and it is the one a player meets in their first
+   minute of building.
+3. **The wheels are boxes, and they are drawn where the part was placed rather
+   than where the suspension put them** (§3.4). In the garage they are four pale
+   blocks under a hull; in the match they hang in the air on every crest. It is
+   the biggest gap between how the game *looks* and how it *works*.
+4. **You still cannot drive and shoot at the same time** (§3.3). Unchanged, and
+   now the oldest thing on the list.
+5. **One arena and one opponent recipe.** Every test drive is the same three
+   wheeled builds at the same three spawns on the same basin. The scene is
+   parameterised for none of it, and doc 06's generator is the intended answer.
+6. **The garage teaches nothing about what a placement is refused for until it is
+   refused.** The status strip names the reason — the strings are written and
+   they are good — but a player who wants a rotor disc has to discover by trial
+   that it needs a mast under it and a second disc opposite it.
+7. **The opponents still shoot each other**, less than they did, and nothing in
+   `src/combat/` knows what a team is (§3.5).
+8. **A destroyed part still simply vanishes**, because `VisualDamageController`
+   (doc 08 §9) is unwritten.
+9. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§3.7), and a player can now *reach* that build — the garage will let them fit
+   limbs. That moves it from a test-only defect to something a player can meet.
 
-The honest summary: **the game now has a shape — you are told how to play, you
-fight, and you are told how it ended — and it stops dead at the end of it.**
-Everything the previous four sessions said was missing around the fight is there.
-What replaced it is smaller and sharper: a player who has just been shown a
-result has nothing to press.
+The honest summary: **the game now has a loop, and the loop's weakest leg is the
+garage's silence.** A player can build, drive and rebuild, and the thing they
+cannot do is make an informed decision — every part is a name and a mass, every
+mistake is permanent until RESET, and the only way to learn what anything does is
+to drive it. That is a much better problem than "there is no way to play again",
+and it is the next one.
 
 ---
 
@@ -208,47 +205,34 @@ result has nothing to press.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 A wreck must not accelerate — the top item
+### 3.1 Tell the player what a part does — the top item
 
-Measured off this session's capture: at the moment the player's Core Module is
-destroyed the body is doing 17.3 m/s, and fifty frames later it is doing **92.0
-m/s**, climbing and crossing the basin. It is now the last thing a player sees,
-every time, and doc 11 §16.2's end card was briefly claiming the opposite in
-words on the screen.
+Doc 11 §4's `InspectorDock` and `StatRows` are the largest unbuilt thing in the
+garage, and the garage's silence is now the loop's weakest leg. A part card
+carries a name, a class, a tier, a cost and a mass. Everything that would make a
+build a *decision* — a Prime Mover's torque, an Effector Module's arc and cycle
+time, whether a Motive Assembly steers, what an Energy Cell supplies — is
+authored, is in `PartDefinition`, and is shown nowhere.
 
-`MotiveSystem.step` has no liveness guard. Invariant I-2 makes an Assembly over
-when slot 0 goes; the motion layer never hears about it and keeps solving
-suspension and traction, against contacts belonging to a build that has just shed
-most of its mass to the debris pool. Small residual forces on a small residual
-mass are a large acceleration.
+The shape is settled and cheap: a right-hand dock under the stat panel, filled
+from the selected card's definition, with one `StatRow` per figure that class has.
+The work is deciding **which** figures per class, which is a doc 11 §4 amendment
+and wants doc 01's parameter tables open beside it.
 
-**Do not fix this by guessing.** Doc 05 §3.4 deliberately keeps the coupling
-torque running on a wreck, and says why — a tumbling hulk is where an asymmetric
-tensor is most visible — so "stop everything on termination" contradicts a
-documented decision. The question the document does not answer is whether the
-*families* should keep running, and that is the section to amend.
+Do this before §3.2. An undo is worth more per line, but a player who cannot tell
+two parts apart has nothing worth undoing.
 
-Two things to have in hand first: the measurement above, repeated with
-`test_family_duels`' losers rather than only the player's build, and the mass the
-body is left holding once its islands have detached. `MassSolver.MASS_FLOOR_KG`
-is 0.001 kg and `LEARNED_FACTS.md` §1 fact 24 records that the engine refuses a
-zero mass outright, so a body sitting near that floor with an ordinary suspension
-force still on it is the likely mechanism — **likely, and not yet confirmed.**
+### 3.2 An undo stack
 
-### 3.2 A way to play again
+Doc 02 §9.3's `BuildCommand` is specified in full — kind, slot, cell,
+orientation, prior parent, cascade, 128 deep — and unwritten. A misclick in the
+garage is permanent until RESET, which discards the whole build.
 
-The match concludes, the card says which way it went, and then nothing. Doc 11
-§16.3 records the gap deliberately: a restart needs a screen flow §15 does not
-have, because `scenes/boot/main.tscn` picks one scene and instantiates it.
-
-The smallest honest version is a **restart binding on the end card** that frees
-the match scene and instantiates a fresh one — which is a real test of whether
-the teardown in `MatchScreen._exit_tree` is complete, and `LEARNED_FACTS.md` §1
-facts 45, 48 and 53 all say it is the kind of thing that goes wrong quietly. The
-larger version is §15's missing menu and `SpawnDirector`, and it is the one that
-eventually has to exist.
-
-Do the small one first and find out what leaks.
+It is also what unblocks doc 02 §9.2's other half: `PlacementValidator.remove`
+returns the cascade list and the garage reports the count in a toast, where §9.2
+wants a confirmation prompt. A prompt a player cannot undo after agreeing to is a
+question with one answer, so the modal is owed *alongside* the stack rather than
+before it.
 
 ### 3.3 Decide what a build does about recoil at a traversed mount
 
@@ -304,8 +288,10 @@ then to assert that it exceeds it. Likeliest to be untested: chain-reaction dept
 
 ### 3.7 Fight with the edge
 
-`CombatArena` has five recipes and none carries an Appendage, so the melee weapon
-landed in session 18 has never been in a fight. What it needs: a `MELEE` recipe
+**A player can now reach this and could not before**: the garage's catalogue
+carries the Appendage and the edge, so a build with one is a build somebody will
+make. `CombatArena` has five recipes and none carries an Appendage, so the melee
+weapon landed in session 18 has never been in a fight. What it needs: a `MELEE` recipe
 (the wheeled layout with `apx.arm.manipulator.t3` and `eff.melee.beam_edge.t4` in
 place of the autocannon), a stand-off of roughly zero, and one duel against
 `WHEELED_LIGHT`. Expect the edge to **lose** on the first run and treat that as a
@@ -376,12 +362,6 @@ Things that are missing on purpose, or that are understood and not yet worth
 fixing. None of these is a surprise waiting to be found.
 
 ### The motion layer
-- **`MotiveSystem.step` has no liveness guard, and a wreck accelerates.** Measured
-  at 17.3 m/s rising to 92.0 m/s over fifty frames after the Core Module went.
-  Invariant I-2 ends the Assembly and the motion layer never hears about it. Doc
-  05 §3.4 deliberately keeps the coupling torque running on a wreck and does not
-  say whether the families should keep running; that is the section to amend.
-  Owned by §3.1.
 - **There is no stability-augmentation layer, and a rotary Assembly needs one to
   exist in a test.** Owned by §3.8.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
@@ -461,8 +441,10 @@ fixing. None of these is a surprise waiting to be found.
   layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
   converging on one target and deliberately not the rule. Owned by §3.5.
 - **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
-  decides that the wreck stays, which is right, and §16.3 records that nothing
-  follows it: no restart, no menu, no `SpawnDirector`. Owned by §3.2.
+  decides that the wreck stays, which is right. What follows it is now §15's
+  loop — fight again, or go back to the garage — and what is still missing is a
+  `SpawnDirector`, so a match is over the moment the player's Core Module goes
+  rather than putting them back in.
 - **`killer_id` arrives on `assembly_terminated` and nothing reads it.** Doc 04
   §8.2's second consumer — scoring — is unwritten, and `MatchState` deliberately
   does not guess at one.
@@ -488,9 +470,23 @@ fixing. None of these is a surprise waiting to be found.
   lighter gun; someone has to pick.
 
 ### The lattice and the garage
-- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written.**
+- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written**, and a
+  player now meets that: the garage places and removes for real. Owned by §3.2.
 - **`PlacementValidator.remove` returns the cascade list rather than acting on
-  it.** §9.2 requires a player confirmation showing the affected count.
+  it.** §9.2 requires a player confirmation showing the affected count; the
+  garage names the count in the status strip instead, which is honest and is not
+  a prompt. Owned by §3.2.
+- **The garage has no inspector.** Doc 11 §4's `InspectorDock` and `StatRows` are
+  unbuilt, so nothing tells a player what a part does. Owned by §3.1.
+- **The compact tier has no bottom sheet.** Doc 11 §3.2 gives it one and
+  §4's tree names it; below 900 logical units wide the garage hides its docks and
+  a player is left with a toolbar and a 3D view. A phone cannot build.
+- **`PartIconCache`, `TierPalette`, `Inventory` and `PartTooltipBuilder` do not
+  exist**, and doc 11 §5.3 binds all four. The card shows the greybox class tint
+  instead; the amendment is recorded in that section.
+- **`GarageLayoutController` and `touch_placement_controller.gd` are not written.**
+  `GarageScreen` applies the breakpoint itself, which is the same code in one
+  fewer file, and doc 11 §7.3's touch model has no consumer at all.
 - **Doc 02 §7.5's ground-clearance check has still never rejected anything.** A
   Motive Assembly now goes through the validator, but no test places one where
   the clearance check should refuse it.
@@ -520,6 +516,11 @@ fixing. None of these is a surprise waiting to be found.
   both.
 - **`run_all_checks.gd` still tolerates a runtime error on its own.** The shell
   wrapper catches it (`LEARNED_FACTS.md` §1 fact 34). Worth knowing before running the `.gd` directly.
+- **Nothing verifies that a click actually places a part.** Doc 02 §6's integer
+  half is covered by `test_cursor_to_cell`; the float half — a camera in a
+  [SubViewport] projecting a ray — cannot be reached headless
+  (`LEARNED_FACTS.md` §1 fact 28), so the one thing that was checked by hand and
+  is checked by nothing is the ray itself.
 - **The camera can still be buried in debris.** §13.7's `cast_motion` clamp masks
   ground and Static Volumes and not `LAYER_DEBRIS`, so a player who finishes
   inside a pile of wreckage is handed an orbit camera orbiting the inside of a

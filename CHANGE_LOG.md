@@ -66,7 +66,45 @@ they found are in `LEARNED_FACTS.md`.
 | 22 | **The ground is terrain.** Dynamic Ground Arrays under the match, 15 m of relief. Fixed doc 09 §4.3 destroying the crater rim, §3.3's false volume-conservation claim, and §5's streaming order dropping an Assembly through the world. `ManifoldChecker` gates DCC operands for doc 10. |
 | 23 | **Something shoots back.** `src/ai/` — context, target selector, driver. The match spawns three opponents that close, aim and fire through the same systems a player's trigger reaches. Found the recoil-yaw handling defect, a duplicated `assembly_terminated`, and that the ambulatory drift's *direction* is not reproducible. |
 | 24 | **The bore is centred, and it did not fix what it was for.** Doc 01 §14 rule 27; the module is 4×4×9 and its bore is on the centre of mass. An Assembly still cannot drive and shoot — the lever is the mount's position, not the bore's offset. Also: §15.7.1's throttle floor was outside its own window; the fix for that was green on every test and broke the game on real terrain; two fixtures were resting on one lucky round from the ambulatory build. Sweeps rebuilt — 10× faster, cannot hang, baselines measured rather than declared. |
+| 26 | **The game has a loop.** A menu, a garage a player builds in, a TEST DRIVE that fights three opponents with what they built, and two keys on the end card that fight again or go back. `Blueprint` carries a build across every screen boundary and is re-validated at each one. Doc 05 §3.6 stops the motion layer solving a terminated Assembly — the wreck no longer accelerates. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
+
+### Session 26, in more detail
+
+The project had a beginning and an end and no second one. What it has now is a
+loop, and the pieces of it are mostly boundaries rather than features.
+
+- **`Blueprint` (doc 02 §9.4).** An ordered list of integer placements, applied
+  through `PlacementValidator` and nothing else. The garage produces one, the
+  match rebuilds from one, and the shell carries one across every transition.
+  Re-validating inside one process looks redundant and is the point: this is the
+  path a build takes from a client to a server, and a shortcut here is a hole
+  there. `StarterBlueprint.skirmisher` is now the one place the shipped recipe is
+  written down — it was a block of constants in `MatchScreen` and another in
+  `CombatArena`, and the fixture's copy is the deliberate second one.
+- **`ShellRoot` (doc 11 §15).** One screen at a time; remove, then release
+  deferred. Both halves were paid for in the same afternoon: `free()` on a node
+  with a worker task in flight is refused, and freeing a screen from inside a
+  signal it is still emitting tears down the object whose method is running. The
+  engine reports the second as an unrelated parenting error and leaves the screen
+  unchanged, which is how it was found.
+- **The garage (doc 11 §4, §5, §6).** Doc 02 §6's four-stage cursor-to-cell
+  resolution against the build proxies in the context's own space, §8's coloured
+  ghost with its validation throttled to changes of cell, the virtualised
+  catalogue, and the stat panel — whose signal, `assembly_stats_ready`, had been
+  declared in `EventBus` since session 4 with no producer at all.
+- **Doc 05 §3.6.** The motion layer stops when slot 0 does. §3.4 had deliberately
+  kept the coupling torque running on a wreck and said nothing about the
+  families; they kept solving springs sized for 1107 kg against a body left on
+  the engine's 1 kg floor.
+
+**The wreck fix is also this session's lesson about fixtures.** The first version
+of `test_wreck_settles.gd` reproduced the mass collapse faithfully — and the
+planted fault survived it, because once the islands detach there are no contacts
+left for the motion layer to push against and the wreck settles whether the guard
+is there or not. The law needs the opposite fixture: an Assembly terminated with
+its parts still attached, a full throttle demand standing, and a live control
+case beside it. Two arenas, opened one after the other.
 
 ### Session 25, in more detail
 
@@ -159,6 +197,10 @@ what matters is which test defends which behaviour.
 | `test_island_detachment` | island sink resolves nothing; `ω × r` term dropped; lever arm not rotated into world space; angular velocity not inherited; island centre of mass not mass-weighted; debris centre of mass left at the Assembly origin; island inertia taken about the Assembly origin; body transform composed the other way round; `FLAG_DETACHED` never set; reaper never scheduled; slot list never recorded; `island_detached` never emitted; mass counted per part rather than summed; total mass zeroed; mass properties never applied; hull shape left enabled after its island leaves; collider not rebased onto the island centre of mass; collider rebased with the wrong sign; minimum-parts guard removed |
 | `test_debris_pool` | 45 faults across exhaustion order, retirement, linger, visibility dwell, shape reuse, and bounds — see session 7's record in git history for the full list |
 | `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
+| `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step` |
+| `test_blueprint` | a blueprint that commits without validating; `copy()` returning a reference rather than an independent list |
+| `test_breakpoint` | the stat dock hidden below the expanded tier |
+| `test_screen_flow` | the shell keeping the outgoing screen alive behind the incoming one |
 | `test_degradation_table` | a band multiplier changed off its documented value; a table that does not terminate at zero; a table that is not monotonic; a table of the wrong length; the out-of-range clamp removed; a table missing from `all_tables()` |
 | `test_suspension_solver` | compression not clamped to travel; an ungrounded probe still compressing; rebound damped like compression; force allowed to pull; bottom-out clamp removed; settle scale always applied; damp multiplier ignored; retune scale unclamped; damper not derived from corner mass; axle pairing ignoring longitudinal distance; axle pairing accepting the same side; anti-roll ignoring the difference |
 | `test_traction_solver` | slip ratio dividing by raw speed; slip angle using a signed denominator; Pacejka curve unnormalised; load sensitivity unclamped; band multiplier dropped from μ; **longitudinal sign flipped**; lateral grip ratio applied after the solve; zero-slip guard removed; brake zero-crossing guard removed; the guard catching negative drive too; ground reaction term dropped; contact inertia using full mass; torque split evenly rather than by load; rolling resistance ignoring the band |
