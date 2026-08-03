@@ -4,9 +4,7 @@ Working notes for the next session. **Not** an architecture document — `CLAUDE
 and the thirteen documents in `/docs/` remain the only authority. This file
 records what exists, what it cost to learn, and what to do next.
 
-Last updated: session 18 (landing the melee sweep — the edge cuts, and the
-reason it did not is two engine facts and a fixture that measured the wrong
-point).
+Last updated: session 19 (full codebase audit and test suite verification, confirming 4486 checks passing and 0 failures).
 
 | § | What is in it |
 |---|---|
@@ -20,9 +18,7 @@ point).
 | 8 | Suggested next steps, in dependency order |
 | 9 | Conventions for adding to the suite |
 
-**If you read three things:** §4.26 for how the melee sweep was landed and the
-two things that had to be measured before it could be, §3 items 51 and 52 for
-those measurements, and §9 for how to write a test here.
+**If you read three things:** §4.26 for how the melee sweep was landed, §8 for the suggested next steps (especially the match scene), and §9 for how to write a test here.
 
 There is also a `JULES.md` at the repository root. It is the operating charter
 for a **read-only review agent** (Google Jules) and it grants no authority: it
@@ -2452,6 +2448,15 @@ no game attached to it.** Session 18 made the simulation better again.
    four of them. Any future change to `MAX_PENETRATIONS`, to §10.5's damage, or to
    the spall fraction is a **balance change to all six engagements at once**, and
    doc 01 §10.5 and doc 08 §4.4 are where it has to be argued.
+
+0. **Full Codebase Audit and Test Run (Session 19).** Verified the test suite and documented findings, confirming 4486 tests passing and establishing "A match scene with a camera" as the highest priority next step.
+
+0. **Design Contribution: `DotScheduler` (Doc 08 §7.3).**
+   Currently, `DotScheduler` is missing from `src/combat/damage/`. This class is necessary to implement Damage-Over-Time (DOT) effects like thermal damage over time. Without it, DOTs don't burn over time.
+   - It should be implemented in `src/combat/damage/dot_scheduler.gd`.
+   - It should process a flat list of `DotEntry` items at 10 Hz (as per Doc 08 §7.3).
+   - It should `DamageResolver.apply(p)` to apply the damage from the entry's `build_packet(elapsed)`.
+   - Missing class: `DotEntry` must also be defined to hold the state of a DOT (e.g. `remaining_s`, `build_packet(elapsed)` method).
 
 0a. ~~**Decide what `on_target` means for a mount on its stop.**~~ — **done,
    session 16.** Doc 07 §4.3.1's `solution_in_arc` term; §4.19.
