@@ -267,6 +267,15 @@ func reassign_gait_phases() -> void:
 ## the dynamic amplification factor. Every force reaches the body through
 ## [member AssemblyRuntime.body], and no family touches anything else (§11
 ## invariant 11).
+##
+## [b]§3.6: a terminated Assembly gets the coupling torque and nothing else.[/b]
+## The torque is a property of the mass distribution and a tumbling hulk is where
+## it is most visible, which is why §3.4 keeps it. The families are a different
+## question and the answer is no: losing slot 0 orphans every part, the islands
+## detach, and §3.5's floor leaves the body at one kilogramme still carrying
+## every contact the intact build had. Solving springs sized for 1107 kg against
+## that is what took a wreck from 17.3 m/s to 92.0 m/s in fifty frames, climbing,
+## as the last thing a player saw.
 func step(dt: float) -> void:
 	if runtime == null or runtime.body == null:
 		return
@@ -276,7 +285,7 @@ func step(dt: float) -> void:
 	# asymmetric tensor, and a wreck spinning through the air is exactly where
 	# the correction is most visible.
 	_apply_coupling_torque(dt)
-	if input == null:
+	if input == null or not _is_alive():
 		return
 	_gather_contacts()
 
@@ -364,6 +373,19 @@ func steer_multiplier(slot: int) -> float:
 
 func damp_multiplier(slot: int) -> float:
 	return _damp_mult[slot]
+
+
+## ===== LIVENESS ========================================================
+
+
+## §3.6. Invariant I-2: an Assembly is over when slot 0 is destroyed.
+##
+## Read from the part rather than from a flag this system keeps, so that nothing
+## here can disagree with [DamageResolver] — the same reading, for the same
+## reason, that [method AiDriver._is_alive] makes.
+func _is_alive() -> bool:
+	var core: PartInstanceState = runtime.states[SyndicateConstants.CORE_SLOT]
+	return core != null and not core.has_flag(PartFlags.FLAG_DESTROYED)
 
 
 ## ===== FAMILY SOLVERS ==================================================

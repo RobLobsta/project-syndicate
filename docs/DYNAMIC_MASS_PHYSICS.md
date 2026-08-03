@@ -269,6 +269,29 @@ func apply_mass_properties(body: RigidBody3D, mp: MassSolver.MassProperties) -> 
 
 Setting `center_of_mass` rather than re-origining the colliders is deliberate: the collider transforms stay in stable assembly-local space, so losing a part shifts the COM without touching a single shape transform.
 
+**The two floors are the engine's requirement and not a modelling choice.** `RigidBody3D.mass = 0.0` is refused outright, and `inertia = Vector3.ZERO` is accepted and means "derive it from the collision shapes" — the exact physics/visual coupling Invariant I-1 forbids. So both are floored. The consequence is §3.6's, and it is the reason that section exists: an Assembly that has lost every part is a **one-kilogramme body still carrying every collider and every suspension probe the intact build had**.
+
+### 3.6 Liveness
+
+Invariant I-2 ends an Assembly when slot 0 is destroyed. **The motion layer stops with it: `MotiveSystem.step` applies §3.4's coupling torque and returns.** No family runs, no contacts are gathered, no anti-roll is applied, and no ruts are deposited.
+
+The question this answers is the one §3.4 leaves open. That section keeps the coupling torque running on a wreck deliberately — it is a property of the mass distribution rather than of what the Assembly is being asked to do, and a tumbling hulk is exactly where an asymmetric tensor is most visible. It says nothing about the **families**, and for five sessions they kept running.
+
+What that cost is measured in `tests/physics/test_wreck_settles.gd`:
+
+| | Intact | One tick after the Core Module is destroyed |
+|---|---|---|
+| Chassis body mass | 1107 kg | **1.0 kg** (§3.5's floor) |
+| Contacts being solved | 4 | 4 |
+
+Losing slot 0 orphans every part, the detachment scheduler severs the islands, and the debris pool takes them — so the body the motion layer is still solving for holds nothing but the floor, while §6's springs and §7's friction are computed from the same authored `rated_load_kg` figures they were before. An ordinary suspension force on a gramme of body is an enormous acceleration. On the arena's fifteen metres of relief the capture that first showed doc 11 §16.2's end card recorded the remains going from **17.3 m/s at the conclusion to 92.0 m/s fifty frames later**, climbing and crossing the basin, as the last thing a player sees.
+
+Three things are worth stating about the shape of the rule.
+
+- **It is a liveness test on slot 0, read from the part.** `AiDriver` already reads it the same way and for the same reason: a flag a system keeps for itself is a flag that can disagree with `DamageResolver`, which is the one authority on integrity.
+- **It is not "freeze the body".** The wreck still falls, still rolls, still takes impacts, and still tumbles under §3.4. What stops is the layer that was pushing it, and nothing else.
+- **A flat fixture cannot see it.** With a neutral control record on level ground the residual forces are roughly vertical and the remains do slow down, which is why a green suite never caught it. The slope is what turns them into a direction. So the assertion is a law rather than a speed: a terminated Assembly held at full throttle from rest does not move.
+
 ---
 
 ## 4. Recomputation Policy
@@ -428,6 +451,10 @@ of it changed.
 Rule 1 is the load-bearing one. It is what lets a rotorcraft take blast damage,
 shed a wing panel, re-solve its mass, and keep flying with the new COM — without
 a line of code in the damage or mass layers knowing that rotors exist.
+
+**No family is asked for a force on a terminated Assembly.** §3.6 is enforced
+above the dispatch rather than inside each family, so a sixth rule about what a
+family does with a wreck would be a rule no family could reach.
 
 ### 6.1 Probe Geometry
 
