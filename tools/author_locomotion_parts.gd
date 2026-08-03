@@ -612,7 +612,9 @@ func _author_melee_beam_edge() -> String:
 	melee.reach_m = 2.40
 	melee.edge_radius_m = 0.18
 	melee.swing_arc_deg = 150.0
-	melee.swing_samples = 6
+	# Doc 07 §15.3: 16 across the 150° arc is a 10° step, which keeps consecutive
+	# capsule placements overlapping out to 2.06 m of the 2.40 m blade.
+	melee.swing_samples = 16
 	melee.wind_up_s = 0.28
 	melee.swing_duration_s = 0.22
 	melee.recovery_s = 0.46

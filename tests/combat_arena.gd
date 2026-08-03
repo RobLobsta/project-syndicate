@@ -429,6 +429,17 @@ func spawn(
 	guns.projectiles = projectiles
 	guns.registry = projectile_registry
 	guns.ammo = ammo
+	# Doc 07 §15.3 resolves a melee strike by querying a space and handing the
+	# packets straight to the resolver, so a melee module needs both of these and
+	# direct fire needs neither. Omitting them is silent: `_sweep_edge` returns on
+	# a null space, the stage machine goes on cycling, and the edge swings through
+	# everything for the whole match. Session 18 found them missing here after
+	# landing the sweep, which means anything written from this reference would
+	# have shipped a sword that does nothing.
+	guns.resolver = resolver
+	# The resolver's own space rather than a second lookup, so §15.3's sweep and
+	# doc 08 §5.3's blast query cannot end up asking different worlds.
+	guns.space = resolver.space
 	# Invariant I-9. Two Assemblies in one match must not roll their spread and
 	# jam in lockstep, and the same match must replay identically.
 	guns.seed_rng(assembly_id)

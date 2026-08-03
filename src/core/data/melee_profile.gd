@@ -24,10 +24,16 @@ extends Resource
 ## Angular extent of one swing about the hardpoint yaw axis. Zero describes a
 ## fixed edge that does not swing at all, which is what a ram is.
 @export var swing_arc_deg: float = 150.0
-## Sweep segments per swing. Fixes the query cost of a swing rather than letting
+## Sweep samples per swing. Fixes the query cost of a swing rather than letting
 ## it follow how fast the arc happens to travel. Never a damage multiplier:
 ## [MeleeStrikeState] skips an Assembly the current swing has already struck.
-@export var swing_samples: int = 6
+##
+## It is also what closes the gaps between consecutive capsule placements, since
+## doc 07 §15.3's query is a sequence of static capsules and not the swept one
+## the section used to specify. Consecutive placements overlap out to
+## [code]2 · edge_radius_m · (swing_samples − 1) / radians(swing_arc_deg)[/code],
+## which at 16 across 150° covers 2.06 m of a 2.40 m blade.
+@export var swing_samples: int = 16
 
 ## ===== TIMING ==========================================================
 

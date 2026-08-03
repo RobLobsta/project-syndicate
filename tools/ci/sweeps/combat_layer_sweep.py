@@ -31,7 +31,9 @@ AL = os.path.join(ROOT, "src/combat/effectors/ammo_ledger.gd")
 MS = os.path.join(ROOT, "src/motion/motive_system.gd")
 ID = os.path.join(ROOT, "src/assembly/graph/island_detacher.gd")
 
-BASELINE = 4405  # tools/ci/run_all_checks.sh at the commit this landed
+MP = os.path.join(ROOT, "src/core/data/melee_profile.gd")
+
+BASELINE = 4486  # tools/ci/run_all_checks.sh at the commit this landed
 
 FAULTS = [
     # --- DamageResolver, §4 -------------------------------------------
@@ -122,18 +124,70 @@ FAULTS = [
      "	if ammo != null:\n		ammo.consume(runtime.assembly_id, _projectile_id[slot], 1)",
      "	pass"),
     # --- ProjectileSystem, §12 ----------------------------------------
+    # Re-targeted in session 18. Session 14 planted this against a line session 16
+    # rewrote when it closed §4.13, so it reported PATCH-MISS for three sessions
+    # and the swept ray -- which §5 calls the one place in the combat layer where
+    # the obvious implementation is silently wrong -- went undefended.
     ("sweep-becomes-point-test", PS,
-     "	var params := PhysicsRayQueryParameters3D.create(_prev_position[index], _position[index])",
-     "	var params := PhysicsRayQueryParameters3D.create(_position[index], _position[index] + _velocity[index].normalized() * 0.01)"),
+     "	var from := _prev_position[index]\n	var to := _position[index]",
+     "	var from := _position[index] - _velocity[index].normalized() * 0.01\n	var to := _position[index]"),
     ("rounds-never-expire", PS,
      "		if _life_s[i] <= 0.0:\n			_release(i)\n			continue",
      "		if false:\n			_release(i)\n			continue"),
     ("self-immunity-always-on", PS,
      "	if age >= SELF_IMMUNITY_S or not _owner_rid[index].is_valid():\n		return []",
      "	if not _owner_rid[index].is_valid():\n		return []"),
+    # Also re-targeted in session 18, and against the same rewrite.
     ("hit-never-releases-the-round", PS,
-     "	var continued := _report_hit(index, def, hit)\n	if continued:",
-     "	var continued := true\n	if continued:"),
+     "		if not _report_hit(index, def, hit):\n			_release(index)\n			return",
+     "		if not _report_hit(index, def, hit):\n			return"),
+    # --- EffectorSystem melee, §15.3 and §15.4 ------------------------
+    # The shape. A sphere at the blade's midpoint is what shipped for four
+    # sessions and it is §15.1's mistake made thicker: an edge is a volume, and
+    # a ball on a point of it queries 0.36 m of a 2.40 m blade.
+    ("melee-sphere-not-capsule", ES,
+     "	var capsule := CapsuleShape3D.new()\n	capsule.radius = melee.edge_radius_m\n"
+     "	capsule.height = maxf(melee.reach_m, melee.edge_radius_m * 2.0)",
+     "	var capsule := SphereShape3D.new()\n	capsule.radius = melee.edge_radius_m"),
+    # The orientation. A capsule runs along its own +Y, so without the quarter
+    # turn the blade stands vertically through the wielder's own hull.
+    ("melee-capsule-not-rotated", ES,
+     "		params.transform = edge * EDGE_TO_CAPSULE",
+     "		params.transform = edge"),
+    # §15.4's impulse direction, and §15.1's third reason a projectile is wrong.
+    # The blade axis and the edge's travel are perpendicular unit vectors out of
+    # one transform, so only a direction assertion separates them.
+    #
+    # Planted on the impulse rather than on the packet. The first version of this
+    # patched `var direction := travel.normalized()` and SURVIVED, because that
+    # local reaches only the packet's own direction fields -- and the packet's
+    # normal is derived from its direction, so §4's ricochet test sees the two
+    # exactly opposed whatever either of them is. See §5.
+    ("melee-travel-is-blade-axis", ES,
+     "		MeleeSolver.strike_impulse(melee, travel),",
+     "		MeleeSolver.strike_impulse(melee, -edge.basis.z),"),
+    # §15.4's impulse on the struck Assembly. Applied to a frozen body it is
+    # unobservable, which is why the fixture leaves the target free.
+    ("melee-no-target-impulse", ES,
+     "	victim.body.apply_impulse(\n		MeleeSolver.strike_impulse(melee, travel),\n"
+     "		edge.origin - victim.body.global_transform.origin\n	)",
+     "	pass"),
+    # §15.4's gate is inert on the shipped edge, which authors a zero minimum --
+    # so the fault that tests it is one that makes it refuse everything, not one
+    # that changes a threshold nothing reaches.
+    ("melee-closing-speed-gate-always-refuses", ES,
+     "	if not MeleeSolver.closing_speed_satisfied(melee, _closing_speed_on(victim)):\n		return",
+     "	if true:\n		return"),
+    # §15.3's per-swing dedup, which is what makes the sample count invisible to
+    # balance. Without it a 16-sample swing deals sixteen times a 6-sample one.
+    ("melee-strike-not-deduplicated", ES,
+     "	state.struck_this_swing.append(victim.assembly_id)\n	state.last_strike_point_world",
+     "	state.last_strike_point_world"),
+    # The sample count itself. 6 across a 150° arc leaves a 1.26 m hole at the
+    # blade tip; §15.3's gap arithmetic is what says so.
+    ("melee-sample-count-back-to-six", MP,
+     "@export var swing_samples: int = 16",
+     "@export var swing_samples: int = 6"),
     # --- AmmoLedger, §9.2 ---------------------------------------------
     # --- band dispatch (doc 08 §8.4) ----------------------------------
     ("motive-never-subscribes", MS,

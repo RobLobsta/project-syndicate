@@ -756,8 +756,11 @@ extends Resource
 @export var edge_radius_m: float = 0.18
 ## Angular extent of one swing about the hardpoint yaw axis.
 @export var swing_arc_deg: float = 150.0
-## Sweep samples per swing. Bounds the query cost; see doc 07 §15.3.
-@export var swing_samples: int = 6
+## Sweep samples per swing. Bounds the query cost, and closes the gaps between
+## consecutive capsule placements: doc 07 §15.3 owns the arithmetic and the
+## radius out to which the arc is covered. Not a balance value — §15.3's
+## `struck_this_swing` makes the count invisible to damage.
+@export var swing_samples: int = 16
 
 ## ===== TIMING ==========================================================
 @export var wind_up_s: float = 0.28
