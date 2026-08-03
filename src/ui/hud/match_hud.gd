@@ -25,8 +25,8 @@ const HUD_LAYER: int = 5
 ## ===== DAMAGE FLASH (§14.4) ============================================
 
 const FLASH_ALPHA_PER_PACKET: float = 0.06
-## A spall burst is several packets in one tick (HANDOFF.md §4's note on spall). Without the clamp a
-## single kinetic hit would white out the screen.
+## A spall burst is several packets in one tick (HANDOFF.md §4's note on spall).
+## Without the clamp a single kinetic hit would white out the screen.
 const FLASH_ALPHA_MAX: float = 0.34
 const FLASH_DECAY_HZ: float = 4.5
 
@@ -51,10 +51,17 @@ const KEY_PARTS: StringName = &"hud.parts"
 const KEY_PART_LOST: StringName = &"hud.event.part_lost"
 const KEY_ASSEMBLY_LOST: StringName = &"hud.event.assembly_lost"
 
+## §14.6's card. Tab in §7.1's table, and the one consumer that action has ever
+## had: in a match the card [i]is[/i] the HUD's expanded panel, because there is
+## no separate stat panel to expand.
+const ACTION_TOGGLE_CARD: StringName = &"hud_toggle_stats"
+
 ## The Assembly whose state this HUD shows. An id, not a node — §14.1.
 var local_assembly_id: int = 0
 
 var _reticle: Reticle = null
+var _control_card: ControlCard = null
+var _end_card: MatchEndCard = null
 var _integrity: MeterRow = null
 var _power: MeterRow = null
 var _speed_value: Label = null
@@ -71,6 +78,11 @@ var _feed_ages: Array[float] = []
 func _ready() -> void:
 	layer = HUD_LAYER
 	_build()
+	# §14.6. Raised on entry rather than on a first-run flag: this is the only
+	# screen in the project and there is nowhere yet to store "they have seen it".
+	# A card that goes away by itself in eleven seconds costs a returning player
+	# nothing, and a card nobody ever sees costs a new one the whole game.
+	_control_card.raise()
 	EventBus.part_damaged.connect(_on_part_damaged)
 	EventBus.part_destroyed.connect(_on_part_destroyed)
 	EventBus.assembly_terminated.connect(_on_assembly_terminated)
@@ -96,6 +108,24 @@ func _process(dt: float) -> void:
 			_flash_alpha = 0.0
 		_flash.color = Color(UiTokens.DANGER, _flash_alpha)
 	_age_feed(dt)
+	# The two cards keep no timer of their own; see [ControlCard]. One
+	# per-frame callback in the HUD is the whole of §14's real-time budget.
+	_control_card.age(dt)
+	_end_card.age(dt)
+
+
+## §14.6's toggle. The card is the one piece of this interface a player asks for
+## rather than being shown, so it is the one piece that reads the input map.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed(ACTION_TOGGLE_CARD):
+		return
+	# Not once the match is over. §16.2 takes the card down at the conclusion, and
+	# raising it again would put a panel of driving controls behind the card
+	# explaining that there is nothing left to drive.
+	if _end_card.is_raised():
+		return
+	_control_card.toggle()
+	get_viewport().set_input_as_handled()
 
 
 ## §14.1. The whole continuous half of the interface, once per tick.
@@ -103,6 +133,7 @@ func present(frame: HudFrame) -> void:
 	if frame == null:
 		return
 	_reticle.set_state(frame.reticle_state)
+	_reticle.set_target_acquired(frame.target_acquired)
 	_integrity.set_condition(
 		frame.integrity_fraction, "%d%%" % int(roundf(frame.integrity_fraction * 100.0))
 	)
@@ -117,6 +148,19 @@ func present(frame: HudFrame) -> void:
 		rounds = str(frame.rounds_remaining)
 	_rounds_value.text = rounds
 	_parts_value.text = "%d / %d" % [frame.parts_alive, frame.parts_total]
+
+
+## §16.2. Raises the end card for [param outcome], a [enum MatchState.Outcome],
+## and takes the control card down — a player being told the match is over does
+## not also need to be told which key steers.
+func present_outcome(outcome: int) -> void:
+	_control_card.dismiss()
+	# The reticle goes with them. §14.3's five states are all statements about a
+	# mount the player no longer commands — [MatchScreen] stops feeding the aim
+	# point and the trigger at the conclusion — so a reticle left up is a
+	# crosshair promising a shot that cannot be taken.
+	_reticle.visible = false
+	_end_card.show_outcome(outcome)
 
 
 ## ===== CONSTRUCTION ====================================================
@@ -174,6 +218,16 @@ func _build() -> void:
 	bottom.add_child(gap)
 
 	bottom.add_child(_build_speed_panel())
+
+	# Both cards go above the rows and below nothing, so a message that matters
+	# more than the meters is drawn over them rather than behind them.
+	_control_card = ControlCard.new()
+	_control_card.name = "ControlCard"
+	add_child(_control_card)
+
+	_end_card = MatchEndCard.new()
+	_end_card.name = "MatchEndCard"
+	add_child(_end_card)
 
 
 func _build_status_panel() -> PanelContainer:

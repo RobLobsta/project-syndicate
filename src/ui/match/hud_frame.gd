@@ -57,6 +57,17 @@ var reticle_state: ReticleState = ReticleState.NO_EFFECTOR
 ## [constant AmmoLedger.UNLIMITED] renders as a dash rather than as a number.
 var rounds_remaining: int = 0
 
+## Whether §13.8's aim ray ended on an Assembly hull rather than on ground, a
+## Static Volume, or nothing at all.
+##
+## §14.3 separates this from [constant ReticleState.ON_TARGET] deliberately, and
+## the distinction is the difference between what the mount knows and what the
+## player is asking. [constant ReticleState.ON_TARGET] means the mount has a
+## firing solution on wherever the ray landed — which it does over empty ground,
+## correctly, and which reads to a player as "enemy acquired". This is the other
+## question, and it is the one the reticle's green was being mistaken for.
+var target_acquired: bool = false
+
 ## ===== MATCH ===========================================================
 
 var assemblies_standing: int = 0

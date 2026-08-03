@@ -625,6 +625,8 @@ Every signal the graph consumes or emits, with its exact payload. These are decl
 
 Nothing else may emit it. The graph cannot: it would have to invent an attacker. A match layer could, by listening for `part_destroyed` on slot 0 — and that is exactly the duplication this signal exists to prevent, because every listener that re-derives I-2 for itself is a place I-2 can be got wrong.
 
+**The first of the three consumers is `MatchState`** (`src/world/match/match_state.gd`), specified in `RESPONSIVE_GARAGE_UI.md` §16.1. It counts a team out when its last Assembly is terminated and says once that the match is over; it does not read `killer_id`, which is the scoreboard's question and remains unclaimed. Respawn is unwritten and `SpawnDirector` does not exist. Between session 16 and session 25 this signal had a producer and no consumer at all, and the visible consequence was a match that carried on with the camera bolted to a corpse — which is worth recording, because a signal with no consumer looks identical in a green suite to one whose consumer works.
+
 ### 8.3 Ordering Guarantee
 
 Within `tick_resolved`, handlers run in a fixed registration order enforced by `EventBus` priority groups:

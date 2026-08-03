@@ -48,13 +48,14 @@ thirteen documents in `/docs/`, named just before it.
 
 ## Where this stands
 
-**It is a game with an opponent in it and no consequences.** `godot --path .`
-opens on a basin with 15 m of relief. Three opponents drive at you and shoot you
-to pieces in about fifteen seconds. The fighting works and is the best thing in
-the project. What it lacks is everything that happens *around* a fight: being
-told how to play, and being told when you have lost.
+**It is a game with a beginning and an end, and no second one.** `godot --path .`
+opens on a basin with 15 m of relief, tells you which keys do what, and puts
+three opponents on you. They shoot you to pieces in about a minute, a card says
+so, and the camera lets go of the wreck. The fighting works and is still the best
+thing in the project. What it now lacks is the thing immediately after the
+ending: **there is no way to play again except to relaunch.**
 
-**73 files, 5130 checks, 0 failures.**
+**76 files, 5258 checks, 0 failures.**
 
 ---
 
@@ -87,7 +88,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**73 files, 5130 checks, 0 failures.**
+**76 files, 5258 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34).
@@ -108,6 +109,7 @@ with `-j4`:
 
 ```bash
 python3 tools/ci/sweeps/ai_layer_sweep.py            # all of them, 4 workers
+python3 tools/ci/sweeps/match_layer_sweep.py         # doc 11 §16, §14.3, §14.6
 python3 tools/ci/sweeps/ai_layer_sweep.py --list     # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
@@ -134,69 +136,70 @@ every measurement in the suite and stopped the game being a game.
 **It is still a fight, and it is still the best thing here.** `godot --path .`
 opens on a basin with 15 m of relief: a wheeled Assembly under a sky, three
 opponents standing off at 34 to 46 m, a chase camera behind you, a HUD reading
-integrity, power, ammunition and part count. `W` drives, the mouse aims, the left
-button fires, `C` switches the camera, `Escape` releases the mouse.
+integrity, power, ammunition and part count — and now a card, up for eleven
+seconds, that says `W / S`, `A / D`, `Mouse`, `Left Mouse`, `C`, `Wheel Up /
+Wheel Down`, `Escape`, and that `Tab` shows it again. Every one of those strings
+is read out of `InputMap` at the moment the card is raised, so a rebind is on it.
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route, 900 frames, no player input at all. At
-frame 400 the three are on top of the player at contact range and the player is
-at **44%** with two components gone and the feed saying so; by 860 they are at
-**25%**, their Prime Mover and Energy Cell are gone — `POWER 0 / 117` — and they
-are sitting in a heap of wreckage at 9/12 parts. A player who does nothing is
-dismantled in about fifteen seconds.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route, 900 frames, no player input
+at all. The card is legible from frame 1. By frame 340 the three are at contact
+range, the player is at 51% with a component gone and the feed saying so, and the
+target bracket is lighting on a hull. Somewhere in the last third — frame 615 on
+one capture and 520 on the next, which is `LEARNED_FACTS.md` §1 fact 44 and not a
+defect — the Core Module goes, the end card comes up in `danger` reading CORE
+MODULE DESTROYED, the reticle goes with it, the controls come off the wreck and
+the camera goes to orbit.
+
+**And then the wreck flies away at ninety metres a second**, which is the
+session's largest finding and the one nobody could have seen before, because
+until this session the camera was bolted to a corpse and nobody was looking at
+what the corpse did next.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **Nothing happens when you die.** The Core Module goes, the feed says so in
-   red, and the match carries on with a camera bolted to a corpse. No respawn, no
-   spectate, no end screen, not even a stop. The event has had a producer
-   since session 16 and still has no consumer. **This is now the top
-   item**: it is the most obviously unfinished thing a player reaches, and they
-   reach it every time inside a minute.
-2. **There is no way to learn the controls.** No key prompts, no pause menu, no
-   settings screen. `C` for the camera toggle is not guessable and `Escape`
-   releasing the mouse is not discoverable. A dismissible control card on the
-   first match is an afternoon and is worth more than anything else at this size.
-3. **You still cannot drive and shoot at the same time** (§3.3), and the reason
-   changed this session. It is not the muzzle offset — that is fixed — it is that
-   the recoil is applied at a mount 2.25 m forward of the centre of mass, so a
-   traversed gun yaws the hull at 48°/s a round. A player who holds the trigger
-   while turning will spin. It is one place below death-with-no-consequence
-   because it is now a **design** question with real answers (a mount nearer the
-   centre of mass, a shorter recoil, a turret ring) rather than a data defect
-   nobody had got round to.
-4. **The opponents shoot each other.** Three Assemblies converging on one target
-   at a six-metre stand-off put rounds through each other constantly, because
-   nothing in `src/combat/` knows what a team is (§3.4). At least one opponent dies
-   to another before the player fires. Not obviously wrong as a *rule*; obviously
-   wrong as a *spectacle*.
-5. **The camera ends up inside the wreckage.** New, and a direct consequence of
-   the fights now ending at contact range: by frame 860 the player is buried in a
-   pile of debris bodies and the chase camera is in among them, so the last thing
-   a player sees is the inside of a box. `LEARNED_FACTS.md` §1 fact 56's `cast_motion` clamp is doing
-   its job; what is missing is that debris is not in `MASK_AIM_TRACE`'s spirit for
-   the camera either.
-6. **Nothing renders a wheel at its contact point** (§3.5). The greybox contacts
+1. **A destroyed Assembly's remains accelerate instead of settling.** Measured off
+   the capture: 17.3 m/s at the conclusion, 18.1 m/s ten frames later, **92.0 m/s
+   at frame 670** — the hulk crossing the basin and climbing. `MotiveSystem.step`
+   has no liveness guard, so a build whose Core Module has gone keeps solving
+   suspension and traction against contacts it no longer has the mass to load.
+   This is now the last thing a player sees, every time. Owned by §3.1.
+2. **There is no way to play again.** The match ends properly now and then stops
+   being a game: no restart, no menu, no return to anything, because §15's screen
+   flow has exactly one scene in it. A player who loses in a minute must quit the
+   process and relaunch. A direct consequence of finishing the previous session's
+   top item — the ending exposed the absence of everything after it.
+3. **You still cannot drive and shoot at the same time** (§3.3). Unchanged and
+   still a design question with real answers: the recoil is applied at a mount
+   2.25 m forward of the centre of mass, so a traversed gun yaws the hull at
+   48°/s a round and a player who holds the trigger while turning will spin.
+4. **The control card covers the screen for the whole approach.** Eleven seconds
+   is the right length to read it and most of the time the fight takes, so on the
+   capture it is up from the spawn to first contact. It was centred over the
+   player's own Assembly until the capture showed it; it now sits in the upper two
+   fifths. Whether it should also shorten, or dismiss on the first command input,
+   wants a second look with somebody actually playing.
+5. **The vehicle is small in frame**, about a sixth of the screen height, and the
+   fight now happens at six metres. Still worth an A/B.
+6. **Nothing renders a wheel at its contact point** (§3.4). The greybox contacts
    are drawn where the part was placed, not where the suspension put them, so on
    15 m of rolling terrain the wheels hang in the air on every crest.
-7. **The reticle goes green at empty ground.** `ON_TARGET` means the mount has a
-   firing solution on wherever the aim ray landed, which is correct and is not
-   what a player reads. The fix is a target indicator, not a reticle change.
-8. **A walking build turns 170° in five seconds while commanded straight ahead**,
-   and **the edge has still never been in a fight** (§3.8). A player
-   cannot reach either; the match scene spawns wheeled builds only. The walker
-   got worse this session in the only sense that is measurable — it is now killed
-   before its mount converges at all.
+7. **The opponents still shoot each other**, though less. §15.7.5's ladder spaces
+   three converging drivers at 6 m, 10.5 m and 15 m instead of stacking them, so
+   they are no longer in each other's line for the whole engagement — but nothing
+   in `src/combat/` knows what a team is and a round that reaches a friend still
+   does full damage (§3.5).
+8. **A destroyed part simply vanishes**, because `VisualDamageController`
+   (doc 08 §9) is unwritten. More noticeable now that the camera is pointed at the
+   wreck on purpose.
+9. **A walking build turns 170° in five seconds while commanded straight ahead**,
+   and **the edge has still never been in a fight** (§3.7). A player cannot reach
+   either; the match scene spawns wheeled builds only.
 
-The vehicle is still **small in frame**, about a sixth of the screen height,
-which was defensible when there was nothing to be aware of and is now worth an
-A/B, because the fight happens at six metres. And **a destroyed part simply
-vanishes**, because `VisualDamageController` (doc 08 §9) is unwritten.
-
-The honest summary, and it has not changed: **it is a game with an opponent in it
-and no consequences.** The fighting works, it resolves faster and more decisively
-than it did, and it is still the first thing here that is genuinely fun to watch.
-What it lacks is everything that happens *around* a fight — being told how to
-play, and being told when you have lost.
+The honest summary: **the game now has a shape — you are told how to play, you
+fight, and you are told how it ended — and it stops dead at the end of it.**
+Everything the previous four sessions said was missing around the fight is there.
+What replaced it is smaller and sharper: a player who has just been shown a
+result has nothing to press.
 
 ---
 
@@ -205,33 +208,53 @@ play, and being told when you have lost.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 What a death does, and what a match does — the top item
+### 3.1 A wreck must not accelerate — the top item
 
-Doc 04 §8.2's `assembly_terminated` has had exactly one producer since session 23
-and still has **no consumer**. That was a tidy architectural gap while nothing
-could kill the player; the AI now kills them every time, inside a minute, and the
-match carries on with a camera bolted to a corpse.
+Measured off this session's capture: at the moment the player's Core Module is
+destroyed the body is doing 17.3 m/s, and fifty frames later it is doing **92.0
+m/s**, climbing and crossing the basin. It is now the last thing a player sees,
+every time, and doc 11 §16.2's end card was briefly claiming the opposite in
+words on the screen.
 
-Two decisions and only the second is small. **What death looks like** — despawn,
-wreck left in the road, spectate, respawn — is a real design question. **What the
-match does when a side is gone** is not: something has to notice
-`teams_standing().size() <= 1` and say so, and `tests/combat_arena.gd` has had
-that line since session 15 for exactly this reason.
+`MotiveSystem.step` has no liveness guard. Invariant I-2 makes an Assembly over
+when slot 0 goes; the motion layer never hears about it and keeps solving
+suspension and traction, against contacts belonging to a build that has just shed
+most of its mass to the debris pool. Small residual forces on a small residual
+mass are a large acceleration.
 
-### 3.2 Tell the player what the keys are
+**Do not fix this by guessing.** Doc 05 §3.4 deliberately keeps the coupling
+torque running on a wreck, and says why — a tumbling hulk is where an asymmetric
+tensor is most visible — so "stop everything on termination" contradicts a
+documented decision. The question the document does not answer is whether the
+*families* should keep running, and that is the section to amend.
 
-No prompts, no pause menu, no settings screen. `C` for the camera toggle is not
-guessable and `Escape` releasing the mouse is not discoverable. A dismissible
-control card on the first match is an afternoon and is worth more to a first-time
-player than anything else at this size. Doc 11 §9's toast machinery is the
-obvious vehicle.
+Two things to have in hand first: the measurement above, repeated with
+`test_family_duels`' losers rather than only the player's build, and the mass the
+body is left holding once its islands have detached. `MassSolver.MASS_FLOOR_KG`
+is 0.001 kg and `LEARNED_FACTS.md` §1 fact 24 records that the engine refuses a
+zero mass outright, so a body sitting near that floor with an ordinary suspension
+force still on it is the likely mechanism — **likely, and not yet confirmed.**
+
+### 3.2 A way to play again
+
+The match concludes, the card says which way it went, and then nothing. Doc 11
+§16.3 records the gap deliberately: a restart needs a screen flow §15 does not
+have, because `scenes/boot/main.tscn` picks one scene and instantiates it.
+
+The smallest honest version is a **restart binding on the end card** that frees
+the match scene and instantiates a fresh one — which is a real test of whether
+the teardown in `MatchScreen._exit_tree` is complete, and `LEARNED_FACTS.md` §1
+facts 45, 48 and 53 all say it is the kind of thing that goes wrong quietly. The
+larger version is §15's missing menu and `SpawnDirector`, and it is the one that
+eventually has to exist.
+
+Do the small one first and find out what leaks.
 
 ### 3.3 Decide what a build does about recoil at a traversed mount
 
-The successor to "centre the muzzle", which was done in session 24 and did not
-buy what it was expected to. The recoil is applied at the muzzle and the mount
-sits 2.25 m forward of the centre of mass, so a traversed gun yaws the hull at
-48°/s a round. A player who holds the trigger while turning will spin.
+Unchanged from session 24, and now the oldest thing on the list. The recoil is
+applied at the muzzle and the mount sits 2.25 m forward of the centre of mass, so
+a traversed gun yaws the hull at 48°/s a round.
 
 Three candidates, and they are genuinely different games:
 
@@ -249,15 +272,7 @@ Three candidates, and they are genuinely different games:
 `tests/physics/test_recoil_geometry.gd` reports the lever and the yaw per round
 and is the instrument. Measure before choosing.
 
-### 3.4 Give the AI something to do when it is not fighting
-
-Three opponents converging on one target at a six-metre stand-off shoot each
-other to pieces, because nothing in `src/combat/` knows what a team is. A
-stand-off that scales with how many friends are already engaging the same target
-is a few lines in `AiDriver` and needs no new architecture. Whether friendly fire
-should exist at all is doc 08's question and is the larger one underneath it.
-
-### 3.5 Make the wheels follow their contacts
+### 3.4 Make the wheels follow their contacts
 
 `spawn_visual` draws a Motive Assembly at the cell it was placed in, not at its
 probe hit point, so suspension travel is invisible and a limb does not bend. On
@@ -266,15 +281,19 @@ large improvement to how the game *looks* that is available; doc 05 does not
 cover it and should. `AssemblyRuntime.visual_of(slot)` is the hook and the
 contact's `point_world` is the answer.
 
-### 3.6 Distinguish "on target" from "on an enemy"
+### 3.5 Decide whether friendly fire exists
 
-The reticle goes `ACCENT_SECONDARY` whenever the mount has a firing solution on
-wherever the aim ray landed, which is correct and reads as "enemy acquired". The
-aim ray already knows whether it struck `LAYER_ASSEMBLY_HULL`; carrying that as
-one more field on `HudFrame` and drawing a target bracket is the fix, and it is a
-change to doc 11 §14.3's table rather than to the reticle's semantics.
+§15.7.5's ladder fixed the *geometry* — three drivers converging on one target no
+longer stand in each other's line — and deliberately did not touch the rule.
+Nothing in `src/combat/` knows what a team is: `DamagePacket` names a source
+Assembly and `DamageResolver` never asks whose side it is on, so a round that
+reaches a friend does full damage.
 
-### 3.7 Sweep the bounds nobody reaches
+That is doc 08's question and it is a real one, not an oversight. The roster
+already exists on `AiContext` and the match layer owns it; what does not exist is
+a decision about whether the resolver should be told.
+
+### 3.6 Sweep the bounds nobody reaches
 
 Invariant I-12 lists eighteen bounds and the suite demonstrably reaches almost
 none of them. Deleting each in turn and watching for green is a cheap way to find
@@ -283,7 +302,7 @@ minutes a sweep. The fixture that closes one has to be built to *exceed* it and
 then to assert that it exceeds it. Likeliest to be untested: chain-reaction depth
 3, collapse cascades, melee sweep segments, and the two debris caps.
 
-### 3.8 Fight with the edge
+### 3.7 Fight with the edge
 
 `CombatArena` has five recipes and none carries an Appendage, so the melee weapon
 landed in session 18 has never been in a fight. What it needs: a `MELEE` recipe
@@ -294,7 +313,7 @@ measurement: 640 damage a swing has to survive a 26 m approach into 120 damage a
 round at seven a second, and §15.4's own impulse shoves the target 7 m/s clear of
 a second swing.
 
-### 3.9 A stability-augmentation layer, and the rotary family
+### 3.8 A stability-augmentation layer, and the rotary family
 
 `CombatArena._fly` is three loops through `ControlInput` and is still the only
 thing in the repository that can hold a hover. A **player** flying a rotary build
@@ -303,7 +322,7 @@ wants a layer between both `ControlInput` producers and the motion layer, which
 doc 05 does not have. An `AiDriver` handed a rotary Assembly aims and fires but
 does not fly.
 
-### 3.10 §15.5's sustained contact, and `DotScheduler`
+### 3.9 §15.5's sustained contact, and `DotScheduler`
 
 Two small, self-contained pieces of doc 07 and doc 08. `eff.melee.beam_edge.t4`
 authors sustained contact, `MeleeSolver.sustained_channel_damage` is written and
@@ -312,7 +331,7 @@ instead of per tick. `DotScheduler` (doc 08 §7.3) is about sixty lines and is t
 difference between thermal damage that resolves correctly when submitted and
 thermal damage that actually burns.
 
-### 3.11 The rest of document 10
+### 3.10 The rest of document 10
 
 Comparable in size to what document 09 cost, in dependency order: the CSG bake
 (doc 10 §3.1–§3.2), fragment decomposition (§3.3), support graph and collapse
@@ -322,8 +341,13 @@ survivable — is built and tested. Worth knowing before starting: a Voronoi cel
 is an intersection of half-spaces, so for a *convex* Section this is repeated
 plane slicing and needs no CSG at all.
 
-### 3.12 Smaller, and worth doing when passing
+### 3.11 Smaller, and worth doing when passing
 
+- **The camera can still end up inside the wreckage.** `LEARNED_FACTS.md` §1 fact
+  56's `cast_motion` clamp does its job against ground and Static Volumes, and
+  debris is not in the mask. At contact range the player finishes inside a pile of
+  debris bodies, and the orbit camera §16.2 now hands them is orbiting the inside
+  of a box. Adding `LAYER_DEBRIS` to §13.7's mask is one constant.
 - **A second steered wheeled row.** Makes one of the three surviving uncaught
   faults visible, gives rule 13 a second tier, and gives the garage a real choice
   on the front axle.
@@ -352,8 +376,14 @@ Things that are missing on purpose, or that are understood and not yet worth
 fixing. None of these is a surprise waiting to be found.
 
 ### The motion layer
+- **`MotiveSystem.step` has no liveness guard, and a wreck accelerates.** Measured
+  at 17.3 m/s rising to 92.0 m/s over fifty frames after the Core Module went.
+  Invariant I-2 ends the Assembly and the motion layer never hears about it. Doc
+  05 §3.4 deliberately keeps the coupling torque running on a wreck and does not
+  say whether the families should keep running; that is the section to amend.
+  Owned by §3.1.
 - **There is no stability-augmentation layer, and a rotary Assembly needs one to
-  exist in a test.** Owned by §3.9.
+  exist in a test.** Owned by §3.8.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
   §4.21, measured at 170° over five seconds, and now the family's limiting
   defect. It wants a heading term in doc 05 §13, which §13.8 currently forbids
@@ -377,7 +407,7 @@ fixing. None of these is a surprise waiting to be found.
   numerically — `retune` is pure and its inputs are constant between structural
   events — but §6.4 says "fires on mass recompute only" and the code does not.
 - **The visual wheel does not follow the contact**, and since the terrain landed
-  it is visible rather than theoretical. Owned by §3.5.
+  it is visible rather than theoretical. Owned by §3.4.
 - **A tracked pivot drifts a couple of metres** rather than turning about a
   point. The flanks counter-rotate correctly but their forces do not cancel
   exactly, because the two bogies sit at slightly different offsets. Whether that
@@ -405,15 +435,15 @@ fixing. None of these is a surprise waiting to be found.
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **No engagement has ever been fought at contact range.** Owned by §3.8.
+- **No engagement has ever been fought at contact range.** Owned by §3.7.
 - **§15.5's sustained contact is not implemented.** The edge authors it, the
-  solver computes it, and nothing calls it. Owned by §3.10.
+  solver computes it, and nothing calls it. Owned by §3.9.
 - **A melee strike can never ricochet**, because its packet's normal is derived
   from its own direction. Not a defect — the query reports no surface normal —
   but see §5 before assuming doc 08 §4's angle gate means anything here.
 - **`DotScheduler` is not written** (doc 08 §7.3), so thermal and corrosive
   packets resolve correctly when submitted and nothing submits them over time.
-  Owned by §3.10.
+  Owned by §3.9.
 - **`VisualDamageController` is not written** (doc 08 §9) and neither is §10's
   repair path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so that a band transition upward fires the same signal as one
@@ -424,10 +454,18 @@ fixing. None of these is a surprise waiting to be found.
   decidable, and moving it is a balance change that has to be measured as one.
 - **8° of depression is a real constraint and widening it is not free.** §4.22.
   Measured, reverted, recorded in doc 01 §10.5; the decision is open.
-- **Nothing in `src/combat/` knows what a team is, and now something else does.**
+- **Nothing in `src/combat/` knows what a team is, and two things now do.**
   `DamagePacket` carries a source Assembly and the resolver never asks whose side
   it is on, so friendly fire is decided by whichever hull the ray reaches first.
-  The roster lives on `AiContext`, owned by the match layer. Owned by §3.4.
+  The roster lives on `AiContext` and on `MatchState`, both owned by the match
+  layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
+  converging on one target and deliberately not the rule. Owned by §3.5.
+- **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
+  decides that the wreck stays, which is right, and §16.3 records that nothing
+  follows it: no restart, no menu, no `SpawnDirector`. Owned by §3.2.
+- **`killer_id` arrives on `assembly_terminated` and nothing reads it.** Doc 04
+  §8.2's second consumer — scoring — is unwritten, and `MatchState` deliberately
+  does not guess at one.
 - **Rule 13 (tier scaling) has still never fired.** It needs two tiers of one
   `class.family.variant`. The rotor family is the cheapest place to make it
   non-vacuous: doc 01 §10.3 publishes `mot.rotor.coaxial_heavy.t4` and
@@ -482,6 +520,13 @@ fixing. None of these is a surprise waiting to be found.
   both.
 - **`run_all_checks.gd` still tolerates a runtime error on its own.** The shell
   wrapper catches it (`LEARNED_FACTS.md` §1 fact 34). Worth knowing before running the `.gd` directly.
+- **The camera can still be buried in debris.** §13.7's `cast_motion` clamp masks
+  ground and Static Volumes and not `LAYER_DEBRIS`, so a player who finishes
+  inside a pile of wreckage is handed an orbit camera orbiting the inside of a
+  box. One constant; owned by §3.11.
+- **The control card has no first-run flag.** Doc 11 §14.6 raises it on every
+  entry to a match because there is nowhere to store "they have seen it", which
+  is `SyndicateSettings` work and is waiting on there being more than one match.
 - **`cam_orbit` and `cam_pan` have keyboard/mouse bindings only and no consumer.**
   Session 20 added four analogue `cam_look_*` actions for the match camera rather
   than overloading `cam_orbit`, which is a single action and cannot express two

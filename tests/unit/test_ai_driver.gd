@@ -220,3 +220,148 @@ func test_each_family_fights_at_its_documented_stand_off() -> void:
 		ROTARY_STAND_OFF_M,
 		"and a rotary one holds station further out still"
 	)
+
+
+## ===== §15.7.5's STAND-OFF LADDER ======================================
+## Doc 05 §15.7.5, by value. Written out by hand.
+
+const ALLY_STAND_OFF_STEP_M: float = 4.5
+const ALLY_STAND_OFF_MAX_STEPS: int = 3
+
+
+## The rung a driver with the field to itself stands on. If this moved, every
+## engagement in the project would move with it and nothing else here would say
+## so.
+func test_a_driver_with_no_friends_keeps_its_family_stand_off() -> void:
+	check_approx(
+		AiDriver.laddered_stand_off_m(GROUND_STAND_OFF_M, 0),
+		GROUND_STAND_OFF_M,
+		"nobody closer means the base range"
+	)
+
+
+## One step per friend, by value rather than by "it went up". A ladder with the
+## wrong step still increases.
+func test_each_closer_friend_adds_one_documented_step() -> void:
+	check_approx(
+		AiDriver.laddered_stand_off_m(GROUND_STAND_OFF_M, 1),
+		GROUND_STAND_OFF_M + ALLY_STAND_OFF_STEP_M,
+		"one friend closer is one step out"
+	)
+	check_approx(
+		AiDriver.laddered_stand_off_m(GROUND_STAND_OFF_M, 2),
+		GROUND_STAND_OFF_M + 2.0 * ALLY_STAND_OFF_STEP_M,
+		"two friends closer is two steps out"
+	)
+
+
+## The cap, asserted at the rung above it as well as at it. A clamp written as
+## `if steps == MAX` passes at the boundary and fails one past it.
+func test_the_ladder_stops_at_the_documented_cap() -> void:
+	var capped := GROUND_STAND_OFF_M + float(ALLY_STAND_OFF_MAX_STEPS) * ALLY_STAND_OFF_STEP_M
+	check_approx(
+		AiDriver.laddered_stand_off_m(GROUND_STAND_OFF_M, ALLY_STAND_OFF_MAX_STEPS),
+		capped,
+		"the last rung is the documented one"
+	)
+	check_approx(
+		AiDriver.laddered_stand_off_m(GROUND_STAND_OFF_M, ALLY_STAND_OFF_MAX_STEPS + 4),
+		capped,
+		"and a fourth friend does not push it further out"
+	)
+
+
+## The ladder is a spacing rule, not a family rule: it takes whatever base it is
+## given, so an ambulatory driver's twenty metres ladders the same way.
+func test_the_ladder_applies_to_any_family_stand_off() -> void:
+	check_approx(
+		AiDriver.laddered_stand_off_m(AMBULATORY_STAND_OFF_M, 1),
+		AMBULATORY_STAND_OFF_M + ALLY_STAND_OFF_STEP_M,
+		"the base is the argument, not a constant inside the rule"
+	)
+
+
+## The predicate the whole arrangement rests on: friends *nearer the target than
+## I am*, and nothing else. Three drivers strung out along the approach must
+## produce three different counts, or they all stop at the same range and the
+## ladder has done nothing.
+func test_only_friends_nearer_the_target_are_counted() -> void:
+	var target := _handle(1, 1, Vector3(0.0, 0.0, 0.0))
+	# Own side, at 10, 20 and 30 m from the target on one line.
+	var near := _handle(2, 0, Vector3(0.0, 0.0, 10.0))
+	var mid := _handle(3, 0, Vector3(0.0, 0.0, 20.0))
+	var far := _handle(4, 0, Vector3(0.0, 0.0, 30.0))
+
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, near.position, [target, mid, far]), target),
+		0,
+		"the nearest of three has nobody in front of it"
+	)
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, mid.position, [target, near, far]), target),
+		1,
+		"the middle one has one"
+	)
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, far.position, [target, near, mid]), target),
+		2,
+		"and the furthest has two"
+	)
+
+
+## The target is on the other side, so counting "everyone nearer" rather than
+## "everyone nearer on my side" would push every driver out one extra rung and
+## would do it invisibly, because the ladder would still be a ladder.
+func test_the_target_s_own_side_is_not_counted_as_friends() -> void:
+	var target := _handle(1, 1, Vector3.ZERO)
+	var enemy_escort := _handle(5, 1, Vector3(0.0, 0.0, 4.0))
+	var me := Vector3(0.0, 0.0, 20.0)
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, me, [target, enemy_escort]), target),
+		0,
+		"an opponent standing between me and my target is not a friend"
+	)
+
+
+## Two Assemblies abreast share a rung. Doc 05 §15.7.5 says ties are not broken,
+## and the alternative — a strict inequality that answered differently depending
+## on which of two identical ranges was compared first — would make the ladder
+## depend on registry order.
+func test_two_friends_at_equal_range_share_a_rung() -> void:
+	var target := _handle(1, 1, Vector3.ZERO)
+	var abreast := _handle(2, 0, Vector3(6.0, 0.0, 8.0))
+	var me := Vector3(-6.0, 0.0, 8.0)
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, me, [target, abreast]), target),
+		0,
+		"neither of two Assemblies abreast is in front of the other"
+	)
+
+
+## A driver with no scan behind it must not ladder off a null record.
+func test_a_missing_context_or_target_counts_nothing() -> void:
+	var target := _handle(1, 1, Vector3.ZERO)
+	check_eq(AiDriver.closer_allies(null, target), 0, "no context, no friends")
+	check_eq(
+		AiDriver.closer_allies(_context_at(0, Vector3.ZERO, []), null),
+		0,
+		"no target, nothing to be nearer than"
+	)
+
+
+func _handle(id: int, team: int, position: Vector3) -> AiContext.TargetHandle:
+	var handle := AiContext.TargetHandle.new()
+	handle.id = id
+	handle.team = team
+	handle.position = position
+	return handle
+
+
+func _context_at(
+	team: int, position: Vector3, candidates: Array[AiContext.TargetHandle]
+) -> AiContext:
+	var context := AiContext.new()
+	context.team = team
+	context.position = position
+	context.visible_assemblies = candidates
+	return context

@@ -1850,3 +1850,62 @@ trigger while driving, and they will meet exactly the same yaw. That is honest �
 both producers write the same eight numbers into the same physics — and it is
 the strongest argument in this document for fixing the offset rather than the
 driver.
+
+#### 15.7.5 The Stand-Off Ladder: Several Drivers, One Target
+
+Three opponents converging on one target at a six-metre stand-off end up in a
+heap and fire through each other. Nothing in `src/combat/` knows what a team is —
+`DamagePacket` names a source Assembly and `DamageResolver` never asks whose side
+it is on — so a round that clips a friend on the way past does full damage, and
+in the shipped arena at least one opponent dies to another before the player
+fires a shot.
+
+Whether friendly fire should exist is `COMPONENT_HEALTH_DAMAGE.md`'s question and
+is the larger one underneath this. It is not this section's, and it should not
+be answered by accident here: an AI that could shoot through its friends would be
+a different game from one that could not, and the choice belongs in the document
+that owns damage.
+
+What *is* this section's is the geometry. A stand-off is a range, drivers already
+have one, and a set of drivers converging on a point can be spread out along the
+line to it without anyone negotiating with anyone:
+
+```gdscript
+steps := clampi(closer_allies, 0, ALLY_STAND_OFF_MAX_STEPS)
+stand_off_m := base_m + steps * ALLY_STAND_OFF_STEP_M
+```
+
+`closer_allies` is the number of Assemblies on the driver's own side that are
+**nearer the chosen target than it is**. That predicate is what makes the
+arrangement work, and three properties fall out of it:
+
+- **It is a strict ordering by range**, so the demands are mutually consistent
+  without any driver knowing what another has decided. The nearest holds at the
+  base stand-off, the second one step out, the third two.
+- **It is stable under overtaking.** A driver that passes its neighbour inherits
+  the shorter stand-off in the same swap that gives the neighbour the longer one,
+  so the ladder re-forms rather than oscillating.
+- **It costs nothing per tick.** The count is taken off `WEAPON_TARGETING_LOGIC.md`
+  §10.1's candidate list, which is sampled on that section's 2.9 Hz scan
+  interval, so the laddered range is resolved once per scan alongside the target
+  and the aim error. The per-tick path still reads a body transform and nothing
+  else.
+
+Ties are not broken. Two friends at exactly equal range both count as not-closer
+and share a rung, which is the correct answer for two Assemblies abreast.
+
+The step is a little over an Assembly's own length — the smallest spacing at
+which a hull is not between a friend and the target. The cap exists because doc
+07 §10 models no obscuration at all, so an uncapped ladder would hold a fourth
+driver at a range where it is shooting at a hull it could not resolve, and the
+extra range would cost more accuracy than the spacing bought.
+
+| Constant | Value | What it is |
+|---|---|---|
+| `ALLY_STAND_OFF_STEP_M` | 4.5 | Extra stand-off per friendly Assembly already closer to the target |
+| `ALLY_STAND_OFF_MAX_STEPS` | 3 | Cap on the ladder, in steps |
+
+**This does not stop friendly fire and is not meant to.** A round still does full
+damage to whatever it reaches first. What it stops is three Assemblies standing
+in each other's line at contact range for the whole engagement, which is the
+form the problem actually takes.

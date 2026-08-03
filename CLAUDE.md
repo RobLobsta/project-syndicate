@@ -30,7 +30,7 @@ If a document is silent on something, follow the closest documented precedent an
 | 08 | [`docs/COMPONENT_HEALTH_DAMAGE.md`](docs/COMPONENT_HEALTH_DAMAGE.md) | Damage packets, all five channels, `DegradationTable`, band transitions, visual damage states, repair |
 | 09 | [`docs/TERRAIN_CRATER_DEFORMER.md`](docs/TERRAIN_CRATER_DEFORMER.md) | Ground Arrays, crater profile, deformation pipeline, collision streaming, `SurfaceTable` |
 | 10 | [`docs/PROCEDURAL_STRUCTURE_SLICING.md`](docs/PROCEDURAL_STRUCTURE_SLICING.md) | Static Volumes, CSG bake, fracture decomposition, support graph, runtime convex slicing |
-| 11 | [`docs/RESPONSIVE_GARAGE_UI.md`](docs/RESPONSIVE_GARAGE_UI.md) | Scaling, breakpoints, container hierarchy, virtualised catalogue, input abstraction, theme, **match camera, match HUD, boot flow** |
+| 11 | [`docs/RESPONSIVE_GARAGE_UI.md`](docs/RESPONSIVE_GARAGE_UI.md) | Scaling, breakpoints, container hierarchy, virtualised catalogue, input abstraction, theme, **match camera, match HUD, boot flow, match outcome** |
 | 12 | [`docs/HEADLESS_NETWORK_SYNC.md`](docs/HEADLESS_NETWORK_SYNC.md) | Authority matrix, channels, snapshot format, prediction, lag compensation, headless server |
 | 13 | [`docs/EXTENSION_PIPELINE.md`](docs/EXTENSION_PIPELINE.md) | Asset maturity stages, naming, DCC export contract, import config, validation, promotion workflow |
 
@@ -53,6 +53,7 @@ When a value appears in more than one place, exactly one document **owns** it an
 | Road station, differential drive, and slew constants | 05 |
 | Input action → `ControlInput` mapping | 05 |
 | AI stand-off, steer saturation, gait yaw damping | 05 |
+| AI stand-off ladder (ally spacing) | 05 |
 | AI scan cadence, target score weights, difficulty error | 07 |
 | Archetype weights and budget ratios | 06 |
 | Effector timing, spread, recoil, jam constants | 07 |
@@ -64,6 +65,7 @@ When a value appears in more than one place, exactly one document **owns** it an
 | Breakpoints, colour tokens, **input map actions** | 11 |
 | Camera framing, lag rates, aim-ray constants | 11 |
 | Reticle states, HUD flash and feed constants | 11 |
+| Match outcome rule, end card and control card constants | 11 |
 | Protocol version, channel layout, quantisation bits | 12 |
 | Triangle budgets, socket names, atlas layout | 13 |
 | Proxy mesh resolution, greybox class tints | 13 |
@@ -181,8 +183,10 @@ project-syndicate/
 │   │   │                             catalogue_presenter.gd, part_card.gd,
 │   │   │                             assembly_stat_panel.gd, touch_placement_controller.gd
 │   │   ├── match/                  ← match_screen.gd, chase_camera.gd, hud_frame.gd
-│   │   ├── hud/                    ← match_hud.gd, reticle.gd, damage_indicator.gd
-│   │   └── common/                 ← meter_row.gd, stat_row.gd, toast_stack.gd
+│   │   ├── hud/                    ← match_hud.gd, reticle.gd, damage_indicator.gd,
+│   │   │                             control_card.gd, match_end_card.gd
+│   │   └── common/                 ← meter_row.gd, stat_row.gd, toast_stack.gd,
+│   │                                 input_prompt.gd
 │   │
 │   ├── vfx/
 │   │   ├── fusion/                 ← occupancy_sdf_baker.gd, skirting_builder.gd,

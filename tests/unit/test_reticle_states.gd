@@ -110,3 +110,54 @@ func test_the_frame_defaults_to_the_state_that_promises_nothing() -> void:
 		frame.reticle_state, HudFrame.ReticleState.NO_EFFECTOR,
 		"an unfilled frame claims no Effector Module rather than a solution"
 	)
+
+
+## ===== §14.3's TARGET BRACKET ==========================================
+
+
+## The bracket is a second quantity rather than a sixth state, and this is what
+## that buys: it can be on in any of the five. The combination that makes the
+## case is `NO_AMMO` over a live target — a player who must break off — against
+## `ON_TARGET` over bare hillside, a player who must keep looking. A sixth state
+## could express neither.
+func test_the_target_bracket_is_independent_of_the_five_states() -> void:
+	var reticle := Reticle.new()
+	for s: HudFrame.ReticleState in ALL_STATES:
+		reticle.set_state(s)
+		reticle.set_target_acquired(true)
+		check_true(reticle.target_acquired, "state %d can carry a target" % s)
+		check_eq(reticle.state, s, "and carrying one does not change the state")
+		reticle.set_target_acquired(false)
+		check_false(reticle.target_acquired, "and can drop it again")
+	reticle.free()
+
+
+## §14.3 gives the bracket `accent_primary` precisely because the five states do
+## not use it. A bracket sharing a state's token would be read as that state.
+func test_the_bracket_token_belongs_to_no_state() -> void:
+	for s: HudFrame.ReticleState in ALL_STATES:
+		check_false(
+			Reticle.colour_for(s).is_equal_approx(UiTokens.ACCENT_PRIMARY),
+			"state %d does not use the bracket's token" % s
+		)
+
+
+## The bracket sits outside the widest the state brackets ever open to, or the
+## two overlap in `SEEKING` and the player is looking at one shape.
+func test_the_bracket_is_drawn_outside_the_state_brackets() -> void:
+	check_true(
+		Reticle.TARGET_BRACKET_SPREAD_PX > Reticle.SPREAD_MAX_PX,
+		"the target bracket clears the open state brackets"
+	)
+
+
+## A frame that does not change must not redraw, which is the whole reason both
+## setters are guarded. §14.3's reticle redraws while the brackets move and never
+## when they do not, and an unguarded setter would make it redraw every tick.
+func test_setting_the_same_target_state_twice_is_not_a_change() -> void:
+	var reticle := Reticle.new()
+	reticle.set_target_acquired(true)
+	check_true(reticle.target_acquired, "raised")
+	reticle.set_target_acquired(true)
+	check_true(reticle.target_acquired, "and still raised after a repeat")
+	reticle.free()

@@ -66,6 +66,36 @@ they found are in `LEARNED_FACTS.md`.
 | 22 | **The ground is terrain.** Dynamic Ground Arrays under the match, 15 m of relief. Fixed doc 09 §4.3 destroying the crater rim, §3.3's false volume-conservation claim, and §5's streaming order dropping an Assembly through the world. `ManifoldChecker` gates DCC operands for doc 10. |
 | 23 | **Something shoots back.** `src/ai/` — context, target selector, driver. The match spawns three opponents that close, aim and fire through the same systems a player's trigger reaches. Found the recoil-yaw handling defect, a duplicated `assembly_terminated`, and that the ambulatory drift's *direction* is not reproducible. |
 | 24 | **The bore is centred, and it did not fix what it was for.** Doc 01 §14 rule 27; the module is 4×4×9 and its bore is on the centre of mass. An Assembly still cannot drive and shoot — the lever is the mount's position, not the bore's offset. Also: §15.7.1's throttle floor was outside its own window; the fix for that was green on every test and broke the game on real terrain; two fixtures were resting on one lucky round from the ambulatory build. Sweeps rebuilt — 10× faster, cannot hang, baselines measured rather than declared. |
+| 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
+
+### Session 25, in more detail
+
+The four things a player meets around a fight all landed, and the capture that
+checked them found something none of them caused.
+
+- **Doc 11 §16.** `MatchState` is `assembly_terminated`'s first consumer since the
+  signal was written in session 16. The rule is one static over a sorted list of
+  standing teams, which is what makes the draw and the one-team match — neither
+  reachable in an arena — testable at all. `test_match_conclusion` then caught a
+  real defect on its first run: one Assembly terminated twice took its team out
+  twice, ending the match against a side that was still standing.
+- **Doc 11 §14.6.** The control card reads every binding out of `InputMap` at the
+  moment it is raised, so a rebind is on it. `hud_toggle_stats` finally has a
+  consumer.
+- **Doc 11 §14.3.** `target_acquired` is a second quantity beside the five reticle
+  states rather than a sixth state, because `NO_AMMO` over a live target and
+  `ON_TARGET` over bare hillside are both things a player has to be able to read.
+- **Doc 05 §15.7.5.** The stand-off ladder spaces converging drivers by counting
+  only the friends nearer the target than themselves — a strict ordering, so
+  nobody negotiates and overtaking re-forms the ladder rather than oscillating it.
+
+**And then the capture.** With the camera no longer bolted to a corpse, the corpse
+turned out to be doing 92 m/s. `MotiveSystem` has no liveness guard, so a build
+whose Core Module has gone keeps solving suspension and traction against contacts
+it no longer has the mass to load. The end card had been claiming "the wreck stays
+where it fell" in words on the screen; the string is now honest and the behaviour
+is `HANDOFF.md` §3.1. It is the fourth time in this project that the only
+instrument which found something was somebody looking at it.
 
 ### Session 24, in more detail
 
@@ -172,6 +202,9 @@ restarted every tick |
 | `test_ai_engagement` | *(session 23)* the whole chain end to end: a scan, a target, a 180° turn, an approach, a mount converged, a round fired, a store decremented by exactly the shots, integrity taken off the target — plus §15.7.4's fire discipline and §10.2's arc penalty by value |
 | `test_detachment_scheduler` | …and, since session 23, that the scheduler announces **no** termination. It used to assert the opposite, which is what kept doc 04 §8.2's duplicate producer alive for seven sessions |
 | `test_part_registry_validator` *(rule 27)* | *(session 24)* a bore on the pivot rather than on an even-width footprint's centre, one half a metre off it, an odd-width direct-fire module against an even-width Core Module — and both exemptions, an arced module and a melee one |
+| `test_match_outcome` | *(session 25)* doc 11 §16.1's four rows, including the two nothing in an arena can stage, and §16.2's three titles, details and tokens |
+| `test_match_conclusion` | *(session 25)* **one Assembly terminated twice taking its team out twice** — caught on the file's first run, before the guard existed — plus concluding twice on a mutual kill, an unregistered Assembly deciding a match, and the standing list's ordering |
+| `test_input_prompt` | *(session 25)* doc 11 §14.6's binding lookup: two keys naming themselves distinctly, a modifier surviving into the glyph, the unnamed-mouse-button format branch, an undeclared action reading as unbound, §7.2's device match in both directions, and every caption being in the string table |
 | *the runner itself* | `_process` returning `true`; the coroutine not awaited — both truncate the suite and both are detected by the check count, not by a failure |
 | *nothing* | node adjacency tested in one direction only — see §5 |
 | *nothing* | a probe claimed into two axle pairs — see §5 |
@@ -182,7 +215,7 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Three committed sweeps, 72 faults between them, all driven by
+Four committed sweeps, 84 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
@@ -191,6 +224,7 @@ is a couple of minutes.
 | `engagement_sweep.py` | the paths the engagement files rest on (sessions 15–16) | 14 |
 | `combat_layer_sweep.py` | damage, effector and projectile layers (session 14), plus doc 07 §15 (session 18) | 45 |
 | `ai_layer_sweep.py` | `src/ai/`, doc 05 §15.7, doc 07 §10, doc 01 rule 27 | 13 |
+| `match_layer_sweep.py` | doc 11 §16's outcome rule, §14.3's target bracket, §14.6's binding lookup, doc 05 §15.7.5's ladder | 12 |
 
 ### What still survives, and why
 
