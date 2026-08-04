@@ -28,14 +28,25 @@ var _undo: Array[BuildCommand] = []
 var _redo: Array[BuildCommand] = []
 
 
-## Commits [param cand] and records it. Returns the committed slot, or
-## [constant SyndicateConstants.INVALID_SLOT] when the commit was refused.
-func attach(ctx: BuildContext, cand: PlacementCandidate) -> int:
-	var cmd := BuildCommand.attach(ctx, cand)
+## Commits [param cand], and doc 02 §10's [param mirror] alongside it where one
+## is given, as a single undoable edit. Returns the command, or null when the
+## placement was refused.
+##
+## The mirror is validated here rather than by the caller, because §10's rule is
+## that a refused mirror is skipped and the primary still commits — so whether
+## there is a second placement is an answer this function has to have before it
+## can record what it did.
+func attach(
+	ctx: BuildContext, cand: PlacementCandidate, mirror: PlacementCandidate = null
+) -> BuildCommand:
+	var extra := mirror
+	if extra != null and PlacementValidator.validate(ctx, extra) != PlacementValidator.Reject.NONE:
+		extra = null
+	var cmd := BuildCommand.attach(ctx, cand, extra)
 	if cmd == null:
-		return SyndicateConstants.INVALID_SLOT
+		return null
 	_push(cmd)
-	return ctx.occupancy.slot_at(cand.origin_cell)
+	return cmd
 
 
 ## Removes [param slot] through §9.2 and records it. Returns the command, so the

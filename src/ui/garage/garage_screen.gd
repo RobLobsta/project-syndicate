@@ -57,6 +57,7 @@ const KEY_MENU: StringName = &"garage.action.menu"
 const KEY_RESET: StringName = &"garage.action.reset"
 const KEY_UNDO: StringName = &"garage.action.undo"
 const KEY_REDO: StringName = &"garage.action.redo"
+const KEY_MIRROR: StringName = &"garage.action.mirror"
 const KEY_SEARCH_PLACEHOLDER: StringName = &"garage.catalogue.search"
 const KEY_CLASS_ANY: StringName = &"garage.catalogue.any_class"
 const KEY_HINT: StringName = &"garage.hint"
@@ -72,6 +73,9 @@ const KEY_NOTHING_TO_REDO: StringName = &"garage.redo.none"
 const KEY_CONFIRM_TITLE: StringName = &"garage.confirm.title"
 const KEY_CONFIRM_REMOVE: StringName = &"garage.confirm.remove"
 const KEY_CONFIRM_RESET: StringName = &"garage.confirm.reset"
+const KEY_MIRROR_ON: StringName = &"garage.mirror.on"
+const KEY_MIRROR_OFF: StringName = &"garage.mirror.off"
+const KEY_MIRROR_REFUSED: StringName = &"garage.mirror.refused"
 
 ## The build being edited. Every placement in it went through the validator.
 var context: BuildContext = null
@@ -82,6 +86,10 @@ var context: BuildContext = null
 ## undo at all because the stack then puts the build into a state the player
 ## never built.
 var history: BuildHistory = BuildHistory.new()
+
+## Doc 02 §10's mirror mode. Off on open: a player who has not asked for it and
+## does not know it exists must not find two parts appearing per click.
+var mirror_enabled: bool = false
 
 ## The blueprint the garage opened on, kept so that Reset can put it back. The
 ## live build is the context; this is the starting point.
@@ -106,6 +114,7 @@ var _selection_label: Label = null
 var _centre: Control = null
 var _undo_button: Button = null
 var _redo_button: Button = null
+var _mirror_toggle: CheckButton = null
 var _confirm: ConfirmationDialog = null
 ## What §4.2's `ConfirmDialog` will do if the player agrees. Cleared as it runs,
 ## so a dialog dismissed and re-raised for something else cannot fire the
@@ -204,6 +213,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# `Ctrl+Z`, and Godot matches a key action on its keycode and modifiers, so
 	# the shifted press satisfies neither the other way round — but testing the
 	# more specific binding first is what keeps that true if either is rebound.
+	if event.is_action_pressed(&"build_mirror_toggle"):
+		set_mirror_enabled(not mirror_enabled)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"build_redo"):
 		_redo()
 		get_viewport().set_input_as_handled()
@@ -260,10 +273,30 @@ func _update_ghost(screen_pos: Vector2) -> void:
 
 	var reject := PlacementValidator.validate(context, candidate)
 	preview.show_ghost(def, candidate, reject)
+	_show_mirror_ghost(def, candidate)
 	_status.text = (
 		"" if reject == PlacementValidator.Reject.NONE
 		else tr(PlacementValidator.reject_key(reject))
 	)
+
+
+## Doc 02 §10's second ghost, when mirror mode is on and the placement has a
+## reflection distinct from itself.
+##
+## The mirror is validated against the build [i]as it stands[/i], which is not
+## the build the mirror will land in — the primary goes down first. That is a
+## preview rather than a promise, and it is the honest one available: validating
+## against a hypothetical commit would mean running the whole chain twice per
+## pointer move to answer a question the click itself answers a frame later.
+func _show_mirror_ghost(def: PartDefinition, candidate: PlacementCandidate) -> void:
+	if not mirror_enabled:
+		preview.hide_mirror_ghost()
+		return
+	var mirror := candidate.mirrored_x()
+	if mirror.occupies_the_same_cells_as(candidate):
+		preview.hide_mirror_ghost()
+		return
+	preview.show_mirror_ghost(def, mirror, PlacementValidator.validate(context, mirror))
 
 
 func _place_at(screen_pos: Vector2) -> void:
@@ -277,8 +310,24 @@ func _place_at(screen_pos: Vector2) -> void:
 	if reject != PlacementValidator.Reject.NONE:
 		_status.text = tr(PlacementValidator.reject_key(reject))
 		return
-	history.attach(context, candidate)
-	_status.text = ""
+
+	# Doc 02 §10. A placement that is its own reflection — a part straddling the
+	# Assembly's centre plane — has no second half, and offering one would put the
+	# mirror on top of the primary and report it as refused.
+	var mirror: PlacementCandidate = null
+	if mirror_enabled:
+		mirror = candidate.mirrored_x()
+		if mirror.occupies_the_same_cells_as(candidate):
+			mirror = null
+
+	var cmd := history.attach(context, candidate, mirror)
+	# §10: a refused mirror never blocks a legal placement, and the player is told
+	# without being stopped. The status strip is this garage's non-blocking
+	# notification; §9.2's dialog is what blocking looks like here.
+	_status.text = (
+		tr(KEY_MIRROR_REFUSED) if mirror != null and cmd != null and cmd.attach_size() < 2
+		else ""
+	)
 	_after_edit()
 	_update_ghost(screen_pos)
 
@@ -320,6 +369,22 @@ func _commit_removal(slot: int) -> void:
 		else tr(KEY_CASCADE) % cmd.cascade_size()
 	)
 	_after_edit()
+
+
+## ===== §10 MIRRORING ===================================================
+
+
+## Turns doc 02 §10's mirror mode on or off, from the key or from the toggle.
+##
+## Public because the toggle and the binding are two producers of one state and
+## neither owns it; the screen does, and both go through here so the button
+## cannot say one thing while the placement path does another.
+func set_mirror_enabled(enabled: bool) -> void:
+	mirror_enabled = enabled
+	if _mirror_toggle != null:
+		_mirror_toggle.set_pressed_no_signal(enabled)
+	_status.text = tr(KEY_MIRROR_ON) if enabled else tr(KEY_MIRROR_OFF)
+	_invalidate_ghost()
 
 
 ## ===== §9.3 UNDO =======================================================
@@ -368,11 +433,15 @@ func _inspect_under_pointer(screen_pos: Vector2) -> void:
 	if inspector == null:
 		return
 	if _armed_definition() != null:
+		# Placing, not inspecting. The wash would otherwise sit on a part the
+		# player is no longer asking about while a ghost hangs over another one.
+		preview.highlight_slot(SyndicateConstants.INVALID_SLOT)
 		return
 	var slot := preview.slot_at(screen_pos)
 	if slot == _inspected_slot:
 		return
 	_inspected_slot = slot
+	preview.highlight_slot(slot)
 	inspector.show_part(
 		null if slot == SyndicateConstants.INVALID_SLOT else context.definition_at(slot)
 	)
@@ -441,6 +510,8 @@ func _on_part_selected(_part_def_id: int) -> void:
 	_invalidate_ghost()
 	_refresh_selection_label()
 	_inspected_slot = SyndicateConstants.INVALID_SLOT
+	if preview != null:
+		preview.highlight_slot(SyndicateConstants.INVALID_SLOT)
 	if inspector != null:
 		inspector.show_part(_armed_definition())
 
@@ -628,6 +699,16 @@ func _build_toolbar() -> PanelContainer:
 	# never looks at the toolbar still finds Ctrl+Z; one who never tries Ctrl+Z
 	# still finds the button — and neither has to be told twice in the hint line,
 	# which is already carrying four controls at the narrowest tier.
+	# §4.2's MirrorToggle. A [CheckButton] rather than a pressed [Button] because
+	# it is a mode rather than an action, and a player who left it on and came
+	# back to the screen has to be able to see that from across the room.
+	_mirror_toggle = CheckButton.new()
+	_mirror_toggle.name = "MirrorToggle"
+	_mirror_toggle.theme_type_variation = &"ToolbarButton"
+	_mirror_toggle.text = tr(KEY_MIRROR) % InputPrompt.label_for(&"build_mirror_toggle")
+	_mirror_toggle.toggled.connect(set_mirror_enabled)
+	row.add_child(_mirror_toggle)
+
 	_undo_button = _history_button(KEY_UNDO, &"build_undo", _undo)
 	row.add_child(_undo_button)
 	_redo_button = _history_button(KEY_REDO, &"build_redo", _redo)

@@ -185,6 +185,56 @@ func test_a_key_press_undoes_an_edit_in_the_garage() -> void:
 	_reset()
 
 
+## Doc 02 §10's mirror mode is a screen state with two producers — the key and
+## §4.2's toggle — and neither owns it.
+##
+## The pointer half cannot be driven headless (fact 28), so what is asserted here
+## is the wiring either producer can break: the key reaches the state, the toggle
+## agrees with it afterwards, and the state starts off. Off matters: a player who
+## has not asked for mirroring and does not know it exists must not find two
+## parts appearing per click.
+func test_the_mirror_key_and_the_toggle_are_one_state() -> void:
+	_reset()
+	_shell.show_garage()
+	var garage := _shell.current_node() as GarageScreen
+	check_not_null(garage, "the garage is on show")
+	if garage == null:
+		return
+	check_false(garage.mirror_enabled, "mirror mode is off when the garage opens")
+
+	garage._unhandled_input(_action_press(&"build_mirror_toggle"))
+	check_true(garage.mirror_enabled, "the key turns it on")
+	garage._unhandled_input(_action_press(&"build_mirror_toggle"))
+	check_false(garage.mirror_enabled, "and off again")
+	_reset()
+
+
+## The wash that says which part the inspector is talking about.
+##
+## Keyed on the slot, and a slot is reused by the next placement — so the case
+## worth asserting is not that it lights up but that it goes out when the part it
+## was on leaves.
+func test_the_hover_highlight_follows_the_part_and_not_the_slot() -> void:
+	_reset()
+	_shell.show_garage()
+	var garage := _shell.current_node() as GarageScreen
+	check_not_null(garage, "the garage is on show")
+	if garage == null:
+		return
+	var slot := _highest_slot(garage.context)
+
+	garage.preview.highlight_slot(slot)
+	check_eq(garage.preview.highlighted_slot(), slot, "the wash is on the part")
+
+	garage.history.remove(garage.context, slot)
+	check_eq(
+		garage.preview.highlighted_slot(),
+		SyndicateConstants.INVALID_SLOT,
+		"and is forgotten when that part comes off, rather than waiting for the next one"
+	)
+	_reset()
+
+
 ## Doc 11 §9.1's "clear the entire Assembly" row. Reset is the one garage action
 ## undo cannot reach — the stack's commands name cells belonging to a build that
 ## is gone — so it is the one that has to ask, and asking is worth nothing if the

@@ -45,8 +45,9 @@ func test_an_attach_is_undone_and_redone_into_the_same_cell() -> void:
 	var before := ctx.occupancy.occupied_count
 	var mounts := ctx.budgets.mount_used
 
-	var slot := history.attach(ctx, _candidate(ctx, DECK_CELL))
-	check_true(slot != SyndicateConstants.INVALID_SLOT, "the panel committed")
+	check_not_null(history.attach(ctx, _candidate(ctx, DECK_CELL)), "the panel committed")
+	var slot := ctx.occupancy.slot_at(DECK_CELL)
+	check_true(slot != SyndicateConstants.INVALID_SLOT, "and is on the lattice")
 	check_true(history.can_undo(), "and the stack has something to undo")
 
 	check_not_null(history.undo(ctx), "the undo reports the command it inverted")
@@ -222,7 +223,8 @@ func test_the_stack_stops_at_the_documented_depth() -> void:
 	var ctx := _core_only()
 	var history := BuildHistory.new()
 	for i in 80:
-		history.remove(ctx, history.attach(ctx, _candidate(ctx, DECK_CELL)))
+		history.attach(ctx, _candidate(ctx, DECK_CELL))
+		history.remove(ctx, ctx.occupancy.slot_at(DECK_CELL))
 	check_eq(history.depth(), 128, "the stack holds the last 128 of 160 commands")
 
 	# What is left still has to invert: the oldest commands were dropped, not

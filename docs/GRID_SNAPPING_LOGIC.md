@@ -778,6 +778,48 @@ static func mirror_orientation_x(index: int) -> int:
 
 When the mirrored placement fails validation, the mirror is skipped and the primary placement still commits, with a non-blocking notification. Mirror mode never blocks a legal placement.
 
+The two statics live where they belong to: `LatticeMath.mirror_x` and `OrientationTable.mirror_x_index`. The second is renamed from the sketch's `mirror_orientation_x` — it is a member of the orientation group answering about the orientation group, and every other function on that class is named for what it returns rather than for what it operates on.
+
+### 10.1 A Placement Is Not A Cell
+
+**`mirror_x` reflects a cell, and applying it to an origin cell is wrong for every part that ships.** This was the shape of the whole section until session 28 and it is the one thing to carry out of it.
+
+An origin cell is a *pivot*, and a pivot is not the middle of a footprint: `str.hub.axle_station.t2` is two cells wide with its pivot at the high-x end, the Core Module is four wide with its pivot two cells from the low end, and nothing requires an authored footprint to be centred on its own pivot at all. Reflect the pivot of a station standing at x 21–22 and the answer is cell 25, while its reflection occupies 25–26 and therefore pivots at 26. One cell out, on every part whose pivot is off-centre, in the direction that looks almost right.
+
+The mirrored part is additionally **rotated**, and a rotation moves the pivot within the footprint again — so the correction is not a constant that could be folded into the formula.
+
+So the reflection is of the footprint:
+
+```gdscript
+func mirrored_x() -> PlacementCandidate:                  # PlacementCandidate
+    var orientation := OrientationTable.mirror_x_index(orientation_index)
+    var here := FootprintSolver.bounds_of(cells)
+    var there := FootprintSolver.bounds_of(
+        FootprintSolver.resolve_cells(definition, Vector3i.ZERO, orientation)
+    )
+    return PlacementCandidate.create(definition, Vector3i(
+        LatticeMath.mirror_x(here[1]).x - there[0].x,     # far side becomes near side
+        here[0].y - there[0].y,                           # y and z do not move
+        here[0].z - there[0].z
+    ), orientation)
+```
+
+The x extent is seated against the reflection of this footprint's far side; y and z are carried across unchanged, because the reflection does not move them and the mirrored orientation may still have shifted the pivot within them.
+
+**The mirror plane is the Core Module's.** It runs between cells `ORIGIN.x - 1` and `ORIGIN.x` — hence the `-1` in `mirror_x` — because the shipped Core Module is four cells wide and seated on the origin, spanning 22–25, and the only plane that maps it onto itself is the one between 23 and 24. A build's symmetry is the Core Module's symmetry; Invariant I-2 makes it the root everything else hangs from.
+
+**The shipped starter is the test.** It was authored placement by placement, and its two flanks carry *different* origin cells on every part that is not on the centre line — 22 against 26 on the stations, (19, 22) against (28, 21) on the contacts — for exactly the reasons above. `tests/unit/test_mirroring.gd` takes each of its twelve parts in turn and demands that the reflection is the part already standing opposite. A mirror that reflects the pivot reproduces neither flank.
+
+### 10.2 One Gesture, One Command
+
+A mirrored pair is committed as a single `BuildCommand` (§9.3), not as two. The player made one gesture, and two commands would mean a mirrored build comes apart under undo one flank at a time — which is the thing mirror mode exists to stop them doing by hand.
+
+That composes with the rule above it rather than conflicting: a refused mirror is simply not in the command's placement list, so undo takes back exactly what went on. `BuildHistory.attach` validates the mirror, because whether there is a second placement is something the command has to know before it can record what it did.
+
+A part straddling the mirror plane is its own reflection and gets no second half. It is worth distinguishing from a refusal in what the player is told: the mirror of a centreline part lands on the part itself, so the validator's honest answer is `CELL_OCCUPIED`, and reporting that as "the mirrored half would not fit" reads as mirroring being broken on the one placement where it has nothing to do.
+
+**Mirroring is placement only.** Removal is not mirrored: §9.2's cascade already takes parts the player did not point at, and a removal that also crossed the build to take a part on the other flank would be two surprises in one click. Undo is what makes a wrong removal cheap; a wrong *doubled* removal is twice as much to read back.
+
 ---
 
 ## 11. Performance Budget

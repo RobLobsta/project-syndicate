@@ -909,6 +909,15 @@ script says `PATCH-MISS` and carries on. Read the misses as carefully as the
 survivals — a fault that cannot be planted is a defence that has been removed
 without anybody deciding to remove it.
 
+**A slot is reused, so anything keyed on one has to be dropped when its part
+leaves rather than when the next arrives.** `BuildContext.allocate_slot` hands
+out the lowest free slot, so the slot a removal frees is the slot the next
+placement is given. The garage's hover wash is keyed on a slot and clears itself
+in `part_removed` for this reason; a highlight that waited for the next hover
+would arrive on a new part already lit. The same shape bit `BuildCommand`, which
+is why a command names a cell instead — and the two answers are different because
+a wash is presentation that can be dropped and a command is a record that cannot.
+
 **A signal keyed on a slot must be emitted per slot.** Session 27's, and it
 generalises past the one signal: `part_removed` announced the part the player
 named and not the cascade that went with it, because doc 02 §9.2's sketch emits
@@ -1523,6 +1532,30 @@ It is caught by exactly one fixture —
 fixture goes on to *redo*, which is the sole operation that has to find a part it
 did not just put there. The slot-keyed variant was run against the whole suite by
 hand and nothing else noticed.
+
+**A pivot is not the middle of a footprint, and every transform of a placement
+has to deal with that separately.** Doc 02 §10 mirrors a cell; mirroring a
+*placement* is a different operation, because the origin cell is the part's pivot
+and an authored footprint need not be centred on its own pivot — the shipped
+station is two cells wide and pivots at the high-x end. The mirrored part is also
+rotated, which moves the pivot within the footprint again, so the correction is
+not a constant. The rule that works is: **transform the footprint's bounding box,
+then solve for the origin that seats the transformed part in it.** Anything that
+transforms the origin directly is right for symmetric parts and one cell out for
+everything else, which is the worst available failure — it looks like a physics
+problem, because the build comes out asymmetric and drives crooked.
+
+`FootprintSolver.origin_for_seated_footprint` already existed for the
+auto-assembler and answers the same shape of question. If a third caller ever
+needs it, that is the function to widen rather than to copy.
+
+**The shipped starter is the repository's only hand-mirrored build, and that
+makes it a test fixture rather than only a fixture.** It was authored flank by
+flank, so its two sides carry different origin cells wherever the pivot is
+off-centre — which is exactly the ground truth a mirror implementation needs and
+exactly what nobody would think to write down as an expectation. Any future
+hand-authored symmetric build is worth the same treatment; there is currently no
+second one.
 
 **A blueprint is re-validated at every screen boundary, in one process, and that
 is not redundancy.** The garage produces one, the shell carries it, the match

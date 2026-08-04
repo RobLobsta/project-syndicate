@@ -68,7 +68,48 @@ they found are in `LEARNED_FACTS.md`.
 | 24 | **The bore is centred, and it did not fix what it was for.** Doc 01 §14 rule 27; the module is 4×4×9 and its bore is on the centre of mass. An Assembly still cannot drive and shoot — the lever is the mount's position, not the bore's offset. Also: §15.7.1's throttle floor was outside its own window; the fix for that was green on every test and broke the game on real terrain; two fixtures were resting on one lucky round from the ambulatory build. Sweeps rebuilt — 10× faster, cannot hang, baselines measured rather than declared. |
 | 26 | **The game has a loop.** A menu, a garage a player builds in, a TEST DRIVE that fights three opponents with what they built, and two keys on the end card that fight again or go back. `Blueprint` carries a build across every screen boundary and is re-validated at each one. Doc 11 §4.3's inspector says what a part does. Doc 05 §3.6 stops the motion layer solving a terminated Assembly — the wreck no longer accelerates. |
 | 27 | **A misclick is survivable.** Doc 02 §9.3's undo stack — `BuildCommand`, `BuildHistory`, `Ctrl+Z` and two toolbar buttons — and §9.2's confirmation before a removal that orphans something. Two defects found by checking what a docstring claimed: a cascade announced itself once, leaving the rest of its meshes floating, and `Blueprint.from_context` assumed slot order was build order, so an ordinary edit produced a build that could not reach a match. |
+| 28 | **Half the clicks, and you can see what you built.** Doc 02 §10's mirror: one gesture places both flanks, as one undoable command. The shipped starter is twelve placements and comes out of eight. Found that §10's own sketch mirrors the pivot cell, which is one cell wrong on every part whose pivot is off-centre. The garage also got a fill light, a bounce and a hover wash — before them the build rendered as one dark silhouette and doc 13's class tints carried nothing. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
+
+### Session 28, in more detail
+
+Two queue items: doc 02 §10's mirroring, and the garage's legibility — which the
+session-27 capture had put at the top of the player review.
+
+- **Mirroring, and the trap in its own specification.** §10 sketches
+  `mirror_x(cell)` and the garage applies it to an origin cell. An origin cell is
+  a *pivot*, a pivot is not the middle of a footprint, and the mirrored part is
+  additionally rotated — so that answer is one cell out on every part that ships
+  with an off-centre pivot, which is all of them. The reflection is of the
+  **footprint**: `PlacementCandidate.mirrored_x` seats the mirrored x extent
+  against the reflection of this one's far side and carries y and z across.
+
+  The proof is the shipped starter. It was authored flank by flank in session 26
+  and its two sides carry *different* origin cells on every part off the centre
+  line — 22 against 26 on the stations, (19, 22) against (28, 21) on the contacts
+  — for exactly this reason. `test_mirroring.gd` demands that each of its twelve
+  parts reflects onto the part standing opposite, and that building one flank
+  with mirroring on reproduces the whole thing.
+
+- **A mirrored pair is one `BuildCommand`.** The player made one gesture. Two
+  commands would mean a mirrored build comes apart under Ctrl+Z one flank at a
+  time, which is what mirror mode exists to stop them doing by hand. A refused
+  mirror is simply not in the command's list, so undo takes back what went on.
+
+- **The garage was unreadable and the tints were not the reason.** One sun over a
+  dark procedural sky meant every face turned away from it fell to an ambient
+  term sampled from that sky, so the Assembly rendered as a single silhouette and
+  doc 13 §2.1's class tints carried no information at all. A fill, a bounce off
+  the plate and a raised ambient fixed it; brighter tints would have washed out
+  the lit faces to rescue the shaded ones. Verified by capture, before and after.
+
+- **A hover wash**, because the inspector names a class and a build carries four
+  parts of one class. It is keyed on the slot and dropped when that part leaves
+  rather than when the next is hovered — the freed slot is the one the next
+  placement is handed, so a highlight that outlived its part would arrive on a
+  new one already lit.
+
+Sixteen planted faults over doc 02 §9 and §10, none survived.
 
 ### Session 27, in more detail
 
@@ -251,6 +292,7 @@ what matters is which test defends which behaviour.
 | `test_debris_pool` | 45 faults across exhaustion order, retirement, linger, visibility dwell, shape reuse, and bounds — see session 7's record in git history for the full list |
 | `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
 | `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step` |
+| `test_mirroring` | *(session 28)* §10's mirror reflecting the pivot cell instead of the footprint; a mirrored part keeping its orientation; the mirror plane moved half a cell onto the origin column; a mirrored pair recorded as one placement so undo takes one flank; a refused mirror committed unvalidated |
 | `test_blueprint` | a blueprint that commits without validating; `copy()` returning a reference rather than an independent list; *(session 27)* **`from_context` writing ascending slot order**, which stops being a construction order at the first removal |
 | `test_breakpoint` | the stat dock hidden below the expanded tier |
 | `test_screen_flow` | the shell keeping the outgoing screen alive behind the incoming one; *(session 27)* the undo and redo keys reaching their handlers, and RESET editing the build before it is agreed to |
@@ -310,14 +352,14 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Five committed sweeps, 95 faults between them, all driven by
+Five committed sweeps, 100 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
 | Script | Covers | Faults |
 |---|---|---|
 | `engagement_sweep.py` | the paths the engagement files rest on (sessions 15–16) | 14 |
-| `garage_edit_sweep.py` | doc 02 §9's editing model: the command stack, removal's announcement, `from_context`'s order, `children`'s ordering | 11 |
+| `garage_edit_sweep.py` | doc 02 §9's editing model and §10's mirror: the command stack, removal's announcement, `from_context`'s order, `children`'s ordering, the reflection | 16 |
 | `combat_layer_sweep.py` | damage, effector and projectile layers (session 14), plus doc 07 §15 (session 18) | 45 |
 | `ai_layer_sweep.py` | `src/ai/`, doc 05 §15.7, doc 07 §10, doc 01 rule 27 | 13 |
 | `match_layer_sweep.py` | doc 11 §16's outcome rule, §14.3's target bracket, §14.6's binding lookup, doc 05 §15.7.5's ladder | 12 |

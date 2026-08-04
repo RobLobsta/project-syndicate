@@ -45,6 +45,7 @@ garage.action.menu,MENU
 garage.action.reset,RESET
 garage.action.undo,UNDO · %s
 garage.action.redo,REDO · %s
+garage.action.mirror,MIRROR · %s
 garage.catalogue.search,Search parts
 garage.catalogue.any_class,All
 garage.hint,%s place · %s remove · %s rotate · %s orbit · hover to inspect
@@ -60,6 +61,9 @@ garage.redo.none,Nothing to redo
 garage.confirm.title,Are you sure?
 garage.confirm.remove,"%d parts rest on this one. Remove it anyway?"
 garage.confirm.reset,"Discard this build and start again from the standard one? This cannot be undone."
+garage.mirror.on,Mirror mode on — placements are copied to the other flank
+garage.mirror.off,Mirror mode off
+garage.mirror.refused,Placed — the mirrored half would not fit
 garage.card.cost_mass,%d · %.0f kg
 garage.card.class_tier,%s · %s
 garage.stats.title,ASSEMBLY

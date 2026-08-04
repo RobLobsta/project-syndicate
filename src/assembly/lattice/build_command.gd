@@ -59,12 +59,15 @@ class Reparent:
 
 
 var kind: Kind = Kind.ATTACH
-## Every part this command put on the lattice ([constant Kind.ATTACH], exactly
-## one) or took off it ([constant Kind.REMOVE], the part named and its cascade).
+## Every part this command put on the lattice ([constant Kind.ATTACH]: the
+## placement, and doc 02 §10's mirror where one was accepted) or took off it
+## ([constant Kind.REMOVE]: the part named, and its cascade).
 ##
 ## In the order the lattice saw them, which for a cascade is breadth-first from
 ## the part that was removed — so a parent always precedes its children and
-## restoring the list in order needs no sort.
+## restoring the list in order needs no sort. A mirrored pair is in the order it
+## was placed for the same reason: if the flanks touch, the second rests on the
+## first.
 var placements: Array[Placed] = []
 ## Survivors §9.2 re-parented. Empty for an attach.
 var reparents: Array[Reparent] = []
@@ -76,13 +79,29 @@ var reparents: Array[Reparent] = []
 ## [param cand] must already have validated: [method PlacementValidator.commit]
 ## asserts it, and this function does not re-run the chain because the caller has
 ## just run it to decide whether to offer the placement at all.
-static func attach(ctx: BuildContext, cand: PlacementCandidate) -> BuildCommand:
+##
+## [param extra] is doc 02 §10's mirror, and it is committed here so that the
+## pair is one command rather than two.
+##
+## One command, because the player made one gesture. Two would mean a mirrored
+## build comes apart under Ctrl+Z one flank at a time, which is the thing mirror
+## mode exists to stop them doing by hand. §10 permits the second placement to be
+## refused where the first was not — the flanks are not always alike, a mount can
+## be taken, an arc can be blocked — and a refused mirror simply is not in the
+## list, so undo takes back exactly what went on.
+static func attach(
+	ctx: BuildContext, cand: PlacementCandidate, extra: PlacementCandidate = null
+) -> BuildCommand:
 	var slot := PlacementValidator.commit(ctx, cand)
 	if slot == SyndicateConstants.INVALID_SLOT:
 		return null
 	var cmd := BuildCommand.new()
 	cmd.kind = Kind.ATTACH
 	cmd.placements.append(_record(ctx, slot))
+	if extra != null:
+		var mirrored := PlacementValidator.commit(ctx, extra)
+		if mirrored != SyndicateConstants.INVALID_SLOT:
+			cmd.placements.append(_record(ctx, mirrored))
 	return cmd
 
 
@@ -134,14 +153,25 @@ func cascade_size() -> int:
 	return 0 if kind == Kind.ATTACH else placements.size() - 1
 
 
+## Parts this command put on the lattice. One for an ordinary placement, two when
+## doc 02 §10's mirror was accepted alongside it, zero for a removal.
+func attach_size() -> int:
+	return placements.size() if kind == Kind.ATTACH else 0
+
+
 ## Puts the build back the way it was before this command ran.
 func undo(ctx: BuildContext) -> bool:
 	if kind == Kind.ATTACH:
-		var cascade := _erase(ctx)
-		# Undo is last-in-first-out, so nothing can have been built on this part
-		# since it was placed — anything that was is already undone. A cascade
-		# here means the stack was applied out of order.
-		assert(cascade.is_empty(), "undo of an attach cascaded %d parts" % cascade.size())
+		# Last placed, first erased. A mirrored pair is normally two independent
+		# parts on opposite flanks, but a build narrow enough for the two to touch
+		# has the second resting on the first, and taking the parent first would
+		# cascade the child rather than erase it.
+		for i in placements.size():
+			var cascade := _erase(ctx, placements.size() - 1 - i)
+			# Undo is last-in-first-out, so nothing can have been built on these
+			# since they were placed — anything that was is already undone. A
+			# cascade here means the stack was applied out of order.
+			assert(cascade.is_empty(), "undo of an attach cascaded %d parts" % cascade.size())
 		return true
 	return _restore(ctx)
 
@@ -155,7 +185,7 @@ func redo(ctx: BuildContext) -> bool:
 	# reproduces it through the same §9.2 code that produced it the first time,
 	# which is deterministic over an identical build. Replaying a stored list
 	# would be a second implementation of the cascade rule.
-	_erase(ctx)
+	_erase(ctx, 0)
 	return true
 
 
@@ -197,12 +227,13 @@ func _restore(ctx: BuildContext) -> bool:
 	return true
 
 
-## Removes the part this command's first placement describes, and returns
+## Removes the part [member placements] entry [param at] describes, and returns
 ## whatever came with it.
-func _erase(ctx: BuildContext) -> PackedByteArray:
-	var slot := ctx.occupancy.slot_at(placements[0].origin_cell)
+func _erase(ctx: BuildContext, at: int) -> PackedByteArray:
+	var cell := placements[at].origin_cell
+	var slot := ctx.occupancy.slot_at(cell)
 	if slot == SyndicateConstants.INVALID_SLOT:
-		push_error("BuildCommand: nothing occupies %v" % placements[0].origin_cell)
+		push_error("BuildCommand: nothing occupies %v" % cell)
 		return PackedByteArray()
 	return PlacementValidator.remove(ctx, slot)
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Fault sweep over doc 02 §9's editing model: undo, removal, and reconstruction.
 
-Eleven faults over the code session 27 added or repaired — the command stack, the
-inversion of an attach and of a removal, the cascade's announcement, the order a
-context is written back out in, and the ordering invariant the Chassis Graph
-declares about its own children.
+Sixteen faults over the code sessions 27 and 28 added or repaired — the command
+stack, the inversion of an attach and of a removal, the cascade's announcement,
+the order a context is written back out in, the ordering invariant the Chassis
+Graph declares about its own children, and doc 02 §10's mirror.
 
   attach-undo-does-nothing      §9.3: undo of a placement leaves it placed
   restore-loses-the-parent      §9.3: a part comes back under whatever mates
@@ -17,6 +17,11 @@ declares about its own children.
   cascade-announces-only-others the named part left unannounced
   from-context-ascending        §9.4: slot order assumed to be build order
   children-appended             doc 04: `children` claims to be ascending
+  mirror-reflects-the-pivot     §10: the origin cell mirrored instead of the footprint
+  mirror-keeps-the-orientation  §10: a mirrored part facing the way it did
+  mirror-plane-through-a-cell   §10: the mirror plane moved half a cell
+  mirror-is-two-commands        §10 + §9.3: a mirrored pair that undoes one flank at a time
+  mirror-forces-a-refused-half  §10: a refused mirror taking the placement down with it
 
 **Three of these are the session's own repairs, planted back in.** `from-context-
 ascending` and `cascade-announced-once` were the shipped behaviour until this
@@ -53,15 +58,17 @@ HISTORY = "src/assembly/lattice/build_history.gd"
 VALIDATOR = "src/assembly/lattice/placement_validator.gd"
 BLUEPRINT = "src/assembly/lattice/blueprint.gd"
 GRAPH = "src/assembly/graph/chassis_graph.gd"
+CANDIDATE = "src/assembly/lattice/placement_candidate.gd"
+LATTICE = "src/core/math/lattice_math.gd"
 
-BASELINE = 5874
+BASELINE = 5984
 
 FAULTS = [
     # The inversion of an attach, gone. The stack still reports the command it
     # undid, so every count in the interface agrees and the part is still there.
     ("attach-undo-does-nothing", COMMAND,
-     "	if kind == Kind.ATTACH:\n		var cascade := _erase(ctx)",
-     "	if kind == Kind.ATTACH:\n		var cascade := PackedByteArray()"),
+     "			var cascade := _erase(ctx, placements.size() - 1 - i)",
+     "			var cascade := PackedByteArray()"),
 
     # A restored part keeps whatever parent the mate selector picks for it now,
     # which is a legal tree and is not the one the player had. Nothing about the
@@ -130,6 +137,40 @@ FAULTS = [
     ("children-appended", GRAPH,
      "	var at := 0\n	while at < kids.size() and int(kids[at]) < slot:\n		at += 1",
      "	var at := kids.size()"),
+
+    # §10's sketch applied literally: the origin cell reflected rather than the
+    # footprint. Correct for a part whose pivot is the middle of its own extent
+    # and one cell out for every part that ships.
+    ("mirror-reflects-the-pivot", CANDIDATE,
+     "		Vector3i(\n			LatticeMath.mirror_x(here[1]).x - there[0].x,",
+     "		Vector3i(\n			LatticeMath.mirror_x(origin_cell).x,"),
+
+    # A mirrored part that keeps its facing. Reads as working on anything
+    # symmetric and puts a contact's drive face into the hull on the other flank.
+    ("mirror-keeps-the-orientation", CANDIDATE,
+     "	var orientation := OrientationTable.mirror_x_index(orientation_index)",
+     "	var orientation := orientation_index"),
+
+    # The mirror plane moved half a cell, onto the middle of the origin column
+    # rather than the edge of it. The Core Module then no longer reflects onto
+    # itself and every build is asymmetric by one cell.
+    ("mirror-plane-through-a-cell", LATTICE,
+     "	return Vector3i(2 * ORIGIN.x - cell.x - 1, cell.y, cell.z)",
+     "	return Vector3i(2 * ORIGIN.x - cell.x, cell.y, cell.z)"),
+
+    # The pair recorded as one placement, so undo takes back one flank and leaves
+    # the other. The build is legal at every step, which is what makes it
+    # survivable — it is only wrong against what the player did.
+    ("mirror-is-two-commands", COMMAND,
+     "		if mirrored != SyndicateConstants.INVALID_SLOT:\n			cmd.placements.append(_record(ctx, mirrored))",
+     "		pass"),
+
+    # §10's rule that a refused mirror never blocks a legal placement, dropped:
+    # the mirror is committed unvalidated, so the primary goes down and the
+    # commit assertion behind it decides what happens next.
+    ("mirror-forces-a-refused-half", HISTORY,
+     "	if extra != null and PlacementValidator.validate(ctx, extra) != PlacementValidator.Reject.NONE:\n		extra = null",
+     "	if false:\n		extra = null"),
 ]
 
 
