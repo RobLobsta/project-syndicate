@@ -434,7 +434,9 @@ of it changed.
 1. **It contributes only `apply_force` and `apply_torque` on `ChassisBody`.**
    No family may add a body, a joint, or a collision shape. Invariant I-3 is not
    relaxed for a walker whose legs look like they ought to be jointed, and §13.1
-   explains why they need not be.
+   explains why they need not be. §16 draws the result and is deliberately
+   **not** a family: it runs once after the dispatch, so this rule stays
+   literally true of every solver in §6, §12, §13 and §14.
 2. **It reads the cached band multiplier array and never integrity.** Invariant
    I-5. A rotor at `IMPAIRED` loses thrust by indexing `DegradationTable`, the
    same way a wheel loses traction.
@@ -977,7 +979,7 @@ references already written into `AssemblyRuntime`, `AssemblyInterpolator`, and
 `MassRecomputeScheduler`.
 
 1. One `RigidBody3D` per Assembly. No joints between parts. Ever.
-2. `VisualRoot` is a sibling of `ChassisBody`, has `collision_layer = 0` and `collision_mask = 0` throughout, and is written only by the interpolator.
+2. `VisualRoot` is a sibling of `ChassisBody`, has `collision_layer = 0` and `collision_mask = 0` throughout, and **its own transform** is written only by the interpolator. The per-part nodes beneath it carry the part's placement pose, displaced for a Motive Assembly by §16's contact geometry. Nothing under `VisualRoot` is ever read by the simulation, which is what keeps that a presentation write rather than a second owner of the Assembly's pose.
 3. Mass, COM, and inertia are recomputed only on structural events and consumable mass steps — never per frame.
 4. Recompute runs off the main thread; results are applied at the start of a physics tick, never mid-tick.
 5. Suspension probes are shape casts, masked to Ground Arrays and Static Volumes only.
@@ -1936,3 +1938,119 @@ extra range would cost more accuracy than the spacing bought.
 damage to whatever it reaches first. What it stops is three Assemblies standing
 in each other's line at contact range for the whole engagement, which is the
 form the problem actually takes.
+
+---
+
+## 16. Where the Contact Is Drawn
+
+Everything above this section derives forces. This one derives a picture, and it
+is here because the alternative was that nobody owned it: §10.2 places
+`VisualRoot` from the body's transform, doc 13 owns the meshes, and between them
+sat the question of where a wheel goes when the suspension moves — which is a
+locomotion question, answerable only from quantities this document defines.
+
+The gap was visible rather than theoretical. A Motive Assembly was drawn at the
+lattice cell it was placed in and stayed there, so on fifteen metres of relief
+the wheels hung in the air on every crest and the Assembly read as a prop sliding
+over the ground rather than as something driving on it.
+
+**This is presentation following the simulation, and Architectural Invariant I-1
+permits exactly that direction.** What the invariant forbids is the reverse: a
+collider derived from a mesh, or a visual transform a physics query can see. The
+colliders here do not move — a part's physical footprint is fixed from placement
+to destruction — and nothing in this section is read back by anything. An
+Assembly with every mesh switched off simulates identically, which is what the
+dedicated server does.
+
+### 16.1 A Ground or Tracked Contact Hangs by Its Unconsumed Travel
+
+```gdscript
+static func droop_m(profile: MotiveAssemblyProfile, contact: MotiveContact) -> float:
+    return profile.suspension_travel_limit_m - compression(profile, contact)
+```
+
+The mesh is drawn that many metres below its placement, **along the chassis's own
+down axis** and not the part's — a wheel hangs down the hull, and the two
+directions differ for every Motive Assembly not mounted upright.
+
+Defining the offset as the travel the spring has *not* consumed, rather than from
+the contact point, has three consequences worth stating:
+
+- **It is bounded by construction.** The offset lives in `[0, travel_limit]`
+  because `compression` is already clamped there, so no probe result — a hit
+  inside the ground, a miss, a surface at a grazing angle — can throw the mesh
+  anywhere a player would notice as a glitch.
+- **It agrees with §6.1's authoring convention without depending on it.** That
+  convention makes the rest length one full travel above the part's own collider,
+  so full droop puts the wheel exactly on the surface and a bottomed-out one puts
+  it in its placed cell. A row authored to a different convention is still drawn
+  with its strut extended by the travel it has left, which is the honest answer
+  either way.
+- **An ungrounded contact reads zero compression and therefore full droop**, with
+  no second code path. A wheel over a crest extends, which is what a real one
+  does.
+
+A tracked patch has one mesh and several road stations, so it is drawn at the
+**mean** of its stations' droop. Averaging rather than picking one is what stops
+a bogie snapping between stations as the ground passes under it.
+
+### 16.2 A Rotor Disc Is Not Drawn From a Contact
+
+The rotary family has no ground contact at all (§12), so there is nothing here
+for it. Spinning the disc is doc 13's, and this section does not reach for it.
+
+### 16.3 A Limb Is Drawn As the Virtual Leg It Is
+
+§13.1 models a limb as one spring-damper along the hip-to-foot line and puts the
+visible articulation under `VisualRoot`; §13.8 then states that no inverse
+kinematics is specified here, and that stands. What is specified is one step
+short of it and is the whole of what the model actually claims: **the part is
+pivoted about its hip so that its leg axis points at its foot.**
+
+The leg axis is the part's own local down under its placement orientation,
+because §7.2.2 of document 01 puts `hip_offset_m` above everything the limb
+occupies. A thigh that swings and reaches is the virtual leg drawn as what it is;
+a jointed shank and a foot that flexes are a chain doc 13 may add later, and
+nothing in this section forecloses one.
+
+**The foot the presentation layer draws is not always the foot the simulation
+planted.** While planted they are the same point. While swinging, §13.7's foot is
+a parabolic arc from the point the limb left to the point it is reaching for,
+peaking at `step_height_m`:
+
+```gdscript
+static func swing_foot_world(profile: LimbProfile, from_world: Vector3,
+                             to_world: Vector3, t: float) -> Vector3:
+    var u := clampf(t, 0.0, 1.0)
+    return from_world.lerp(to_world, u) + Vector3.UP * swing_height_m(profile, u)
+```
+
+`t` is progress through the swing half of the cycle — zero at lift-off, one at
+touchdown — and the target is **re-derived from §13.5's placement law every
+tick** rather than frozen at lift-off. That is only safe because §13.7 applies no
+force during swing: nothing drawn here can reach the physics, so a target that
+tracks the body as it moves is honest rather than a feedback path, and the foot
+lands where the next touchdown puts it instead of jumping there. The placement
+law is called through one function with one set of arguments for both purposes,
+because two derivations of one target would make the limb snap on every plant.
+
+### 16.4 Where It Runs
+
+`MotiveSystem.step` calls one pass after the families and after anti-roll, never
+inside a family solver. §6.0 rule 1 says a family contributes `apply_force` and
+`apply_torque` and nothing else, and that rule is worth keeping literally true;
+the pass branches on the same `_family` array §11 invariant 12 sanctions, asking
+a different question of it.
+
+Cost is one dictionary lookup and one `Transform3D` composition per Motive
+Assembly per tick, bounded by `MAX_MOTIVE_PER_ASSEMBLY`. On a dedicated server
+the `part_visual` tag is off, every `AssemblyRuntime.visual_of` answers null, and
+the pass is the lookup alone.
+
+**The garage draws the placement pose, deliberately, and does not droop.** The
+garage preview has no ground, no probes and no contacts, so there is no
+compression to read and full droop would be the only answer available — which
+would sink every wheel a full travel through the lattice floor the build is
+standing on. What the garage shows is where the parts were *placed*, which is
+what a build screen is for. The difference a player could see between the two
+screens is the settled sag of a loaded spring, which is centimetres.

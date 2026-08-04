@@ -31,6 +31,11 @@ var planted: bool = false
 ## and deliberately not cleared there: the swing arc interpolates from it to the
 ## next target, so clearing it would restart every swing from the origin.
 var foot_world: Vector3 = Vector3.ZERO
+## Where the foot is [b]drawn[/b], in world space: the plant point while planted,
+## and §13.7's swing arc while not. Doc 05 §16.3 is the only reader and nothing
+## in the simulation touches it, which is what lets it be a smooth quantity where
+## [member foot_world] is a stepped one.
+var foot_visual_world: Vector3 = Vector3.ZERO
 ## Hip-to-foot distance last tick, in metres. The damper term differentiates it.
 var prev_length_m: float = 0.0
 ## True when the last stance tick demanded more shear than friction allowed. Read

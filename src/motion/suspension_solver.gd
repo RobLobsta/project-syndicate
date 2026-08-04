@@ -60,6 +60,27 @@ static func compression(profile: MotiveAssemblyProfile, contact: MotiveContact) 
 	)
 
 
+## Metres the contact's part is drawn below the cell it was placed in, for the
+## presentation layer of §16 and for nothing else.
+##
+## The travel the spring has [b]not[/b] consumed. §6.1's authoring convention
+## puts the rest length one full travel above the part's own collider, so a
+## contact at full droop hangs exactly [member
+## MotiveAssemblyProfile.suspension_travel_limit_m] below its placement and a
+## bottomed-out one sits in it — but the definition does not depend on that
+## convention holding, because a strut's visible extension is the travel it has
+## left whatever the numbers around it are.
+##
+## An ungrounded contact reads zero compression and therefore hangs at full
+## droop, which is what a wheel does when the ground falls away under it.
+##
+## Presentation follows the simulation here and never the reverse: the mesh
+## moves and the collider does not, because Architectural Invariant I-1 fixes a
+## part's physical footprint from placement to destruction.
+static func droop_m(profile: MotiveAssemblyProfile, contact: MotiveContact) -> float:
+	return profile.suspension_travel_limit_m - compression(profile, contact)
+
+
 ## Rate of change of compression, in m/s, from the value stored on the contact.
 static func compression_rate(contact: MotiveContact, current_x: float, dt: float) -> float:
 	if dt <= 0.0:

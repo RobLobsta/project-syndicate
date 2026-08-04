@@ -93,7 +93,21 @@ const OPPONENT_DIFFICULTY: float = 0.55
 ## what makes the arena scene runnable on its own.
 var player_blueprint: Blueprint = null
 
-const ROUND_KEY: StringName = &"proj.kinetic.ap_30"
+## Every projectile type a match may need, in registration order.
+##
+## [b]Append only.[/b] [ProjectileRegistry] assigns ids by registration order and
+## doc 12 §6 puts those ids on the wire, so reordering this array renames every
+## round in flight between a server and a client that disagree about it — the
+## same rule, and the same reason, as the part manifest of doc 01 §5.2.
+##
+## A match registers all of them rather than the one the shipped starter happens
+## to chamber: a player's blueprint may carry any Effector Module in the
+## catalogue, and a round the registry has never heard of is an Effector Module
+## that silently declines to fire.
+const ROUND_KEYS: Array[StringName] = [
+	&"proj.kinetic.ap_30",
+	&"proj.kinetic.ap_12",
+]
 
 ## ===== PRESENTATION ====================================================
 
@@ -137,7 +151,11 @@ var _player_input: ControlInput = null
 ## Doc 11 §16.2. Set once, in [method _on_match_concluded].
 var _concluded: bool = false
 var _gun_slot: int = SyndicateConstants.INVALID_SLOT
-var _round_id: int = 0
+## The projectile the [b]player's[/b] Effector Module chambers, resolved from
+## their build rather than assumed. §14.3's ammunition state and §14.1's round
+## counter both read this, and a HUD that counted a store the player's module
+## does not draw from would report "no ammunition" over a full magazine.
+var _round_id: int = -1
 
 var _runtimes: Array[AssemblyRuntime] = []
 var _contexts: Array[BuildContext] = []
@@ -330,9 +348,9 @@ func _build_systems() -> void:
 	ammo = AmmoLedger.new()
 
 	projectile_registry = ProjectileRegistry.new()
-	projectile_registry.register(load("res://data/projectiles/%s.tres" % ROUND_KEY))
+	for key: StringName in ROUND_KEYS:
+		projectile_registry.register(load("res://data/projectiles/%s.tres" % key))
 	projectile_registry.seal()
-	_round_id = projectile_registry.id_of(ROUND_KEY)
 
 	_detachment = DetachmentScheduler.new()
 	_detachment.registry = registry
@@ -465,12 +483,19 @@ func _spawn(
 	)
 
 	if rounds != 0:
-		ammo.add(assembly_id, _round_id, rounds)
+		# Stocked per projectile type (doc 07 §13), so an Assembly is given a
+		# store of whatever its own modules chamber and nothing else. A build
+		# carrying two modules that share a round draws both from one store,
+		# which is what makes a second one a trade against the Support Modules
+		# holding the rounds rather than a free doubling of output.
+		for id: int in _round_ids_of(runtime):
+			ammo.add(assembly_id, id, rounds)
 
 	if is_player:
 		_player_guns = guns
 		_player_power = motion.power
 		_gun_slot = gun_slot
+		_round_id = _round_id_at(runtime, gun_slot)
 		_player_input = motion.input
 		_controls = ControlSystem.new()
 		# Must be set before it enters the tree: a ControlSystem with no record
@@ -482,6 +507,59 @@ func _spawn(
 		_attach_driver(runtime, motion, guns, gun_slot)
 
 	return runtime
+
+
+## Rounds the player's own Effector Module has left in store.
+##
+## Public so that `tests/integration/test_screen_flow.gd` can assert the join
+## between three things that are each correct on their own and are easy to wire
+## together wrongly: which projectile a module chambers, which stores an Assembly
+## is granted at spawn, and which store §14.1's counter reads. A build whose
+## module draws a round the ledger never stocked declines to fire for the whole
+## match and reports itself out of ammunition from the first frame — and every
+## step of that is a silent success in isolation.
+func player_rounds_remaining() -> int:
+	if _player == null or ammo == null or _round_id < 0:
+		return 0
+	return ammo.rounds_stored(_player.assembly_id, _round_id)
+
+
+## The projectile id [param slot]'s Effector Module chambers, or -1.
+##
+## Resolved through [ProjectileRegistry] from the key the profile authors, which
+## is the same lookup [EffectorSystem.register] makes — asking the registry twice
+## is cheaper than a second owner of the mapping, and this one runs once per
+## spawn rather than per shot.
+##
+## A melee module authors an empty key and answers -1, which is the correct
+## answer rather than a failure: doc 07 §15 resolves by swept volume and there is
+## no round to count.
+func _round_id_at(runtime: AssemblyRuntime, slot: int) -> int:
+	if slot == SyndicateConstants.INVALID_SLOT:
+		return -1
+	var def := runtime.definition_at(slot)
+	if def == null or def.effector_profile == null:
+		return -1
+	return projectile_registry.id_of(def.effector_profile.projectile_key)
+
+
+## Every distinct projectile id [param runtime]'s Effector Modules chamber,
+## ascending.
+##
+## Ascending and deduplicated so that the stores an Assembly is granted are a
+## function of its build and not of the order its slots happened to be walked in
+## — Invariant I-9, and the ledger is replicated.
+func _round_ids_of(runtime: AssemblyRuntime) -> PackedInt32Array:
+	var ids := PackedInt32Array()
+	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
+		var def := runtime.definition_at(slot)
+		if def == null or def.part_class != PartEnums.PartClass.EFFECTOR_MODULE:
+			continue
+		var id := _round_id_at(runtime, slot)
+		if id >= 0 and not ids.has(id):
+			ids.push_back(id)
+	ids.sort()
+	return ids
 
 
 ## Doc 05 §15.7's producer, on an Assembly with nobody in it.
@@ -575,7 +653,11 @@ func _reticle_state() -> HudFrame.ReticleState:
 		return HudFrame.ReticleState.SEEKING
 	if not hp.on_target:
 		return HudFrame.ReticleState.TRACKING
-	if not ammo.has_rounds(_player.assembly_id, _round_id):
+	# A module that chambers nothing is not a module that is out of ammunition.
+	# Doc 07 §15's melee path resolves by swept volume and never touches the
+	# ledger, so counting its rounds would report `NO_AMMO` over an edge that is
+	# perfectly ready to swing.
+	if _round_id >= 0 and not ammo.has_rounds(_player.assembly_id, _round_id):
 		return HudFrame.ReticleState.NO_AMMO
 	return HudFrame.ReticleState.ON_TARGET
 

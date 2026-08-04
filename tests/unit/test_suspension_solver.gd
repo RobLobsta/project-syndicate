@@ -83,6 +83,55 @@ func test_compression_rate_differentiates_the_stored_value() -> void:
 	)
 
 
+## ===== DROOP (§16.1) ===================================================
+
+
+func test_droop_is_the_travel_the_spring_has_not_used() -> void:
+	# 0.32 m rest less a 0.20 m probe is 0.12 m consumed, so 0.12 m of the
+	# 0.24 m travel is left and the wheel hangs by that much.
+	check_approx(
+		SuspensionSolver.droop_m(_profile, _contact(0.20)),
+		0.12,
+		"half the travel consumed leaves half of it hanging"
+	)
+
+
+func test_a_bottomed_out_contact_is_drawn_in_its_placed_cell() -> void:
+	# The far end of the range, and the one a sign error cannot reach: a wheel
+	# pressed into its stops has no extension left to show.
+	check_approx(
+		SuspensionSolver.droop_m(_profile, _contact(0.02)),
+		0.0,
+		"a probe past the travel limit draws the part where it was placed"
+	)
+
+
+func test_an_ungrounded_contact_hangs_at_full_droop() -> void:
+	# The behaviour §16.1 exists for. A wheel over a crest finds nothing, reads
+	# zero compression, and extends — where the old code drew it at its cell and
+	# left it hanging in the air above the ground it had just left.
+	check_approx(
+		SuspensionSolver.droop_m(_profile, _contact(0.05, false)),
+		TRAVEL,
+		"a probe that found nothing extends the whole travel"
+	)
+
+
+func test_droop_and_compression_always_sum_to_the_travel() -> void:
+	# The invariant the definition is, stated across the whole range rather than
+	# at the two ends: what is drawn plus what is carried is the strut, always.
+	# A droop derived from the contact point instead would satisfy this only
+	# where the authored rest length happens to equal radius plus travel.
+	for step: int in 9:
+		var distance := 0.02 + 0.05 * float(step)
+		var c := _contact(distance)
+		check_approx(
+			SuspensionSolver.droop_m(_profile, c) + SuspensionSolver.compression(_profile, c),
+			TRAVEL,
+			"at a %.2f m probe distance" % distance
+		)
+
+
 ## ===== FORCE ===========================================================
 
 

@@ -21,6 +21,16 @@ const BESIDE_DECK_CELL := Vector3i(24, 7, 28)
 ## Directly on top of that one, and touching nothing else.
 const ABOVE_BESIDE_CELL := Vector3i(24, 8, 28)
 
+## Recoil impulse, in N·s, above which an Effector Module has no business being
+## on the build a player is handed. Doc 01 §10.5.
+##
+## Chosen to sit above `eff.ballistic.repeater_12.t2`'s 26 with room for a
+## rebalance and far below `eff.ballistic.autocannon_20.t2`'s 980, which is the
+## next lightest row in the table — so it separates "a module that can be fired
+## from a moving hull" from "every other direct-fire row published", and does not
+## pin the shipped figure.
+const STARTER_RECOIL_CEILING_NS: float = 120.0
+
 var _contexts: Array[BuildContext] = []
 
 
@@ -46,6 +56,56 @@ func _commit(ctx: BuildContext, key: StringName, cell: Vector3i) -> int:
 		fail("fixture: '%s' at %v was refused with %d" % [key, cell, reject])
 		return SyndicateConstants.INVALID_SLOT
 	return PlacementValidator.commit(ctx, cand)
+
+
+func test_the_starter_carries_a_module_its_own_chassis_can_fire_while_moving() -> void:
+	# The rule the shipped starter has to keep, stated where it can fail.
+	#
+	# Doc 07 §8 applies the recoil at the muzzle, so a mount traversed across the
+	# hull yaws it by `impulse × lever ÷ I_yy`, and the build a player is *handed*
+	# is the one build in the project that has to be drivable before they know
+	# what any of that means. `tests/physics/test_drive_and_shoot.gd` measures the
+	# consequence on real contacts and costs seconds of simulation; this asserts
+	# the authored precondition and costs a dictionary lookup, so a starter
+	# quietly re-armed with a heavier row fails here first and legibly.
+	#
+	# The ceiling is stated by value rather than read off a row. A test that
+	# imported the module's own figure would move with it and assert nothing,
+	# which is `LEARNED_FACTS.md` §2's oldest lesson.
+	var def := PartRegistry.definition_by_key(StarterBlueprint.EFFECTOR_KEY)
+	if not check_not_null(def, "the starter's Effector Module is in the registry"):
+		return
+	check_eq(
+		def.part_class,
+		PartEnums.PartClass.EFFECTOR_MODULE,
+		"and it is an Effector Module"
+	)
+	check_true(
+		def.effector_profile.recoil_impulse_ns <= STARTER_RECOIL_CEILING_NS,
+		(
+			"'%s' recoils at %.0f N·s against a ceiling of %.0f"
+			% [
+				def.part_key,
+				def.effector_profile.recoil_impulse_ns,
+				STARTER_RECOIL_CEILING_NS
+			]
+		)
+	)
+	# And the ceiling separates something, which is the half a bound cannot
+	# assert about itself. A threshold raised past every published row keeps the
+	# check above green forever — a fault sweep planted exactly that and nothing
+	# noticed — so the catalogue's heaviest direct-fire module is asserted to be
+	# on the other side of it.
+	var heavy := PartRegistry.definition_by_key(&"eff.ballistic.autocannon_30.t3")
+	if not check_not_null(heavy, "the heavy direct-fire row is in the registry"):
+		return
+	check_true(
+		heavy.effector_profile.recoil_impulse_ns > STARTER_RECOIL_CEILING_NS,
+		(
+			"and the ceiling is one a heavy module fails: '%s' at %.0f N·s"
+			% [heavy.part_key, heavy.effector_profile.recoil_impulse_ns]
+		)
+	)
 
 
 func test_the_starter_applies_cleanly_and_reconstructs_itself() -> void:

@@ -1094,6 +1094,7 @@ change worth shipping. The finding is recorded; the decision is open.
 
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Draw (PU) | Cycle (s) | Muzzle (m/s) | Recoil (N·s) | Heat/shot |
 |---|---|---|---|---|---|---|---|---|---|
+| `eff.ballistic.repeater_12.t2` | `BALLISTIC_DIRECT` | 4×3×6 | 78 | 260 | 26 | 0.075 | 860 | 26 | 1.9 |
 | `eff.ballistic.autocannon_20.t2` | `BALLISTIC_DIRECT` | 4×3×7 | 118 | 340 | 42 | 0.11 | 880 | 980 | 5.4 |
 | `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 4×4×9 | 196 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
 | `eff.ballistic.rifle_long.t3` | `BALLISTIC_DIRECT` | 4×3×12 | 165 | 400 | 55 | 1.35 | 1180 | 4200 | 14.0 |
@@ -1137,6 +1138,46 @@ mass. One round at 90° of traverse yaws the reference build **sixty-five times
 harder** than the same round fired dead ahead — 0.85 rad/s against 0.013. Rule 27
 fixes the on-axis case and cannot touch that one, which is a mount-position
 question and belongs to whoever designs the build.
+
+#### `eff.ballistic.repeater_12.t2`, and the recoil scale this table is on
+
+**The lever is the mount's; the impulse is the round's, and the round is the half
+this table controls.** Every figure above is a per-round momentum, and the yaw a
+traversed mount puts through a hull is `impulse × lever ÷ I_yy` per round and
+`impulse ÷ cycle × lever` as a sustained torque. Rule 27 and the mount position
+address the lever. This row addresses the other factor.
+
+At 26 N·s and a 0.075 s cycle the repeater's sustained recoil torque through the
+same 2.25 m traversed lever is **780 N·m against the `autocannon_30`'s 23 300** —
+a factor of thirty — and a single traversed round yaws the reference build by
+about as much as an `autocannon_30` round fired dead ahead. That is the whole
+design intent of the row: it is the module a build can *drive with*, and
+`tests/physics/test_drive_and_shoot.gd` is where the claim is measured rather
+than asserted here.
+
+What it gives up is penetration, and that is deliberate rather than a taper of
+everything at once. `proj.kinetic.ap_12` carries 46 damage and 46 penetration
+against `proj.kinetic.ap_30`'s 120 and 95, so against `str.panel.medium.t2` (14
+armour) it overpenetrates comfortably and against `core.command.compact.t2` (18)
+it reaches `ρ = 2.6` at square incidence and falls under the `1.85`
+overpenetration ratio at about 45° of obliquity, where `ap_30` stays above it
+past the `COS_FLOOR`. The `autocannon_30` punches the whole way through a hull
+however it is angled; the repeater needs to be pointed at what it is shooting.
+Both reach §4.3's capped multiplier against an 18-rating Core Module struck
+square, so the penetration figure buys **reach through a build**, not damage on
+the part it lands on — which is why the two rows differ by 40% in throughput and
+by rather more than that in a straight duel. Two Effector Modules
+that differ only in scale would not be a choice, and doc 06 §12's onboarding row
+wants the player's first real decision to be a legible one.
+
+**These two rows are not on the same recoil scale, and the `autocannon_30` is the
+one that is wrong.** A real 30 mm round carries roughly 400 N·s; this table
+publishes 1450. The repeater is authored at a realistic 26 N·s for a 12 mm round
+and was not inflated to match, because inflating it would have reproduced exactly
+the defect it exists to remove. Rescaling the four legacy direct-fire rows onto
+the same basis is an open balance question and a much larger change — it moves
+every engagement measurement in `tests/physics/` at once — and it is recorded in
+`HANDOFF.md` rather than done here.
 
 The `Cycle`, `Muzzle`, and `Recoil` columns are zero on every melee row and are required to be (§14 rule 20). Melee timing is `wind_up_s + swing_duration_s + recovery_s` on `MeleeProfile`, and there is no muzzle and no projectile. `Draw (PU)` is non-zero on the powered edges because an energised edge draws continuously, which is the trade that distinguishes it from a spike: a ram spike costs no power and needs the Assembly to be moving, a beam edge costs 145 PU of the budget and cuts from a standstill.
 

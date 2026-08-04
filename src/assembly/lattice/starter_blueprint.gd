@@ -16,9 +16,9 @@ extends RefCounted
 ## [i]deliberate[/i] second copy CLAUDE.md §1.1 tolerates. A third would not be.
 
 ## ===== THE SKIRMISHER ==================================================
-## A wheeled build: a Core Module, a Prime Mover, an Energy Cell, an autocannon
-## on the nose, and four contacts on four stations. Integer coordinates
-## throughout (Invariant I-6).
+## A wheeled build: a Core Module, a Prime Mover, an Energy Cell, a rapid-fire
+## Effector Module on the nose, and four contacts on four stations. Integer
+## coordinates throughout (Invariant I-6).
 
 const CORE_KEY: StringName = &"core.command.compact.t2"
 const HUB_KEY: StringName = &"str.hub.axle_station.t2"
@@ -26,15 +26,28 @@ const WHEEL_KEY: StringName = &"mot.wheeled.allroad.t2"
 const REAR_KEY: StringName = &"mot.wheeled.fixed_rear.t2"
 const POWER_KEY: StringName = &"pmv.combustion.standard.t2"
 const CELL_KEY: StringName = &"cel.static.standard.t3"
-const EFFECTOR_KEY: StringName = &"eff.ballistic.autocannon_30.t3"
+## `eff.ballistic.repeater_12.t2` rather than `eff.ballistic.autocannon_30.t3`,
+## and this one line is most of what a first-time player feels.
+##
+## Doc 07 §8 applies the recoil at the muzzle, so a mount traversed across the
+## hull yaws it by `impulse × lever ÷ I_yy` — and the shipped autocannon's
+## 1450 N·s through this mount's lever is 0.85 rad/s of yaw from a single round,
+## which is more than the wheeled family's whole steering authority. An Assembly
+## carrying it could drive or shoot and not both, which is the first thing a
+## player tries to do. The repeater's 26 N·s is thirty times less sustained
+## torque for two thirds of the throughput, and doc 01 §10.5 records the trade in
+## full. The autocannon is still in the catalogue and is still the module that
+## punches through a hull; it is no longer the one a player is handed before they
+## know what a mount does.
+const EFFECTOR_KEY: StringName = &"eff.ballistic.repeater_12.t2"
 
 const CORE_CELL := Vector3i(24, 4, 24)
 const POWER_CELL := Vector3i(24, 7, 24)
 const CELL_CELL := Vector3i(24, 4, 29)
-## On the nose, at the Core Module's own height. What decides whether a round of
-## the shipped autocannon flips the shipped chassis is not the impulse but the
-## height of the muzzle above the centre of mass, because the fore-aft offset is
-## parallel to the recoil and contributes no moment at all. On the roof one round
+## On the nose, at the Core Module's own height. What decides whether a round
+## flips the shipped chassis is not the impulse alone but the height of the
+## muzzle above the centre of mass, because the fore-aft offset is parallel to
+## the recoil and contributes no moment at all. On the roof one autocannon round
 ## is 3.6 rad/s of pitch. Here it is a shove.
 const EFFECTOR_CELL := Vector3i(24, 6, 21)
 

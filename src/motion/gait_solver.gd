@@ -263,3 +263,30 @@ static func would_slip(force: Vector3, normal: Vector3, mu: float) -> bool:
 static func swing_height_m(profile: LimbProfile, t: float) -> float:
 	var u := clampf(t, 0.0, 1.0)
 	return profile.step_height_m * 4.0 * u * (1.0 - u)
+
+
+## Progress through the swing half of the cycle, in [0, 1].
+##
+## Zero at lift-off and one at touchdown. A duty factor of 1.0 leaves no swing
+## at all and answers zero rather than dividing by it — that is a limb that is
+## always in stance, which is a legal profile and not an error.
+static func swing_progress(phase: float, duty_factor: float) -> float:
+	var span := 1.0 - duty_factor
+	if span <= SyndicateConstants.EPSILON_LINEAR:
+		return 0.0
+	return clampf((phase - duty_factor) / span, 0.0, 1.0)
+
+
+## Where the foot is [i]drawn[/i] at swing progress [param t]: a straight line
+## from the point it left, [param from_world], to the point it is reaching for,
+## [param to_world], lifted by [method swing_height_m].
+##
+## §13.7, and the whole of what a swinging limb contributes to what a player
+## sees. The simulation applies no force during swing, so nothing that reads this
+## can feed back into the physics — which is what lets the caller re-derive the
+## target every tick from the placement law instead of freezing one at lift-off.
+static func swing_foot_world(
+	profile: LimbProfile, from_world: Vector3, to_world: Vector3, t: float
+) -> Vector3:
+	var u := clampf(t, 0.0, 1.0)
+	return from_world.lerp(to_world, u) + Vector3.UP * swing_height_m(profile, u)

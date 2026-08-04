@@ -62,6 +62,17 @@ const STANCE_TOLERANCE_M: float = 0.02
 
 const SETTLE_TICKS: int = 300
 const DRIVE_TICKS: int = 150
+
+## Ticks the drawn gait is sampled over, one at a time. The shipped strider tops
+## out at 2.20 Hz, so a cycle is 27 ticks and this covers three of them with room
+## for the Assembly to get moving first.
+const SWING_SAMPLE_TICKS: int = 110
+
+## Smallest angle, in degrees, by which a drawn limb must leave the hull's own
+## down over that window. A quarter of the reach the placement law is allowed —
+## half a step length over a 1.63 m stance is 18.6° — so it is a floor on
+## "visibly swinging" rather than a measurement of the gait.
+const MIN_LIMB_SWING_DEG: float = 5.0
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 400.0
 
@@ -309,6 +320,100 @@ func test_a_walker_spreads_its_limbs_around_the_gait_cycle() -> void:
 		check_approx(
 			offsets[i], float(i) * 0.25, "evenly spread around the cycle", 1e-4
 		)
+
+
+func test_a_walking_limb_is_drawn_along_the_line_it_pushes_along() -> void:
+	# Doc 05 §16.3. The simulation's leg is one force from the hip to the foot,
+	# and until this section the mesh sat at its placement cell for the whole
+	# match — so a walker's legs never moved, the machine slid along, and the
+	# only thing on screen that knew it was walking was the hull bobbing.
+	#
+	# Sampled tick by tick through the window rather than at the end of it,
+	# because the interesting states are transient: a limb is only in swing for
+	# 38% of its cycle and the pose at any chosen tick is whatever the phase
+	# happened to be.
+	var rig := await _reset(_walker_rig, WALKER_SPAWN)
+	var runtime: AssemblyRuntime = rig[0]
+	var motion: MotiveSystem = rig[1]
+	var limb_profile := PartRegistry.definition_by_key(LIMB_KEY).motive_profile.limb_profile
+
+	# Worst agreement between where a limb is drawn and where its foot is, and
+	# the widest the legs ever spread. Both are needed: a limb that never moved
+	# would keep a perfect agreement with a foot planted under its own hip.
+	var worst_dot := 1.0
+	var widest_rad := 0.0
+	var peak_lift := 0.0
+	var swings := 0
+
+	motion.input.throttle = 1.0
+	for _tick: int in SWING_SAMPLE_TICKS:
+		await physics_frames(1)
+		var xform := runtime.body.global_transform
+		for slot: int in motion.motive_slots():
+			var limb := motion.limb_state(slot)
+			var node := runtime.visual_of(slot)
+			if node == null:
+				continue
+			var to_foot := limb.foot_visual_world - (xform * limb.hip_local)
+			if to_foot.length() < SyndicateConstants.EPSILON_LINEAR:
+				continue
+			# The mesh's own down, carried out into the world. Orthonormalised
+			# because a visual profile may author a scale and a scaled axis is
+			# not a direction.
+			var drawn := (
+				xform.basis * (node.transform.basis.orthonormalized() * Vector3.DOWN)
+			).normalized()
+			worst_dot = minf(worst_dot, drawn.dot(to_foot.normalized()))
+			widest_rad = maxf(widest_rad, drawn.angle_to(-xform.basis.y))
+			if not limb.planted:
+				swings += 1
+				peak_lift = maxf(peak_lift, limb.foot_visual_world.y - limb.foot_world.y)
+	motion.input.throttle = 0.0
+
+	check_true(swings > 0, "the gait took the limbs through swing during the window")
+	# One tick of lag between the pose written inside the tick and the body
+	# transform read after it, which at walking pace is well under a degree.
+	check_true(
+		worst_dot > 0.99,
+		"every limb was drawn along its own hip-to-foot line: worst %.4f" % worst_dot
+	)
+	check_true(
+		rad_to_deg(widest_rad) > MIN_LIMB_SWING_DEG,
+		(
+			"and the legs visibly reach rather than hanging straight down: %.1f deg"
+			% rad_to_deg(widest_rad)
+		)
+	)
+	# §13.7's arc, seen from the outside. The lift is bounded above as well as
+	# below: a foot that cleared the ground by more than the authored step height
+	# would be a limb kicking rather than stepping.
+	check_true(peak_lift > 0.01, "a swinging foot is drawn clear of the one it left")
+	check_true(
+		peak_lift < limb_profile.step_height_m + STANCE_TOLERANCE_M,
+		"by no more than the authored step height: %.3f m" % peak_lift
+	)
+
+
+func test_a_planted_foot_is_drawn_where_the_simulation_planted_it() -> void:
+	# The other half of §16.3, and the one that keeps the drawn leg honest: while
+	# a foot is carrying load it is a fixed world anchor, and the presentation
+	# may not smooth it, lead it, or lag it. Only the swing arc is allowed to be
+	# a different point from the simulation's.
+	var rig := await _reset(_walker_rig, WALKER_SPAWN)
+	var motion: MotiveSystem = rig[1]
+	var planted := 0
+	for slot: int in motion.motive_slots():
+		var limb := motion.limb_state(slot)
+		if not limb.planted:
+			continue
+		planted += 1
+		check_true(
+			limb.foot_visual_world.is_equal_approx(limb.foot_world),
+			"slot %d draws its foot at the point it is standing on" % slot
+		)
+	# §13.4 stands a stationary walker on every foot, so this is four and the
+	# assertion above is not vacuous.
+	check_eq(planted, motion.motive_slot_count(), "and a standing walker plants them all")
 
 
 ## ===== FIXTURES ========================================================

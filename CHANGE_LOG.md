@@ -70,6 +70,89 @@ they found are in `LEARNED_FACTS.md`.
 | 27 | **A misclick is survivable.** Doc 02 §9.3's undo stack — `BuildCommand`, `BuildHistory`, `Ctrl+Z` and two toolbar buttons — and §9.2's confirmation before a removal that orphans something. Two defects found by checking what a docstring claimed: a cascade announced itself once, leaving the rest of its meshes floating, and `Blueprint.from_context` assumed slot order was build order, so an ordinary edit produced a build that could not reach a match. |
 | 28 | **Half the clicks, and you can see what you built.** Doc 02 §10's mirror: one gesture places both flanks, as one undoable command. The shipped starter is twelve placements and comes out of eight. Found that §10's own sketch mirrors the pivot cell, which is one cell wrong on every part whose pivot is off-centre. The garage also got a fill light, a bounce and a hover wash — before them the build rendered as one dark silhouette and doc 13's class tints carried nothing. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
+| 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
+| 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+
+### Session 30, in more detail
+
+The task named the fix: machine guns instead of cannon. It is right, and the
+reason it is right is that recoil yaw is `impulse × lever ÷ I_yy` — rule 27 and
+the mount's placement own the lever, and until this session nothing owned the
+other factor.
+
+- **A second `BALLISTIC_DIRECT` row rather than a nerf to the first.** Both
+  modules ship. The autocannon still goes through a hull and still cannot be
+  fired from a moving one; the repeater can be fired while driving and stops at
+  what it is shooting at. That is doc 06 §12's onboarding row getting a real
+  first decision instead of a strictly-better part.
+
+- **The measurement is the deliverable**, and it is new:
+  `tests/physics/test_drive_and_shoot.gd` holds one chassis under throttle with
+  its mount traversed square and its trigger down, and differs between runs in
+  one authored resource. 30 rounds and 2.9° against 2 rounds and 99.1°. Every
+  previous measurement of this problem was a single round on a parked hull.
+
+- **The autocannon build does not merely wander — it stops shooting.** The recoil
+  turns the hull out from under the mount and doc 07 §4.3.1's fire gate then
+  correctly refuses to shoot at something the module is no longer pointed at. Two
+  rounds of the seventeen its cycle allows. A player reads that as a gun that has
+  broken.
+
+- **A second round type broke three joins that had agreed by accident.** Every
+  module in the catalogue chambered `proj.kinetic.ap_30`, so "which round does
+  this module fire", "which stores is this Assembly granted" and "which store
+  does the HUD count" were the same answer and nothing checked they were. The
+  fault sweep planted two of the three ways to get it wrong and **neither was
+  caught**; `test_screen_flow.gd` now asserts the join.
+
+- **`starter-ceiling-never-checked` is the general lesson.** A bound cannot
+  assert anything about itself: raising the drivability ceiling past every
+  published row leaves its own check green forever. The repair is a second
+  assertion that the catalogue's heavy row is on the other side of it.
+
+Six faults planted, three survived the first run, all six caught after the
+repairs. The capture then found the wreck: see `HANDOFF.md` §2.
+
+### Session 29, in more detail
+
+One queue item, the top one: `spawn_visual` drew a Motive Assembly at its
+placement cell and left it there for the whole match.
+
+- **The offset is the travel the spring has not consumed**, not a position
+  derived from the contact point. Both give the same answer under §6.1's
+  authoring convention — rest length is one travel past the rolling radius, so
+  the wheel's underside lands exactly on the surface — and only the first is
+  bounded by construction, needs no second code path for an ungrounded contact,
+  and stays honest for a row authored to a different convention. `droop_m` is one
+  line and the whole of §16.1.
+
+- **It is applied in the chassis frame, and that is the composition error the
+  factory function exists to prevent.** A wheel hangs down the hull, not down
+  itself, and the two are identical for anything mounted upright — which is every
+  Motive Assembly in `tests/physics/`. The fixture that can see the difference is
+  a synthetic sideways orientation in a unit test, and the fault sweep confirms
+  that nothing else catches it.
+
+- **A limb is now drawn as the virtual leg §13.1 says it is**: pivoted about its
+  hip so its own down axis points at its foot, with §13.7's parabolic arc
+  supplying that foot while it swings. `swing_height_m` had been written and
+  called by nothing since session 9. This is deliberately one step short of
+  §13.8's inverse kinematics, which stays doc 13's.
+
+- **The swing target is re-derived every tick rather than frozen at lift-off.**
+  Safe only because §13.7 applies no force during swing, so nothing drawn can
+  reach the physics; the payoff is that the foot lands where the next touchdown
+  puts it instead of jumping there. The placement law is called through one
+  helper for both purposes — two derivations of one target would snap the limb on
+  every plant.
+
+- **The garage deliberately does not droop.** It has no ground, no probes and no
+  contacts, so full droop is the only answer available and it would sink every
+  wheel a full travel through the lattice floor. Recorded in §16.4 as a decision.
+
+Twelve faults planted over §16, eleven caught. The survivor is the mean over a
+tracked patch's road stations, which is untestable on a flat slab because every
+station reports the same distance; it needs a bogie straddling a slope.
 
 ### Session 28, in more detail
 
@@ -293,25 +376,25 @@ what matters is which test defends which behaviour.
 | `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
 | `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step` |
 | `test_mirroring` | *(session 28)* §10's mirror reflecting the pivot cell instead of the footprint; a mirrored part keeping its orientation; the mirror plane moved half a cell onto the origin column; a mirrored pair recorded as one placement so undo takes one flank; a refused mirror committed unvalidated |
-| `test_blueprint` | a blueprint that commits without validating; `copy()` returning a reference rather than an independent list; *(session 27)* **`from_context` writing ascending slot order**, which stops being a construction order at the first removal |
+| `test_blueprint` | *(session 30)* **the shipped starter re-armed with a module its own chassis cannot fire while moving**, and the drivability ceiling raised past every published row so its own check could never fail; a blueprint that commits without validating; `copy()` returning a reference rather than an independent list; *(session 27)* **`from_context` writing ascending slot order**, which stops being a construction order at the first removal |
 | `test_breakpoint` | the stat dock hidden below the expanded tier |
-| `test_screen_flow` | the shell keeping the outgoing screen alive behind the incoming one; *(session 27)* the undo and redo keys reaching their handlers, and RESET editing the build before it is agreed to |
+| `test_screen_flow` | *(session 30)* **the player stocked with a round their own module does not chamber**, the second round type never registered, and §14.1's counter reading the other store — three faults, none of which anything else in the suite noticed; the shell keeping the outgoing screen alive behind the incoming one; *(session 27)* the undo and redo keys reaching their handlers, and RESET editing the build before it is agreed to |
 | `test_degradation_table` | a band multiplier changed off its documented value; a table that does not terminate at zero; a table that is not monotonic; a table of the wrong length; the out-of-range clamp removed; a table missing from `all_tables()` |
-| `test_suspension_solver` | compression not clamped to travel; an ungrounded probe still compressing; rebound damped like compression; force allowed to pull; bottom-out clamp removed; settle scale always applied; damp multiplier ignored; retune scale unclamped; damper not derived from corner mass; axle pairing ignoring longitudinal distance; axle pairing accepting the same side; anti-roll ignoring the difference |
+| `test_suspension_solver` | compression not clamped to travel; an ungrounded probe still compressing; rebound damped like compression; force allowed to pull; bottom-out clamp removed; settle scale always applied; damp multiplier ignored; retune scale unclamped; damper not derived from corner mass; axle pairing ignoring longitudinal distance; axle pairing accepting the same side; anti-roll ignoring the difference; *(session 29)* **§16.1's droop returning the travel consumed instead of the travel left**, full droop returned whatever the probe found, and an ungrounded contact drawn in its placed cell |
 | `test_traction_solver` | slip ratio dividing by raw speed; slip angle using a signed denominator; Pacejka curve unnormalised; load sensitivity unclamped; band multiplier dropped from μ; **longitudinal sign flipped**; lateral grip ratio applied after the solve; zero-slip guard removed; brake zero-crossing guard removed; the guard catching negative drive too; ground reaction term dropped; contact inertia using full mass; torque split evenly rather than by load; rolling resistance ignoring the band |
 | `test_traction_control` | the launch floor dropped from the allowance; **the corrective brake's ceiling removed**; the slip cut turned into a subtraction; the deadband stepped over rather than subtracted; the grip clamp dropped; the bicycle model's sign; authority not applied to the brake demand |
 | `test_rotor_solver` | spool as an Euler step; spool-up and spool-down swapped; power fraction not applied; power fraction unclamped above one; thrust linear in tip speed; collective clamped at zero rather than signed; ground effect never fading; translational lift unbounded; vortex ring with no forward escape; vortex ring onset removed; degradation dropped from thrust; cyclic clamped per axis rather than on the cone; thrust direction ignoring orientation; shaft torque dropping the radius term; collective unclamped; cyclic step not rate limited |
-| `test_gait_solver` | **right side not reversed**; phase offsets not spread; sides not partitioned; fore-aft tie not broken on slot; standing deadband removed; cadence unclamped; clock not wrapping; neutral point using a whole stance; velocity-error correction dropped; step length unclamped; leg reach unclamped; frozen gait still stepping; turn command ignored; stance spring allowed to pull; foot force uncapped; stance damper dropped; foot μ ignoring the band; friction cone never limiting; an upward-pulling foot still transmitting; swing arc not a parabola |
+| `test_gait_solver` | **right side not reversed**; phase offsets not spread; sides not partitioned; fore-aft tie not broken on slot; standing deadband removed; cadence unclamped; clock not wrapping; neutral point using a whole stance; velocity-error correction dropped; step length unclamped; leg reach unclamped; frozen gait still stepping; turn command ignored; stance spring allowed to pull; foot force uncapped; stance damper dropped; foot μ ignoring the band; friction cone never limiting; an upward-pulling foot still transmitting; swing arc not a parabola; *(session 29)* the swing arc flattened onto the ground, and swing progress measured from the top of the cycle rather than from lift-off |
 | `test_track_solver` | stations not centred on the patch; stations all at the pivot; authority not tapering; taper ignoring speed magnitude; steer command unclamped; internal loss charged after the split; bias not differentiating the sides; slew resistance uncapped; slew resistance not opposing; slew ignoring patch length; slew ignoring normal load; the centreline counting as right; station load divided by count |
 | `test_melee_solver` | cycle multiplier ignored; swing arc not centred; edge not offset along its reach; sample count unbounded; samples not reaching the end of the swing; channel mix ignored; the mix sum hard-coded to one; sustained flag ignored; closing-speed gate inverted; the terminal swing-progress assignment removed; reaction not opposing the strike; energised draw always charged; `begin` not clearing the target set; target budget not enforced |
 | `test_motive_system` | slot list not sorted; duplicate registration appending; the class guard removed (caught only since §3.34); a tracked part given one contact; a rotary part given a contact; station index never advancing; a band change writing only traction; unregister leaving the slot; unregister not re-phasing the gait; unregister leaving the disc state; the hip not resolved from the placement; contacts never bound to their probes; any two probes pairing regardless of side; a probe taken into two pairs; pairs never built at registration |
 | `test_control_system` | **the whole record left unsampled** (the clock connection dropped); the axis helper's halves swapped; steer inverted; the brake action no longer producing a reverse demand; the brake field dropped; collective decoupled from the drive axis; yaw decoupled from the steer axis; §15.4's pitch inversion undone; §15.4's roll inversion undone; the two tilt axes transposed; the aid authority left unbounded; the held buttons never read |
 | `test_locomotion_families` | a locomotion family mis-mapped in `LOCOMOTION_OF_MOTIVE_KIND`; `ENERGY_MELEE` not recognised as melee; a family payload keyed on the wrong kind; rotor max thrust dropping the density; stance rest length as the whole leg; stance duration ignoring duty factor; melee mix sum hard-coded to one |
 | `test_physics_frame` | `physics_frames` waiting for nothing |
-| `test_ground_assembly` | steering turning the wrong way; the steer angle snapping instead of rate limiting; the contact frame never steered; probe sphere far larger than the contact; every probe sweeping from the Assembly origin; probe reach too short to reach the ground; probes masked to hulls instead of ground; probes parented outside `MotiveProbes`; no part getting a probe at all; contacts never bound to their probes; any two probes pairing regardless of side; axle pair ends swapped; pairs never built at registration; the slip limiter never cutting; the limiter ignoring its authority; the yaw target pointing the wrong way; the corrective brake applied to the flank that adds to the spin; **the corrective brake never reaching the contacts**; **both flanks braked instead of one**; drive torque clamped to forward only |
+| `test_ground_assembly` | steering turning the wrong way; the steer angle snapping instead of rate limiting; the contact frame never steered; probe sphere far larger than the contact; every probe sweeping from the Assembly origin; probe reach too short to reach the ground; probes masked to hulls instead of ground; probes parented outside `MotiveProbes`; no part getting a probe at all; contacts never bound to their probes; any two probes pairing regardless of side; axle pair ends swapped; pairs never built at registration; the slip limiter never cutting; the limiter ignoring its authority; the yaw target pointing the wrong way; the corrective brake applied to the flank that adds to the spin; **the corrective brake never reaching the contacts**; **both flanks braked instead of one**; drive torque clamped to forward only; *(session 29)* §16's visual pass dropped from the tick |
 | `test_motive_force_application` | a disc given a ground probe |
 | `test_inertia_coupling` | coupling torque unclamped; identically zero; applied in the body frame; angular velocity never rotated into the body frame; never applied at all; evaluated at the tick boundary rather than the midpoint; **sign flipped** |
-| `test_locomotion_behaviour` | both track flanks driven alike; flanks swapped; the steer command never reaching the mixer; every bogie counted as one flank; a limb's probe sized from suspension it has none of; a limb sweeping from the Assembly origin |
+| `test_locomotion_behaviour` | both track flanks driven alike; flanks swapped; the steer command never reaching the mixer; every bogie counted as one flank; a limb's probe sized from suspension it has none of; a limb sweeping from the Assembly origin; *(session 29)* **a planted foot drawn at the last swing sample instead of at the point it is standing on** |
 | `test_family_duels` | *(session 15; see the sweep record below)* the muzzle-relative recoil impulse dropped; a pitch limit that no longer clamps |
 | `test_overpenetration_bounds` | a round that no longer continues past what it defeated;
 the within-tick continuation removed; the same part struck twice; the penetration count
@@ -325,6 +408,7 @@ restarted every tick |
 | `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
 | `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel** |
 | `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
+| `test_part_mesh_pose` | *(session 29)* the §16.1 droop lifting the part instead of lowering it; the droop composed in the part's own frame rather than the chassis's — **which nothing in `tests/physics/` can see, because a Motive Assembly is only ever mounted upright there**; a limb never turned toward its foot; a limb turned about its mesh origin instead of about its hip |
 | `test_part_visuals` | *(session 20; no sweep run against it yet — see below)* doc 13 §2.1's collider mirroring by extent, §9's spawn, I-1 over a **populated** `VisualRoot`, the mesh cache's sharing, and the `part_visual` tag suppressing every mesh while touching no collider |
 | `test_chase_camera` | *(session 20; not yet swept)* doc 11 §13.4's heading rule including the degenerate hold, §13.5's frame-rate-independent lag, and the short-arc heading delta |
 | `test_reticle_states` | *(session 20; not yet swept)* doc 11 §14.3's five states, their tokens by value, and §10 rule 5's shape distinction |
@@ -352,7 +436,7 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Five committed sweeps, 100 faults between them, all driven by
+Seven committed sweeps, 118 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
@@ -363,6 +447,8 @@ is a couple of minutes.
 | `combat_layer_sweep.py` | damage, effector and projectile layers (session 14), plus doc 07 §15 (session 18) | 45 |
 | `ai_layer_sweep.py` | `src/ai/`, doc 05 §15.7, doc 07 §10, doc 01 rule 27 | 13 |
 | `match_layer_sweep.py` | doc 11 §16's outcome rule, §14.3's target bracket, §14.6's binding lookup, doc 05 §15.7.5's ladder | 12 |
+| `contact_visual_sweep.py` | doc 05 §16: the droop, the frame it is applied in, the limb's pivot, the swing arc | 12 |
+| `effector_choice_sweep.py` | doc 01 §10.5's second direct-fire row: the starter's module, the comparison fixture, the second round type's wiring | 6 |
 
 ### What still survives, and why
 
@@ -373,6 +459,7 @@ is a couple of minutes.
 | `same-part-twice-allowed` | engagement | A coverage regression, not a gap that was never filled: it was caught before the penetration budget became lifetime-scoped and is not caught after. Closes when a part ships with two collider primitives along one axis. |
 | `melee-modules-emit` | combat | Four owners of one invariant, reduced to three. Each of the three enforces it alone, so no single deletion is visible. |
 | `debris-transform-before-shapes` | combat | Doc 04 §6's ordering rule. **Known unverifiable by the obvious route**: the physics step a test needs in order to read a current pose is the same step that repairs the fault. Two attempts are recorded in `HANDOFF.md`; the honest position is that the rule is defended by the comment in `island_detacher.gd`. |
+| `tracked-mean-is-its-first-station` | contact visual | Doc 05 §16.1 draws a tracked patch at the mean of its road stations, and on a flat slab every station reports the same distance — so the mean and the first are one number. Planted knowingly, in the same change as the code. Closes with a bogie straddling a slope, which no fixture in `tests/physics/` has. |
 | `aim-point-read-from-scan` | ai | Doc 07 §10 runs selection at 2.9 Hz and aim solving every tick; collapsing them aims at where the target was up to 350 ms ago. Marginal rather than firmly untested — CAUGHT on one run and SURVIVED on the next, either side of an unrelated change. What closes it properly is an engagement in which the AI's target is *driving*. |
 
 `breakaway-never-releases` was a deliberate standing survivor and is no longer
