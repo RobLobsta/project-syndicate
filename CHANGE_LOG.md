@@ -58,10 +58,44 @@ they found are in `LEARNED_FACTS.md`.
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+| 35 | **The rebuild, 89% landed.** Fixture fallout taken from **448 failing assertions across 28 files to 50 across 11**: the part table, both layouts, all four locomotion recipes, and the published-value assertions are all solved and written down. Reverted one regression short — the AI turns to face its target and then declines to close. |
 | 34 | **The Crossout-scale rebuild, executed and measured, then reverted.** The reference build goes from 1107 kg at 46 kg/m³ standing on two of its four wheels to **3630 kg at 141 kg/m³ standing on all four**, with the wheelbase from 35% to 73% of the hull and the static split from 100% front to 41%. The registry validates and the proportions instrument confirms it. Reverted because the fixture fallout is 396 assertions across 28 files; `HANDOFF.md` §3.1.2 carries every number that produced the measurement. |
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 35, in more detail
+
+The second pass at §3.1.2, and it got most of the way. 448 → 350 → 182 → 144 →
+110 → 84 → 54 → **50**, over ten full suite runs.
+
+**Three rules covered about four hundred of the assertions**, and finding them is
+what cost the time. `Vector3i(24, 7, 24)` turns out to be a shared idiom meaning
+"on the Core Module's deck" across fifteen test files, so the deck moving from
+y=6 to y=7 is one replacement — followed immediately by bumping everything that
+was *already* stacked at y=8, because the blanket replacement collides them. The
+flanks moved from x 22..25 to x 21..26, so flank mounts go from x=20/26 to
+x=19/27. And published values are asserted by value throughout, so masses, cell
+counts, face counts, tensors and capacities all move together.
+
+**Two things had to be discovered rather than derived.** A station at orientation
+8 spans `x[px..px+1]`, `y[py..py+1]`, `z[pz-1..pz]` — probing the orientation
+table turned the ambulatory and rotary re-lay from guesswork into arithmetic and
+fixed both recipes in one pass. And scaling mass without scaling the force models
+breaks two families outright: the rotor could no longer lift (hover margin 0.77
+against a required 1.15) and the limb's stance spring sagged 0.186 m, so
+`thrust_coefficient`, `stance_stiffness_n_m` and their ratings scale with the
+hull. Doc 01 §14 rule 19 checks the rotor pair against each other and refuses a
+disc that cannot lift its rating, which caught it immediately.
+
+**What stopped it is not a threshold.** `test_ai_engagement`'s attacker turns to
+face its target perfectly — 179.9° to 0.4° — and then does not close, 44.2 m to
+45.4 m, firing nothing. The throttle law says full ahead at that bearing and the
+arrival brake says zero, and the same build drives at 16 m/s under power
+elsewhere, so it is not the law. A game whose opponents do not drive at you is
+worse than one with a small vehicle, so it was reverted rather than shipped.
+`HANDOFF.md` §3.1.2 has every number, both layouts, the three fixture rules, the
+per-file exceptions, and the one instrumented run that would close it.
 
 ### Session 34, in more detail
 

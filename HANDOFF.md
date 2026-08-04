@@ -323,28 +323,30 @@ anyone will try. The hubs mate under the Core Module, which spans five cells of
 validator refuses the placement. Reaching a real wheelbase needs the chassis to
 extend fore and aft first, which is §3.1.2's work.
 
-#### 3.1.2 The Crossout-scale rebuild — proven, measured, and not yet landed
+#### 3.1.2 The Crossout-scale rebuild — 89% landed, one regression short
 
-**It was built and it works.** Session 33 ran the whole rebuild, measured it, and
-reverted it because the fixture fallout is 396 assertions across 28 files and a
-red tree is not a deliverable. What is written below is not a proposal: every
-number in it was executed, validated by `tools/validate_part_registry.gd`, and
-measured by `tests/physics/test_build_proportions.gd`. Applying it again is
-mechanical.
+**Run twice now. The parts, the layout and the fixtures are all solved; what
+stops it landing is a single behavioural regression, named at the bottom.**
+
+Session 34 executed it, measured it, and took the fixture fallout from **448
+failing assertions across 28 files down to 50 across 11**. It was reverted only
+because the last of those 50 is not a threshold to re-measure — it is the AI
+declining to fight.
 
 | | before | after |
 |---|---|---|
 | Mass | 1107 kg | **3630 kg** |
 | Density | 46 kg/m³ | **141 kg/m³** (a passenger car is 115) |
-| Wheelbase | 1.50 m — 35% of hull | **2.75 m — 73% of hull** |
+| Wheelbase | 1.50 m — 35% of hull | **2.75 m — 73%** |
 | Contacts loaded | **2 of 4** | **4 of 4** |
-| Static split | **100% front** | **41% front** |
+| Static split | **100% front** | **38% front** |
 
-§3.1.1 is closed by it outright: the build stands on all four wheels and is very
-slightly rear-biased, which is where a road vehicle wants to be.
+§3.1.1 is closed by it outright.
 
-**Parts** — the two corner vectors in `tools/author_*.gd`, which derive occupancy,
-attachment nodes, and the collider together, so all three move at once:
+##### The part table
+
+Two corner vectors per part in `tools/author_*.gd`, which derive occupancy,
+attachment nodes and the collider together:
 
 | part | cells before → after | `lo` → `hi` after | mass |
 |---|---|---|---|
@@ -358,46 +360,85 @@ attachment nodes, and the collider together, so all three move at once:
 | `mot.wheeled.fixed_rear.t2` | unchanged | — | 62 → 105 |
 | `str.panel.medium.t2` | unchanged | — | 34 → 100 |
 
-Also: core `integrity_max` 1450 → 4200, `load_capacity_kg` 3600 → 9000,
-`power_capacity_pu` 240 → 520, and `mass_tolerance_kg` 3600 → **5300**, which is
-Crossout's medium-cabin tonnage and the one figure taken directly from a source.
-Tracked, rotor, limb and beam masses scale ×3.2 with the rest.
+Core `integrity_max` 1450→4200, `load_capacity_kg` 3600→9000,
+`power_capacity_pu` 240→520, `mass_tolerance_kg` 3600→**5300** (Crossout's
+medium-cabin tonnage, the one sourced figure). Panel `load_capacity_kg`
+520→1560. Tracked, rotor, limb and beam masses ×3.2.
 
-Derived, and they must move together or the springs bottom out:
-`suspension_stiffness_n_m` 42000 → 134000 and 44000 → 140000,
-`suspension_damping_ns_m` 3400 → 10900 and 3500 → 11200,
-`rated_load_kg` 620 → 1100 and 680 → 1200, `brake_torque_nm` 2600 → 8300,
-`drive_torque_nm` 3200 → **10200**.
+**The force models have to scale with the mass they carry, or two families stop
+working.** Suspension 42000→134000 and 44000→140000 N/m, damping 3400→10900 and
+3500→11200, `rated_load_kg` 620→1100 and 680→1200, `brake_torque_nm` 2600→8300,
+`drive_torque_nm` 3200→**10200**. Rotor `thrust_coefficient` 0.020→**0.0638**
+with `rated_load_kg` 2600→8300 — doc 01 §14 rule 19 checks that pair against each
+other and refuses a disc that cannot lift its rating. Limb
+`stance_stiffness_n_m` 96000→307000, damping 12000→38400,
+`rated_load_kg` 1400→4500. Tracked `rated_load_kg` 2100→6700.
 
-**Layout**, in both `starter_blueprint.gd` and `tests/combat_arena.gd`. The
-cabin now spans `z` 18–30, so the gun tucks onto the roof instead of hanging a
-metre past the front axle, and the hubs reach the ends of it:
+##### The layout
+
+The cabin spans `z` 18–30, so the gun tucks onto the roof instead of hanging a
+metre past the front axle, and the hubs reach the ends of it. Both
+`starter_blueprint.gd` and `tests/combat_arena.gd`:
 
 | | before | after |
 |---|---|---|
-| Prime Mover | `(24,7,24)` | `(24,8,28)` — roof, aft |
-| Energy Cell | `(24,4,29)` | `(24,4,33)` — behind the longer cabin |
-| Effector | `(24,6,21)` | `(24,8,24)` — roof, over the cabin |
+| Prime Mover | `(24,7,24)` | `(24,8,28)` |
+| Energy Cell | `(24,4,29)` | `(24,4,33)` |
+| Effector | `(24,6,21)` | `(24,8,24)` |
 | Hubs | z 23, 27 | **z 19, 30** |
 | Contacts | z 22/28, 21/27 | **z 18/29, 17/28** |
 
-**Two traps already paid for.** The repeater was first cut to 3 cells wide and
-`tools/validate_part_registry.gd` refused it under doc 01 §14 rule 27 — an
-odd-width module cannot centre on an even-width hull, and Invariant I-6 leaves no
-half-cell to correct with. It is 4 wide. And raising mass without the geometry is
-worthless: on the old layout it moves the split from 73/27 to only 70/30, because
-a 1.50 m wheelbase turns one centimetre of centre-of-mass shift into 0.7 points.
+Ambulatory: power `(24,18,28)`, gun `(24,18,24)`, legs
+`(19,14,21)/(20,13,20)`, `(27,14,21)/(27,13,20)`, `(19,14,27)/(20,13,26)`,
+`(27,14,27)/(27,13,26)`. Rotary: mast hubs `(19,5,24)`/`(27,5,24)`, discs
+`(19,7,24)`/`(29,7,24)`, power `(24,4,34)`, cell `(24,0,24)`, gun `(24,8,24)`.
 
-**What is left is the fixture fallout, and it is mechanical rather than
-uncertain.** 396 assertions over 28 files, and two files are more than half of it:
-`test_placement_validator` (114) and `test_build_history` (108) both lay parts at
-hard-coded cells that a 6×4×13 cabin no longer leaves room for. `test_mass_solver`
-(38) and the other unit files are expectation updates. Every engagement file in
-`tests/physics/` needs re-measuring, and `test_build_proportions` and
-`test_rest_stability` are the two that are *supposed* to go red.
+##### Fixing the fixtures — three rules cover about 400 of the 448
 
-Budget it as a session of its own, and start by re-laying the two big fixture
-files rather than by running the suite.
+Discovering these is what cost the time; applying them does not.
+
+1. **The deck moved from y=7 to y=8.** `Vector3i(24, 7, 24)` is the shared "on the
+   Core Module's deck" idiom and appears in fifteen test files. Replace it, then
+   **bump every cell that was already stacked above it by one as well** — the
+   blanket replacement collides `DECK` with whatever used to sit at y=8.
+2. **The flanks moved from x 22..25 to x 21..26.** Anything mounting on a flank
+   goes from x=20/26 to **x=19/27**, and a part mounting outboard of that moves
+   with it. A station at orientation 8 spans `x[px..px+1]`, `y[py..py+1]`,
+   `z[pz-1..pz]` — that is what makes the arithmetic exact rather than guessed.
+3. **Published values are asserted by value in the tests**, per the convention in
+   `LEARNED_FACTS.md` §2. Masses, cell dimensions, node counts (a 6×4×13 box has
+   **308** faces), integrity, power capacity, mass tolerance and the derived
+   tensors all have to move. The core's box tensor at 1800 kg over extents
+   (1.5, 1.0, 3.25) is `(1734.375, 1921.875, 487.5)`.
+
+Per-file exceptions worth knowing: `test_placement_validator`'s stack fixture
+starts at y=8 and its lateral candidate has to clear the wider core (x=28 at
+y=9, above the core entirely); `test_assembly_stat_solver`'s mast goes on the
+Prime Mover's roof at `(24, 12+i, 28)` because the cabin roof is now fully
+occupied; `test_motive_force_application` and `test_inertia_coupling` mount their
+disc on the core's flank at `(19,4,21)` with the Prime Mover slung under at
+`(21,0,20)`; `test_band_dispatch` needs the arena's roof split.
+
+##### What is left, and the one thing that is not a threshold
+
+Of the 50: `test_placement_validator` 6, `test_ai_engagement` 5,
+`test_ambulatory_drift` 3, `test_drive_and_shoot` 3, `test_family_duels` 2, and
+singles in `test_blueprint`, `test_held_weapon`, `test_ram_attitude`,
+`test_team_engagement`. Most are honest re-measurements — recoil yaw falls by the
+mass ratio, the rearward push with it, and `test_drive_and_shoot`'s premise
+actually **inverts**: the autocannon build now holds its heading to 0.7° over 13
+rounds where it used to spin 99°, so that file needs re-framing rather than
+re-numbering.
+
+**The blocker is `test_ai_engagement`.** The attacker turns to face its target
+perfectly — bearing 179.9° → 0.4° — and then does not close: 44.2 m to 45.4 m,
+zero rounds fired. It is not the throttle law on paper: at that bearing and speed
+`approach_throttle` returns 1.0 and `arrival_brake` returns 0.0, and the same
+build drives at 16 m/s under power in `test_wreck_settles`. Something between
+"has a target and is pointed at it" and "moves" is not firing, and it needs one
+instrumented run of `AiDriver` against the rebuilt build to find — print
+`input.throttle`, `target_id()` and the closure term per tick. **Do that first
+next session; everything else here is arithmetic.**
 
 ### 3.2 Give the control card a first-run flag
 
