@@ -882,6 +882,25 @@ fixture happens to be sensitive, not that the rule is covered — and a sensitiv
 fixture is exactly the kind that a later, unrelated, correct change desensitises.
 §12.2.1 is now recorded as untested; see §5.
 
+Session 31 watched that happen live and in the other direction too.
+`breakaway-never-releases` was recorded as a standing survivor in session 24,
+recorded as **caught** in session 30 — because with no arrival brake a sustained
+throttle made the driver orbit its stand-off, which one rounds-floor assertion is
+sensitive to — and is a survivor again in session 31, because the arrival brake
+stops a driver orbiting whatever its throttle is doing. Three verdicts, no change
+to the rule or to its code. **A sweep verdict is a statement about the fixtures,
+not about the rule**, and a fault whose verdict moves under unrelated work was
+never covered in the first place.
+
+**Run the sweep with `--full` before believing a CAUGHT.** Fail-fast stops at the
+first failing file, so a fault caught by a unit test reports CAUGHT and tells you
+nothing about whether the fixture built to defend the behaviour saw it. Session
+31 planted three faults against a new law: all three reported CAUGHT under
+fail-fast at 871 checks, all three from the same unit test. Under `--full`, one
+of them turned out to be caught by nothing else at all — the physics fixture's
+assertion was passing by eight centimetres. **Ask which files failed, and the
+cheap way to be unable to ask is fail-fast.**
+
 **Two of session 15's six faults were planted against loops rather than against
 laws.** Of session 16's twelve, one was — and it was kept knowingly.
 
@@ -935,6 +954,40 @@ relief, so a locomotion or tactics law can be measurably better on the slab and
 measurably worse in the game. It happened: a throttle constant that improved
 every number in the suite stopped the opponents ever reaching the player. For
 anything in doc 05 §13 or §15.7, run the capture.
+
+**A quantity nothing has ever measured is a defect nothing can ever catch, and
+the tell is that the fixtures all record the same four things.** Session 31's,
+and it is the generalisation of the two sessions before it. Every engagement file
+in `tests/physics/` recorded rounds, ticks, kills and travel; none recorded
+**attitude**. So a build ending the fight on its roof moved no number, and the
+worst thing a player could experience was invisible to six thousand checks while
+being obvious in six frames of a capture. The instrument was twenty lines.
+
+Before adding an assertion to an engagement fixture, read what the record class
+already holds and ask what a player would notice that is **not on the list**. The
+answer is usually a physical state rather than a count — attitude, contact,
+displacement, whether anything is still upright — because counts are what a
+system under test naturally emits and states are what a person actually sees.
+
+**Measure the geometry before choosing a constant that is a distance.** Same
+session, and it is the finding that no approach law could have rescued.
+`GROUND_STAND_OFF_M` was 6.0 m, and doc 05 §15.7.5's spacing step of 4.5 m was
+justified in the document as "a little over an Assembly's own length". Nobody had
+ever measured an Assembly. Taken off the colliders — Invariant I-1 makes those
+the physical footprint — the reference build reaches 2.4 m from body origin to
+nose, so two of them **touch at 4.8 m** and both constants were authored inside
+the hulls they were meant to separate. A stand-off shorter than the two things it
+stands off is not a tuning problem.
+
+**A parked Assembly does not stop, and any fixture that treats "it moved" as
+evidence is measuring that.** A wheeled build with no throttle and no brake reads
+0.38 m/s at the end of a 90-tick settle and **still 0.38 m/s after 360** — the
+drift does not decay, because nothing under doc 05 §7 puts a rolling resistance
+on a free contact. It cost an assertion that looked airtight: a stationary
+1107 kg hull ending three metres from its spawn reads as unarguable proof
+something rammed it, and was the fixture's own baseline. The detector that
+survives is the **gap between the colliders**, which a target that wandered off
+on its own cannot satisfy.
 
 **A behaviour added without an assertion is not there yet.** `no-arrival-brake`
 survived its first run because the brake was added and nothing was written to

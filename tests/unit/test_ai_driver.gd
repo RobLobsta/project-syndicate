@@ -17,9 +17,11 @@ const STEER_SATURATION_RAD: float = 0.35
 const AMBULATORY_TURN_SATURATION_RAD: float = 0.60
 const AMBULATORY_YAW_DAMPING: float = 0.55
 const AMBULATORY_STEER_AUTHORITY: float = 0.5
-const GROUND_STAND_OFF_M: float = 6.0
+const GROUND_STAND_OFF_M: float = 10.0
 const AMBULATORY_STAND_OFF_M: float = 20.0
 const ROTARY_STAND_OFF_M: float = 22.0
+const ARRIVAL_DECEL_MPS2: float = 4.0
+const ARRIVAL_CLOSURE_DEADBAND_MPS: float = 0.5
 
 ## An Assembly at the origin facing doc 07 §7.2's forward, which is [code]-Z[/code].
 const FACING_FORWARD := Basis.IDENTITY
@@ -203,7 +205,7 @@ func test_each_family_fights_at_its_documented_stand_off() -> void:
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.GROUND),
 		GROUND_STAND_OFF_M,
-		"wheeled closes to six metres"
+		"wheeled closes to ten metres"
 	)
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.TRACKED),
@@ -219,6 +221,138 @@ func test_each_family_fights_at_its_documented_stand_off() -> void:
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.ROTARY),
 		ROTARY_STAND_OFF_M,
 		"and a rotary one holds station further out still"
+	)
+
+
+## ===== §15.7.1's ARRIVAL BRAKE =========================================
+## The law that stopped the shipped match opening with the player being driven
+## over. Every assertion here is a value or a direction against the constants
+## written out at the top of this file — never a call to the code under test
+## with different arguments, which asserts only that it is self-consistent.
+
+
+## The far half of the profile. A driver crossing open ground toward something
+## thirty metres away is not arriving at it, and a law that braked there would
+## be a law that never got anywhere.
+func test_a_driver_with_room_to_stop_does_not_brake() -> void:
+	check_approx(
+		AiDriver.arrival_brake(40.0, GROUND_STAND_OFF_M, 12.0),
+		0.0,
+		"thirty metres of slack absorbs twelve metres a second"
+	)
+
+
+## The near half, and the one case that is a ram rather than an arrival: inside
+## the stand-off and still coming on. Nothing about the closure's magnitude can
+## make that a demand for less than everything.
+func test_a_driver_inside_its_stand_off_and_still_closing_brakes_fully() -> void:
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M - 1.0, GROUND_STAND_OFF_M, 1.0),
+		1.0,
+		"past the stand-off, full brake"
+	)
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M, GROUND_STAND_OFF_M, 8.0),
+		1.0,
+		"and exactly on it, where the slack is zero rather than negative"
+	)
+
+
+## The band between them, by value. `v² / 2s` is the deceleration the slack
+## requires; the demand is zero where that equals the planned figure and full
+## where it is twice it.
+##
+## Both ends are asserted, because a law that saturated immediately and one that
+## never saturated would each pass a single reading taken in the middle.
+func test_the_demand_spans_one_planned_deceleration_to_two() -> void:
+	# 4 m/s into 2 m of slack needs 16 / 4 = 4.0 m/s², exactly the plan.
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 2.0, GROUND_STAND_OFF_M, 4.0),
+		0.0,
+		"at the planned deceleration the driver is still coasting"
+	)
+	# 4 m/s into 1 m needs 16 / 2 = 8.0 m/s², twice the plan.
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.0, GROUND_STAND_OFF_M, 4.0),
+		1.0,
+		"at twice it, everything the build has"
+	)
+	# 16 / 3 = 5.333 m/s², a third of the way from one plan to two.
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.5, GROUND_STAND_OFF_M, 4.0),
+		1.0 / 3.0,
+		"and a third of the way across the band is a third of the demand",
+		1e-4
+	)
+
+
+## A closure at or under the deadband is not an arrival. Without this a driver
+## parked on its mark stands on the brakes for the whole match, because its own
+## hull settling reads as closing.
+func test_a_closure_under_the_deadband_is_not_an_arrival() -> void:
+	check_approx(
+		AiDriver.arrival_brake(
+			GROUND_STAND_OFF_M - 2.0, GROUND_STAND_OFF_M, ARRIVAL_CLOSURE_DEADBAND_MPS
+		),
+		0.0,
+		"at the deadband exactly, nothing — even from inside the stand-off"
+	)
+	check_true(
+		AiDriver.arrival_brake(
+			GROUND_STAND_OFF_M - 2.0,
+			GROUND_STAND_OFF_M,
+			ARRIVAL_CLOSURE_DEADBAND_MPS + 0.01
+		) > 0.0,
+		"and a hair over it, everything"
+	)
+
+
+## Opening the range is never an arrival, in either sense. A driver reversing out
+## of a stand-off it overshot must not be braking against its own escape.
+func test_a_driver_opening_the_range_never_brakes() -> void:
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.0, GROUND_STAND_OFF_M, -8.0),
+		0.0,
+		"backing off fast, no brake"
+	)
+	check_approx(
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M - 3.0, GROUND_STAND_OFF_M, -2.0),
+		0.0,
+		"and backing out of the stand-off it is already inside"
+	)
+
+
+## §15.7.1's closure is a projection onto the bearing, not a speed, and the sign
+## is the rule. A driver crossing in front of its target is closing at nothing,
+## and one driving away is closing at a negative rate — both of which the brake
+## above depends on to stay out of the way.
+func test_the_closure_is_the_component_along_the_bearing() -> void:
+	var to_the_north := Vector3(0.0, 0.0, -10.0)
+	check_approx(
+		AiDriver.closure_mps(Vector3(0.0, 0.0, -6.0), to_the_north),
+		6.0,
+		"straight at it is the whole speed"
+	)
+	check_approx(
+		AiDriver.closure_mps(Vector3(0.0, 0.0, 6.0), to_the_north),
+		-6.0,
+		"and straight away from it is the negation"
+	)
+	check_approx(
+		AiDriver.closure_mps(Vector3(6.0, 0.0, 0.0), to_the_north),
+		0.0,
+		"across it is no closure at all"
+	)
+
+
+## Height is not closure. §15.7.1 flattens every bearing it takes, and a target
+## at the bottom of a hill would otherwise read as one being closed on at the
+## Assembly's whole rate of descent.
+func test_the_closure_ignores_height() -> void:
+	check_approx(
+		AiDriver.closure_mps(Vector3(0.0, -9.0, 0.0), Vector3(0.0, -20.0, -10.0)),
+		0.0,
+		"falling toward a target below is not closing on it"
 	)
 
 

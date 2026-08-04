@@ -565,6 +565,8 @@ func engage(max_ticks: int) -> void:
 ## not been written yet, and the point of these fights is the physics under the
 ## decision rather than the decision.
 func command(c: Combatant) -> void:
+	var target := nearest_enemy(c)
+	c.sample_hull(target)
 	if not c.arena_piloted:
 		# Either an [AiDriver] is writing this Assembly's record on
 		# `MatchClock.tick_started` — see [method make_autonomous] — or it is a
@@ -576,7 +578,6 @@ func command(c: Combatant) -> void:
 	if not c.is_alive():
 		c.retire()
 		return
-	var target := nearest_enemy(c)
 	if target == null:
 		c.retire()
 		return
@@ -977,6 +978,33 @@ class Combatant:
 	var ticks_on_elevation_stop: int = 0
 	## Steepest nose-down attitude the hull reached, in degrees.
 	var worst_nose_down_deg: float = 0.0
+	## Furthest the hull ever rolled about its own longitudinal axis, in degrees.
+	##
+	## [b]Nothing in this suite measured attitude in roll until session 31, and
+	## that is why a fixture can be green through the worst thing a player
+	## sees.[/b] Every engagement file records rounds, ticks, kills and travel; an
+	## Assembly that ends the fight on its side moves none of them, so being
+	## rammed over — which is what the shipped match's first five seconds
+	## actually were — was invisible to 6143 checks and visible in six frames of
+	## a capture.
+	##
+	## Absolute, and it reads the full circle rather than the tilt of one axis:
+	## [code]asin(right.y)[/code] answers 90° for a hull on its side and
+	## [b]0°[/b] for one upside down, which is the one reading that must not be
+	## mistaken for upright. See [method roll_deg].
+	var worst_roll_deg: float = 0.0
+	## Fastest the hull was ever travelling, in m/s. Recorded next to the roll
+	## because the two together separate "it was pushed over" from "it drove
+	## itself over": a build put on its side by something that hit it is slow
+	## when it happens, and one that rolled itself is not.
+	var peak_speed_mps: float = 0.0
+	## Nearest any enemy ever came, body origin to body origin, in metres.
+	##
+	## The companion an attitude assertion cannot do without. "Nobody rolled
+	## over" is satisfied in full by three drivers that never arrived — which is
+	## a documented failure of doc 05 §15.7.1's throttle law, not a success — so
+	## a fixture asserting the first has to assert this one alongside it.
+	var closest_enemy_m: float = INF
 
 	## One tick of gunnery telemetry. Called by [method CombatArena.command].
 	func sample_gunnery() -> void:
@@ -995,10 +1023,64 @@ class Combatant:
 				or absf(pitch - limits.y) < ELEVATION_STOP_EPSILON_DEG
 			):
 				ticks_on_elevation_stop += 1
-		var nose := -runtime.body.global_transform.basis.z
+
+	## One tick of hull telemetry: attitude, speed, and how close
+	## [param nearest] — the nearest live enemy, or null when none is left — got.
+	##
+	## Called by [method CombatArena.command] for [b]every[/b] combatant, piloted
+	## or not, and that is the point of it being separate from
+	## [method sample_gunnery]. A parked target is exactly the thing that gets
+	## rolled over, and the gunnery counter both returns early on a build with no
+	## mount and is skipped entirely on one that is dead.
+	func sample_hull(nearest: Combatant) -> void:
+		var basis := runtime.body.global_transform.basis
+		var nose := -basis.z
 		worst_nose_down_deg = maxf(
 			worst_nose_down_deg, rad_to_deg(asin(clampf(-nose.y, -1.0, 1.0)))
 		)
+		worst_roll_deg = maxf(worst_roll_deg, absf(roll_deg()))
+		peak_speed_mps = maxf(peak_speed_mps, runtime.body.linear_velocity.length())
+		if nearest != null:
+			closest_enemy_m = minf(
+				closest_enemy_m,
+				runtime.body.global_position.distance_to(nearest.runtime.body.global_position)
+			)
+
+	## Half the hull's length along its own forward axis, in metres.
+	##
+	## Measured from the [b]colliders[/b], because Invariant I-1 makes those the
+	## physical footprint and it is the footprint that decides where two
+	## Assemblies touch. Every one of them is an authored primitive hanging
+	## directly off the [ChassisBodyRef] — nested shapes do not register at all
+	## (LEARNED_FACTS.md §1 fact 22) — so walking the body's own children is the
+	## whole set.
+	##
+	## It exists because doc 05 §15.7.5 states an Assembly's length as a premise
+	## and nothing had ever measured one. A stand-off shorter than two of these
+	## added together is not a stand-off; it is a range at which the two builds
+	## are already touching, and no approach law can rescue it.
+	func hull_half_length_m() -> float:
+		var reach := 0.0
+		for child: Node in runtime.body.get_children():
+			var shape_node := child as CollisionShape3D
+			if shape_node == null or shape_node.shape == null:
+				continue
+			var box := shape_node.shape.get_debug_mesh().get_aabb()
+			for corner: int in 8:
+				reach = maxf(
+					reach, absf((shape_node.transform * box.get_endpoint(corner)).z)
+				)
+		return reach
+
+	## The hull's present roll about its own forward axis, in degrees, signed and
+	## over the full circle: 0 upright, ±90 on a flank, ±180 inverted.
+	##
+	## [code]atan2(-x.y, y.y)[/code] rather than the angle between the hull's up
+	## and the world up, because that one conflates roll with pitch and
+	## [member worst_nose_down_deg] already owns the other axis.
+	func roll_deg() -> float:
+		var basis := runtime.body.global_transform.basis
+		return rad_to_deg(atan2(-basis.x.y, basis.y.y))
 
 	## Invariant I-2: the Core Module is the root and losing it ends the
 	## Assembly. Read from the part rather than from a flag the arena keeps, so

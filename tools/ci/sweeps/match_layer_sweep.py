@@ -49,7 +49,7 @@ CAMERA = "src/ui/match/chase_camera.gd"
 PROMPT = "src/ui/common/input_prompt.gd"
 DRIVER = "src/ai/ai_driver.gd"
 
-BASELINE = 5258
+BASELINE = 6165
 
 FAULTS = [
     # §16.1's local-team comparison, dropped. Every survivor is the player, so a

@@ -64,7 +64,22 @@ const AMBULATORY_YAW_DAMPING: float = 0.55
 ## approach.
 const AMBULATORY_STEER_AUTHORITY: float = 0.5
 ## Metres from its target a wheeled or tracked driver stops closing at.
-const GROUND_STAND_OFF_M: float = 6.0
+##
+## [b]It was 6.0, and 6.0 was authored against a hull length nobody had
+## measured.[/b] `tests/physics/test_ram_attitude.gd` measures it from the
+## colliders — Invariant I-1 makes those the physical footprint — and the
+## reference wheeled build reaches [b]2.4 m[/b] from its body origin to its nose.
+## Two of them therefore touch at 4.8 m of origin separation, so a six-metre
+## stand-off was never a stand-off: it was nose-to-nose parking with 1.2 m of
+## air, and the arrival overshoot is about 1.2 m. Measured, the nearest driver
+## finished 4.8 m out with an [b]eight-centimetre[/b] gap, which is contact, and
+## a stationary 1107 kg Assembly ended up 5.3 m from where it settled.
+##
+## Ten metres is that touching range plus a full hull length of clear air. It is
+## the smallest range at which an approach that overshoots is still an approach,
+## and it is what makes §15.7.5's ladder read as a firing line rather than as
+## three Assemblies in a heap.
+const GROUND_STAND_OFF_M: float = 10.0
 ## The same, for the ambulatory family, and further out for a reason that is
 ## about gunnery rather than survivability — §15.7.2.
 const AMBULATORY_STAND_OFF_M: float = 20.0
@@ -108,6 +123,46 @@ const APPROACH_BREAKAWAY_SPEED_MPS: float = 3.0
 ## is rolling, so it never becomes the sustained heavy throttle that loses grip
 ## on a slope.
 const APPROACH_BREAKAWAY_THROTTLE: float = 0.80
+
+## §15.7.1's arrival brake: the deceleration, in m/s², a ground driver plans its
+## approach on.
+##
+## [b]The document predicted the case that brings this back, and the shipped
+## match is it.[/b] §15.7.1 tried an arrival brake, measured it against the
+## breakaway law, found it made no difference — 6.4 m and 9 rounds with it, 5.8 m
+## and 10 rounds without — and removed it rather than carry a demand nothing
+## could distinguish from its absence. It then wrote down exactly what would
+## bring it back: [i]an approach that ends fast[/i]. That measurement was taken
+## on a driver spawned facing [b]away[/b] from its target, which spends its whole
+## approach on the cosine taper and arrives at walking pace. A driver spawned
+## facing its target never touches the taper: it holds full throttle for the
+## whole run-in, and 34 m of it — the shipped match's nearest opponent spawn — is
+## enough to arrive at [b]18.2 m/s[/b]. A bare throttle cut cannot stop 1107 kg
+## from there inside a six-metre stand-off, so it does not stop; it drives over
+## whatever is standing on the mark.
+##
+## The demand is a stopping-distance law rather than a gain, because the quantity
+## that decides whether a driver arrives or rams is not its speed but
+## [code]v² / 2s[/code] — the deceleration the remaining slack would require. The
+## profile it holds is [code]v = sqrt(2 · a · slack)[/code]: the driver still
+## crosses the field at fifteen metres a second and still arrives at a walk, and
+## no part of it is a function of how far away the fight started.
+##
+## 4.0 is well inside what the reference build can make. Four contacts at
+## §7.4's 2600 N·m over a 0.5 m radius is 20.8 kN against 1107 kg, and the
+## surface takes that down to about one g — so the plan is under half the
+## authority, which is the margin that lets the same number hold on a slope
+## without the taper's terrain problem coming back.
+const ARRIVAL_DECEL_MPS2: float = 4.0
+
+## Closing speed, in m/s, under which the arrival brake is not demanded at all.
+##
+## A driver holding station at its stand-off closes and opens by centimetres a
+## second as the hull settles and the target drifts, and without a deadband the
+## law reads every one of those as an arrival and stands on the brakes. Below
+## this there is nothing to arrest.
+const ARRIVAL_CLOSURE_DEADBAND_MPS: float = 0.5
+
 
 ## §15.7.5. Extra stand-off, in metres, for each friendly Assembly already closer
 ## to this driver's target than this driver is.
@@ -345,6 +400,39 @@ static func approach_throttle(bearing_rad: float, speed_mps: float) -> float:
 	return demand
 
 
+## §15.7.1's arrival brake demand for a driver [param range_m] from its target,
+## stopping at [param stand_off_m], closing at [param closure_mps].
+##
+## Zero while the remaining slack can absorb the closure at
+## [constant ARRIVAL_DECEL_MPS2], rising to full as the deceleration the slack
+## would require reaches twice that, and full outright once the driver is inside
+## its stand-off and still coming on — which is the one case that is a ram
+## rather than an arrival.
+##
+## [param closure_mps] is the component of velocity along the bearing, not the
+## speed: a driver crossing in front of its target is not arriving at it, and
+## braking for a range that is not closing would stop the ladder's outer rungs
+## from ever taking station.
+static func arrival_brake(range_m: float, stand_off_m: float, closure_mps: float) -> float:
+	if closure_mps <= ARRIVAL_CLOSURE_DEADBAND_MPS:
+		return 0.0
+	var slack := range_m - stand_off_m
+	if slack <= 0.0:
+		return 1.0
+	var needed := closure_mps * closure_mps / (2.0 * slack)
+	return clampf(needed / ARRIVAL_DECEL_MPS2 - 1.0, 0.0, 1.0)
+
+
+## The closing speed of [param velocity] onto an offset of [param offset], in
+## m/s, positive toward it. Flattened for §15.7.1's reason: a target down a hill
+## is not a target being closed on faster.
+static func closure_mps(velocity: Vector3, offset: Vector3) -> float:
+	var flat := Vector3(offset.x, 0.0, offset.z)
+	if flat.is_zero_approx():
+		return 0.0
+	return Vector3(velocity.x, 0.0, velocity.z).dot(flat.normalized())
+
+
 ## The stand-off a family fights at by default.
 static func default_stand_off_m(family: int) -> float:
 	match family:
@@ -418,8 +506,18 @@ func _drive_toward(aim: Vector3) -> void:
 		input.throttle = 1.0 if closing else 0.0
 		input.steer = ambulatory_steer_demand(bearing, body.angular_velocity.y)
 		return
+	# §15.7.1's arrival law. The brake and the throttle come out of one number so
+	# that the two cannot fight: at half demand the driver has lifted off and is
+	# braking gently, at full it is off the throttle entirely. A driver that
+	# accelerated and braked at once would be asking the same contacts for both.
+	var arrival := arrival_brake(
+		offset.length(), _stand_off_now_m, closure_mps(body.linear_velocity, offset)
+	)
+	input.brake = arrival
 	input.throttle = (
-		approach_throttle(bearing, body.linear_velocity.length()) if closing else 0.0
+		approach_throttle(bearing, body.linear_velocity.length()) * (1.0 - arrival)
+		if closing
+		else 0.0
 	)
 	input.steer = steer_demand(bearing)
 
