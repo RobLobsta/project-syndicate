@@ -185,6 +185,7 @@ project-syndicate/
 │   │   ├── boot/                   ← main_boot.gd, shell_root.gd, main_menu.gd
 │   │   ├── garage/                 ← garage_screen.gd, garage_preview.gd,
 │   │   │                             catalogue_presenter.gd, part_card.gd,
+│   │   │                             part_inspector.gd,
 │   │   │                             assembly_stat_panel.gd, touch_placement_controller.gd
 │   │   ├── match/                  ← match_screen.gd, chase_camera.gd, hud_frame.gd
 │   │   ├── hud/                    ← match_hud.gd, reticle.gd, damage_indicator.gd,

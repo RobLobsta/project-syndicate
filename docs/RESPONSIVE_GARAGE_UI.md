@@ -256,6 +256,62 @@ GarageScreen                          (Control, anchors full rect)
     └── ToastStack                    (VBoxContainer, top-right)
 ```
 
+### 4.3 The Inspector
+
+The inspector dock answers "what is this part", and it is what makes a catalogue
+a set of choices rather than a list of names. `PartCard` carries a name, a class,
+a tier, a cost and a mass — enough to *find* a part. Everything that makes a
+build a decision is authored on `PartDefinition` and its profiles and reached the
+screen nowhere until `PartInspector`.
+
+`PartInspector.rows_for(def)` is a **static over a definition**, so the mapping
+from a part to what a player is told about it is assertable without a garage, a
+viewport or a selection. The `Control` half of the class is a loop over the list
+it returns.
+
+Every part is described by the same four rows first — mass, integrity, armour,
+build cost — so that two parts of different classes are compared on the same
+lines in the same order. Then come the figures the class is *for*:
+
+| Class | Rows |
+|---|---|
+| `CORE_MODULE` | speed cap, mount budget, power capacity, mass tolerance |
+| `MOTIVE_ASSEMBLY` | locomotion family, steering lock (or "fixed"), driven, rated load, grip |
+| `PRIME_MOVER` | shaft torque |
+| `ENERGY_CELL` | discharge limit |
+| `EFFECTOR_MODULE` (ranged) | cycle time, muzzle velocity, traverse, elevation, recoil |
+| `EFFECTOR_MODULE` (melee) | reach, swing arc, strike damage, cycle time |
+| `SUPPORT_MODULE` | role, magnitude |
+| `APPENDAGE` | reach, grip rating |
+
+Four rules about the table, and each of them is a decision:
+
+- **A figure a part does not have is not shown.** A column of zeroes reads as a
+  figure the part has and does not use. A Structural Component draws no power, so
+  it has no power row.
+- **A melee module is described by different figures from a ranged one.** Doc 07
+  §15 makes melee a property of the kind, and showing a muzzle velocity for an
+  edge would be showing a zero.
+- **An arc is shown as both of its stops** — `-8° / +34°`. A single number cannot
+  say that the shipped module looks 34° up and only 8° down, which is the
+  constraint that decides where on a build it can usefully go.
+- **The steering row reads the lock, not the family.** Two shipped wheeled rows
+  differ in nothing a player can see except this, and an Assembly on which
+  everything steers crabs instead of turning.
+
+**It fills on hover, not on `build_pick`.** §7.1 binds `build_pick` and
+`cam_orbit` to the same mouse button, and the garage is the one screen that
+consumes both — so a click there cannot be both, and orbiting is the one a player
+does more often. Hovering needs no binding, conflicts with nothing, and answers
+the question they actually have. The rule the dock follows is "show what the
+pointer means": the armed part when there is one, and otherwise whatever is under
+the cursor.
+
+It shows the **definition**, never an instance. Invariant I-11, and the reason is
+not only the invariant: what a part is worth in the abstract is what a player is
+choosing between, and a damaged part's current integrity is doc 08's business and
+belongs on a HUD.
+
 ### 4.1 Size Flags Discipline
 
 Layout correctness comes almost entirely from disciplined size flags. The rules:

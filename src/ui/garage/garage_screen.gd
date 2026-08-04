@@ -68,6 +68,7 @@ var initial_blueprint: Blueprint = null
 var preview: GaragePreview = null
 var catalogue: CataloguePresenter = null
 var stats: AssemblyStatPanel = null
+var inspector: PartInspector = null
 
 var _stat_solver: AssemblyStatSolver = null
 var _viewport: SubViewport = null
@@ -102,6 +103,11 @@ var _ghost_cell: Vector3i = Vector3i.ZERO
 var _ghost_orientation: int = -1
 var _ghost_part_id: int = -1
 var _ghost_candidate: PlacementCandidate = null
+
+## Slot the inspector is currently describing, or
+## [constant SyndicateConstants.INVALID_SLOT]. Held so that a pointer moving
+## across one part does not rebuild the dock on every motion event.
+var _inspected_slot: int = SyndicateConstants.INVALID_SLOT
 
 
 func _init() -> void:
@@ -167,7 +173,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion:
-		_update_ghost(_preview_pointer())
+		var pointer := _preview_pointer()
+		_update_ghost(pointer)
+		_inspect_under_pointer(pointer)
 
 
 ## ===== BUILD OPERATIONS ================================================
@@ -253,6 +261,30 @@ func _remove_at(screen_pos: Vector2) -> void:
 	_invalidate_ghost()
 
 
+## The inspector shows what the pointer means: the armed part when there is one,
+## and otherwise whatever the pointer is over.
+##
+## [b]Hover rather than [code]build_pick[/code].[/b] §7.1 binds that action to the
+## middle mouse button and [code]cam_orbit[/code] to the same one, so in the
+## garage — the one screen that consumes both — a click cannot be both. Hovering
+## needs no binding, conflicts with nothing, and answers the question a player
+## actually has, which is "what is that" rather than "select that".
+##
+## Throttled on the slot, so a pointer moving across one part rebuilds nothing.
+func _inspect_under_pointer(screen_pos: Vector2) -> void:
+	if inspector == null:
+		return
+	if _armed_definition() != null:
+		return
+	var slot := preview.slot_at(screen_pos)
+	if slot == _inspected_slot:
+		return
+	_inspected_slot = slot
+	inspector.show_part(
+		null if slot == SyndicateConstants.INVALID_SLOT else context.definition_at(slot)
+	)
+
+
 ## Replaces the build with [param bp]. Used on open and by Reset.
 func _load(bp: Blueprint) -> void:
 	_clear()
@@ -306,6 +338,9 @@ func _armed_definition() -> PartDefinition:
 func _on_part_selected(_part_def_id: int) -> void:
 	_invalidate_ghost()
 	_refresh_selection_label()
+	_inspected_slot = SyndicateConstants.INVALID_SLOT
+	if inspector != null:
+		inspector.show_part(_armed_definition())
 
 
 func _refresh_selection_label() -> void:
@@ -544,6 +579,15 @@ func _build_right_column() -> VBoxContainer:
 	_right_column = VBoxContainer.new()
 	_right_column.name = "RightColumn"
 	_right_column.add_theme_constant_override("separation", DOCK_SEPARATION_PX)
+
+	var inspector_dock := PanelContainer.new()
+	inspector_dock.name = "InspectorDock"
+	inspector_dock.theme_type_variation = &"DockPanel"
+	_right_column.add_child(inspector_dock)
+
+	inspector = PartInspector.new()
+	inspector.name = "PartInspector"
+	inspector_dock.add_child(inspector)
 
 	_stat_dock = PanelContainer.new()
 	_stat_dock.name = "StatDock"

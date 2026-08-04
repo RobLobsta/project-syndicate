@@ -45,7 +45,7 @@ garage.action.menu,MENU
 garage.action.reset,RESET
 garage.catalogue.search,Search parts
 garage.catalogue.any_class,All
-garage.hint,%s place · %s remove · %s rotate · %s orbit
+garage.hint,%s place · %s remove · %s rotate · %s orbit · hover to inspect
 garage.orientation,orientation %d
 garage.selected.none,Pick a part from the catalogue
 garage.removed,Part removed
@@ -118,3 +118,60 @@ part.eff.melee.beam_edge.t4.name,Beam Edge
 part.eff.melee.beam_edge.t4.desc,A close-range edge. Enormous damage a swing and nothing at all beyond its reach.
 part.apx.arm.manipulator.t3.name,Manipulator Appendage
 part.apx.arm.manipulator.t3.desc,An articulated arm that carries a held Effector Module in its grip.
+garage.inspector.title,PART
+garage.inspector.empty,Nothing selected
+garage.part.mass,Mass
+garage.part.integrity,Integrity
+garage.part.armour,Armour
+garage.part.cost,Build cost
+garage.part.mounts,Mount weight
+garage.part.power_draw,Power draw
+garage.part.power_supply,Power supply
+garage.part.speed_cap,Speed cap
+garage.part.mount_budget,Mount budget
+garage.part.power_capacity,Power capacity
+garage.part.mass_tolerance,Mass tolerance
+garage.part.family,Locomotion
+garage.part.steering,Steering
+garage.part.driven,Driven
+garage.part.rated_load,Rated load
+garage.part.grip,Grip
+garage.part.torque,Shaft torque
+garage.part.discharge,Discharge limit
+garage.part.cycle,Cycle time
+garage.part.muzzle,Muzzle velocity
+garage.part.traverse,Traverse
+garage.part.elevation,Elevation
+garage.part.recoil,Recoil
+garage.part.reach,Reach
+garage.part.swing_arc,Swing arc
+garage.part.strike,Strike damage
+garage.part.role,Role
+garage.part.magnitude,Magnitude
+garage.part.grip_rating,Grip rating
+garage.value.kg,%.0f kg
+garage.value.pu,%.0f pu
+garage.value.nm,%.0f N·m
+garage.value.ns,%.0f N·s
+garage.value.mps,%.1f m/s
+garage.value.m,%.2f m
+garage.value.s,%.2f s
+garage.value.deg,%.0f°
+garage.value.arc,%.0f° / %.0f°
+garage.value.int,%d
+garage.value.ratio,%.2f
+garage.value.yes,Yes
+garage.value.no,No
+garage.value.fixed,Fixed
+garage.family.wheeled_steered,Wheeled — steered
+garage.family.wheeled_fixed,Wheeled — fixed
+garage.family.tracked,Tracked
+garage.family.omni_roller,Omnidirectional roller
+garage.family.ambulatory,Ambulatory
+garage.family.repulsor,Repulsor pad
+garage.family.rotor,Rotor disc
+garage.role.heat_sink,Heat sink
+garage.role.magazine_store,Magazine store
+garage.role.integrity_field,Integrity field
+garage.role.signature_damper,Signature damper
+garage.role.repair_emitter,Repair emitter

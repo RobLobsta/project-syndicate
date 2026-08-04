@@ -60,7 +60,7 @@ names the two keys that fight again or go back to the garage.
 no undo, and a garage in which nothing tells a player what a part *does* until
 they have driven it.
 
-**82 files, 5498 checks, 0 failures.**
+**83 files, 5582 checks, 0 failures.**
 
 ---
 
@@ -93,7 +93,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**82 files, 5498 checks, 0 failures.**
+**83 files, 5582 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -210,34 +210,27 @@ and it is the next one.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Tell the player what a part does — the top item
-
-Doc 11 §4's `InspectorDock` and `StatRows` are the largest unbuilt thing in the
-garage, and the garage's silence is now the loop's weakest leg. A part card
-carries a name, a class, a tier, a cost and a mass. Everything that would make a
-build a *decision* — a Prime Mover's torque, an Effector Module's arc and cycle
-time, whether a Motive Assembly steers, what an Energy Cell supplies — is
-authored, is in `PartDefinition`, and is shown nowhere.
-
-The shape is settled and cheap: a right-hand dock under the stat panel, filled
-from the selected card's definition, with one `StatRow` per figure that class has.
-The work is deciding **which** figures per class, which is a doc 11 §4 amendment
-and wants doc 01's parameter tables open beside it.
-
-Do this before §3.2. An undo is worth more per line, but a player who cannot tell
-two parts apart has nothing worth undoing.
-
-### 3.2 An undo stack
+### 3.1 An undo stack — the top item
 
 Doc 02 §9.3's `BuildCommand` is specified in full — kind, slot, cell,
 orientation, prior parent, cascade, 128 deep — and unwritten. A misclick in the
-garage is permanent until RESET, which discards the whole build.
+garage is permanent until RESET, which discards the whole build. It is the first
+thing a player meets in their first minute of building and the cheapest large
+thing left.
 
 It is also what unblocks doc 02 §9.2's other half: `PlacementValidator.remove`
-returns the cascade list and the garage reports the count in a toast, where §9.2
-wants a confirmation prompt. A prompt a player cannot undo after agreeing to is a
-question with one answer, so the modal is owed *alongside* the stack rather than
-before it.
+returns the cascade list and the garage reports the count in the status strip,
+where §9.2 wants a confirmation prompt. A prompt a player cannot undo after
+agreeing to is a question with one answer, so the modal is owed *alongside* the
+stack rather than before it.
+
+### 3.2 Symmetry mirroring
+
+Doc 02 §10 is written and unimplemented, and `build_mirror_toggle` has a binding
+and no consumer. Every build a player makes by hand is currently placed one part
+at a time down both flanks — the shipped starter is four stations and four
+contacts, and half of those placements are the mirror of the other half. It is
+the difference between building a machine and typing one in twice.
 
 ### 3.3 Decide what a build does about recoil at a traversed mount
 
