@@ -72,6 +72,67 @@ they found are in `LEARNED_FACTS.md`.
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+| 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 31, in more detail
+
+The queue's top item, and it named its own first step: build the instrument
+before touching a constant, because otherwise the fix is unmeasurable.
+
+- **`worst_roll_deg`, and it is the point of the session.** Every engagement
+  fixture in this repository records rounds, ticks, kills and travel. None of
+  them recorded **attitude**, so the two most player-visible failures of the last
+  two sessions — being rammed onto your flank, and a wreck departing at 27 m/s —
+  were invisible to a green suite and visible in six frames of a capture. It is
+  about twenty lines on `CombatArena.Combatant`, sampled per tick for every
+  combatant whether it is piloted or not, because the thing that gets rolled over
+  is the one nobody is driving.
+
+- **Three defects under one symptom, and only the first was the one expected.**
+
+  1. **§15.7.1 had no arrival brake and needed one.** The section removed an
+     arrival brake two sessions ago after measuring that it changed nothing, and
+     wrote down what would bring it back: *an approach that ends fast*. That
+     measurement was taken on a driver spawned facing **away** from its target,
+     which spends its approach on the cosine taper and arrives at a walk. A
+     driver spawned facing its target never touches the taper, holds full
+     throttle for the whole run-in, and the shipped arena's nearest opponent
+     spawn is 34 m — enough to arrive at **18.2 m/s**. The law is now a
+     stopping-distance one, `v = sqrt(2 · a · slack)`, because the quantity that
+     decides a ram is `v²/2s` and not speed.
+  2. **The stand-off was shorter than the two hulls it separated.**
+     `GROUND_STAND_OFF_M` was 6.0 m and had been authored against an Assembly
+     length nobody had ever measured. Measured from the colliders, the reference
+     build reaches 2.4 m from body origin to nose, so two of them **touch at
+     4.8 m**. Six metres was nose-to-nose parking with 1.2 m of air against a
+     1.2 m overshoot, and the run finished with an eight-centimetre gap. It is
+     now 10.0 — contact range plus a full hull length of clear air.
+  3. **A band on the closing test was added, measured, and removed.** The
+     reasoning was good — a driver oscillating across a hard stand-off line
+     applies throttle into a nearby hull each swing — and the measurement did not
+     support it: identical fixture output with it and without, and a fault
+     deleting it survives a full sweep. §15.7.1's own precedent decided it. Kept
+     in the document as a thing tried, because the reasoning is the kind that
+     gets re-invented.
+
+- **The shove that looked like the ram was the target's own drift.** A parked
+  1107 kg Assembly with no throttle and no brake reads 0.38 m/s at the end of a
+  90-tick settle and **still 0.38 m/s after 360**, and covers two to three metres
+  over an engagement while the nearest hull stays three metres clear. Nothing
+  under doc 05 §7 puts a rolling resistance on a free contact. It cost an
+  assertion that looked correct and measured the fixture; the honest detector is
+  the gap between the hulls, which cannot be satisfied by a target that wandered
+  off on its own. The drift is a real finding and is in `HANDOFF.md`.
+
+- **A sweep found the assertion that was nearly vacuous.** Asking only that the
+  hull gap stay positive passed at **eight centimetres** against the old
+  stand-off, so `stand-off-inside-the-hulls` was caught by the unit test and by
+  no physics file at all. The fixture now asks for a metre of clear air, which is
+  what a stand-off is, rather than for the absence of the worst outcome.
+
+Seventeen faults in the AI sweep, three survived: `aim-point-read-from-scan` and
+`breakaway-never-releases` are the two standing ones, and the third was the
+hysteresis, which was deleted rather than defended.
 
 ### Session 30, in more detail
 
@@ -420,7 +481,8 @@ restarted every tick |
 | `test_ai_target_selector` | *(session 23)* doc 07 §10's four weights by value, the team filter, the range gate in both directions, the tie-break order, and §10.3's error model — reproducible at one seed, different at two, growing with range and shrinking with difficulty |
 | `test_ai_driver` | *(session 23)* doc 05 §15.7.1's bearing and its flattening, the steering sign in both directions, saturation, §15.7.2's authority ceiling and the **sign of the yaw damper**, and each family's stand-off by value |
 | `test_recoil_geometry` | *(session 24)* doc 01 §14 rule 27 in both halves — the authored bore against the footprint centre and the width parity against the Core Module's — then the same quantity off the live mount, and §4.37's finding: a traversed round yaws the hull by a multiple of an on-axis one |
-| `test_ai_engagement` | *(session 23)* the whole chain end to end: a scan, a target, a 180° turn, an approach, a mount converged, a round fired, a store decremented by exactly the shots, integrity taken off the target — plus §15.7.4's fire discipline and §10.2's arc penalty by value |
+| `test_ai_engagement` | *(session 23)* the whole chain end to end: a scan, a target, a 180° turn, an approach, a mount converged, a round fired, a store decremented by exactly the shots, integrity taken off the target — plus §15.7.4's fire discipline and §10.2's arc penalty by value; *(session 31)* §15.7.1's arrival brake deleted, through the rounds floor |
+| `test_ram_attitude` | *(session 31)* §15.7.1's arrival brake deleted — the target inverted at 180° of roll, the driver at 173°, and the two hulls interpenetrating by 2.36 m; the stand-off put back inside the hulls, once the gap assertion asked for clear air rather than for bare non-contact. **The first fixture in the project that measures whether anything ended up on its roof** |
 | `test_detachment_scheduler` | …and, since session 23, that the scheduler announces **no** termination. It used to assert the opposite, which is what kept doc 04 §8.2's duplicate producer alive for seven sessions |
 | `test_part_registry_validator` *(rule 27)* | *(session 24)* a bore on the pivot rather than on an even-width footprint's centre, one half a metre off it, an odd-width direct-fire module against an even-width Core Module — and both exemptions, an arced module and a melee one |
 | `test_match_outcome` | *(session 25)* doc 11 §16.1's four rows, including the two nothing in an arena can stage, and §16.2's three titles, details and tokens |
@@ -462,8 +524,9 @@ is a couple of minutes.
 | `tracked-mean-is-its-first-station` | contact visual | Doc 05 §16.1 draws a tracked patch at the mean of its road stations, and on a flat slab every station reports the same distance — so the mean and the first are one number. Planted knowingly, in the same change as the code. Closes with a bogie straddling a slope, which no fixture in `tests/physics/` has. |
 | `aim-point-read-from-scan` | ai | Doc 07 §10 runs selection at 2.9 Hz and aim solving every tick; collapsing them aims at where the target was up to 350 ms ago. Marginal rather than firmly untested — CAUGHT on one run and SURVIVED on the next, either side of an unrelated change. What closes it properly is an engagement in which the AI's target is *driving*. |
 
-`breakaway-never-releases` was a deliberate standing survivor and is no longer
-one: deleting the arrival brake left `test_ai_engagement`'s rounds floor
-sensitive to a driver that orbits its stand-off, which sustained throttle also
-produces. It is caught on the flat slab, and the terrain behaviour that made it
-worth a session is still invisible to the suite — only a capture sees that.
+| `breakaway-never-releases` | ai | §15.7.1's standing-start demand applied at every speed, so it becomes the sustained heavy throttle that stopped the opponents ever reaching the player on real terrain. **A survivor, then briefly caught, then a survivor again** — and the round trip is the finding, not the verdict. Session 30 recorded it as caught because with no arrival brake a sustained throttle made the driver orbit its stand-off, which `test_ai_engagement`'s rounds floor is sensitive to. Session 31's arrival brake stops a driver orbiting *whatever* its throttle is doing, so the symptom the fixture was reading is gone and the rule underneath it is uncovered again. Nothing about the rule changed; a correct, unrelated change desensitised the one fixture that happened to see it, which is `LEARNED_FACTS.md` §2.1 word for word. Closes only with terrain in a fixture, or with a capture. |
+
+The `breakaway-never-releases` row is worth reading twice by anyone about to
+conclude a sweep result means a behaviour is defended. It has now been CAUGHT and
+SURVIVED across three sessions without one line of the code it defends being
+touched.

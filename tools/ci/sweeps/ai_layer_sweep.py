@@ -20,26 +20,37 @@ back.
   breakaway-removed           §15.7.1's standing start: the build never comes round
   breakaway-never-releases    the same, applied at every speed -- a STANDING SURVIVOR
   bore-off-centreline         doc 01 §14 rule 27, on the shipped data
+  arrival-brake-removed       §15.7.1's arrival law: the driver rams what it aimed at
+  closure-is-speed-not-projection  the same law, asked for the wrong quantity
+  stand-off-inside-the-hulls       the stand-off back inside the two hulls
 
 `breakaway-never-releases` is the change that actually shipped for an afternoon:
 the standing-start demand applied at every speed, so it becomes a sustained heavy
 throttle. It stopped the opponents ever reaching the player on the arena's real
 terrain while every fixture in the suite stayed green, because
 `tests/combat_arena.gd` builds a flat slab and the arena has fifteen metres of
-relief. It was kept here as a standing survivor for that reason.
+relief.
 
-**It is now caught, and not by anything aimed at it.** Deleting the arrival brake
-left `test_ai_engagement`'s rounds floor sensitive to a driver that orbits its own
-stand-off, which sustained throttle also produces; the fault fails that assertion
-on the flat slab. Worth knowing exactly what that does and does not mean: the
-suite catches the *orbit*, which is a symptom the two failures share, and it
-still cannot see the terrain behaviour that made this worth a session. A capture
-remains the only instrument for that (handoff, the engine fact about Movie Maker
-mode).
+**Read its history before trusting any verdict in this file.** It was a survivor
+in session 24, CAUGHT in session 30, and is a survivor again in session 31 —
+three verdicts without one line of the code it defends being touched. Session 30
+caught it because with no arrival brake a sustained throttle made the driver
+orbit its own stand-off, which `test_ai_engagement`'s rounds floor is sensitive
+to. Session 31's arrival brake stops a driver orbiting whatever its throttle is
+doing, so the symptom that fixture was reading is gone. A sweep verdict is a
+statement about the fixtures and not about the rule. What closes this one is
+terrain in a fixture, or a capture (`LEARNED_FACTS.md` §1 fact 55).
 
-`aim-point-read-from-scan` is the standing survivor, and it is marginal rather
-than firmly one thing: it was CAUGHT on the run before the arrival brake was
-deleted and SURVIVED on the run after. Read it as untested rather than as tested.
+`aim-point-read-from-scan` is the other standing survivor and is marginal rather
+than firmly one thing: CAUGHT on one run and SURVIVED on the next, either side of
+an unrelated change. Read it as untested rather than as tested.
+
+**Run `--full` before believing a CAUGHT here.** Fail-fast stops at the first
+failing file, and the three faults session 31 added against §15.7.1's arrival law
+all reported CAUGHT at 871 checks from the same unit test. Under `--full`,
+`stand-off-inside-the-hulls` turned out to be caught by nothing else at all — the
+physics fixture's gap assertion was passing by eight centimetres — and the
+assertion was tightened rather than the result accepted.
 
     python3 tools/ci/sweeps/ai_layer_sweep.py            # all of them, 4 workers
     python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
@@ -64,7 +75,7 @@ GUN_TRES = "data/parts/eff/eff.ballistic.autocannon_30.t3.tres"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 5258
+BASELINE = 6165
 
 FAULTS = [
     # §15.7.1's whole sign rule. Positive steer is right and a right turn is a
@@ -175,6 +186,35 @@ FAULTS = [
     ("bore-off-centreline", GUN_TRES,
      "muzzle_offsets_m = PackedVector3Array(-0.125, 0, -2.125)",
      "muzzle_offsets_m = PackedVector3Array(0, 0, -2.125)"),
+
+    # §15.7.1's arrival brake, deleted outright. This is the state the section
+    # was in for every session up to 31: a driver spawned facing its target
+    # holds full throttle for the whole run-in and a bare throttle cut is all
+    # that is between it and whatever is standing on the mark. Measured at
+    # 18.2 m/s of arrival speed and 146.2° of roll on the thing it hit.
+    ("arrival-brake-removed", DRIVER,
+     "	if closure_mps <= ARRIVAL_CLOSURE_DEADBAND_MPS:\n		return 0.0",
+     "	if true:\n		return 0.0"),
+
+    # The same law asked for the wrong quantity: the Assembly's speed rather than
+    # the component of it along the bearing. A driver crossing in front of its
+    # target then brakes for a range it is not closing, which is what would stop
+    # §15.7.5's outer rungs ever taking station.
+    #
+    # Planted where the law is stated rather than where it is used, because the
+    # brake itself is a closed loop and a loop absorbs an error in the quantity
+    # it is closing over (LEARNED_FACTS.md §2.1).
+    ("closure-is-speed-not-projection", DRIVER,
+     "	return Vector3(velocity.x, 0.0, velocity.z).dot(flat.normalized())",
+     "	return Vector3(velocity.x, 0.0, velocity.z).length()"),
+
+    # And the largest of the three, as one number: the stand-off back inside the
+    # hulls. Two reference builds touch at 4.8 m of origin separation, so 6.0 is
+    # nose-to-nose parking with 1.2 m of air against an arrival overshoot of
+    # about the same. No approach law rescues it.
+    ("stand-off-inside-the-hulls", DRIVER,
+     "const GROUND_STAND_OFF_M: float = 10.0",
+     "const GROUND_STAND_OFF_M: float = 6.0"),
 ]
 
 

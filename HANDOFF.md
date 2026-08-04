@@ -49,8 +49,9 @@ thirteen documents in `/docs/`, named just before it.
 ## Where this stands
 
 **It is a game with a loop, the loop forgives a mistake, the garage builds the
-way a player expects it to, and the machine now drives on the ground rather than
-over it.** `godot --path .` opens on a menu. The menu opens a garage, where a
+way a player expects it to, the machine drives on the ground rather than over it,
+and the fight is now something you are in rather than something that happens to
+you.** `godot --path .` opens on a menu. The menu opens a garage, where a
 wheeled Assembly is standing on the Build Lattice with a catalogue of thirteen
 parts beside it and its mass, power, mounts, top speed, integrity and rollover
 threshold on the right. The part under the pointer lights up and the inspector
@@ -67,11 +68,17 @@ that was ever wrong with it. The shipped starter carries
 autocannon is 1450 — and the autocannon is still in the catalogue for a build
 that means to stand still and punch through hulls.
 
-**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-and a first fight that is still over in seconds — not from recoil any more, but
-because three opponents drive into a stationary player and roll it over.
+**And the opponents stop in front of you instead of on top of you.** They used to
+close to a six-metre stand-off between two hulls that touch at 4.8 m, arrive at
+18 m/s, and drive a stationary player onto its roof at five seconds. Doc 05
+§15.7.1 has an arrival brake and a stand-off measured against the colliders, and
+the same capture now shows the player upright at ten seconds, at 41% integrity,
+trading fire with something that has stopped and is shooting back.
 
-**87 files, 6143 checks, 0 failures.**
+**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
+and nothing yet that rewards a good build over a heavy one.
+
+**88 files, 6165 checks, 0 failures.**
 
 ---
 
@@ -104,14 +111,14 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**87 files, 6143 checks, 0 failures.**
+**88 files, 6165 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
 nothing in `src/` may `push_error` on a state a test deliberately exercises — a
 blueprint naming an unknown part warns instead.
 
-**A full run is about 200 seconds** — 14 s of reimport and the rest suite. Three
+**A full run is about 210 seconds** — 14 s of reimport and the rest suite. Three
 files are most of it: `integration/test_screen_flow.gd` at 91 s,
 `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings, so check before assuming where the
@@ -165,85 +172,102 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900. This session's
-run went straight at the match through
-`--main-scene res://scenes/match/arena_basin.tscn`, which is the cheap way to
-look at a fight without driving the menu and the garage first — `MatchScreen`
-falls back to the shipped starter when no blueprint arrives.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900, 600 frames
+through `--main-scene res://scenes/match/arena_basin.tscn` — the cheap way to
+look at a fight without driving the menu and the garage first, since
+`MatchScreen` falls back to the shipped starter when no blueprint arrives. The
+player is not driven, which is the exact case that used to get run over.
 
-**You can drive and shoot at the same time.** The oldest thing on this list, and
-the fix was the one the task named: a lighter round. Doc 01 §10.5 gains
-`eff.ballistic.repeater_12.t2` at 26 N·s against the autocannon's 1450, the
-shipped starter carries it, and `tests/physics/test_drive_and_shoot.gd` measures
-what that is worth on one chassis under one throttle with the mount traversed
-square and the trigger held: **2.9° of heading drift and 30 rounds, against 99.1°
-and 2.** The autocannon build's second number is the part nobody had seen — its
-own recoil turns the hull out from under the mount, doc 07 §4.3.1's fire gate
-correctly stops shooting at something the module is no longer pointed at, and the
-build spends the engagement spinning with a cold barrel.
+**You survive the opening.** The whole of the last session's top finding, gone.
+Where the previous capture had an 1107 kg hull on its flank at five seconds and
+destroyed at seven, the same scene now reads: **upright and 100% at five seconds,
+upright and 86% at seven, upright and 41% at ten**, standing in a firefight with
+an opponent that has stopped ten metres away and is shooting back. Three defects
+were under that one symptom and §3's history has them; the short version is that
+the drivers arrived at 18 m/s at a stand-off six metres long between two hulls
+that touch at 4.8 m.
 
-**And the wheels are on the ground**, from the session before: a settled build's
-discs sit with their undersides on the surface instead of floating clear of it,
-and a wheel over a crest extends rather than hanging in the air.
+**You can drive and shoot at the same time**, from the session before: doc 01
+§10.5's `eff.ballistic.repeater_12.t2` at 26 N·s against the autocannon's 1450,
+measured at 2.9° of heading drift and 30 rounds against 99.1° and 2. **And the
+wheels are on the ground**, from the one before that.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The opponents drive into you and roll you over.** With recoil no longer the
-   cause, the capture shows what the first fight actually is: three drivers close
-   to contact range, one of them rams a stationary player, and an 1107 kg hull
-   ends up on its side at five seconds and destroyed at seven. Doc 05 §15.7's
-   stand-off ladder spaces drivers from *each other* and nothing keeps them off
-   the target. **§3.1 owns it.**
-2. **A destroyed Assembly's wreck is launched over the horizon.** Doc 11 §16.2
-   says the wreck stays where it fell and it does not: losing the Core Module
-   orphans every part, the islands detach, and doc 05 §3.5's mass floor leaves a
-   1 kg body that the next thing to touch it punts away. The capture shows it
+1. **A destroyed Assembly's wreck is launched over the horizon.** Now the top
+   item. Doc 11 §16.2 says the wreck stays where it fell and it does not: losing
+   the Core Module orphans every part, the islands detach, and doc 05 §3.5's mass
+   floor leaves a 1 kg body that the next thing to touch it punts away. Measured
    climbing past 27 m/s under the end card, which is free fall from wherever it
-   was kicked to. §3.2 owns it and it is cheap.
-3. **One arena and one opponent recipe.** Every test drive is the same three
+   was kicked to. **§3.1 owns it and it is cheap.**
+2. **The controls card sits in the middle of the screen for the whole first
+   fight.** `ControlCard.DWELL_S` is 11 s and the opening engagement is decided
+   inside that, so a first-time player reads the fight through a legend. It is
+   centred, opaque, and covers exactly the band of screen the opponents approach
+   through — all three of them are behind it in the frames that matter. Doc 11
+   §14.6 raises it on every entry because there is nowhere to store "they have
+   seen it"; the placement and the dwell are separable from that and cheaper.
+   **§3.2.**
+3. **You cannot ask the machine to slow down.** The brakes work — the AI's
+   arrival brake is the same mechanism and it stops an 18 m/s approach — but
+   `S` is one key meaning both "brake" and "reverse", the service brake's torque
+   vanishes at exactly zero contact speed, and the handbrake that would hold a
+   stop is bound to Space and read by nothing. A player who wants to decelerate
+   and sit still has no input that says so, and a player on limbs has no brake
+   at all. **§3.3.**
+4. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. Doc 06's generator
    is the intended answer.
-4. **Nothing rewards a good build over a heavy one** — except, now, one thing:
-   which Effector Module you fit is a real decision, because the two published
-   direct-fire rows are good at different things. That is one axis out of the six
-   the stat panel names.
-5. **The garage teaches nothing about *composition* until a placement is
+5. **Nothing rewards a good build over a heavy one** — except which Effector
+   Module you fit, which is now a real decision because the two published
+   direct-fire rows are good at different things. One axis out of the six the
+   stat panel names.
+6. **The garage teaches nothing about *composition* until a placement is
    refused.** The inspector names figures; nothing says a rotor disc needs a mast
    under it and a second disc opposite it, or that supply goes on before draw.
-6. **The opponents still shoot each other**, and nothing in `src/combat/` knows
+7. **The opponents still shoot each other**, and nothing in `src/combat/` knows
    what a team is (§3.4).
-7. **A destroyed part still simply vanishes**, because `VisualDamageController`
+8. **A destroyed part still simply vanishes**, because `VisualDamageController`
    (doc 08 §9) is unwritten.
-8. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.6), and the garage will let a player fit limbs.
+9. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§3.7), and the garage will let a player fit limbs.
 
-**The bad news, plainly.** Three things.
+**The bad news, plainly.** Four things.
 
-**The suite could not see any of this and still cannot see most of it.** Every
-fixture in `tests/physics/` stands on a flat slab and asserts forces, ranges and
-orderings; a build ending up on its roof, or a wreck departing at 27 m/s, moves
-none of them. `test_wreck_settles.gd` passes because nothing in its fixture ever
-touches the wreck. Both findings came from looking at six frames of a capture,
-which is now the second session running that the capture has out-earned the
-suite on player-facing defects.
+**The suite could not see the ram, and the reason generalises.** Every engagement
+fixture in this repository records rounds, ticks, kills and travel. Not one of
+them recorded **attitude**, so a build ending the fight on its roof moved no
+number and six thousand checks were green through it. That is fixed for roll — the
+instrument is twenty lines and `tests/physics/test_ram_attitude.gd` is what it is
+for — but the shape of the mistake is not: the fixtures record what the systems
+emit, and a player watches what the machine *does*. Ask of any new engagement
+assertion what physical state is missing from the record class, not what count.
 
-**The two direct-fire rows are not on the same recoil scale and the autocannon's
-is the one that is wrong.** A real 30 mm round carries about 400 N·s; §10.5
-publishes 1450. The repeater is authored at a realistic 26 for a 12 mm round and
-was deliberately not inflated to match, because inflating it would have
-reproduced the defect it exists to remove. Rescaling the four legacy rows onto
-one basis is a `balance-review` change that moves every engagement measurement in
-`tests/physics/` at once, and it is not done.
+**Two of the three constants involved were authored against geometry nobody had
+measured.** `GROUND_STAND_OFF_M` at 6.0 m, and doc 05 §15.7.5's 4.5 m ladder
+step justified in the document as "a little over an Assembly's own length" — the
+reference build is 4.8 m long, so the stand-off was inside the hulls and the step
+is still under one. The stand-off is fixed. **The step is knowingly left wrong**,
+because moving it moves every engagement measurement in `tests/physics/` at once
+and it is not what was driving over the player. It is a `balance-review` decision
+and it is open (§3.10).
 
-**And the drivable module loses a straight duel.** Repeater against autocannon at
-24 m, both stationary and trading: the repeater build's Core Module goes in 89
-ticks. That is the trade working as designed — two thirds of the throughput and
-half the penetration, bought with thirty times less recoil — but nobody has
-checked whether the trade is *fun*, and the only build in the game that fights
-with it is the one every opponent also carries.
+**A parked Assembly never comes to rest.** Found while building the fixture, and
+not fixed: a wheeled build with no throttle and no brake reads 0.38 m/s at the
+end of a 90-tick settle and still 0.38 m/s after 360, and covers two to three
+metres over an engagement. Nothing under doc 05 §7 puts a rolling resistance on a
+free contact. A player who lets go of the keys on level ground drifts, which is
+small but is the kind of thing that reads as the vehicle being broken (§3.10).
 
-The summary: **the first fight is no longer decided by your own gun. It is now
-decided by being rammed, and the wreck leaves the map.**
+**And the drivable module still loses a straight duel.** Repeater against
+autocannon at 24 m, both stationary and trading: the repeater build's Core Module
+goes in 89 ticks. That is the trade working as designed, but nobody has checked
+whether the trade is *fun*, and the only build in the game that fights with it is
+the one every opponent also carries.
+
+The summary: **the first fight is now a fight.** You are not decided by your own
+gun and you are not decided by being rammed. What decides it next is that you
+cannot see it past the controls card, and that whatever you kill leaves the map.
 
 ---
 
@@ -252,31 +276,7 @@ decided by being rammed, and the wreck leaves the map.**
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Stop the opponents rolling the player over — the top item
-
-New from this session's capture, and it is what the first fight now is. Three
-drivers close on a stationary player, one rams it, and an 1107 kg hull is on its
-side at five seconds and destroyed at seven. It cannot right itself, cannot bring
-its mount to bear, and is shot apart where it lies.
-
-Doc 05 §15.7.5's stand-off ladder spaces converging drivers **from each other**
-and says nothing about the target. §15.7.1's ground tactic closes to
-`GROUND_STAND_OFF_M` and the throttle floor added in session 24 is what makes it
-reach the player over terrain; on flat ground it overshoots into contact.
-
-**The instrument does not exist and is the first thing to build.** Every
-engagement file records rounds, ticks, kills and travel, and none of them records
-**attitude**. A `worst_roll_deg` on `CombatArena.Combatant`, sampled per tick
-alongside the existing counters, would make "did anybody end up on their roof" a
-number the suite can assert — and it is about fifteen lines. Do that before
-changing a constant, because otherwise the fix is unmeasurable.
-
-Candidate levers, once it can be measured: a hard floor on closing range in
-§15.7.1 rather than a soft stand-off; a brake term that scales with closure; or
-doc 08 §6's impact impulse, which is also what makes a hull-to-hull collision
-this violent. The third moves every engagement at once and is `balance-review`.
-
-### 3.2 Keep the wreck where it fell
+### 3.1 Keep the wreck where it fell — the top item
 
 Doc 11 §16.2 decides that a destroyed Assembly's hulk stays put, and the capture
 shows it climbing past 27 m/s under the end card — free fall, from wherever the
@@ -294,7 +294,71 @@ should not detach at all — the hulk is one dead object — or the floor should
 the surviving parts' mass rather than a constant. The first is closer to what
 §16.2 describes and is the cheaper of the two.
 
-### 3.3 Decide whether friendly fire exists
+### 3.2 Get the controls card out of the fight
+
+Second on the player review and cheap. `ControlCard.DWELL_S` is 11 s and the
+opening engagement is decided inside that window, so a first-time player watches
+their first fight through an opaque legend sitting in the middle of the screen —
+across exactly the band the three opponents approach through.
+
+Doc 11 §14.6 raises it on every entry because there is nowhere to store "they
+have seen it", and that half is `SyndicateSettings` work waiting on there being
+more than one match. **The placement and the dwell are separable from it and are
+not waiting on anything**: a card in a corner, or one that stands down on the
+first throttle input rather than on a timer, costs nothing and does not need a
+settings key. §14.6 owns the constants and would need amending in the same
+change.
+
+Verify by capture rather than by test — this is a question about what is legible,
+and `LEARNED_FACTS.md` §1 fact 55 is the route.
+
+### 3.3 A player cannot brake — the mechanism exists and no input reaches it
+
+**Read the first line before acting on this one: the brakes are not missing.**
+The chain is complete and correct for the wheeled and tracked families, and
+session 31's arrival brake is proof it works — it is the only thing that stopped
+a driver arriving at 18 m/s. `veh_brake` → `ControlInput.brake` →
+`brake_torque_nm × demand` in `MotiveSystem._apply_traction` → opposed to the
+contact's spin in `TractionSolver.integrate_contact` → the contact slips and
+doc 05 §7.2's longitudinal force retards the hull. There is even a zero-crossing
+guard whose docstring names the symptom it prevents: "a vehicle that will not
+quite come to rest."
+
+**What is missing is any way for a person to ask for it.** Three things, and the
+third is the one that is simply absent rather than conflated.
+
+1. **`S` is one key meaning two opposite things.** `ControlSystem.sample` builds
+   `drive := axis(ACTION_BRAKE, ACTION_THROTTLE)` and writes it to
+   `input.throttle`, *and separately* writes
+   `input.brake = get_action_strength(ACTION_BRAKE)`. So one press of `S`
+   demands full braking and full **reverse drive torque** in the same tick. A
+   player who wants to shed thirty metres a second and hold position has no
+   input that says so; they have one that says "stop, then go backwards".
+2. **A stop is a moment, not a state.** `brake_sign := -signf(contact_omega)`,
+   and `signf(0.0)` is `0.0` — so at exactly rest the brake torque vanishes and
+   the reverse drive torque from the same key is all that is left. The Assembly
+   cannot be held stationary on the brake at all. Whether that matters is a
+   design question about a combined brake/reverse axis, which is a real
+   convention and not obviously wrong; what is not defensible is that nothing
+   else can hold it either.
+3. **`veh_handbrake` is bound to Space, sampled into `ControlInput.handbrake`,
+   and read by nothing** — the natural answer to (2), already listed in §4 and
+   still unwritten. Doc 05 does not define what a handbrake does to a contact,
+   which is the actual blocker.
+
+**And there is no braking at all for two of the four families.** `input.brake` is
+read in exactly one place, `_apply_traction`, which only `GROUND` and `TRACKED`
+reach. An ambulatory build and a rotary one have no deceleration control of any
+kind — not conflated, not weak: absent. The rotary case is partly §3.7's, since
+nothing flies one anyway; the ambulatory case is not, because a player can build
+and drive one today.
+
+The cheapest honest first step is a decision rather than code: doc 05 §15.1 owns
+the input→`ControlInput` mapping and §7 owns what a contact does with it, and
+neither says whether "decelerate" is a demand distinct from "reverse". Nothing
+here should be invented in `ControlSystem` without that section saying so.
+
+### 3.4 Decide whether friendly fire exists
 
 §15.7.5's ladder fixed the *geometry* — three drivers converging on one target no
 longer stand in each other's line — and deliberately did not touch the rule.
@@ -306,7 +370,7 @@ That is doc 08's question and it is a real one, not an oversight. The roster
 already exists on `AiContext` and the match layer owns it; what does not exist is
 a decision about whether the resolver should be told.
 
-### 3.4 Sweep the bounds nobody reaches
+### 3.5 Sweep the bounds nobody reaches
 
 Invariant I-12 lists eighteen bounds and the suite demonstrably reaches almost
 none of them. Deleting each in turn and watching for green is a cheap way to find
@@ -315,7 +379,7 @@ minutes a sweep. The fixture that closes one has to be built to *exceed* it and
 then to assert that it exceeds it. Likeliest to be untested: chain-reaction depth
 3, collapse cascades, melee sweep segments, and the two debris caps.
 
-### 3.5 Fight with the edge
+### 3.6 Fight with the edge
 
 **A player can now reach this and could not before**: the garage's catalogue
 carries the Appendage and the edge, so a build with one is a build somebody will
@@ -328,7 +392,7 @@ measurement: 640 damage a swing has to survive a 26 m approach into 120 damage a
 round at seven a second, and §15.4's own impulse shoves the target 7 m/s clear of
 a second swing.
 
-### 3.6 A stability-augmentation layer, and the rotary family
+### 3.7 A stability-augmentation layer, and the rotary family
 
 `CombatArena._fly` is three loops through `ControlInput` and is still the only
 thing in the repository that can hold a hover. A **player** flying a rotary build
@@ -337,7 +401,7 @@ wants a layer between both `ControlInput` producers and the motion layer, which
 doc 05 does not have. An `AiDriver` handed a rotary Assembly aims and fires but
 does not fly.
 
-### 3.7 §15.5's sustained contact, and `DotScheduler`
+### 3.8 §15.5's sustained contact, and `DotScheduler`
 
 Two small, self-contained pieces of doc 07 and doc 08. `eff.melee.beam_edge.t4`
 authors sustained contact, `MeleeSolver.sustained_channel_damage` is written and
@@ -346,7 +410,7 @@ instead of per tick. `DotScheduler` (doc 08 §7.3) is about sixty lines and is t
 difference between thermal damage that resolves correctly when submitted and
 thermal damage that actually burns.
 
-### 3.8 The rest of document 10
+### 3.9 The rest of document 10
 
 Comparable in size to what document 09 cost, in dependency order: the CSG bake
 (doc 10 §3.1–§3.2), fragment decomposition (§3.3), support graph and collapse
@@ -356,8 +420,26 @@ survivable — is built and tested. Worth knowing before starting: a Voronoi cel
 is an intersection of half-spaces, so for a *convex* Section this is repeated
 plane slicing and needs no CSG at all.
 
-### 3.9 Smaller, and worth doing when passing
+### 3.10 Smaller, and worth doing when passing
 
+- **A parked Assembly never comes to rest.** Session 31, found while building the
+  ram fixture and deliberately not fixed in it. A wheeled build with no throttle
+  and no brake reads 0.38 m/s at the end of a 90-tick settle and **still
+  0.38 m/s after 360** — the drift does not decay, because nothing in doc 05 §7
+  puts a rolling resistance on a free contact. `TractionSolver` has a rolling
+  resistance term and it is charged against a *driven* contact; what a coasting
+  one gets is nothing. Two to three metres of wander over an engagement, and a
+  player who lets go of the keys on level ground drifts. Whoever takes it should
+  know it cost an assertion first: "a stationary 1107 kg hull ended three metres
+  from its spawn" reads as unarguable proof of a ram and was the fixture's own
+  baseline.
+- **Doc 05 §15.7.5's ladder step is under one hull length.** §15.7.5 justifies
+  4.5 m as "a little over an Assembly's own length"; the reference build measures
+  4.8 m from nose to tail, so a friend one rung out is still partly in the line.
+  The document is amended to say so and the constant is knowingly left alone —
+  it is `balance-review` and it moves every engagement measurement in
+  `tests/physics/` at once. `CombatArena.Combatant.hull_half_length_m` is the
+  measurement, if a decision wants remaking against it.
 - **A second steered wheeled row.** Makes one of the three surviving uncaught
   faults visible, gives rule 13 a second tier, and gives the garage a real choice
   on the front axle.
@@ -393,7 +475,7 @@ fixing. None of these is a surprise waiting to be found.
 
 ### The motion layer
 - **There is no stability-augmentation layer, and a rotary Assembly needs one to
-  exist in a test.** Owned by §3.6.
+  exist in a test.** Owned by §3.7.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
   §4.21, measured at 170° over five seconds, and now the family's limiting
   defect. It wants a heading term in doc 05 §13, which §13.8 currently forbids
@@ -406,7 +488,13 @@ fixing. None of these is a surprise waiting to be found.
   handbrake nothing implements would be writing a field for a behaviour that does
   not exist. Nothing in `src/motion/` reads either. Doc 05 does not define what
   a handbrake does to a contact and inventing it here would be worse than the
-  gap.
+  gap. **This is worse than it reads as a standalone gap, and §3.3 has the
+  whole of it**: the handbrake is the only control that could hold an Assembly
+  stationary, because `veh_brake` is the same key as reverse and the service
+  brake's torque vanishes at exactly zero contact speed.
+- **`ControlInput.brake` is read in exactly one place**, `_apply_traction`, so
+  the wheeled and tracked families brake and the ambulatory and rotary families
+  have no deceleration control of any kind. §3.3.
 - **Nothing consumes `AeroSolver`, and no `ctl.*` part is authored**, so drag,
   downforce, and Control Surfaces have never acted on a moving Assembly. It is
   complete and matches doc 05 §8; what it needs is a per-part pressure-centre
@@ -451,16 +539,17 @@ fixing. None of these is a surprise waiting to be found.
   the repeater is authored at a realistic 26, and rescaling the legacy rows onto
   one basis is a `balance-review` change that moves every engagement in
   `tests/physics/` at once.
-- **Nothing measures whether an Assembly ended up on its roof.** Every engagement
-  fixture records rounds, ticks, kills and travel; none records attitude, so the
-  two most player-visible failures found this session — being rammed over, and a
-  wreck departing at 27 m/s — are both invisible to a green suite. Owned by
-  §3.1.
+- **Attitude is measured now, in roll only.**
+  `CombatArena.Combatant.worst_roll_deg` and `worst_nose_down_deg` are sampled
+  per tick for every combatant, and `tests/physics/test_ram_attitude.gd` asserts
+  them. What is still unmeasured is **yaw rate** — a hull spinning on the spot is
+  upright in both of the recorded axes — and nothing samples attitude on a
+  *wreck* after termination, which is what §3.1 would want.
 - **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **No engagement has ever been fought at contact range.** Owned by §3.5.
+- **No engagement has ever been fought at contact range.** Owned by §3.6.
 - **A second projectile type exists and only one join is asserted.** Until this
   session every module in the catalogue chambered `proj.kinetic.ap_30`, so "which
   round does this module fire", "which stores is this Assembly granted" and
@@ -470,13 +559,13 @@ fixing. None of these is a surprise waiting to be found.
   equivalent for an AI opponent, and for a build carrying two modules that
   chamber different rounds, is still unasserted.
 - **§15.5's sustained contact is not implemented.** The edge authors it, the
-  solver computes it, and nothing calls it. Owned by §3.7.
+  solver computes it, and nothing calls it. Owned by §3.8.
 - **A melee strike can never ricochet**, because its packet's normal is derived
   from its own direction. Not a defect — the query reports no surface normal —
   but see §5 before assuming doc 08 §4's angle gate means anything here.
 - **`DotScheduler` is not written** (doc 08 §7.3), so thermal and corrosive
   packets resolve correctly when submitted and nothing submits them over time.
-  Owned by §3.7.
+  Owned by §3.8.
 - **`VisualDamageController` is not written** (doc 08 §9) and neither is §10's
   repair path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so that a band transition upward fires the same signal as one
@@ -492,7 +581,7 @@ fixing. None of these is a surprise waiting to be found.
   it is on, so friendly fire is decided by whichever hull the ray reaches first.
   The roster lives on `AiContext` and on `MatchState`, both owned by the match
   layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
-  converging on one target and deliberately not the rule. Owned by §3.3.
+  converging on one target and deliberately not the rule. Owned by §3.4.
 - **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
   decides that the wreck stays, which is right. What follows it is now §15's
   loop — fight again, or go back to the garage — and what is still missing is a
@@ -610,7 +699,7 @@ fixing. None of these is a surprise waiting to be found.
   flow file asserts that RESET does not edit the build until it is agreed to and
   that agreeing works, which is the rule; whether the dialog is legible, sized,
   or dismissable by the keyboard is capture work and has not been done.
-- **The suite is about 200 seconds and `test_screen_flow` is most of it**, at
+- **The suite is about 210 seconds and `test_screen_flow` is most of it**, at
   91 s for the two `MatchScreen`s it opens (§1). Inside `tests/physics/`, three of
   the four multi-Assembly files soak for hundreds of ticks by construction, and
   the two that time out — the ambulatory mirror and the five-a-side — spend their

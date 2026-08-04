@@ -1689,10 +1689,15 @@ per-tick path. The per-tick path reads a body transform and nothing else.
 One law, and it is the whole of the driving:
 
 ```gdscript
-closing := to_target_flat.length() > stand_off_m
-bearing := forward.signed_angle_to(to_target_flat, Vector3.UP)
-input.steer = clampf(-bearing / STEER_SATURATION_RAD, -1.0, 1.0)
-input.throttle = approach_throttle(bearing, speed) if closing else 0.0
+range_m  := to_target_flat.length()
+closing  := range_m > stand_off_m
+bearing  := forward.signed_angle_to(to_target_flat, Vector3.UP)
+closure  := velocity_flat.dot(to_target_flat.normalized())
+arrival  := arrival_brake(range_m, stand_off_m, closure)
+
+input.steer    = clampf(-bearing / STEER_SATURATION_RAD, -1.0, 1.0)
+input.brake    = arrival
+input.throttle = approach_throttle(bearing, speed) * (1.0 - arrival) if closing else 0.0
 ```
 
 Positive steer is right and a right turn is a **negative** rotation about the
@@ -1759,19 +1764,114 @@ match on real ground are different physics, and a locomotion law tuned against
 the first can be measurably better there and measurably worse in the game. Any
 change to this section wants a capture, not just a green run.
 
-**There is no brake on arrival, and one was tried.** Cutting the throttle at the
-stand-off leaves the Assembly coasting through it, which under the flat 0.80
-floor meant arriving at 11 m/s, running to 3.1 m, and setting off on another lap
-— and §15.7.4 keeps the guns cold for every metre of one, so an orbiting driver
-fires almost nothing. A brake demand on arrival fixed that. It was then measured
-against the breakaway law that replaced the floor and makes no difference at all:
-6.4 m and 9 rounds with it, 5.8 m and 10 rounds without, because a driver that
-approaches on the taper arrives slowly enough to stop on the throttle cut alone.
-It was removed rather than carried — a demand nothing can distinguish from its
-absence is not a rule. What brings it back is an approach that ends fast: a
-downhill arrival, a heavier build, or any change that raises the closing speed.
+**There was no brake on arrival, one was tried, and it is now back — because the
+condition this section wrote down for its return turned out to be the shipped
+match.** The original measurement stands and is worth keeping: cutting the
+throttle at the stand-off leaves the Assembly coasting through it, which under
+the flat 0.80 floor meant arriving at 11 m/s, running to 3.1 m, and setting off
+on another lap; a brake demand fixed that, and against the breakaway law that
+replaced the floor it then made no measurable difference at all — 6.4 m and 9
+rounds with it, 5.8 m and 10 rounds without. It was removed rather than carried,
+which was right: a demand nothing can distinguish from its absence is not a rule.
+The condition named for bringing it back was **an approach that ends fast**.
 
-The ambulatory family is exempt from both and holds full throttle, because §13.5's
+That measurement was taken on a driver spawned facing *away* from its target. It
+spends the whole approach on the cosine taper and arrives at walking pace, and
+under those conditions there is genuinely nothing for a brake to do. A driver
+spawned **facing** its target never touches the taper: it holds full throttle for
+the entire run-in, and the shipped arena's nearest opponent spawn is 34 m away —
+enough to arrive at **18.2 m/s**. A bare throttle cut does not stop 1107 kg from
+there inside a six-metre stand-off. It does not stop at all; it drives over
+whatever is standing on the mark, which is what the first five seconds of every
+shipped match were.
+
+#### The arrival law
+
+```gdscript
+func arrival_brake(range_m, stand_off_m, closure_mps) -> float:
+    if closure_mps <= ARRIVAL_CLOSURE_DEADBAND_MPS:
+        return 0.0
+    var slack := range_m - stand_off_m
+    if slack <= 0.0:
+        return 1.0                       # inside the stand-off and still coming on
+    var needed := closure_mps * closure_mps / (2.0 * slack)
+    return clampf(needed / ARRIVAL_DECEL_MPS2 - 1.0, 0.0, 1.0)
+```
+
+It is a **stopping-distance law rather than a gain**, and that is the whole of
+why it works where a speed cap would not. The quantity that decides whether a
+driver arrives or rams is not its speed but `v² / 2s` — the deceleration the
+remaining slack would require. The profile that falls out is
+`v = sqrt(2 · a · slack)`: the driver still crosses open ground at fifteen metres
+a second and still arrives at a walk, and no part of it is a function of how far
+away the fight started. The demand is zero while the slack can absorb the closure
+at the planned figure and full when it would need twice it.
+
+`closure_mps` is the **component of velocity along the bearing**, not the speed.
+A driver crossing in front of its target is not arriving at it, and braking on
+speed alone would stop §15.7.5's outer rungs from ever taking station.
+
+The brake and the throttle come out of that one number, so the two cannot fight:
+at half demand the driver has lifted off and is braking gently, at full it is off
+the throttle entirely. A demand that accelerated and braked at once would be
+asking the same contacts for both.
+
+`ARRIVAL_DECEL_MPS2` is well inside what the reference build can make: four
+contacts at §7.4's 2600 N·m over a 0.5 m radius is 20.8 kN against 1107 kg, and
+the surface takes that to about one g — so the plan is under half the authority.
+That margin is deliberate and is what lets the same number hold on a slope
+without the terrain problem the throttle floor had.
+
+#### `closing` stays a line, and a band was tried
+
+Recorded because the reasoning for a band is good and the measurement does not
+support it, which is exactly the shape of thing that gets re-invented.
+
+`closing` is a bare range comparison, so a driver parked on its demand crosses it
+in both directions as its own hull settles and its target drifts — throttle on,
+brake on, throttle on. It never quite stops, and this was already known: the
+engagement test carries a note saying a driver "idles at a few metres a second
+rather than at zero" and reads it as the law working. Against a target that can
+be pushed that looked like a bulldoze, each swing of the cycle being a throttle
+application into a nearby hull, so hysteresis was added: closing stops at the
+stand-off and does not resume until the target has opened three metres past it.
+
+It changed nothing. With the arrival brake in and the stand-off clear of the
+hulls, the ram fixture's numbers are **identical** to the last decimal with the
+band in and with it out, and a fault that deletes it survives a full sweep. The
+premise was wrong rather than the reasoning: the shove that looked like a
+bulldoze turned out to be the target's own drift (below), and at a ten-metre
+stand-off there is no hull a metre from the driver's nose for the oscillation to
+push. **The band was removed rather than carried, for the same reason the first
+arrival brake was** — a demand nothing can distinguish from its absence is not a
+rule. What brings it back is a target close enough to be pushed by the idle,
+which now means a stand-off shorter than this section's.
+
+#### The stand-off itself was shorter than the hulls
+
+The largest of the three findings, and the one that no approach law could have
+rescued. `GROUND_STAND_OFF_M` was 6.0 m, authored against an Assembly length
+nobody had ever measured. `tests/physics/test_ram_attitude.gd` measures it from
+the **colliders** — Invariant I-1 makes those the physical footprint — and the
+reference wheeled build reaches **2.4 m** from its body origin to its nose. Two
+of them therefore touch at **4.8 m** of origin separation.
+
+So a six-metre stand-off was never a stand-off. It was nose-to-nose parking with
+1.2 m of air, against an arrival overshoot of about the same, and the measurement
+says exactly that: the nearest driver finished 4.8 m out with an **eight
+centimetre** gap. `GROUND_STAND_OFF_M` is now 10.0 — the touching range plus a
+full hull length of clear air, which is the smallest range at which an approach
+that overshoots is still an approach.
+
+| Measured, three drivers converging on a stationary build | Before | After |
+|---|---|---|
+| Worst roll of the target | **146.2°** | **0.3°** |
+| Closest approach, origin to origin | 4.8 m | 7.9 m |
+| Gap between the two hulls at that point | **0.08 m** | **3.16 m** |
+| Fastest a driver was travelling | 18.2 m/s | 12.4 m/s |
+| Fastest the *stationary* target was travelling | 8.4 m/s | 0.53 m/s |
+
+The ambulatory family is exempt from all three and holds full throttle, because §13.5's
 placement law walks it in the direction it is given rather than along its own
 nose — a heading error does not widen its approach, so the taper would only slow
 it down.
@@ -1782,7 +1882,9 @@ it down.
 | `APPROACH_MIN_THROTTLE` | 0.35 | Throttle floor while the target is off the nose |
 | `APPROACH_BREAKAWAY_SPEED_MPS` | 3.0 | Speed below which the taper is overridden to break away from a standstill |
 | `APPROACH_BREAKAWAY_THROTTLE` | 0.80 | The demand it is overridden to |
-| `GROUND_STAND_OFF_M` | 6.0 | Range a wheeled or tracked driver stops closing at |
+| `ARRIVAL_DECEL_MPS2` | 4.0 | Deceleration a ground driver plans its arrival on |
+| `ARRIVAL_CLOSURE_DEADBAND_MPS` | 0.5 | Closing speed under which no arrival brake is demanded |
+| `GROUND_STAND_OFF_M` | 10.0 | Range a wheeled or tracked driver stops closing at — measured against a 4.8 m hull-to-hull contact range |
 | `AMBULATORY_TURN_SATURATION_RAD` | 0.60 | The same as the first row, for a family that turns far more slowly |
 | `AMBULATORY_YAW_DAMPING` | 0.55 | Steering demand per radian per second of hull yaw, opposing it |
 | `AMBULATORY_STEER_AUTHORITY` | 0.5 | Ceiling on an ambulatory steering demand |
@@ -1923,11 +2025,24 @@ arrangement work, and three properties fall out of it:
 Ties are not broken. Two friends at exactly equal range both count as not-closer
 and share a rung, which is the correct answer for two Assemblies abreast.
 
-The step is a little over an Assembly's own length — the smallest spacing at
-which a hull is not between a friend and the target. The cap exists because doc
-07 §10 models no obscuration at all, so an uncapped ladder would hold a fourth
-driver at a range where it is shooting at a hull it could not resolve, and the
-extra range would cost more accuracy than the spacing bought.
+The step was chosen as "a little over an Assembly's own length" — the smallest
+spacing at which a hull is not between a friend and the target. **That premise is
+wrong and the measurement that settled §15.7.1's stand-off is what falsified it.**
+The reference wheeled build reaches 2.4 m from its body origin to its nose, so it
+is 4.8 m long and the 4.5 m step is a little *under* its length rather than over
+it. A friend one rung out is therefore still partly in the line.
+
+The constant is deliberately left at 4.5 rather than corrected in the same change
+as the stand-off. Moving it moves every engagement measurement in
+`tests/physics/` at once, and unlike the stand-off it is not what was driving
+over the player — the ladder's geometry works, it is its stated justification
+that was arithmetic nobody had checked. Raising it to one measured hull length is
+a `balance-review` decision and is recorded as open.
+
+The cap exists because doc 07 §10 models no obscuration at all, so an uncapped
+ladder would hold a fourth driver at a range where it is shooting at a hull it
+could not resolve, and the extra range would cost more accuracy than the spacing
+bought.
 
 | Constant | Value | What it is |
 |---|---|---|
