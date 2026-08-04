@@ -66,7 +66,7 @@ they found are in `LEARNED_FACTS.md`.
 | 22 | **The ground is terrain.** Dynamic Ground Arrays under the match, 15 m of relief. Fixed doc 09 §4.3 destroying the crater rim, §3.3's false volume-conservation claim, and §5's streaming order dropping an Assembly through the world. `ManifoldChecker` gates DCC operands for doc 10. |
 | 23 | **Something shoots back.** `src/ai/` — context, target selector, driver. The match spawns three opponents that close, aim and fire through the same systems a player's trigger reaches. Found the recoil-yaw handling defect, a duplicated `assembly_terminated`, and that the ambulatory drift's *direction* is not reproducible. |
 | 24 | **The bore is centred, and it did not fix what it was for.** Doc 01 §14 rule 27; the module is 4×4×9 and its bore is on the centre of mass. An Assembly still cannot drive and shoot — the lever is the mount's position, not the bore's offset. Also: §15.7.1's throttle floor was outside its own window; the fix for that was green on every test and broke the game on real terrain; two fixtures were resting on one lucky round from the ambulatory build. Sweeps rebuilt — 10× faster, cannot hang, baselines measured rather than declared. |
-| 26 | **The game has a loop.** A menu, a garage a player builds in, a TEST DRIVE that fights three opponents with what they built, and two keys on the end card that fight again or go back. `Blueprint` carries a build across every screen boundary and is re-validated at each one. Doc 05 §3.6 stops the motion layer solving a terminated Assembly — the wreck no longer accelerates. |
+| 26 | **The game has a loop.** A menu, a garage a player builds in, a TEST DRIVE that fights three opponents with what they built, and two keys on the end card that fight again or go back. `Blueprint` carries a build across every screen boundary and is re-validated at each one. Doc 11 §4.3's inspector says what a part does. Doc 05 §3.6 stops the motion layer solving a terminated Assembly — the wreck no longer accelerates. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 
 ### Session 26, in more detail
@@ -97,6 +97,13 @@ loop, and the pieces of it are mostly boundaries rather than features.
   kept the coupling torque running on a wreck and said nothing about the
   families; they kept solving springs sized for 1107 kg against a body left on
   the engine's 1 kg floor.
+
+- **Doc 11 §4.3, the inspector.** `rows_for` is a static over a
+  `PartDefinition`, so which figures a class is described by is a rule a unit
+  test can read. It fills on hover rather than on `build_pick`, because §7.1
+  binds that action and `cam_orbit` to the same mouse button and the garage is
+  the one screen that consumes both — found by looking at the control hint in a
+  capture and reading "Middle Mouse inspect · Middle Mouse orbit".
 
 **The wreck fix is also this session's lesson about fixtures.** The first version
 of `test_wreck_settles.gd` reproduced the mass collapse faithfully — and the

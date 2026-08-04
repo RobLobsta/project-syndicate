@@ -165,16 +165,14 @@ with the end card up.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **A player cannot tell what a part will do before they fit it.** The card says
-   a name, a class, a tier, a cost and a mass; the tooltip says one sentence. What
-   it does not say is that a Prime Mover has a torque figure, that an Effector
-   Module has an arc, or that this Motive Assembly steers and that one does not.
-   Doc 11 §4's `InspectorDock` is the answer and it is the largest unbuilt thing
-   in the garage.
-2. **There is no undo.** Doc 02 §9.3's `BuildCommand` is unwritten, so a misclick
-   is permanent until RESET, which throws away everything. This is the single
-   cheapest thing on the list and it is the one a player meets in their first
-   minute of building.
+1. **There is no undo.** Doc 02 §9.3's `BuildCommand` is unwritten, so a misclick
+   is permanent until RESET, which throws away everything. It is the first thing
+   a player meets in their first minute of building and the cheapest large thing
+   left.
+2. **Every build is placed one part at a time down both flanks.** Doc 02 §10's
+   mirroring is written and unimplemented and `build_mirror_toggle` has a binding
+   and no consumer. The shipped starter is four stations and four contacts, half
+   of them the mirror of the other half.
 3. **The wheels are boxes, and they are drawn where the part was placed rather
    than where the suspension put them** (§3.4). In the garage they are four pale
    blocks under a hull; in the match they hang in the air on every crest. It is
@@ -185,9 +183,10 @@ Ranked by what would most improve a first-time player's experience:
    wheeled builds at the same three spawns on the same basin. The scene is
    parameterised for none of it, and doc 06's generator is the intended answer.
 6. **The garage teaches nothing about what a placement is refused for until it is
-   refused.** The status strip names the reason — the strings are written and
-   they are good — but a player who wants a rotor disc has to discover by trial
-   that it needs a mast under it and a second disc opposite it.
+   refused.** The status strip names the reason and the inspector names the
+   figures, and neither says that a rotor disc needs a mast under it and a second
+   disc opposite it. That is a *composition* rule rather than a part figure, and
+   nothing on the screen carries one.
 7. **The opponents still shoot each other**, less than they did, and nothing in
    `src/combat/` knows what a team is (§3.5).
 8. **A destroyed part still simply vanishes**, because `VisualDamageController`
@@ -196,12 +195,17 @@ Ranked by what would most improve a first-time player's experience:
    (§3.7), and a player can now *reach* that build — the garage will let them fit
    limbs. That moves it from a test-only defect to something a player can meet.
 
-The honest summary: **the game now has a loop, and the loop's weakest leg is the
-garage's silence.** A player can build, drive and rebuild, and the thing they
-cannot do is make an informed decision — every part is a name and a mass, every
-mistake is permanent until RESET, and the only way to learn what anything does is
-to drive it. That is a much better problem than "there is no way to play again",
-and it is the next one.
+**The garage's silence is half closed.** Hovering a part now says what it is —
+this contact steers 32° and that one is fixed, this module traverses 360° and
+elevates 34° and depresses 8°, this Prime Mover turns 3200 N·m. What it still
+does not say is anything about *composition*: that a disc needs a mast, that
+supply goes on before draw, that four steered contacts crab instead of turning.
+
+The honest summary: **the game has a loop and the loop is worth going round.** A
+player can build, drive what they built, and come back and change it, and each of
+those three now tells them something. What it does not have is forgiveness — no
+undo, no mirroring — so building is more typing than it should be, and that is
+the next thing.
 
 ---
 
