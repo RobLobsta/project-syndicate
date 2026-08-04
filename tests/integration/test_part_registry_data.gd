@@ -102,6 +102,7 @@ const SHIPPED_KEYS: Array[String] = [
 	"cel.static.standard.t3",
 	"eff.ballistic.autocannon_30.t3",
 	"apx.arm.manipulator.t3",
+	"eff.ballistic.repeater_12.t2",
 ]
 
 
@@ -165,8 +166,11 @@ func test_class_buckets_are_populated() -> void:
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(),
-		2,
-		"a powered edge and an autocannon: one module per resolution path"
+		3,
+		(
+			"a powered edge and two direct-fire modules: one per resolution path, "
+			+ "and a second ballistic row so the recoil trade is a choice"
+		)
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.SUPPORT_MODULE).size(),

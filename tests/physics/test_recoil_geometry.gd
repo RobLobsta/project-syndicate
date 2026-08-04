@@ -75,10 +75,18 @@ const TRAVERSED_YAW_FLOOR_RAD_S: float = 0.50
 ## while the driver is turning toward something.
 const TRAVERSE_DEG: float = 90.0
 
+## Ceiling, in rad/s, on what one traversed `eff.ballistic.repeater_12.t2` round
+## may do to the same hull. Set at the autocannon's own [b]dead-ahead[/b] figure,
+## which is the claim doc 01 §10.5 makes for the row stated as a number: a round
+## fired square across the hull from the light module disturbs it no more than a
+## round fired straight down the nose from the heavy one.
+const REPEATER_TRAVERSED_CEILING_RAD_S: float = NOSE_YAW_CEILING_RAD_S
+
 var _measured: bool = false
 var _arena: CombatArena = null
 var _nose: Shot = null
 var _traversed: Shot = null
+var _repeater: Shot = null
 
 
 func after_all() -> void:
@@ -201,6 +209,61 @@ func test_a_traversed_round_yaws_the_hull_by_a_multiple() -> void:
 	)
 
 
+## ===== THE OTHER FACTOR ================================================
+
+
+## The lever is the mount's and the impulse is the round's, and the round is the
+## half an authored row controls.
+##
+## Same chassis, same mount cell, same 90° traverse, same lever — and one
+## authored resource different. This is the only place in the suite where the two
+## `BALLISTIC_DIRECT` rows meet on identical geometry, which is what makes it a
+## measurement of the rows rather than of two builds.
+func test_the_light_module_traversed_disturbs_the_hull_less_than_the_heavy_one_on_the_nose() -> void:
+	await _measure()
+	check_eq(_repeater.shots, 1, "one repeater round left the traversed barrel")
+	# The fixture assertion. Everything below is satisfied by a mount that never
+	# got round, and a mount that never got round has no lever to load.
+	check_true(
+		absf(_repeater.lever_lateral_m) > 1.0,
+		(
+			"and it was traversed on the same lever as the autocannon: %.3f m against %.3f"
+			% [_repeater.lever_lateral_m, _traversed.lever_lateral_m]
+		)
+	)
+	check_true(
+		absf(_repeater.yaw_rate_rad_s) < REPEATER_TRAVERSED_CEILING_RAD_S,
+		(
+			"a traversed repeater round yaws the hull by %.4f rad/s — inside what the "
+			% _repeater.yaw_rate_rad_s
+			+ "autocannon does firing dead ahead"
+		)
+	)
+	# The comparison, as a multiple, so it survives a rebalance of either row.
+	#
+	# [b]The multiple here is much smaller than the impulse ratio and that is
+	# expected.[/b] 26 N·s against 1450 is a factor of 56, and this measures 8 —
+	# because a single-round delta on a settled hull is not a clean read of the
+	# recoil at this magnitude. The window is one physics frame, and one frame of
+	# a four-spring suspension still working through the last of its settle is
+	# tens of milliradians per second in its own right; the autocannon's round
+	# swamps that and the repeater's does not. So this bound separates the two
+	# rows and deliberately does not pin either.
+	#
+	# The measurement that is clean is the sustained one, because it integrates
+	# thirty rounds against the contacts that have to hold them:
+	# `tests/physics/test_drive_and_shoot.gd` reads 2.9° of heading drift against
+	# 99.1° over the same window, which is the factor of thirty the authored
+	# impulses predict.
+	check_true(
+		absf(_traversed.yaw_rate_rad_s) > absf(_repeater.yaw_rate_rad_s) * 5.0,
+		(
+			"and the heavy round on the same lever is %.0f times worse"
+			% (absf(_traversed.yaw_rate_rad_s) / maxf(absf(_repeater.yaw_rate_rad_s), 0.0001))
+		)
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 
@@ -208,19 +271,18 @@ func _measure() -> void:
 	if _measured:
 		return
 	_measured = true
-	_nose = await _fire_at(0.0)
-	_traversed = await _fire_at(TRAVERSE_DEG)
+	_nose = await _fire_at(CombatArena.Recipe.WHEELED_LIGHT, 0.0)
+	_traversed = await _fire_at(CombatArena.Recipe.WHEELED_LIGHT, TRAVERSE_DEG)
+	_repeater = await _fire_at(CombatArena.Recipe.WHEELED_REPEATER, TRAVERSE_DEG)
 
 
 ## One build, one round, at a commanded traverse. The arena is opened and closed
 ## per shot: firing is destructive to the measurement — the hull keeps the
 ## angular velocity of the previous round — and §3.45 wants one arena at a time.
-func _fire_at(traverse_deg: float) -> Shot:
+func _fire_at(recipe: int, traverse_deg: float) -> Shot:
 	_arena = CombatArena.new()
 	_arena.open()
-	var c := _arena.spawn(
-		CombatArena.Recipe.WHEELED_LIGHT, 0, Vector2.ZERO, 0.0, AmmoLedger.UNLIMITED
-	)
+	var c := _arena.spawn(recipe, 0, Vector2.ZERO, 0.0, AmmoLedger.UNLIMITED)
 	# No pilot. The arena's command loop would drive and aim this build, and both
 	# would be in the measurement.
 	c.arena_piloted = false
@@ -269,8 +331,8 @@ func _fire_at(traverse_deg: float) -> Shot:
 	var muzzle_local := body.global_transform.affine_inverse() * live.origin
 	shot.lever_lateral_m = muzzle_local.x - body.center_of_mass.x
 	print(
-		"  recoil geometry: traverse %5.1f°, lever %+6.3f m lateral, yaw %+.4f rad/s"
-		% [traverse_deg, shot.lever_lateral_m, shot.yaw_rate_rad_s]
+		"  recoil geometry: recipe %d, traverse %5.1f°, lever %+6.3f m lateral, yaw %+.4f rad/s"
+		% [recipe, traverse_deg, shot.lever_lateral_m, shot.yaw_rate_rad_s]
 	)
 
 	_arena.close()

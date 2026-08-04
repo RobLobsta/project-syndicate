@@ -126,7 +126,9 @@ part.pmv.combustion.standard.t2.desc,Shaft power for everything that drives. One
 part.cel.static.standard.t3.name,Standard Energy Cell
 part.cel.static.standard.t3.desc,Supplies the power an Effector Module or a rotor disc draws. Fit it before the thing that needs it.
 part.eff.ballistic.autocannon_30.t3.name,30 mm Ballistic Effector
-part.eff.ballistic.autocannon_30.t3.desc,A traversing autocannon. Fires fast; the recoil at the mount yaws a light hull that shoots while turning.
+"part.eff.ballistic.autocannon_30.t3.desc","Heavy, and it goes through hulls. The recoil at the mount spins a light Assembly that fires while it is turning — stop, or carry more weight."
+part.eff.ballistic.repeater_12.t2.name,12 mm Repeating Effector
+part.eff.ballistic.repeater_12.t2.desc,"A light, fast-cycling mount. Barely disturbs the hull, so it can be fired while driving; it will not punch through what the 30 mm will."
 part.eff.melee.beam_edge.t4.name,Beam Edge
 part.eff.melee.beam_edge.t4.desc,A close-range edge. Enormous damage a swing and nothing at all beyond its reach.
 part.apx.arm.manipulator.t3.name,Manipulator Appendage

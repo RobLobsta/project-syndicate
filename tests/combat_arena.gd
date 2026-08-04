@@ -72,6 +72,12 @@ enum Recipe {
 	## control for every question of the form "is that the gait or is that the
 	## 196 kg on the nose".
 	AMBULATORY_BARE,
+	## [constant Recipe.WHEELED_LIGHT] with `eff.ballistic.repeater_12.t2` on the
+	## nose in place of the autocannon, which is the build the shipped starter is
+	## now. It exists so that the two Effector Modules can be compared on one
+	## chassis, at one mount, under one throttle — doc 01 §10.5's whole claim for
+	## the row is a comparison and a single-module fixture cannot make one.
+	WHEELED_REPEATER,
 }
 
 const CORE_KEY := &"core.command.compact.t2"
@@ -85,6 +91,8 @@ const POWER_KEY := &"pmv.combustion.standard.t2"
 const CELL_KEY := &"cel.static.standard.t3"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
+const REPEATER_KEY := &"eff.ballistic.repeater_12.t2"
+const REPEATER_ROUND_KEY := &"proj.kinetic.ap_12"
 
 ## Callsigns, handed out in spawn order and deterministic for a given arena.
 ##
@@ -289,6 +297,7 @@ var _ground: StaticBody3D = null
 var _contexts: Array[BuildContext] = []
 var _next_assembly_id: int = 1
 var _round_id: int = -1
+var _repeater_round_id: int = -1
 ## Ticks since [method engage] opened, for stamping the timeline.
 var _clock: int = 0
 
@@ -314,8 +323,10 @@ func open() -> void:
 	ammo = AmmoLedger.new()
 	projectile_registry = ProjectileRegistry.new()
 	projectile_registry.register(load("res://data/projectiles/%s.tres" % ROUND_KEY))
+	projectile_registry.register(load("res://data/projectiles/%s.tres" % REPEATER_ROUND_KEY))
 	projectile_registry.seal()
 	_round_id = projectile_registry.id_of(ROUND_KEY)
+	_repeater_round_id = projectile_registry.id_of(REPEATER_ROUND_KEY)
 
 	_ground = StaticBody3D.new()
 	_ground.name = "GroundFixture"
@@ -393,9 +404,11 @@ func spawn(
 	_contexts.append(ctx)
 	match recipe:
 		Recipe.WHEELED_LIGHT:
-			_lay_out_wheeled(ctx, false)
+			_lay_out_wheeled(ctx, false, GUN_KEY)
 		Recipe.WHEELED_HEAVY:
-			_lay_out_wheeled(ctx, true)
+			_lay_out_wheeled(ctx, true, GUN_KEY)
+		Recipe.WHEELED_REPEATER:
+			_lay_out_wheeled(ctx, false, REPEATER_KEY)
 		Recipe.TRACKED:
 			_lay_out_tracked(ctx)
 		Recipe.AMBULATORY:
@@ -486,7 +499,12 @@ func spawn(
 					.rotor_profile.nominal_rad_s
 
 	if rounds != 0:
+		# Both types, to every Assembly. A store is held per projectile type per
+		# Assembly (doc 07 §13), so granting the one a recipe does not fire costs
+		# a dictionary entry and saves every caller having to know which round the
+		# recipe it asked for happens to chamber.
 		ammo.add(assembly_id, _round_id, rounds)
+		ammo.add(assembly_id, _repeater_round_id, rounds)
 	combatants.append(c)
 	return c
 
@@ -860,10 +878,15 @@ static func _place(ctx: BuildContext, key: StringName, cell: Vector3i, orientati
 	PlacementValidator.commit(ctx, candidate)
 
 
-func _lay_out_wheeled(ctx: BuildContext, with_cell: bool) -> void:
+## The wheeled layout, with [param gun_key] on the nose. Parameterised rather
+## than duplicated: the mount cell, the stations and the contacts are the whole
+## of what makes a recoil comparison a comparison, so a second copy of this
+## function is a second chance for the two builds to differ in something nobody
+## meant them to differ in.
+func _lay_out_wheeled(ctx: BuildContext, with_cell: bool, gun_key: StringName) -> void:
 	_place(ctx, CORE_KEY, GROUND_CORE, 0)
 	_place(ctx, POWER_KEY, GROUND_POWER, 0)
-	_place(ctx, GUN_KEY, GROUND_GUN, 0)
+	_place(ctx, gun_key, GROUND_GUN, 0)
 	if with_cell:
 		_place(ctx, CELL_KEY, GROUND_CELL, 0)
 	for cell: Vector3i in WHEEL_HUBS:

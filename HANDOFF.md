@@ -61,12 +61,17 @@ RESET asks before it throws the build away. TEST DRIVE puts that build into a
 basin with 15 m of relief against three opponents. They fight. A card says which
 way it went and names the two keys that fight again or go back to the garage.
 
-**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-and no reason yet to prefer one build to another beyond the numbers in the stat
-panel — and a fight that is over faster than a first-time player can read the
-control card.
+**And you can now drive and shoot at the same time**, which is the oldest thing
+that was ever wrong with it. The shipped starter carries
+`eff.ballistic.repeater_12.t2` — a light, fast module at 26 N·s a round where the
+autocannon is 1450 — and the autocannon is still in the catalogue for a build
+that means to stand still and punch through hulls.
 
-**86 files, 6111 checks, 0 failures.**
+**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
+and a first fight that is still over in seconds — not from recoil any more, but
+because three opponents drive into a stationary player and roll it over.
+
+**87 files, 6143 checks, 0 failures.**
 
 ---
 
@@ -99,7 +104,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**86 files, 6111 checks, 0 failures.**
+**87 files, 6143 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -139,7 +144,7 @@ python3 tools/ci/sweeps/ai_layer_sweep.py --list     # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
 
-There are six of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
+There are seven of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
 `BASELINE` is a check count and moves with the suite; update it in the same
 change as anything that moves the count.
 
@@ -166,65 +171,79 @@ run went straight at the match through
 look at a fight without driving the menu and the garage first — `MatchScreen`
 falls back to the shipped starter when no blueprint arrives.
 
-**The wheels are on the ground.** A settled build's discs now sit with their
-undersides on the surface instead of floating a quarter of a metre clear of it,
-and a wheel with nothing under it extends instead of hanging in the air. That is
-the whole of what the top queue item was, and it is done.
+**You can drive and shoot at the same time.** The oldest thing on this list, and
+the fix was the one the task named: a lighter round. Doc 01 §10.5 gains
+`eff.ballistic.repeater_12.t2` at 26 N·s against the autocannon's 1450, the
+shipped starter carries it, and `tests/physics/test_drive_and_shoot.gd` measures
+what that is worth on one chassis under one throttle with the mount traversed
+square and the trigger held: **2.9° of heading drift and 30 rounds, against 99.1°
+and 2.** The autocannon build's second number is the part nobody had seen — its
+own recoil turns the hull out from under the mount, doc 07 §4.3.1's fire gate
+correctly stops shooting at something the module is no longer pointed at, and the
+build spends the engagement spinning with a cold barrel.
 
-**And then the capture showed something worse than the thing it was verifying.**
-The player Assembly, standing still with no input, is upright and at 100% at four
-seconds, on its back at five, in pieces at six, and destroyed at seven — with the
-CONTROLS card still on screen for the whole of it. Three autocannon at seven
-rounds a second put enough impulse into an 1107 kg hull to roll it over, and once
-it is over it cannot right itself and cannot shoot.
+**And the wheels are on the ground**, from the session before: a settled build's
+discs sit with their undersides on the surface instead of floating clear of it,
+and a wheel over a crest extends rather than hanging in the air.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The first fight is over before a first-time player has read the controls.**
-   Standing still is a worst case and a player would drive — but a machine that
-   goes from upright to scrap in three seconds under fire is not a fight, it is
-   an accident. This is `§4.11`'s rollover seen from the receiving end: the
-   impulse-to-mass ratio flips this chassis whether the impulse is your own
-   recoil or somebody else's rounds. **§3.1 owns it and it is the top item.**
-2. **You still cannot drive and shoot at the same time** (§3.2). The oldest thing
-   on the list, the same root cause as item 1, and the one a player meets first
-   if they survive long enough to try.
+1. **The opponents drive into you and roll you over.** With recoil no longer the
+   cause, the capture shows what the first fight actually is: three drivers close
+   to contact range, one of them rams a stationary player, and an 1107 kg hull
+   ends up on its side at five seconds and destroyed at seven. Doc 05 §15.7's
+   stand-off ladder spaces drivers from *each other* and nothing keeps them off
+   the target. **§3.1 owns it.**
+2. **A destroyed Assembly's wreck is launched over the horizon.** Doc 11 §16.2
+   says the wreck stays where it fell and it does not: losing the Core Module
+   orphans every part, the islands detach, and doc 05 §3.5's mass floor leaves a
+   1 kg body that the next thing to touch it punts away. The capture shows it
+   climbing past 27 m/s under the end card, which is free fall from wherever it
+   was kicked to. §3.2 owns it and it is cheap.
 3. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. Doc 06's generator
    is the intended answer.
-4. **Nothing rewards a good build over a heavy one.** The stat panel names mass,
-   power, mounts, speed, integrity and rollover, and the match tests exactly one
-   of those. A player who spends ten minutes in the garage has no way to find out
-   whether it was worth it beyond winning slightly faster.
+4. **Nothing rewards a good build over a heavy one** — except, now, one thing:
+   which Effector Module you fit is a real decision, because the two published
+   direct-fire rows are good at different things. That is one axis out of the six
+   the stat panel names.
 5. **The garage teaches nothing about *composition* until a placement is
    refused.** The inspector names figures; nothing says a rotor disc needs a mast
    under it and a second disc opposite it, or that supply goes on before draw.
-6. **The opponents still shoot each other**, less than they did, and nothing in
-   `src/combat/` knows what a team is (§3.3).
+6. **The opponents still shoot each other**, and nothing in `src/combat/` knows
+   what a team is (§3.4).
 7. **A destroyed part still simply vanishes**, because `VisualDamageController`
    (doc 08 §9) is unwritten.
 8. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.5), and the garage will let a player fit limbs.
+   (§3.6), and the garage will let a player fit limbs.
 
-**The bad news, plainly.** Two things, and the first is the one above: the game's
-only fight is decided in about three seconds by an Assembly being knocked over,
-and nothing in the suite can see it — every physics fixture stands on a flat slab
-and asserts forces, ranges and orderings, none of which changes when a build ends
-up on its roof. It was found by looking at six frames.
+**The bad news, plainly.** Three things.
 
-The second is smaller and is about the end of that fight. When the match
-concludes the orbit camera is inside the wreck: the end card fades in over a
-close-up of hull plating and is barely legible against it. Doc 11 §16.2 chose to
-leave the wreck where it fell, which is right; what it did not settle is where
-the camera stands when the thing it is orbiting is directly under it.
+**The suite could not see any of this and still cannot see most of it.** Every
+fixture in `tests/physics/` stands on a flat slab and asserts forces, ranges and
+orderings; a build ending up on its roof, or a wreck departing at 27 m/s, moves
+none of them. `test_wreck_settles.gd` passes because nothing in its fixture ever
+touches the wreck. Both findings came from looking at six frames of a capture,
+which is now the second session running that the capture has out-earned the
+suite on player-facing defects.
 
-Also still open from last session, unchanged: the mirror ghost is validated
-against the build *as it stands* rather than as it will be once the primary
-commits, and the toolbar is six controls wide at the expanded tier, which the
-compact tier — which still has no bottom sheet — cannot hold at all.
+**The two direct-fire rows are not on the same recoil scale and the autocannon's
+is the one that is wrong.** A real 30 mm round carries about 400 N·s; §10.5
+publishes 1450. The repeater is authored at a realistic 26 for a 12 mm round and
+was deliberately not inflated to match, because inflating it would have
+reproduced the defect it exists to remove. Rescaling the four legacy rows onto
+one basis is a `balance-review` change that moves every engagement measurement in
+`tests/physics/` at once, and it is not done.
 
-The summary: **the garage is a decent place to spend ten minutes, the machine
-now looks like it is driving, and the fight it drives into is not yet a fight.**
+**And the drivable module loses a straight duel.** Repeater against autocannon at
+24 m, both stationary and trading: the repeater build's Core Module goes in 89
+ticks. That is the trade working as designed — two thirds of the throughput and
+half the penetration, bought with thirty times less recoil — but nobody has
+checked whether the trade is *fun*, and the only build in the game that fights
+with it is the one every opponent also carries.
+
+The summary: **the first fight is no longer decided by your own gun. It is now
+decided by being rammed, and the wreck leaves the map.**
 
 ---
 
@@ -233,49 +252,47 @@ now looks like it is driving, and the fight it drives into is not yet a fight.**
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Make the first fight survivable — the top item
+### 3.1 Stop the opponents rolling the player over — the top item
 
-New this session and it came out of the capture, not the suite. A player
-Assembly under fire from three opponents goes from upright and undamaged to
-destroyed in about three seconds, and most of that is one event: it is knocked
-onto its back, at which point it cannot right itself, cannot bring its mount to
-bear, and is shot apart where it lies.
+New from this session's capture, and it is what the first fight now is. Three
+drivers close on a stationary player, one rams it, and an 1107 kg hull is on its
+side at five seconds and destroyed at seven. It cannot right itself, cannot bring
+its mount to bear, and is shot apart where it lies.
 
-**Measure before choosing, because there are at least four levers and they are
-different games.** Doc 08 §6's impact impulse is the obvious one; doc 05 §5.1's
-rollover threshold is the stat the garage already shows and nothing enforces;
-where the opponents open fire (doc 05 §15.7.4 has them close with their guns
-cold, and they are already inside that range at spawn); and how long the control
-card holds a new player still. The instrument that does not exist yet is a
-fixture that records **attitude** over an engagement — every engagement test in
-`tests/physics/` asserts forces, ranges and counts, and a build ending up on its
-roof moves none of them.
+Doc 05 §15.7.5's stand-off ladder spaces converging drivers **from each other**
+and says nothing about the target. §15.7.1's ground tactic closes to
+`GROUND_STAND_OFF_M` and the throttle floor added in session 24 is what makes it
+reach the player over terrain; on flat ground it overshoots into contact.
 
-Worth knowing: this is §3.2 seen from the other side. The same impulse-to-mass
-ratio that yaws a hull 48°/s when it fires is what rolls it when it is fired at,
-so a change to one is a change to both and they should be decided together.
+**The instrument does not exist and is the first thing to build.** Every
+engagement file records rounds, ticks, kills and travel, and none of them records
+**attitude**. A `worst_roll_deg` on `CombatArena.Combatant`, sampled per tick
+alongside the existing counters, would make "did anybody end up on their roof" a
+number the suite can assert — and it is about fifteen lines. Do that before
+changing a constant, because otherwise the fix is unmeasurable.
 
-### 3.2 Decide what a build does about recoil at a traversed mount
+Candidate levers, once it can be measured: a hard floor on closing range in
+§15.7.1 rather than a soft stand-off; a brake term that scales with closure; or
+doc 08 §6's impact impulse, which is also what makes a hull-to-hull collision
+this violent. The third moves every engagement at once and is `balance-review`.
 
-Unchanged from session 24, and now the oldest thing on the list. The recoil is
-applied at the muzzle and the mount sits 2.25 m forward of the centre of mass, so
-a traversed gun yaws the hull at 48°/s a round.
+### 3.2 Keep the wreck where it fell
 
-Three candidates, and they are genuinely different games:
+Doc 11 §16.2 decides that a destroyed Assembly's hulk stays put, and the capture
+shows it climbing past 27 m/s under the end card — free fall, from wherever the
+last thing to touch it kicked it.
 
-- **Mount position.** A gun over the centre of mass rather than on the nose.
-  Costs the pitch behaviour the nose mount was chosen for, and makes where a
-  player puts a gun a real trade. Cheapest to try: a cell coordinate in
-  `CombatArena` and `MatchScreen`.
-- **A smaller recoil impulse.** 1450 N·s is roughly three times a real 30 mm
-  round's momentum. Probed at 500 N·s: the driver fires more and still cannot
-  turn, so this alone does not close it. `balance-review`, and it moves every
-  engagement at once.
-- **Live with it and make it legible.** A player who understands that shooting
-  sideways spins them has a tactic; one who does not has a bug. Doc 11 work.
+The mechanism is understood and the fix is a decision rather than an
+investigation: losing the Core Module orphans every part, the islands detach, and
+doc 05 §3.5's mass floor leaves the chassis at **one kilogramme**. Anything that
+touches a 1 kg body with a hull-sized collider sends it over the horizon.
+`tests/physics/test_wreck_settles.gd` already prints `1.000 kg` and passes,
+because nothing in its fixture ever touches the wreck.
 
-`tests/physics/test_recoil_geometry.gd` reports the lever and the yaw per round
-and is the instrument. Measure before choosing.
+Two candidate readings, and doc 04 owns the choice: a terminated Assembly's parts
+should not detach at all — the hulk is one dead object — or the floor should be
+the surviving parts' mass rather than a constant. The first is closer to what
+§16.2 describes and is the cheaper of the two.
 
 ### 3.3 Decide whether friendly fire exists
 
@@ -348,6 +365,12 @@ plane slicing and needs no CSG at all.
   non-vacuous. `mot.rotor.main_single.t3` is worth authoring for its failure mode
   alone: `torque_reaction_ratio = 1.0` and no yaw authority, so a build carrying
   one alone spins under its own reaction torque and cannot stop.
+- **Rescale §10.5's four legacy direct-fire rows, or decide not to.** 1450 N·s
+  for a 30 mm round is about 3.6× real momentum, and `eff.ballistic.repeater_12.t2`
+  is authored at a realistic 26 for a 12 mm one, so the table is currently on two
+  bases. `balance-review`, and it moves every engagement measurement in
+  `tests/physics/` at once — which is why it was not bundled with the row that
+  needed to exist.
 - **Widen the authored depression, or decide not to.** 8° is a turret ring on
   flat ground and nothing in this game is on flat ground for long. Measured,
   reverted, recorded in doc 01 §10.5; it is a `balance-review` decision.
@@ -418,14 +441,34 @@ fixing. None of these is a surprise waiting to be found.
   so a Prime Mover has no power band and no lag. That is doc 05 §7.5 work.
 
 ### Combat
-- **An Assembly cannot drive and fire at the same time.** The muzzle offset that
-  was blamed for it is closed and the behaviour is unchanged; the lever is the
-  mount's position, not the bore's. Owned by §3.2.
+- **`eff.ballistic.autocannon_30.t3` still cannot be fired from a moving hull,
+  and that is now a property of one row rather than of the game.** Measured at
+  99.1° of heading drift and two rounds of a possible seventeen over two and a
+  half seconds; `eff.ballistic.repeater_12.t2` on the identical chassis and mount
+  reads 2.9° and thirty. Both ship, the starter carries the light one, and doc 01
+  §10.5 records the trade. What is *not* settled is the recoil scale §10.5's four
+  legacy direct-fire rows are on — 1450 N·s for a 30 mm round is about 3.6× real,
+  the repeater is authored at a realistic 26, and rescaling the legacy rows onto
+  one basis is a `balance-review` change that moves every engagement in
+  `tests/physics/` at once.
+- **Nothing measures whether an Assembly ended up on its roof.** Every engagement
+  fixture records rounds, ticks, kills and travel; none records attitude, so the
+  two most player-visible failures found this session — being rammed over, and a
+  wreck departing at 27 m/s — are both invisible to a green suite. Owned by
+  §3.1.
 - **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
 - **No engagement has ever been fought at contact range.** Owned by §3.5.
+- **A second projectile type exists and only one join is asserted.** Until this
+  session every module in the catalogue chambered `proj.kinetic.ap_30`, so "which
+  round does this module fire", "which stores is this Assembly granted" and
+  "which store does the HUD count" were one answer by accident. A fault sweep
+  planted two of the three ways to get that wrong and **neither was caught**;
+  `test_screen_flow.gd` now asserts it for the player's own module. The
+  equivalent for an AI opponent, and for a build carrying two modules that
+  chamber different rounds, is still unasserted.
 - **§15.5's sustained contact is not implemented.** The edge authors it, the
   solver computes it, and nothing calls it. Owned by §3.7.
 - **A melee strike can never ricochet**, because its packet's normal is derived

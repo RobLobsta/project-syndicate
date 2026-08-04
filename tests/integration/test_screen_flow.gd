@@ -34,6 +34,8 @@ var _edited_size: int = 0
 var _session_size_after_drive: int = 0
 var _screen_after_drive: int = -1
 var _screen_after_leaving_match: int = -1
+## Rounds the player's own module had in store the moment the match opened.
+var _match_player_rounds: int = -1
 var _match_freed_on_exit: bool = false
 var _screen_after_rematch: int = -1
 var _rematch_blueprint_size: int = 0
@@ -289,6 +291,24 @@ func test_a_test_drive_hands_the_edited_build_to_the_match() -> void:
 	)
 
 
+## The player's Effector Module is stocked with the round it actually chambers.
+##
+## Three separate lookups have to agree for this to be non-zero — the module's
+## authored `projectile_key`, the stores the spawn grants, and the id §14.1's
+## counter reads — and until the catalogue carried two direct-fire rows they were
+## the same answer by accident. A fault sweep planted both ways of getting it
+## wrong and neither was caught by anything: a player whose gun draws a round the
+## ledger never stocked cannot fire for the whole match, and the HUD tells them
+## they are out of ammunition on the first frame.
+func test_the_player_is_stocked_with_the_round_their_module_fires() -> void:
+	await _open_match_once()
+	check_eq(
+		_match_player_rounds,
+		MatchScreen.PLAYER_ROUNDS,
+		"the store the HUD counts is the store the player's own module draws from"
+	)
+
+
 ## A match hands the player back. This is the exit the project did not have: the
 ## match concluded, and the only way to play again was to quit the process.
 func test_a_match_can_hand_the_player_back_to_the_garage() -> void:
@@ -347,6 +367,7 @@ func _open_match_once() -> void:
 	_match_screen_valid = match_screen != null
 	if match_screen != null:
 		_match_blueprint_size = match_screen.player_blueprint.size()
+		_match_player_rounds = match_screen.player_rounds_remaining()
 		# The other exit, taken first because it is the one that costs a second
 		# arena and this file opens exactly two: fight the same build again.
 		match_screen.rematch_requested.emit()

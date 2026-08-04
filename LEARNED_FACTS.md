@@ -1180,6 +1180,42 @@ and doc 13 §2.1 keeps `ProxyPrimitiveDef` and `ColliderPrimitiveDef` as separat
 types precisely so that an art edit can never move a hitbox. Merging the builders
 would put back exactly the coupling the type split exists to prevent.
 
+**Recoil yaw has two factors and an authored row owns one of them.** It is
+`impulse × lever ÷ I_yy` per round, and `impulse ÷ cycle × lever` sustained. Doc
+01 §14 rule 27 and the build's mount placement own the lever, and four sessions
+were spent on that half — centring the bore, then measuring that centring it
+changed nothing, because a mount two metres forward of the centre of mass swings
+its own line of action out to two metres the moment it traverses. The other
+factor is the round, and it is the half a `.tres` file can change. Doc 01 §10.5's
+`eff.ballistic.repeater_12.t2` is that half: 26 N·s against 1450 is 2.9° of
+heading drift against 99.1° over the same throttled, traversed, trigger-held
+window. **When a quantity is a product and one factor is geometry, look at the
+other factor before concluding the geometry is the problem.**
+
+The sharper half of the same finding: **the heavy module does not merely wander,
+it stops firing.** Its recoil turns the hull out from under the mount, and doc 07
+§4.3.1's fire gate then correctly declines to shoot at something the module is no
+longer pointed at — two rounds of a possible seventeen. Every measurement before
+this one was a single round on a parked hull, which cannot see a feedback loop
+between the hull's attitude and the gate. **A defect that only appears when two
+loops run in the same window needs a fixture that runs both.**
+
+**A second instance of anything reveals the joins that agreed by accident.** For
+the whole life of the project every Effector Module chambered
+`proj.kinetic.ap_30`, so "which round does this module fire", "which stores is
+this Assembly granted at spawn" and "which store does the HUD count" were one
+answer and nothing checked they were three. Adding one more projectile type made
+two of the three wrong in ways a fault sweep caught and nothing else did — a
+player whose module draws a round the ledger never stocked cannot fire for the
+whole match and is told they are out of ammunition on the first frame. **Before
+adding the second of a kind, ask which lookups have never been distinguishable.**
+
+**A bound cannot assert anything about itself.** A test that pins a threshold —
+"the starter's module recoils at no more than N" — is green forever if somebody
+raises N past every value that exists, and no other test can see it. The repair
+is a second assertion in the same test that something known is on the *other*
+side of the bound. Found by planting exactly that fault and watching it survive.
+
 **Presentation following the simulation is the direction Invariant I-1 permits,
 and it is easy to read the invariant as forbidding it.** Moving a mesh to where a
 probe says its wheel is, or pointing a limb at the foot the gait planted, is the
