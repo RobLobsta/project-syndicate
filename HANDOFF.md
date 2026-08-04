@@ -48,24 +48,25 @@ thirteen documents in `/docs/`, named just before it.
 
 ## Where this stands
 
-**It is a game with a loop, the loop forgives a mistake, and the garage now
-builds the way a player expects it to.** `godot --path .` opens on a menu. The
-menu opens a garage, where a wheeled Assembly is standing on the Build Lattice
-with a catalogue of thirteen parts beside it and its mass, power, mounts, top
-speed, integrity and rollover threshold on the right. The part under the pointer
-lights up and the inspector says what it is. **M** mirrors placements onto the
-other flank, so a symmetric build is half the clicks; **Ctrl+Z** takes back a
-misclick, including both halves of a mirrored pair at once. A removal that would
-orphan something asks first, and RESET asks before it throws the build away. TEST
-DRIVE puts that build into a basin with 15 m of relief against three opponents.
-They fight. A card says which way it went and names the two keys that fight again
-or go back to the garage.
+**It is a game with a loop, the loop forgives a mistake, the garage builds the
+way a player expects it to, and the machine now drives on the ground rather than
+over it.** `godot --path .` opens on a menu. The menu opens a garage, where a
+wheeled Assembly is standing on the Build Lattice with a catalogue of thirteen
+parts beside it and its mass, power, mounts, top speed, integrity and rollover
+threshold on the right. The part under the pointer lights up and the inspector
+says what it is. **M** mirrors placements onto the other flank, so a symmetric
+build is half the clicks; **Ctrl+Z** takes back a misclick, including both halves
+of a mirrored pair at once. A removal that would orphan something asks first, and
+RESET asks before it throws the build away. TEST DRIVE puts that build into a
+basin with 15 m of relief against three opponents. They fight. A card says which
+way it went and names the two keys that fight again or go back to the garage.
 
 **What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-suspension a player cannot see working, and no reason yet to prefer one build to
-another beyond the numbers in the stat panel.
+and no reason yet to prefer one build to another beyond the numbers in the stat
+panel — and a fight that is over faster than a first-time player can read the
+control card.
 
-**85 files, 6023 checks, 0 failures.**
+**86 files, 6111 checks, 0 failures.**
 
 ---
 
@@ -98,7 +99,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**85 files, 6023 checks, 0 failures.**
+**86 files, 6111 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -138,7 +139,7 @@ python3 tools/ci/sweeps/ai_layer_sweep.py --list     # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
 
-There are five of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
+There are six of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
 `BASELINE` is a check count and moves with the suite; update it in the same
 change as anything that moves the count.
 
@@ -159,31 +160,35 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the boot flow,
-and the garage on its own through `--main-scene`, which is the cheap way to look
-at one screen without driving the menu.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900. This session's
+run went straight at the match through
+`--main-scene res://scenes/match/arena_basin.tscn`, which is the cheap way to
+look at a fight without driving the menu and the garage first — `MatchScreen`
+falls back to the shipped starter when no blueprint arrives.
 
-**The garage now looks like a garage.** Before this session the build rendered as
-one dark silhouette — one sun over a dark sky, every shaded face falling to an
-ambient term sampled from that sky — so doc 13's class tints were carrying no
-information and a player could not see where their Prime Mover was. With a fill,
-a bounce off the plate and a raised ambient, the same build reads as a pale steel
-hull, a brass Prime Mover, a cyan Energy Cell, a dark autocannon and four
-contacts. That is the same build, the same tints, and three lights.
+**The wheels are on the ground.** A settled build's discs now sit with their
+undersides on the surface instead of floating a quarter of a metre clear of it,
+and a wheel with nothing under it extends instead of hanging in the air. That is
+the whole of what the top queue item was, and it is done.
 
-**And it builds the way a player expects.** MIRROR · M in the toolbar; the
-shipped starter is twelve placements and eight gestures with it on. The part
-under the pointer lights up, so the inspector is describing something the player
-can point to rather than one of four parts of the same class.
+**And then the capture showed something worse than the thing it was verifying.**
+The player Assembly, standing still with no input, is upright and at 100% at four
+seconds, on its back at five, in pieces at six, and destroyed at seven — with the
+CONTROLS card still on screen for the whole of it. Three autocannon at seven
+rounds a second put enough impulse into an 1107 kg hull to roll it over, and once
+it is over it cannot right itself and cannot shoot.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The wheels do not move.** They are drawn where the part was placed rather
-   than where the suspension put them, so on 15 m of relief they hang in the air
-   on every crest and the machine reads as a sliding prop. It is now the largest
-   gap between how the game looks and how it works, and §3.4 owns it.
+1. **The first fight is over before a first-time player has read the controls.**
+   Standing still is a worst case and a player would drive — but a machine that
+   goes from upright to scrap in three seconds under fire is not a fight, it is
+   an accident. This is `§4.11`'s rollover seen from the receiving end: the
+   impulse-to-mass ratio flips this chassis whether the impulse is your own
+   recoil or somebody else's rounds. **§3.1 owns it and it is the top item.**
 2. **You still cannot drive and shoot at the same time** (§3.2). The oldest thing
-   on the list and the one a player will meet in their first fight.
+   on the list, the same root cause as item 1, and the one a player meets first
+   if they survive long enough to try.
 3. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. Doc 06's generator
    is the intended answer.
@@ -201,25 +206,25 @@ Ranked by what would most improve a first-time player's experience:
 8. **A walking build turns 170° in five seconds while commanded straight ahead**
    (§3.5), and the garage will let a player fit limbs.
 
-**The bad news, plainly.** Doc 02 §10's own worked example is wrong, and had it
-been implemented as written the mirror would have been one cell out on every part
-that ships — a defect that looks like a physics bug rather than a placement one,
-because the build simply comes out asymmetric and drives crooked. It was caught
-only because the shipped starter happens to be a hand-mirrored build and could be
-used as ground truth. **There is no second such build in the repository**, so the
-next hand-authored symmetric thing anybody adds is worth writing the same test
-against.
+**The bad news, plainly.** Two things, and the first is the one above: the game's
+only fight is decided in about three seconds by an Assembly being knocked over,
+and nothing in the suite can see it — every physics fixture stands on a flat slab
+and asserts forces, ranges and orderings, none of which changes when a build ends
+up on its roof. It was found by looking at six frames.
 
-Two smaller ones. The mirror ghost is validated against the build *as it stands*
-rather than as it will be once the primary commits, so a mirrored placement whose
-legality depends on its own other half previews red and commits green; that is
-honest but it is not what the player sees. And the toolbar is now six controls
-wide at the expanded tier, which the compact tier — which still has no bottom
-sheet — cannot hold at all.
+The second is smaller and is about the end of that fight. When the match
+concludes the orbit camera is inside the wreck: the end card fades in over a
+close-up of hull plating and is barely legible against it. Doc 11 §16.2 chose to
+leave the wreck where it fell, which is right; what it did not settle is where
+the camera stands when the thing it is orbiting is directly under it.
 
-The summary: **the garage is now a decent place to spend ten minutes, and the
-match has not caught up with it.** Everything worth doing next is on the other
-side of the TEST DRIVE button.
+Also still open from last session, unchanged: the mirror ghost is validated
+against the build *as it stands* rather than as it will be once the primary
+commits, and the toolbar is six controls wide at the expanded tier, which the
+compact tier — which still has no bottom sheet — cannot hold at all.
+
+The summary: **the garage is a decent place to spend ten minutes, the machine
+now looks like it is driving, and the fight it drives into is not yet a fight.**
 
 ---
 
@@ -228,23 +233,27 @@ side of the TEST DRIVE button.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Make the wheels follow their contacts — the top item
+### 3.1 Make the first fight survivable — the top item
 
-`spawn_visual` draws a Motive Assembly at the cell it was placed in, not at its
-probe hit point, so suspension travel is invisible and a limb does not bend. On
-15 m of relief the wheels hang in the air on every crest and the machine reads as
-a prop sliding over the ground rather than as something driving on it.
+New this session and it came out of the capture, not the suite. A player
+Assembly under fire from three opponents goes from upright and undamaged to
+destroyed in about three seconds, and most of that is one event: it is knocked
+onto its back, at which point it cannot right itself, cannot bring its mount to
+bear, and is shot apart where it lies.
 
-It moved to the top for two reasons. The garage now looks like a garage, so the
-match is the weaker of the two screens — and this is the cheapest large thing
-left in it. `AssemblyRuntime.visual_of(slot)` is the hook and the contact's
-`point_world` is the answer; doc 05 does not cover the visual side and should.
+**Measure before choosing, because there are at least four levers and they are
+different games.** Doc 08 §6's impact impulse is the obvious one; doc 05 §5.1's
+rollover threshold is the stat the garage already shows and nothing enforces;
+where the opponents open fire (doc 05 §15.7.4 has them close with their guns
+cold, and they are already inside that range at spawn); and how long the control
+card holds a new player still. The instrument that does not exist yet is a
+fixture that records **attitude** over an engagement — every engagement test in
+`tests/physics/` asserts forces, ranges and counts, and a build ending up on its
+roof moves none of them.
 
-Worth knowing before starting: Invariant I-1 is not in the way and is easy to
-think it is. Moving a *mesh* to follow a probe is presentation following the
-simulation, which is the direction the invariant permits — what it forbids is the
-reverse. The collider stays where the part was placed, because a part's physical
-footprint is fixed from placement to destruction.
+Worth knowing: this is §3.2 seen from the other side. The same impulse-to-mass
+ratio that yaws a hull 48°/s when it fires is what rolls it when it is fired at,
+so a change to one is a change to both and they should be decided together.
 
 ### 3.2 Decide what a build does about recoil at a traversed mount
 
@@ -384,8 +393,11 @@ fixing. None of these is a surprise waiting to be found.
   per contact per tick rather than on mass recompute. Neither is wrong
   numerically — `retune` is pure and its inputs are constant between structural
   events — but §6.4 says "fires on mass recompute only" and the code does not.
-- **The visual wheel does not follow the contact**, and since the terrain landed
-  it is visible rather than theoretical. Owned by §3.1.
+- **A tracked patch is drawn at the mean of its road stations, and nothing
+  asserts the mean.** Doc 05 §16.1. Every station on a flat slab reports the same
+  distance, so the mean and the first station are one number and the fault sweep
+  says so: `tracked-mean-is-its-first-station` is a knowing survivor. It closes
+  with a bogie straddling a slope, which no fixture has.
 - **A tracked pivot drifts a couple of metres** rather than turning about a
   point. The flanks counter-rotate correctly but their forces do not cancel
   exactly, because the two bogies sit at slightly different offsets. Whether that
@@ -536,6 +548,14 @@ fixing. None of these is a surprise waiting to be found.
   [SubViewport] projecting a ray — cannot be reached headless
   (`LEARNED_FACTS.md` §1 fact 28), so the one thing that was checked by hand and
   is checked by nothing is the ray itself.
+- **The orbit camera at the conclusion ends up inside the wreck.** Doc 11 §16.2
+  hands the player an orbit camera over the hulk, and the capture shows the end
+  card fading in over a close-up of hull plating that makes it barely legible.
+  `LEARNED_FACTS.md` §1 fact 56 is the mechanism — `cast_motion` answers `[0, 0]`
+  for a shape that starts already overlapping, and the camera clamps to a minimum
+  distance rather than doing something better with that answer. What §16.2 never
+  settled is where the camera stands when the thing it is orbiting is directly
+  under it.
 - **The control card has no first-run flag.** Doc 11 §14.6 raises it on every
   entry to a match because there is nowhere to store "they have seen it", which
   is `SyndicateSettings` work and is waiting on there being more than one match.

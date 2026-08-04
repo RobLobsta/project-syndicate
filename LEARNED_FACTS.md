@@ -1180,6 +1180,24 @@ and doc 13 §2.1 keeps `ProxyPrimitiveDef` and `ColliderPrimitiveDef` as separat
 types precisely so that an art edit can never move a hitbox. Merging the builders
 would put back exactly the coupling the type split exists to prevent.
 
+**Presentation following the simulation is the direction Invariant I-1 permits,
+and it is easy to read the invariant as forbidding it.** Moving a mesh to where a
+probe says its wheel is, or pointing a limb at the foot the gait planted, is the
+simulation deciding and the picture obeying. What I-1 forbids is the reverse: a
+collider derived from a mesh, a visual transform a physics query can see, or a
+footprint that changes with damage state or LOD. The collider stays exactly where
+the part was placed in every one of these cases, which is the invariant's actual
+content — *a part's physical footprint is fixed from placement to destruction*.
+Doc 05 §16 is the worked version; the test that keeps it honest is that an
+Assembly with the `part_visual` tag off simulates identically, which the
+dedicated server relies on anyway.
+
+The same reading settles where such a write goes. Doc 05 §6.0 rule 1 says a
+locomotion family contributes `apply_force` and `apply_torque` and nothing else,
+so §16's pass runs **after** the family dispatch rather than inside any solver —
+the rule stays literally true, and the presentation branch is a second question
+asked of the `_family` array rather than a fifth thing a family does.
+
 **A destroyed part's mesh is hidden, and that is presentation following the
 simulation rather than decorating it.** Every shipped part's greybox *is* its
 collider (doc 13 §2.1's mirroring), so a mesh left behind by a disabled shape is

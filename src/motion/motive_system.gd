@@ -308,6 +308,7 @@ func step(dt: float) -> void:
 	_apply_anti_roll()
 	_update_kappa(dt)
 	_deposit_ruts()
+	_drive_visuals()
 
 
 ## ===== INSPECTION ======================================================
@@ -584,22 +585,36 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	# leg longer than its rest length is producing no force and anchoring nothing
 	# either, so re-planting that one costs nothing and is the only case that
 	# needs it.
+	var ground_y := (
+		contact.point_world.y
+		if contact.grounded
+		else hip_world.y - limb_profile.leg_length_m
+	)
 	var slack := (hip_world - limb.foot_world).length() >= limb_profile.stance_rest_length_m()
 	if now_stance and (not was_planted or (standing and slack)):
-		limb.foot_world = GaitSolver.foot_target(
-			limb_profile,
-			hip_world,
-			contact.point_world.y if contact.grounded else hip_world.y - limb_profile.leg_length_m,
-			runtime.body.linear_velocity,
-			input.desired_velocity(-basis.z, basis.x, gait_cap),
-			cadence,
-			input.steer
-		)
+		limb.foot_world = _foot_target(limb_profile, hip_world, ground_y, gait_cap, cadence, basis)
 		limb.prev_length_m = (hip_world - limb.foot_world).length()
 	limb.planted = now_stance
+	# §16.3. The foot the presentation layer draws is the plant point wherever
+	# there is one, and the swing branch below replaces it with the arc. Written
+	# on every path out of this function so that a limb returning early still
+	# leaves it current rather than a tick stale.
+	limb.foot_visual_world = limb.foot_world
 
 	if not now_stance:
 		limb.slipping = false
+		# The arc reaches for the target the placement law would choose *now*
+		# rather than one frozen at lift-off. That is only safe because §13.7
+		# applies no force during swing: nothing drawn here can reach the physics,
+		# so a target that tracks the body as it moves is honest rather than a
+		# feedback path, and the foot lands where the next touchdown puts it
+		# instead of jumping there.
+		limb.foot_visual_world = GaitSolver.swing_foot_world(
+			limb_profile,
+			limb.foot_world,
+			_foot_target(limb_profile, hip_world, ground_y, gait_cap, cadence, basis),
+			GaitSolver.swing_progress(limb.phase, limb_profile.duty_factor)
+		)
 		return
 
 	var to_hip := hip_world - limb.foot_world
@@ -621,7 +636,110 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	# a walker lose its footing progressively rather than in one frame.
 	if limb.slipping:
 		limb.foot_world += (raw - force) / maxf(limb_profile.stance_stiffness_n_m, 1.0)
+		limb.foot_visual_world = limb.foot_world
 	_apply_at(hip_world, force)
+
+
+## §13.5's placement law with this tick's Assembly state filled in.
+##
+## Extracted because two callers need the identical answer: the touchdown that
+## plants the foot, and §16.3's swing arc, which reaches for the point the next
+## touchdown will choose. Two derivations of one target would let the drawn foot
+## arc towards somewhere the simulation was never going to put it, and the limb
+## would snap on every plant.
+func _foot_target(
+	profile: LimbProfile,
+	hip_world: Vector3,
+	ground_y: float,
+	gait_cap: float,
+	cadence_hz_value: float,
+	basis: Basis
+) -> Vector3:
+	return GaitSolver.foot_target(
+		profile,
+		hip_world,
+		ground_y,
+		runtime.body.linear_velocity,
+		input.desired_velocity(-basis.z, basis.x, gait_cap),
+		cadence_hz_value,
+		input.steer
+	)
+
+
+## ===== PRESENTATION ====================================================
+
+
+## Writes this tick's contact geometry onto the part meshes. Doc 05 §16.
+##
+## [b]Presentation following the simulation, which is the direction
+## Architectural Invariant I-1 permits.[/b] What the invariant forbids is the
+## reverse — a collider derived from a mesh, or a visual transform that a
+## physics query can see. Nothing here is read back: every quantity was produced
+## by a family solver earlier in this same tick, the colliders stay exactly where
+## the part was placed, and a build with the meshes switched off simulates
+## identically.
+##
+## It runs here rather than inside the families because §6.0 rule 1 says a family
+## contributes forces and nothing else, and that rule is worth keeping literally
+## true. The branch below is the same [member _family] dispatch §11 invariant 12
+## sanctions, asking a different question of the same array.
+##
+## A dedicated server has no meshes at all — the [code]part_visual[/code] tag is
+## off, [method AssemblyRuntime.visual_of] answers null for every slot, and this
+## costs one dictionary lookup per Motive Assembly and nothing else.
+func _drive_visuals() -> void:
+	for slot: int in _motive_slots:
+		var node := runtime.visual_of(slot)
+		if node == null:
+			continue
+		var def := _definition(slot)
+		if def == null or def.visual_profile == null:
+			continue
+		var st: PartInstanceState = runtime.states[slot]
+		match _family[slot]:
+			PartEnums.LocomotionMode.ROTARY:
+				# A disc has no ground contact and no suspension to show. Spinning
+				# it is doc 13's, not this system's.
+				pass
+			PartEnums.LocomotionMode.AMBULATORY:
+				var limb: LimbState = _limbs.get(slot)
+				if limb == null:
+					continue
+				node.transform = PartMeshFactory.limb_pose(
+					def.visual_profile,
+					st.origin_cell,
+					st.orientation_index,
+					limb.hip_local,
+					# Into the chassis frame the mesh's transform lives in. The
+					# body's pose rather than `VisualRoot`'s: the interpolator
+					# writes the latter on render frames, so reading it inside a
+					# physics tick would resolve the foot against a transform from
+					# part-way through the previous one.
+					runtime.body.global_transform.affine_inverse() * limb.foot_visual_world
+				)
+			_:
+				node.transform = PartMeshFactory.contact_pose(
+					def.visual_profile,
+					st.origin_cell,
+					st.orientation_index,
+					_mean_droop_m(slot, def.motive_profile)
+				)
+
+
+## Mean unconsumed suspension travel across [param slot]'s contacts, in metres.
+##
+## One mesh and, for a tracked patch, several road stations, so the part is drawn
+## at the average of its stations rather than at whichever one happens to be
+## first. Every other family carries a single contact and the mean is that
+## contact.
+func _mean_droop_m(slot: int, profile: MotiveAssemblyProfile) -> float:
+	var contacts: Array = _contacts.get(slot, [])
+	if contacts.is_empty():
+		return 0.0
+	var total := 0.0
+	for c: MotiveContact in contacts:
+		total += SuspensionSolver.droop_m(profile, c)
+	return total / float(contacts.size())
 
 
 ## ===== SHARED ==========================================================

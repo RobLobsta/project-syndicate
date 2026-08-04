@@ -353,3 +353,62 @@ func test_the_swing_arc_peaks_at_mid_swing() -> void:
 	check_approx(GaitSolver.swing_height_m(_limb, 0.0), 0.0, "on the ground at lift-off")
 	check_approx(GaitSolver.swing_height_m(_limb, 0.5), _limb.step_height_m, "peak at mid-swing")
 	check_approx(GaitSolver.swing_height_m(_limb, 1.0), 0.0, "and back down at touchdown")
+
+
+func test_swing_progress_spans_the_part_of_the_cycle_that_is_not_stance() -> void:
+	# Zero at lift-off and one at touchdown, with the duty factor as the origin.
+	# Written out against 0.62 rather than by calling the function twice: a
+	# progress measured from the top of the cycle instead of from lift-off is
+	# monotonic, in range, and wrong, and only a stated value catches it.
+	check_approx(GaitSolver.swing_progress(DUTY, DUTY), 0.0, "lift-off is the start of swing")
+	check_approx(GaitSolver.swing_progress(1.0, DUTY), 1.0, "and the top of the cycle its end")
+	# 0.81 is half way from 0.62 to 1.0.
+	check_approx(GaitSolver.swing_progress(0.81, DUTY), 0.5, "half way between them is mid-swing")
+
+
+func test_a_limb_in_stance_reports_no_swing_progress() -> void:
+	# Clamped rather than negative. The caller only asks while swinging, and a
+	# negative progress would put the drawn foot behind the point it left.
+	check_approx(GaitSolver.swing_progress(0.0, DUTY), 0.0, "the start of stance")
+	check_approx(GaitSolver.swing_progress(DUTY * 0.5, DUTY), 0.0, "and the middle of it")
+
+
+func test_a_limb_that_is_never_in_swing_divides_by_nothing() -> void:
+	# A duty factor of 1.0 is a legal profile — a limb permanently in stance —
+	# and the span it leaves for swing is zero.
+	check_approx(GaitSolver.swing_progress(1.0, 1.0), 0.0, "no swing to be part-way through")
+
+
+func test_the_drawn_foot_travels_from_the_plant_point_to_the_next_target() -> void:
+	var from := Vector3(0.0, 0.0, 2.0)
+	var to := Vector3(0.0, 0.0, -2.0)
+	check_true(
+		GaitSolver.swing_foot_world(_limb, from, to, 0.0).is_equal_approx(from),
+		"it leaves from where it was planted"
+	)
+	check_true(
+		GaitSolver.swing_foot_world(_limb, from, to, 1.0).is_equal_approx(to),
+		"and arrives exactly where the placement law is reaching for"
+	)
+	# Both halves of mid-swing, because either alone is satisfied by a defect:
+	# an arc that never lifts passes the horizontal test, and one that lifts
+	# without advancing passes the vertical.
+	var middle := GaitSolver.swing_foot_world(_limb, from, to, 0.5)
+	check_approx(middle.z, 0.0, "half way along the ground between them at mid-swing")
+	check_approx(middle.y, _limb.step_height_m, "and a full step height above the line")
+
+
+func test_the_drawn_foot_never_leaves_the_swing_whatever_it_is_handed() -> void:
+	# The progress is clamped inside the function as well as by its caller. A
+	# limb whose phase overshoots between ticks would otherwise draw its foot
+	# past the target and below the ground.
+	var from := Vector3.ZERO
+	var to := Vector3(0.0, 0.0, -2.0)
+	check_true(
+		GaitSolver.swing_foot_world(_limb, from, to, 1.8).is_equal_approx(to),
+		"past touchdown is touchdown"
+	)
+	check_true(
+		GaitSolver.swing_foot_world(_limb, from, to, -0.5).is_equal_approx(from),
+		"and before lift-off is the plant point"
+	)

@@ -591,6 +591,128 @@ func _at_rest() -> void:
 	await physics_frames(SETTLE_TICKS)
 
 
+## ===== WHERE THE WHEEL IS DRAWN (doc 05 §16) ===========================
+
+
+func test_the_authored_rows_follow_the_rest_length_convention() -> void:
+	# §6.1's resolution, and the premise the two tests below are read against:
+	# rest length is one full travel past the rolling radius, so full droop puts
+	# the disc exactly on the surface and a bottomed-out one puts it in the cell
+	# it was placed in. Asserted here rather than assumed, because if this ever
+	# stops holding it is the assertions that follow that go quietly wrong.
+	for key: StringName in [WHEEL_KEY, REAR_KEY] as Array[StringName]:
+		var profile := PartRegistry.definition_by_key(key).motive_profile
+		check_approx(
+			profile.suspension_rest_length_m,
+			profile.contact_radius_m + profile.suspension_travel_limit_m,
+			"%s: rest length is radius plus travel" % key
+		)
+
+
+func test_a_settled_wheel_is_drawn_below_the_cell_it_was_placed_in() -> void:
+	# The gap this section closed. Before it, the mesh sat at its placement pose
+	# for the whole match — so on real relief the discs hung in the air over
+	# every crest and the Assembly read as a prop sliding over the ground.
+	#
+	# Asserted against the probe's own reported distance and the authored rolling
+	# radius, not against the compression the source subtracts: a droop derived
+	# from the wrong quantity, or subtracted the wrong way, still moves the mesh
+	# and still moves it by a plausible amount.
+	await _at_rest()
+	for slot: int in _motion.motive_slots():
+		var st := _runtime.state(slot)
+		var def := _runtime.definition_at(slot)
+		var node := _runtime.visual_of(slot)
+		if not check_not_null(node, "slot %d has a mesh to place" % slot):
+			continue
+		var contact := _motion.contact_at(slot, 0)
+		if not check_true(contact.grounded, "slot %d is standing on something" % slot):
+			continue
+		var placed := PartMeshFactory.pose(
+			def.visual_profile, st.origin_cell, st.orientation_index
+		)
+		var drop := placed.origin - node.transform.origin
+		check_approx(
+			drop.y,
+			contact.distance_m - def.motive_profile.contact_radius_m,
+			"slot %d hangs by exactly the gap between its hub and the surface" % slot,
+			0.001
+		)
+		check_true(drop.y > 0.0, "which is below its placement, not above it")
+		check_approx(drop.x, 0.0, "and straight down the hull rather than across it", 0.001)
+		check_approx(drop.z, 0.0, "or along it", 0.001)
+
+
+func test_the_drawn_wheel_stands_on_the_surface_its_probe_found() -> void:
+	# The same fact stated where a player would see it, in world space: the disc
+	# is drawn one rolling radius above the ground, so it touches. The placement
+	# pose is asserted alongside it as the thing that would have been wrong —
+	# a test that only measured the new position would pass just as happily
+	# against a wheel that had never been floating.
+	#
+	# The slab is flat, so the contact normal is world up and the separation is a
+	# height. The body transform is read rather than `VisualRoot`'s: the
+	# interpolator writes that on render frames, and reading it here would resolve
+	# the mesh against a pose from part-way through the previous tick.
+	await _at_rest()
+	var slot := _motion.motive_slots()[0]
+	var st := _runtime.state(slot)
+	var def := _runtime.definition_at(slot)
+	var node := _runtime.visual_of(slot)
+	if not check_not_null(node, "the front-left disc has a mesh"):
+		return
+	var contact := _motion.contact_at(slot, 0)
+	var probe := _runtime.motive_probes_of(slot)[0]
+	var radius := def.motive_profile.contact_radius_m
+	var placed := PartMeshFactory.pose(def.visual_profile, st.origin_cell, st.orientation_index)
+	# The hub sits at the part's centre of mass, which is where the probe is; the
+	# mesh node's own origin is its pivot cell. The difference between the two is
+	# fixed and is what carries an assertion about the hub onto the drawn node.
+	var hub_offset := probe.position - placed.origin
+	var drawn_hub := _runtime.body.global_transform * (node.transform.origin + hub_offset)
+	var placed_hub := _runtime.body.global_transform * (placed.origin + hub_offset)
+
+	check_approx(
+		drawn_hub.y - contact.point_world.y,
+		radius,
+		"the drawn disc rests one rolling radius above the surface",
+		0.02
+	)
+	check_true(
+		placed_hub.y - contact.point_world.y > radius + 0.02,
+		"where the placement pose would have left it hanging clear of the ground"
+	)
+
+
+func test_a_wheel_with_nothing_under_it_extends_the_whole_travel() -> void:
+	# The other end of the range, and the case the match actually shows: an
+	# Assembly airborne over a crest drops its discs to full droop rather than
+	# tucking them into the hull. Frozen rather than dropped, so the probes sweep
+	# from a known height and the measurement is the geometry alone.
+	await _at_rest()
+	_runtime.body.freeze = true
+	_runtime.body.global_transform = Transform3D(Basis(), Vector3(0.0, 40.0, 0.0))
+	await physics_frames(4)
+
+	for slot: int in _motion.motive_slots():
+		var st := _runtime.state(slot)
+		var def := _runtime.definition_at(slot)
+		var node := _runtime.visual_of(slot)
+		if node == null:
+			continue
+		check_false(_motion.contact_at(slot, 0).grounded, "slot %d found nothing" % slot)
+		var placed := PartMeshFactory.pose(
+			def.visual_profile, st.origin_cell, st.orientation_index
+		)
+		check_approx(
+			(placed.origin - node.transform.origin).y,
+			def.motive_profile.suspension_travel_limit_m,
+			"slot %d hangs at full travel" % slot,
+			0.001
+		)
+	_runtime.body.freeze = false
+
+
 ## ===== TRACTION CONTROL (doc 05 §7.6) ==================================
 
 
