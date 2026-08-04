@@ -198,61 +198,35 @@ static func diagonal_of(t: Basis) -> Vector3:
 
 ### 3.4 Off-Diagonal Coupling Correction
 
-Godot's `RigidBody3D.inertia` is a `Vector3` — it sets the diagonal of the inertia tensor in body space and assumes the products of inertia are zero. Real Assemblies are asymmetric (a single heavy Effector Module on the left flank), so the true tensor has significant off-diagonal terms. Ignoring them produces rotation that feels subtly wrong: a lopsided Assembly should precess and yaw-couple under roll input, and with a diagonal tensor it does not.
+`RigidBody3D.inertia` is a `Vector3`: it sets the diagonal of the inertia tensor in body space and takes the products of inertia to be zero. Real Assemblies are asymmetric — a single heavy Effector Module on one flank — so the true tensor has significant off-diagonal terms, and discarding them produces rotation that feels subtly wrong. A lopsided Assembly should precess and yaw-couple under roll input, and with a diagonal tensor it does not: it reads as a vehicle that is weightless rather than as a missing term.
 
-The correction applies the residual gyroscopic torque explicitly. Euler's equation in the body frame is:
+**The server integrates `I_diag ω̇ = τ` and applies no gyroscopic term at all.** That is measured, not assumed: `tests/physics/test_inertia_coupling.gd::test_the_server_applies_no_gyroscopic_term_of_its_own` spins an Assembly whose three principal moments differ by 15% about its **intermediate** axis — the configuration that tumbles fastest in reality — and the angular velocity is unchanged to seven significant figures after five simulated seconds. A free rigid body cannot do that.
 
-```
-I ω̇ + ω × (I ω) = τ
-```
-
-Godot solves this with `I_diag`. To make the body behave as if it had `I_full`, the residual gyroscopic difference is applied as an external torque each physics tick:
+So the whole gyroscopic term of Euler's equation `I ω̇ + ω × (I ω) = τ` has to be supplied as an external torque:
 
 ```
-τ_couple = ω × (I_diag ω) − ω × (I_full ω)
+τ_couple = − ω × (I_full ω)
 ```
+
+**Evaluated at the midpoint of the tick, not at its start.** The continuous torque is perpendicular to `ω` and does no work, but sampling it once per tick and holding it across the step does: measured on a 6 rad/s spin, explicit Euler added about **16%** of the rotational energy over five seconds, which §11 invariant 10 forbids outright. Stepping `ω` half a tick along `ω̇ = I_diag⁻¹ τ` and re-evaluating there costs one extra cross product and turns that into a **3% loss** over the same soak. A correction that bleeds a little energy cannot destabilise an Assembly; one that adds it spins a wreck up out of nothing, so the asymmetry is the right way round and the test asserts the gain bound tightly and the loss bound loosely.
 
 ```gdscript
 const COUPLING_TORQUE_LIMIT_NM := 24000.0
 
-func _apply_coupling_torque(body: RigidBody3D, mp: MassSolver.MassProperties) -> void:
-    var w_world := body.angular_velocity
-    var b := body.global_transform.basis
-    var w := b.inverse() * w_world                      # body-frame angular velocity
-    var diag_term := w.cross(Vector3(
-        mp.inertia_diag.x * w.x, mp.inertia_diag.y * w.y, mp.inertia_diag.z * w.z))
-    var full_term := w.cross(mp.inertia_full * w)
-    var tau := (diag_term - full_term).limit_length(COUPLING_TORQUE_LIMIT_NM)
-    body.apply_torque(b * tau)
+func _apply_coupling_torque(dt: float) -> void:
+    var mp := runtime.mass_properties
+    if mp == null:
+        return
+    var b := runtime.body.global_transform.basis
+    var w := b.inverse() * runtime.body.angular_velocity
+    var half := w + _angular_accel(mp, w) * (dt * 0.5)
+    var tau := _gyroscopic_torque(mp, half).limit_length(COUPLING_TORQUE_LIMIT_NM)
+    runtime.body.apply_torque(b * tau)
 ```
 
-This reproduces the steady-state coupling exactly and the transient response to within a few percent, because it omits the `(I_diag − I_full) ω̇` term. That omission is bounded and stable: `ω̇` is itself limited by the torque budget, and the clamp on `τ_couple` guarantees the correction can never inject energy faster than the solver removes it. `tests/physics/test_inertia_coupling.gd` verifies that an asymmetric Assembly spun about its intermediate axis exhibits the expected tumbling within 5% of the analytic solution over 10 seconds.
+The `(I_diag − I_full) ω̇` term is omitted: the server divides by the diagonal tensor whatever is handed to it, and correcting for that too would need the torque premultiplied by `I_diag I_full⁻¹`. The steady-state coupling is exact without it and the transient is within a few percent. The clamp is what guarantees the omission can never inject energy faster than the solver removes it.
 
-> **Amendment — resolved. The premise above was false and the formula is replaced.**
->
-> "Godot solves this with `I_diag`" asserts that the server integrates `I ω̇ + ω × (I ω) = τ` with the diagonal tensor. It does not. `tests/physics/test_inertia_coupling.gd::test_the_server_applies_no_gyroscopic_term_of_its_own` puts an Assembly whose three principal moments differ by 15% into a spin about its **intermediate** axis — the configuration that tumbles fastest in reality — and measures the angular velocity unchanged to seven significant figures after five simulated seconds. A free rigid body cannot do that. The server integrates `I_diag ω̇ = τ` and applies no gyroscopic term at all.
->
-> The `+ ω × (I_diag ω)` half of the difference was therefore cancelling a term nothing produced. The whole gyroscopic term has to be supplied instead:
->
-> ```
-> τ_couple = − ω × (I_full ω)
-> ```
->
-> **Evaluated at the midpoint, not at the tick boundary.** The continuous torque is perpendicular to `ω` and does no work, but sampling it once per tick and holding it across the step does: measured on a 6 rad/s spin, explicit Euler added about **16%** of the rotational energy over five seconds, which §11 invariant 10 forbids outright. Stepping `ω` half a tick along `ω̇ = I_diag⁻¹ τ` and re-evaluating there costs one extra cross product and turns that into a **3% loss** over the same soak. A correction that bleeds a little energy cannot destabilise an Assembly; one that adds it spins a wreck up out of nothing, so the asymmetry is the right way round and the test asserts the gain bound tightly and the loss bound loosely.
->
-> ```gdscript
-> func _apply_coupling_torque(dt: float) -> void:
->     var mp := runtime.mass_properties
->     if mp == null:
->         return
->     var b := runtime.body.global_transform.basis
->     var w := b.inverse() * runtime.body.angular_velocity
->     var half := w + _angular_accel(mp, w) * (dt * 0.5)
->     var tau := _gyroscopic_torque(mp, half).limit_length(COUPLING_TORQUE_LIMIT_NM)
->     runtime.body.apply_torque(b * tau)
-> ```
->
-> The omission of the `(I_diag − I_full) ω̇` term stands: the server divides by the diagonal tensor whatever is handed to it, and correcting for that too would need the torque premultiplied by `I_diag I_full⁻¹`. The steady-state coupling is exact without it and the transient is within a few percent, which is what the paragraph above this block already claimed.
+> **What this section used to say.** It derived the correction as the *difference* between the diagonal and full gyroscopic terms — `τ_couple = ω × (I_diag ω) − ω × (I_full ω)` — on the stated premise that "Godot solves this with `I_diag`", meaning that the server integrated the full Euler equation using the diagonal tensor. It does not, so the first half of that expression was cancelling a term nothing produced. The premise survived because it is what a reader expects a physics engine to do, and it was only falsified when a test span a body about its intermediate axis and watched it refuse to tumble.
 
 ### 3.5 Application to the Body
 
@@ -654,20 +628,18 @@ The available friction force magnitude:
 F_max = μ_eff · N · f(s)
 ```
 
-directed opposite the slip velocity, then split back into longitudinal and lateral components proportionally:
+split back into longitudinal and lateral components in proportion to the slip that produced them:
 
 ```
 F_long = +F_max · (κ / κ_peak) / s
 F_lat  = −F_max · (tan α / tan α_peak) / s
 ```
 
-This is a **friction circle**: a wheel spending its grip on cornering has none left for acceleration, which is the correct and interesting behaviour.
+This is a **friction circle**: a contact spending its grip on cornering has none left for acceleration, which is the correct and interesting behaviour.
 
-**Amendment — the longitudinal sign.** This section originally wrote both components as negative. That is wrong, and it is wrong in a way that inverts the throttle: with `κ = (ω·r − v_long)/…` from §7.1, a driven contact has **positive** κ, so a negative `F_long` pushes the Assembly backwards. Pressing the accelerator would have decelerated it.
+**The two signs differ, and the asymmetry is real rather than a typo.** Both components oppose the contact patch's sliding, but §7.1 defines the two slip quantities with opposite senses. `κ` is `(ω·r − v_long)`, which is already the *negative* of the patch's slip velocity — a contact turning faster than the ground slides its patch backwards and is pushed forwards — so a driven contact has positive `κ` and must produce positive `F_long`. `tan α` follows `v_lat` directly, with no such inversion, so a contact sliding right is pushed left and keeps its minus sign.
 
-The asymmetry between the two signs is real, not a typo being papered over. Both components oppose the contact patch's sliding, but the two slip quantities are defined with opposite senses. `κ` is `(ω·r − v_long)`, which is already the *negative* of the patch's slip velocity — a contact turning faster than the ground slides its patch backwards and is pushed forwards. `tan α` follows `v_lat` directly, with no such inversion, so a contact sliding right is pushed left and keeps its minus sign.
-
-§7.4's equation is the check: `I_c · ω̇ = τ_drive − τ_brake − F_long · r` only makes sense with `F_long` positive under drive, since that term is the ground *retarding* the spin-up of a driven contact. The two sections disagreed, and §7.4 was the one that was right. The conflict was invisible while nothing implemented either, and surfaced on the first test that asserted a driven contact accelerates the Assembly it is attached to.
+§7.4's equation is the check: `I_c · ω̇ = τ_drive − τ_brake − F_long · r` only makes sense with `F_long` positive under drive, since that term is the ground *retarding* the spin-up of a driven contact.
 
 ```gdscript
 const V_REF := 0.8
@@ -694,8 +666,10 @@ func _traction_forces(c: MotiveContact, mp: MotiveAssemblyProfile,
     var f := sin(PACEJKA_C * atan(PACEJKA_B * s)) / _pacejka_norm
     var mu := _effective_mu(mp, normal_n, band, c.surface_id)
     var f_max := mu * normal_n * f
-    return Vector2(-f_max * sx / s, -f_max * sy / s)
+    return Vector2(f_max * sx / s, -f_max * sy / s)
 ```
+
+> **What this section used to say.** It wrote both components as negative, and the code block above carried the negative longitudinal sign for four sessions after the prose was corrected — so a reader following the code implemented an inverted throttle while a reader following the prose did not. It is wrong in a way that is invisible until something is asked to move: with a negative `F_long`, pressing the accelerator decelerates the Assembly. §7.2 and §7.4 disagreed, §7.4 was right, and the conflict was undetectable while nothing implemented either.
 
 ### 7.3 Effective Friction Coefficient
 
@@ -794,19 +768,28 @@ The zero-crossing guard on braking is what prevents the contact from oscillating
 >
 > It does not diverge, because §7.2's curve saturates. It settles into a limit cycle. Measured on a build standing still on level ground with no throttle and no brake: `ω` reverses **every single tick** — +0.81, −4.29, +0.90, −4.43, +0.78, −4.44 rad/s — with the slip ratio swinging between +0.56 and −2.95 against a peak of 0.14, and two of the four contacts reading zero load throughout because the hull is rocking on the other two. That is §10's stutter arriving from the one place §10 does not look. What a player sees is the parked Assembly that shivers, wanders two to three metres over an engagement, and never comes to rest.
 >
-> **The repair is known and is not a smaller step, a softer curve, or a damping term.** It is that a friction force may not do more than stop the sliding it opposes — the idea behind this section's own brake zero-crossing guard, one level down. Work in the slip velocity `u = ω·r − v_long`, whose update carries a term for each body the force acts on:
+> **The repair is known, and it is not a smaller step, a softer curve, or a damping term.** It was built twice and reverted twice, and both wrong turns are recorded because each of them looks correct on paper.
 >
-> ```
-> u' = u + dt · ( r·τ/I_c − F_long · A )        A = r²/I_c + 1/m_share
-> ```
+> The scheme that works has three parts:
 >
-> and where a whole tick of `F_long` would carry `u` through zero — and only where that force could have done it alone, not where `τ` is spinning the contact through the rolling condition — answer instead with the force that lands `u` exactly **on** zero, `F = (u/dt + r·τ/I_c) / A`. The contact has stopped sliding; a real one would have stuck. The lateral axis takes the same law with no torque term, so its nulling force is `|v_lat| · m_share / dt`. Both may only ever *reduce* a force, so neither can inject energy (§11 invariant 10); both are exact at the transition rather than asymptotic; and both are silent under drive, so §7.6's launch and wheelspin behaviour is untouched.
+> 1. **Step the slip velocity, not the rate.** `u = ω·r − v_long` is the quantity the friction actually depends on, and `ω = (v_long + u) / r` is read back off it afterwards, so the contact follows an accelerating hull for free.
 >
-> **It was built, measured, and reverted, and the measurements are why it is recorded here rather than shipped.** Against the suite: the resting contact went from eleven sign reversals in twelve ticks to none, the parked build's drift from 2–3 m to 0.49 m with its speed decaying 0.39 → 0.08 m/s, and full-throttle acceleration *rose* from 3.87 to 8.06 m/s over the same window, because the chatter had been spending grip on nothing. It also moved everything else: part-throttle response fell from over 2.0 to 1.60 m/s, an imposed 1 rad/s yaw decayed to 0.057 rad/s in six ticks where the fixture expects a quarter of it to survive, and the AI engagement reached its stand-off but fired one round where it had fired ten.
+>    ```
+>    u' = u + dt · ( r·τ/I_c − F_long · A ) / ( 1 + dt · A · k )
+>    A  = r²/I_c + 1/m_share          # reciprocal reduced mass of the slip
+>    ```
 >
-> None of those is a defect in the repair. They are the same measurement from the other side: **the chatter was destroying lateral grip by a factor of about 37** — a combined slip of ±20 puts `sy/s` near zero, so `F_lat` was a thirty-seventh of the budget — and every handling constant in the project was tuned against a machine that could not corner and could not hold a heading. Fixing the step makes the Assembly grip, and what it exposes is that the *authored* drive torque, steering lock, and yaw-controller authority were compensating for it. That is a `balance-review` pass with a capture, not a bug fix, and doing it half-way would be worse than the defect. `tests/physics/test_rest_stability.gd` measures the defect and is asserted as it fails.
+> 2. **Take `k` as the chord `|F|/|u|`, never the tangent at zero.** The tangent bounds every slope and is the natural choice; it also over-damps a contact far from the rolling condition by a factor of **317**, so one knocked to a slip of −0.05 m/s takes forty ticks to recover and drags kilonewtons the whole time. An implicit factor is a statement about how fast the state may move, so an overestimate is not conservative — it is a brake nobody meant to fit.
 >
-> **Rolling resistance goes in with that repair and not before.** It is authored per part in doc 01 §7.2, given a degradation column in §7.3 above, implemented as `TractionSolver.rolling_resistance_n`, and called by nothing, so a coasting contact has no dissipation of any kind — §7.2's friction drives the slip toward zero and produces nothing there, and a build set rolling on level ground rolls forever. It belongs in `τ` as a torque opposing the spin, summed with the brake before the sign is taken so neither is applied in the direction the other resists, and covered by the same zero-crossing guard: a rolling resistance that reversed a contact would be driving the Assembly along. On its own, inside an unstable step, it is a small correct term inside a large wrong one.
+> 3. **Cap any friction force that would reverse the slip it opposes**, on both axes, answering instead with the force that lands the slip exactly on zero — the contact has stuck. On the lateral axis the arithmetic collapses to `|v_lat| · m_share / dt`, and that axis is the one that decides whether a stationary Assembly stays put. Both caps only ever *reduce* a force, so neither can inject energy (§11 invariant 10); both are exact at the transition rather than asymptotic; and both are silent under drive, so §7.6's launch and wheelspin behaviour is untouched.
+>
+> **The wrong turn worth naming**: damping `ω` implicitly instead of the slip. It is unconditionally stable and kills the limit cycle exactly as intended, and the fictitious inertia that damps the residual also resists a contact genuinely spinning up with an accelerating hull. Full throttle measured **0.20 m/s**.
+>
+> In isolation the scheme measures well — full throttle 6.06 m/s², quarter throttle 3.75 m/s over 150 ticks, and a build set rolling at 0.4 m/s actually comes to rest instead of coasting for ever. **In the game it does not, and the reason is not in this section.** With the integrator corrected, the shipped build produces 0.09 m/s under full throttle and a porpoising hull, because **two of its four contacts carry no load at all** — it has been standing on two wheels for the life of the project, and §7.4's chatter was producing enough force to hide it. `HANDOFF.md` §3.1.1 owns that, and it has to be closed first: on a two-wheeled stance a correct integrator looks like a broken one.
+>
+> `tests/physics/test_rest_stability.gd` measures the defect and is asserted as it fails.
+>
+> **Rolling resistance goes in with the repair and not before.** It is authored per part in doc 01 §7.2, given a degradation column in §7.3 above, implemented as `TractionSolver.rolling_resistance_n`, and called by nothing, so a coasting contact has no dissipation of any kind — §7.2's friction drives the slip toward zero and produces nothing there. It belongs in `τ` as a torque opposing the spin, summed with the brake before the sign is taken so neither is applied in the direction the other resists, and covered by the same zero-crossing guard. On its own, inside an unstable step, it is a small correct term inside a large wrong one.
 
 **Amendment — naming.** This section originally wrote `wheel_omega`, `m_wheel`, and `_integrate_wheel`. `CLAUDE.md` §8 prohibits *wheel* in identifiers, and §7.1's own contact frame already uses the neutral vocabulary. The conflict was invisible while nothing implemented the section; it surfaced the moment the traction solver was written, and the document was corrected rather than the code allowed to diverge from it. `MotiveContact.contact_omega` is the field name throughout. The prose retains the word where it is explaining a physical intuition, which §8 permits and which is the same latitude §10.3 of document 01 already takes with its `mot.wheeled.*` family tags.
 

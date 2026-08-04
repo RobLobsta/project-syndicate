@@ -20,6 +20,36 @@ There is no health bar. There is a vehicle, and there are the parts it is made o
 
 ---
 
+## Where It Is Now
+
+This section is the honest one, and it is here because everything below it is
+written in the present tense.
+
+**The loop closes.** `godot --path .` opens on a menu. The menu opens a garage
+where you place modules on the lattice against a live read-out of mass, power,
+mounts, top speed, integrity and rollover threshold; mirroring places both flanks
+at once and undo takes a misclick back. TEST DRIVE puts what you built into a
+basin with fifteen metres of relief against three opponents that close, aim, and
+shoot back. A card says which way it went and offers a rematch or the garage.
+
+**Built and working:** the part registry and schema, the build lattice and
+placement validator, the chassis graph and event-driven detachment, mass and
+inertia, all four locomotion families, the damage resolver and its five channels,
+direct-fire effectors and projectiles, melee, deformable ground with permanent
+craters, the AI opponents, the match HUD, and the boot and screen flow.
+
+**Specified but not built:** structure fracture and collapse
+(`PROCEDURAL_STRUCTURE_SLICING`), procedural vehicle generation
+(`AUTO_ASSEMBLE_ALGORITHM`), arced and guided ordnance, visual damage states,
+repair, and networked multiplayer. Where a section below describes one of these,
+it says so.
+
+**Known rough edges** are kept in `HANDOFF.md` — including the ones a player would
+notice first, which is the point of keeping them somewhere a contributor reads
+before starting.
+
+---
+
 ## What Makes It Different
 
 ### Damage that means something specific
@@ -57,9 +87,13 @@ And a beam blade cuts by sweeping a volume, mostly thermal, which is why it goes
 
 Explosions carve craters into the terrain — real bowls with raised ejecta rims, permanent for the rest of the match. Crater interiors are worse to drive through. Crater rims are cover.
 
-Structures fracture along pre-computed fault lines into individual sections, and sections that lose their path to the ground come down. A corner can collapse while the rest of the building stands. Beam and melee weapons cut fresh geometry through fragments in real time.
+*Structure fracture is specified and not yet built.* The intent: structures
+fracture along pre-computed fault lines into individual sections, and sections
+that lose their path to the ground come down. A corner can collapse while the
+rest of the building stands. Beam and melee weapons cut fresh geometry through
+fragments in real time.
 
-### Auto-assemble
+### Auto-assemble — *specified, not yet built*
 
 Don't want to build? Pick an archetype — skirmisher, brawler, artillery, bastion, harrier, support, rotorcraft, strider — a budget, and a tier ceiling. A constraint solver builds you a legal, competent machine from parts you actually own, using the same placement rules your cursor uses. Or lock the parts you've already placed and let it finish the job around them.
 
@@ -114,20 +148,38 @@ CLAUDE.md     Engineering source of truth — read this before contributing
 
 ## Building and Running
 
+Nothing is installed by default. One command provisions the pinned engine into
+`.tooling/`, which is gitignored in full:
+
+```bash
+tools/ci/bootstrap_env.sh          # Godot 4.7.1-stable, ~75 MB, about 30 s
+```
+
+Run the engine through the wrapper rather than the binary — it redirects Godot's
+`XDG_*` directories into `.tooling/`, and without it the engine scatters editor
+settings and shader caches across `$HOME` and CI stops being reproducible:
+
 ```bash
 # Open in the editor
-godot --editor --path .
+tools/ci/godot.sh --editor --path .
 
 # Run the client
-godot --path .
+tools/ci/godot.sh --path .
 
 # Run a dedicated server
-godot --headless --path . --main-scene res://scenes/net/dedicated_server.tscn \
+tools/ci/godot.sh --headless --path . \
+      --main-scene res://scenes/net/dedicated_server.tscn \
       -- --port=27015 --max-players=16 --map=arena_basin
 
-# Run the full validation suite
-godot --headless --path . --script tools/ci/run_all_checks.gd
+# Run the full validation suite — about 210 s
+tools/ci/run_all_checks.sh
 ```
+
+Use the wrapper for the suite and not the `.gd` runner directly: the runner
+counts recorded assertion failures and nothing else, so a null dereference or a
+failed `assert()` prints to stderr and lets the run continue. The shell wrapper
+tees the run and fails on any engine error, which is the only thing that catches
+a whole class of defect.
 
 ---
 

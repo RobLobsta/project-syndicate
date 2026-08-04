@@ -16,6 +16,7 @@ can be found again.
 
 | § | What is in it |
 |---|---|
+| 0 | Where the old `HANDOFF.md` section numbers went — the one copy |
 | 1 | Engine facts, verified against Godot 4.7.1 in this repository |
 | 2 | What the fault sweeps taught, and what uncaught faults taught |
 | 3 | Conventions for adding to the suite |
@@ -23,7 +24,7 @@ can be found again.
 
 ---
 
-### Where the old section numbers went
+## 0. Where the old section numbers went
 
 These three files were one `HANDOFF.md` until session 24. Older comments in
 `src/`, `tests/` and `tools/` refer to its sections, and so does some text kept
@@ -801,16 +802,60 @@ different fact. Read a citation with its subject, which is always named.
 
     Three things to carry from it. **An unstable step in a saturating model
     presents as noise, not as a crash** — look for it wherever a force is a steep
-    function of the state it is integrated against. **Stabilising it is not a
-    damping term**: an implicit formulation was built first, and the fictitious
-    inertia that damped the residual also resisted a contact genuinely spinning
-    up with an accelerating hull, which took full-throttle acceleration to
-    0.20 m/s while fixing the rest perfectly. What works is the impulse rule — a
-    friction force may not do more than stop the sliding it opposes — because it
-    can tell those two cases apart. And **the chatter was destroying lateral grip
-    by about 37×**: a combined slip of ±20 puts `sy/s` near zero, so every
-    handling constant in this project was tuned against a machine that could not
-    corner. Doc 05 §7.4 carries the whole of it.
+    function of the state it is integrated against. **The chatter was destroying
+    lateral grip by about 37×**: a combined slip of ±20 puts `sy/s` near zero, so
+    every handling constant in this project was tuned against a machine that
+    could not corner. And **stabilising it is not a damping term** — see fact 73,
+    which is the part that cost the second session.
+
+73. **Stabilising a stiff contact: the two ways to do it wrong, both measured.**
+    Fact 72 is the defect; this is the repair, and it is recorded separately
+    because both wrong turns look correct on paper and each costs most of a day.
+
+    **Wrong turn one: damp the rate.** Take `I_c ω̇ = τ − r·F(ω)` implicitly in
+    `ω`, so the stiffness lands in the denominator as `I_c + dt·r·k`. It is
+    unconditionally stable, it kills the limit cycle exactly as intended, and it
+    is wrong, because the fictitious inertia that damps the residual also resists
+    a contact **genuinely spinning up with an accelerating hull**. Measured: full
+    throttle reached **0.20 m/s**. The cure is to step the quantity the friction
+    actually depends on — the slip velocity `u = ω·r − v_long` — and reconstruct
+    `ω = (v_long + u)/r` afterwards. The contact then follows the hull for free
+    instead of having to be integrated into following it.
+
+    **Wrong turn two: use the tangent at zero as the stiffness.** It is the
+    natural choice and the reasoning is sound as far as it goes: §7.2's curve is
+    steepest at the origin, so that slope bounds every other slope, and an
+    implicit step is stable for any bound at or above the true one. What the
+    reasoning omits is the cost of overestimating. Measured on the shipped build,
+    the tangent over-damps by a factor of **317**, so a contact knocked to a slip
+    of −0.05 m/s takes forty ticks to recover and drags several kilonewtons the
+    whole time — and the Assembly does not accelerate at all. The chord
+    `|F| / |u|` is the average slope actually traversed, is never above the
+    tangent, collapses to the right small number past the peak, and costs one
+    division of two quantities already in hand.
+
+    The general shape, and it is worth more than the contact: **an implicit
+    factor is a statement about how fast the state may move, so an overestimate
+    is not conservative — it is a brake you did not intend to fit.** Bound it by
+    what the system actually did over the step, not by the worst it could ever do.
+
+74. **The reference build stands on two of its four wheels, and has for the life
+    of the project.** With the shipped starter settled on level ground, two of the
+    four contacts report **zero normal load**, permanently; the hull rocks on the
+    other two. Nothing noticed, because fact 72's chatter produced enough force
+    anyway — and it is what makes fact 73's repair look broken, since a correct
+    integrator on a two-wheeled stance gives 0.09 m/s under full throttle and a
+    porpoising hull.
+
+    **The obvious cause is not the cause.** The right-hand wheel cells are
+    authored one cell forward of the left — `(28, 3, 21)` against `(19, 3, 22)` —
+    which looks exactly like the off-by-one that doc 02 §10's mirror used to have.
+    It is not. Squaring them up fails
+    `tests/unit/test_mirroring.gd::test_the_shipped_starter_is_its_own_mirror`
+    immediately: the mirror is correct and the wheel's pivot is off-centre, so
+    cells that are symmetric are metres that are not. Whatever is wrong is
+    downstream of the cells, and the unmeasured quantity is where the four contact
+    patches actually sit in world space.
 
 ---
 
