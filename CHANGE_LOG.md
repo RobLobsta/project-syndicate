@@ -58,9 +58,39 @@ they found are in `LEARNED_FACTS.md`.
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+| 34 | **The Crossout-scale rebuild, executed and measured, then reverted.** The reference build goes from 1107 kg at 46 kg/m³ standing on two of its four wheels to **3630 kg at 141 kg/m³ standing on all four**, with the wheelbase from 35% to 73% of the hull and the static split from 100% front to 41%. The registry validates and the proportions instrument confirms it. Reverted because the fixture fallout is 396 assertions across 28 files; `HANDOFF.md` §3.1.2 carries every number that produced the measurement. |
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 34, in more detail
+
+The rebuild was run rather than proposed, which is the only reason §3.1.2 is worth
+anything: the uncertain half — does this design actually put four wheels on the
+ground, and does the registry accept it — is answered, and what is left is
+mechanical.
+
+The cabin goes from 4×3×5 cells to **6×4×13** and the autocannon comes *down*
+from 9 cells to 7, which is the whole silhouette problem: the weapon was 50% of
+the vehicle's length and the cabin 28%. With the cabin spanning thirteen cells the
+gun tucks onto the roof instead of hanging 1.12 m past the front axle, and the
+hubs reach the ends of the hull for a 2.75 m wheelbase.
+
+Two traps were paid for on the way. `validate_part_registry` refused a 3-cell-wide
+repeater under doc 01 §14 rule 27 — an odd-width module cannot centre on an
+even-width hull and Invariant I-6 leaves no half-cell to correct with. And raising
+mass without the geometry was measured as worthless: on the old layout it moves
+the split from 73/27 to 70/30, because a 1.50 m wheelbase turns a centimetre of
+centre-of-mass shift into 0.7 points.
+
+**On the sources.** Every Crossout domain — `crossout.net`, both Fandom wikis,
+`crossoutdb.com`, `steamcommunity.com`, `forum.crossout.net`, `en.namu.wiki` — is
+refused at the CONNECT by this environment's network policy, and the search quota
+was spent establishing it. Four figures survived and two are load-bearing: a
+medium cabin's tonnage of ≈5,300 kg, which is now `mass_tolerance_kg` directly,
+and a medium wheel at 110 kg, which said the wheels were nearly right and
+everything else three to five times too light. The rest of the scale is derived
+from those two and from real-vehicle bounding-box density.
 
 ### Session 33, in more detail
 

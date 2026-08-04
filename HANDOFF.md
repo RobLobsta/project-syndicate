@@ -323,54 +323,81 @@ anyone will try. The hubs mate under the Core Module, which spans five cells of
 validator refuses the placement. Reaching a real wheelbase needs the chassis to
 extend fore and aft first, which is §3.1.2's work.
 
-#### 3.1.2 The Crossout-scale rebuild
+#### 3.1.2 The Crossout-scale rebuild — proven, measured, and not yet landed
 
-Requested directly. The build is **46 kg/m³** — a third of a passenger car, a
-fifth of balsa — and its silhouette is a gun with a car attached: the autocannon
-is 9 cells and the Core Module 5, so the weapon is half the vehicle's length and
-the cabin a quarter.
+**It was built and it works.** Session 33 ran the whole rebuild, measured it, and
+reverted it because the fixture fallout is 396 assertions across 28 files and a
+red tree is not a deliverable. What is written below is not a proposal: every
+number in it was executed, validated by `tools/validate_part_registry.gd`, and
+measured by `tests/physics/test_build_proportions.gd`. Applying it again is
+mechanical.
 
-**The target numbers are not yet in hand and must not be invented.** Every
-Crossout source is refused by this environment's network policy — `crossout.net`,
-both Fandom wikis, `crossoutdb.com`, `steamcommunity.com`, `forum.crossout.net`
-and `en.namu.wiki` all answer 403 at the CONNECT, and the search quota was spent
-confirming it. What the searches did return before it ran out, and it is worth
-keeping:
-
-| Figure | Value | Source |
+| | before | after |
 |---|---|---|
-| Medium ("balanced") cabin tonnage | ≈ 5,300–5,400 kg | search snippet |
-| Medium cabin mass limit | ≈ 12,400–12,500 kg | search snippet |
-| Medium cabin top speed | 80 km/h | search snippet |
-| `Hermit` medium wheel mass | 110 kg | search snippet |
+| Mass | 1107 kg | **3630 kg** |
+| Density | 46 kg/m³ | **141 kg/m³** (a passenger car is 115) |
+| Wheelbase | 1.50 m — 35% of hull | **2.75 m — 73% of hull** |
+| Contacts loaded | **2 of 4** | **4 of 4** |
+| Static split | **100% front** | **41% front** |
 
-Two of those are already load-bearing. A medium Crossout build lives around
-**5 t** against Syndicate's 1.1 t, and a Crossout medium wheel is **110 kg**
-against `mot.wheeled.allroad.t2`'s 68 — so the wheels are nearly right and
-everything else is three to five times too light. That is the shape of the
-rebuild: **the hull is too small and too light around a gun that is close to
-correct**, not a gun that is too big.
+§3.1.1 is closed by it outright: the build stands on all four wheels and is very
+slightly rear-biased, which is where a road vehicle wants to be.
 
-In dependency order, and the first two are the expensive ones:
+**Parts** — the two corner vectors in `tools/author_*.gd`, which derive occupancy,
+attachment nodes, and the collider together, so all three move at once:
 
-1. **Geometry.** Grow the Core Module and the Structural Components in cells so
-   the cabin is the largest part and the weapon lands near a quarter of the hull.
-   Each part is an `occupancy_cells` array, an `attachment_nodes` set, and a
-   `ColliderProfile` that must still cover it — doc 01 §14 rule 8 checks the
-   coverage, so none of the three can move alone.
-2. **Layout.** Re-lay `starter_blueprint.gd` and `tests/combat_arena.gd` on the
-   bigger chassis, which is what finally allows a wheelbase over half the hull and
-   puts all four contacts on the ground. Doc 02 §10's mirror must still hold.
-3. **Mass.** Scale to the confirmed target. `rated_load_kg`, doc 05 §6.4's
-   suspension retune, `drive_torque_nm`, and `brake_torque_nm` are all derived
-   from it and move together.
-4. **Re-measure.** Every threshold in `tests/physics/` is against the old scale.
-   `test_build_proportions` and `test_rest_stability` are the two that are
-   supposed to go red, and both are re-measured rather than loosened.
+| part | cells before → after | `lo` → `hi` after | mass |
+|---|---|---|---|
+| `core.command.compact.t2` | 4×3×5 → **6×4×13** | `(-3,0,-6)`→`(2,3,6)` | 380 → **1800** |
+| `pmv.combustion.standard.t2` | 4×3×5 → 4×4×6 | `(-2,0,-3)`→`(1,3,2)` | 155 → 620 |
+| `cel.static.standard.t3` | 4×3×4 → 4×4×5 | `(-2,0,-2)`→`(1,3,2)` | 175 → 450 |
+| `eff.ballistic.autocannon_30.t3` | 4×4×9 → **4×3×7** | `(-2,0,-6)`→`(1,2,0)` | 196 → 420 |
+| `eff.ballistic.repeater_12.t2` | 4×3×6 → 4×2×5 | `(-2,0,-4)`→`(1,1,0)` | 78 → 150 |
+| `str.hub.axle_station.t2` | unchanged | — | 29 → 90 |
+| `mot.wheeled.allroad.t2` | unchanged | — | 68 → **110** |
+| `mot.wheeled.fixed_rear.t2` | unchanged | — | 62 → 105 |
+| `str.panel.medium.t2` | unchanged | — | 34 → 100 |
 
-**Do not start at step 3.** Raising mass alone leaves the stance and the
-silhouette exactly as they are, and it moves every measurement in the project for
-nothing.
+Also: core `integrity_max` 1450 → 4200, `load_capacity_kg` 3600 → 9000,
+`power_capacity_pu` 240 → 520, and `mass_tolerance_kg` 3600 → **5300**, which is
+Crossout's medium-cabin tonnage and the one figure taken directly from a source.
+Tracked, rotor, limb and beam masses scale ×3.2 with the rest.
+
+Derived, and they must move together or the springs bottom out:
+`suspension_stiffness_n_m` 42000 → 134000 and 44000 → 140000,
+`suspension_damping_ns_m` 3400 → 10900 and 3500 → 11200,
+`rated_load_kg` 620 → 1100 and 680 → 1200, `brake_torque_nm` 2600 → 8300,
+`drive_torque_nm` 3200 → **10200**.
+
+**Layout**, in both `starter_blueprint.gd` and `tests/combat_arena.gd`. The
+cabin now spans `z` 18–30, so the gun tucks onto the roof instead of hanging a
+metre past the front axle, and the hubs reach the ends of it:
+
+| | before | after |
+|---|---|---|
+| Prime Mover | `(24,7,24)` | `(24,8,28)` — roof, aft |
+| Energy Cell | `(24,4,29)` | `(24,4,33)` — behind the longer cabin |
+| Effector | `(24,6,21)` | `(24,8,24)` — roof, over the cabin |
+| Hubs | z 23, 27 | **z 19, 30** |
+| Contacts | z 22/28, 21/27 | **z 18/29, 17/28** |
+
+**Two traps already paid for.** The repeater was first cut to 3 cells wide and
+`tools/validate_part_registry.gd` refused it under doc 01 §14 rule 27 — an
+odd-width module cannot centre on an even-width hull, and Invariant I-6 leaves no
+half-cell to correct with. It is 4 wide. And raising mass without the geometry is
+worthless: on the old layout it moves the split from 73/27 to only 70/30, because
+a 1.50 m wheelbase turns one centimetre of centre-of-mass shift into 0.7 points.
+
+**What is left is the fixture fallout, and it is mechanical rather than
+uncertain.** 396 assertions over 28 files, and two files are more than half of it:
+`test_placement_validator` (114) and `test_build_history` (108) both lay parts at
+hard-coded cells that a 6×4×13 cabin no longer leaves room for. `test_mass_solver`
+(38) and the other unit files are expectation updates. Every engagement file in
+`tests/physics/` needs re-measuring, and `test_build_proportions` and
+`test_rest_stability` are the two that are *supposed* to go red.
+
+Budget it as a session of its own, and start by re-laying the two big fixture
+files rather than by running the suite.
 
 ### 3.2 Give the control card a first-run flag
 
@@ -465,6 +492,37 @@ place of the autocannon), a stand-off of roughly zero, and one duel against
 measurement: 640 damage a swing has to survive a 26 m approach into 120 damage a
 round at seven a second, and §15.4's own impulse shoves the target 7 m/s clear of
 a second swing.
+
+### 3.6.1 Design note — an ambulatory faction that eats wreckage
+
+Recorded rather than queued, because it is a direction and not a task.
+
+The idea: make walking Assemblies a **separate faction** with their own build
+rules — Crossout's Ravagers as the reference — rather than one more locomotion
+family a player bolts onto the same hull. And let them **absorb nearby wreckage**,
+taking a fallen part onto their own chassis as armour or as a weapon.
+
+Three things in the repository already point that way, which is why it is worth
+writing down now rather than later:
+
+- **The parts are already there to absorb.** Doc 04 §6 turns a severed island
+  into a `DebrisBodyRef` that keeps its authored `ColliderProfile` primitives and
+  its `PartInstanceState` — integrity, band, tint and all. An absorbed part would
+  be a `PlacementValidator` commit against the absorber's `BuildContext` from a
+  record that already exists, not a new kind of object.
+- **Absorption is a structural event, which is the shape Invariant I-4 wants.**
+  It is an attach, a mass recompute, and a graph edge — the same path the garage
+  uses. Nothing needs to poll.
+- **The ambulatory family's open defect is a faction-shaped problem.** §4.21's
+  yaw drift and §4.16's one-number steering are both "a walker is not a car with
+  legs", and a faction that never shares a chassis with a wheeled build is free to
+  answer them in doc 05 §13 without regard for §7.6.
+
+What it would need before it is a task: a decision in doc 06 about whether an
+archetype can be faction-locked, a rule in doc 02 for where an absorbed part is
+allowed to land (the lattice is integer and the wreck is not aligned to it), and
+a cap — Invariant I-12 has a bound for everything else that can be triggered
+repeatedly, and "parts absorbed per match" would need one.
 
 ### 3.7 A stability-augmentation layer, and the rotary family
 
