@@ -67,7 +67,7 @@ ground physics under it is less sound than a green suite suggests.** Session 32
 measured doc 05 §7.4's contact integration at 142 times outside its own stability
 limit; §2 and §3.1 have it.
 
-**90 files, 6191 checks, 0 failures.**
+**91 files, 6196 checks, 0 failures.**
 
 ---
 
@@ -100,7 +100,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**90 files, 6191 checks, 0 failures.**
+**91 files, 6196 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -289,54 +289,88 @@ actually **comes to rest** instead of coasting for ever.
 
 #### 3.1.1 The reference build is nose-heavy and stands on its front axle
 
-Measured in session 33 and true of the shipped starter, not just a fixture: with
-the Assembly settled on level ground, **the two rear contacts report zero normal
-load**, permanently. The hull rocks on the front pair. It has been that way for
-the life of the project and nothing noticed, because the chattering contacts of
-§7.4 produced enough force anyway.
+`tests/physics/test_build_proportions.gd` measures this and is **asserted as it
+fails**, so the rebuild below turns it red and the fix there is to re-measure. Its
+report is the before-and-after instrument for the whole of §3.1.2:
 
-**The cause is the build's own geometry, and it is arithmetic rather than a
-mystery.** Against a 1.50 m wheelbase, with `-Z` forward:
+```
+build: 1107 kg, 4.25 l x 2.50 w x 2.25 h m, 46 kg/m3;
+       wheelbase 1.50 m (35% of hull); 2/4 contacts loaded, 100% front
+```
 
-| | |
-|---|---|
-| Assembly centre of mass | 0.40 m aft of the front axle |
-| Static weight split | **73% front / 27% rear** — 940 kg against 342 kg |
-| `eff.ballistic.autocannon_30.t3` centre | **1.12 m forward of the front axle** |
-| Centre of mass height | 45% of the build's overall height |
-| Total mass | 1282 kg in a 3.25 × 2.25 × 4.50 m box — **39 kg/m³** |
+**The rear pair carries nothing at all** — not a small share, zero — and the hull
+rocks on the front two. It has been that way for the life of the project and
+nothing noticed, because the chattering contacts of §7.4 produced enough force
+anyway. It is also what makes §7.4's repair look broken: on a two-wheeled stance
+a correct integrator gives 0.09 m/s under full throttle.
 
-A 2.25 m gun cantilevered a metre past the front axle on a vehicle with a
-1.50 m wheelbase is the whole finding. The rear suspension cannot reach the
-ground at a 73/27 split, and any braking or impact pitches the build onto the
-barrel — which is exactly what a capture shows the opponents doing.
+The static arithmetic behind it, against a 1.50 m wheelbase with `-Z` forward:
+the centre of mass sits 0.40 m aft of the front axle, and
+`eff.ballistic.autocannon_30.t3`'s own centre is **1.12 m forward of the front
+axle**. A 2.25 m gun cantilevered a metre past the front wheels of a vehicle with
+a 1.50 m wheelbase is the whole finding, and it is why a braked or rammed
+opponent settles nose-down onto its barrel — which a capture shows them doing.
 
 **What was ruled out.** The right-hand wheel cells are authored one cell forward
-of the left — `(28, 3, 21)` against `(19, 3, 22)` — which looks like the
-off-by-one doc 02 §10's mirror used to have, and is not. Squaring them up fails
-`tests/unit/test_mirroring.gd::test_the_shipped_starter_is_its_own_mirror`
-immediately: the mirror is correct and the wheel's pivot is off-centre, so cells
-that are symmetric are metres that are not.
+of the left, which looks like doc 02 §10's old mirror off-by-one and is not:
+squaring them up fails `test_the_shipped_starter_is_its_own_mirror`, because the
+mirror is correct and the wheel's pivot is off-centre, so cells that are
+symmetric are metres that are not.
 
-**Three levers, and they are not equivalent.**
+**Widening the wheelbase is not a two-constant change**, which is the first thing
+anyone will try. The hubs mate under the Core Module, which spans five cells of
+`z`; a hub moved forward of that has nothing above it to mate to and the
+validator refuses the placement. Reaching a real wheelbase needs the chassis to
+extend fore and aft first, which is §3.1.2's work.
 
-1. **Move the mass back, or the axles out.** The cheapest is the wheelbase: 1.50 m
-   under a 4.50 m vehicle is very short, and widening it toward the ends of the
-   hull moves the split toward 50/50 without touching a single authored figure.
-   `starter_blueprint.gd` and `tests/combat_arena.gd` both carry the layout.
-2. **Shorten the gun or lengthen the cabin.** The autocannon is 9 cells and the
-   Core Module is 5, so the weapon is 50% of the vehicle's length and the cabin
-   28%. That ratio is the reason the overhang exists at all, and it is a doc 01
-   authoring decision.
-3. **Raise the masses.** 39 kg/m³ is a fifth of balsa. Everything about stability,
-   ram resistance and suspension tuning is downstream of it, and doc 05 §6.4's
-   retune is taken against `rated_load_kg` figures that the build does not come
-   close to loading — the front pair carries 470 kg each against a 620 kg rating
-   and the rear pair carries nothing.
+#### 3.1.2 The Crossout-scale rebuild
 
-**Close this before §7.4.** On a build standing on two wheels a correct
-integrator produces 0.09 m/s under full throttle, which reads as the integrator
-being broken.
+Requested directly. The build is **46 kg/m³** — a third of a passenger car, a
+fifth of balsa — and its silhouette is a gun with a car attached: the autocannon
+is 9 cells and the Core Module 5, so the weapon is half the vehicle's length and
+the cabin a quarter.
+
+**The target numbers are not yet in hand and must not be invented.** Every
+Crossout source is refused by this environment's network policy — `crossout.net`,
+both Fandom wikis, `crossoutdb.com`, `steamcommunity.com`, `forum.crossout.net`
+and `en.namu.wiki` all answer 403 at the CONNECT, and the search quota was spent
+confirming it. What the searches did return before it ran out, and it is worth
+keeping:
+
+| Figure | Value | Source |
+|---|---|---|
+| Medium ("balanced") cabin tonnage | ≈ 5,300–5,400 kg | search snippet |
+| Medium cabin mass limit | ≈ 12,400–12,500 kg | search snippet |
+| Medium cabin top speed | 80 km/h | search snippet |
+| `Hermit` medium wheel mass | 110 kg | search snippet |
+
+Two of those are already load-bearing. A medium Crossout build lives around
+**5 t** against Syndicate's 1.1 t, and a Crossout medium wheel is **110 kg**
+against `mot.wheeled.allroad.t2`'s 68 — so the wheels are nearly right and
+everything else is three to five times too light. That is the shape of the
+rebuild: **the hull is too small and too light around a gun that is close to
+correct**, not a gun that is too big.
+
+In dependency order, and the first two are the expensive ones:
+
+1. **Geometry.** Grow the Core Module and the Structural Components in cells so
+   the cabin is the largest part and the weapon lands near a quarter of the hull.
+   Each part is an `occupancy_cells` array, an `attachment_nodes` set, and a
+   `ColliderProfile` that must still cover it — doc 01 §14 rule 8 checks the
+   coverage, so none of the three can move alone.
+2. **Layout.** Re-lay `starter_blueprint.gd` and `tests/combat_arena.gd` on the
+   bigger chassis, which is what finally allows a wheelbase over half the hull and
+   puts all four contacts on the ground. Doc 02 §10's mirror must still hold.
+3. **Mass.** Scale to the confirmed target. `rated_load_kg`, doc 05 §6.4's
+   suspension retune, `drive_torque_nm`, and `brake_torque_nm` are all derived
+   from it and move together.
+4. **Re-measure.** Every threshold in `tests/physics/` is against the old scale.
+   `test_build_proportions` and `test_rest_stability` are the two that are
+   supposed to go red, and both are re-measured rather than loosened.
+
+**Do not start at step 3.** Raising mass alone leaves the stance and the
+silhouette exactly as they are, and it moves every measurement in the project for
+nothing.
 
 ### 3.2 Give the control card a first-run flag
 
