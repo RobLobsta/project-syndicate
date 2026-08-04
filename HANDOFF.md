@@ -287,27 +287,56 @@ actually **comes to rest** instead of coasting for ever.
 
 **What blocks it is §3.1.1, and that is the finding to act on first.**
 
-#### 3.1.1 The reference build stands on two of its four wheels
+#### 3.1.1 The reference build is nose-heavy and stands on its front axle
 
-Measured in session 32 and true of the shipped starter, not just a fixture: with
-the Assembly settled on level ground, **two of the four contacts report zero
-normal load**, permanently. The hull rocks on the other two. It has been that way
-for the life of the project and nothing noticed, because the chattering contacts
-of §7.4 produced enough force anyway.
+Measured in session 33 and true of the shipped starter, not just a fixture: with
+the Assembly settled on level ground, **the two rear contacts report zero normal
+load**, permanently. The hull rocks on the front pair. It has been that way for
+the life of the project and nothing noticed, because the chattering contacts of
+§7.4 produced enough force anyway.
 
-It is what makes §7.4's repair look broken. With the integrator fixed and the
-build on two wheels, full throttle produces 0.09 m/s and a porpoising hull; the
-AI never leaves its spawn. **Fix the stance first and §7.4 becomes a much smaller
-change.**
+**The cause is the build's own geometry, and it is arithmetic rather than a
+mystery.** Against a 1.50 m wheelbase, with `-Z` forward:
 
-Two things are known and one is not. The cause is **not** the wheel cells being
-asymmetric — the right-hand pair is authored one cell forward of the left, that
-looks wrong, and it is not: `tests/unit/test_mirroring.gd` fails the moment they
-are squared up, because doc 02 §10's mirror is correct and the part's pivot is
-off-centre. Making them symmetric in *cells* makes them asymmetric in *metres*.
-What has not been measured is where the four contact patches actually are in
-world space, and whether the hull settles level. `MotiveSystem.contact_at` and
-the probe positions are the instrument; doc 05 §6.1 owns the geometry.
+| | |
+|---|---|
+| Assembly centre of mass | 0.40 m aft of the front axle |
+| Static weight split | **73% front / 27% rear** — 940 kg against 342 kg |
+| `eff.ballistic.autocannon_30.t3` centre | **1.12 m forward of the front axle** |
+| Centre of mass height | 45% of the build's overall height |
+| Total mass | 1282 kg in a 3.25 × 2.25 × 4.50 m box — **39 kg/m³** |
+
+A 2.25 m gun cantilevered a metre past the front axle on a vehicle with a
+1.50 m wheelbase is the whole finding. The rear suspension cannot reach the
+ground at a 73/27 split, and any braking or impact pitches the build onto the
+barrel — which is exactly what a capture shows the opponents doing.
+
+**What was ruled out.** The right-hand wheel cells are authored one cell forward
+of the left — `(28, 3, 21)` against `(19, 3, 22)` — which looks like the
+off-by-one doc 02 §10's mirror used to have, and is not. Squaring them up fails
+`tests/unit/test_mirroring.gd::test_the_shipped_starter_is_its_own_mirror`
+immediately: the mirror is correct and the wheel's pivot is off-centre, so cells
+that are symmetric are metres that are not.
+
+**Three levers, and they are not equivalent.**
+
+1. **Move the mass back, or the axles out.** The cheapest is the wheelbase: 1.50 m
+   under a 4.50 m vehicle is very short, and widening it toward the ends of the
+   hull moves the split toward 50/50 without touching a single authored figure.
+   `starter_blueprint.gd` and `tests/combat_arena.gd` both carry the layout.
+2. **Shorten the gun or lengthen the cabin.** The autocannon is 9 cells and the
+   Core Module is 5, so the weapon is 50% of the vehicle's length and the cabin
+   28%. That ratio is the reason the overhang exists at all, and it is a doc 01
+   authoring decision.
+3. **Raise the masses.** 39 kg/m³ is a fifth of balsa. Everything about stability,
+   ram resistance and suspension tuning is downstream of it, and doc 05 §6.4's
+   retune is taken against `rated_load_kg` figures that the build does not come
+   close to loading — the front pair carries 470 kg each against a 620 kg rating
+   and the rear pair carries nothing.
+
+**Close this before §7.4.** On a build standing on two wheels a correct
+integrator produces 0.09 m/s under full throttle, which reads as the integrator
+being broken.
 
 ### 3.2 Give the control card a first-run flag
 

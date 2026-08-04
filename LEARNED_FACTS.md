@@ -839,23 +839,45 @@ different fact. Read a citation with its subject, which is always named.
     is not conservative — it is a brake you did not intend to fit.** Bound it by
     what the system actually did over the step, not by the worst it could ever do.
 
-74. **The reference build stands on two of its four wheels, and has for the life
-    of the project.** With the shipped starter settled on level ground, two of the
-    four contacts report **zero normal load**, permanently; the hull rocks on the
-    other two. Nothing noticed, because fact 72's chatter produced enough force
-    anyway — and it is what makes fact 73's repair look broken, since a correct
-    integrator on a two-wheeled stance gives 0.09 m/s under full throttle and a
-    porpoising hull.
+74. **The reference build is nose-heavy enough to stand on its front axle, and has
+    been for the life of the project.** With the shipped starter settled on level
+    ground, the two **rear** contacts report zero normal load, permanently.
+    Nothing noticed, because fact 72's chatter produced enough force anyway — and
+    it is what makes fact 73's repair look broken, since a correct integrator on a
+    two-wheeled stance gives 0.09 m/s under full throttle and a porpoising hull.
 
-    **The obvious cause is not the cause.** The right-hand wheel cells are
-    authored one cell forward of the left — `(28, 3, 21)` against `(19, 3, 22)` —
-    which looks exactly like the off-by-one that doc 02 §10's mirror used to have.
-    It is not. Squaring them up fails
-    `tests/unit/test_mirroring.gd::test_the_shipped_starter_is_its_own_mirror`
-    immediately: the mirror is correct and the wheel's pivot is off-centre, so
-    cells that are symmetric are metres that are not. Whatever is wrong is
-    downstream of the cells, and the unmeasured quantity is where the four contact
-    patches actually sit in world space.
+    The cause is arithmetic, not mystery. Against a 1.50 m wheelbase the centre of
+    mass sits 0.40 m aft of the front axle, which is a **73/27** static split —
+    940 kg on the front pair and 342 kg on the rear — and
+    `eff.ballistic.autocannon_30.t3`'s own centre is a further **1.12 m forward of
+    the front axle**. A 2.25 m gun cantilevered a metre past the front wheels of a
+    vehicle whose wheelbase is 1.50 m is the whole finding, and it is also why a
+    braking or rammed opponent pitches onto its barrel.
+
+    **Two traps around it.** The right-hand wheel cells are authored one cell
+    forward of the left — `(28, 3, 21)` against `(19, 3, 22)` — which looks
+    exactly like doc 02 §10's old mirror off-by-one and is not: squaring them up
+    fails `test_the_shipped_starter_is_its_own_mirror` immediately, because the
+    mirror is correct and the wheel's pivot is off-centre, so cells that are
+    symmetric are metres that are not. And the whole Assembly is **39 kg/m³** of
+    its bounding box — a fifth of balsa — so every figure doc 05 §6.4 retunes
+    against `rated_load_kg` is being asked about loads the build never reaches.
+
+75. **A part table can be internally consistent and still be the wrong shape, and
+    only a picture shows it.** Measured after a capture prompted the question
+    "why is the gun bigger than the vehicle": at `LATTICE_UNIT_M = 0.25`, the Core
+    Module is 5 cells long and the autocannon is 9, so the weapon is **50% of the
+    reference build's length and the cabin 28%**. Every validator passes, every
+    mass is plausible in isolation, and the silhouette is a gun with a car
+    attached.
+
+    The lesson is the general one and it is cheap to act on: **the registry has no
+    check that compares one part against another**, so proportion is the one
+    property of the part table that no test can see and that a single frame of
+    capture answers immediately. Ratios worth watching, all derivable from
+    `occupancy_cells` and `mass_kg` with no engine at all: weapon length against
+    hull length, cabin against hull, wheel diameter against ride height, and mass
+    against bounding-box volume.
 
 ---
 
