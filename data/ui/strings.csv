@@ -22,7 +22,8 @@ hud.outcome.draw,NOTHING LEFT STANDING
 hud.outcome.detail.victory,Every opposing Assembly has lost its Core Module.
 hud.outcome.detail.defeat,Your Assembly is finished. Nothing here despawns — the wreckage is still out there.
 hud.outcome.detail.draw,No Assembly in this match is still standing.
-hud.outcome.hint,The camera is free — %s orbits it and %s releases the mouse.
+hud.outcome.hint,The camera is free — %s changes the view.
+hud.outcome.exits,%s fights again · %s returns to the garage
 input.mouse.left,Left Mouse
 input.mouse.right,Right Mouse
 input.mouse.middle,Middle Mouse
@@ -34,3 +35,143 @@ input.modifier.ctrl,Ctrl
 input.modifier.shift,Shift
 input.modifier.alt,Alt
 input.unbound,—
+menu.title,PROJECT SYNDICATE
+menu.subtitle,Build a machine. Take it out. Find out what comes back.
+menu.action.garage,ENTER THE GARAGE
+menu.action.quit,QUIT
+garage.title,GARAGE
+garage.action.test_drive,TEST DRIVE
+garage.action.menu,MENU
+garage.action.reset,RESET
+garage.catalogue.search,Search parts
+garage.catalogue.any_class,All
+garage.hint,%s place · %s remove · %s rotate · %s orbit · hover to inspect
+garage.orientation,orientation %d
+garage.selected.none,Pick a part from the catalogue
+garage.removed,Part removed
+garage.removed.cascade,Part removed — %d more came with it
+garage.no_core,An Assembly needs its Core Module
+garage.card.cost_mass,%d · %.0f kg
+garage.card.class_tier,%s · %s
+garage.stats.title,ASSEMBLY
+garage.stats.mass,MASS
+garage.stats.power,POWER
+garage.stats.mounts,MOUNTS
+garage.stats.parts,PARTS
+garage.stats.speed,TOP SPEED
+garage.stats.integrity,INTEGRITY
+garage.stats.stability,ROLLOVER
+garage.stats.mass.value,%.0f / %.0f kg
+garage.stats.power.value,%.0f / %.0f pu
+garage.stats.mounts.value,%d / %d
+garage.stats.parts.value,%d / %d
+garage.stats.speed.value,%.1f m/s
+garage.stats.integrity.value,%d
+garage.stats.stability.value,%.2f g
+part.class.core_module,Core Module
+part.class.structural_component,Structural Component
+part.class.motive_assembly,Motive Assembly
+part.class.prime_mover,Prime Mover
+part.class.effector_module,Effector Module
+part.class.support_module,Support Module
+part.class.control_surface,Control Surface
+part.class.energy_cell,Energy Cell
+part.class.appendage,Appendage
+build.reject.none,Placement accepted
+build.reject.out_of_bounds,Outside the Build Lattice
+build.reject.cell_occupied,Those cells are already occupied
+build.reject.no_mating_node,Nothing here to attach to
+build.reject.polarity_mismatch,That face will not mate with this one
+build.reject.class_not_accepted,This mount does not accept that class
+build.reject.mount_budget_exceeded,Over the Core Module's mount budget
+build.reject.power_budget_exceeded,Not enough power — add an Energy Cell first
+build.reject.class_limit_exceeded,Too many of that class
+build.reject.motive_ground_blocked,That Motive Assembly has no ground clearance
+build.reject.effector_arc_blocked,The Effector Module's firing arc is blocked
+build.reject.collider_interpenetration,That part would pass through another
+build.reject.load_capacity_exceeded,Too heavy for what is carrying it
+build.reject.duplicate_core,An Assembly has exactly one Core Module
+build.reject.unknown_part,That part is not in this registry
+part.core.command.compact.t2.name,Compact Command Core
+part.core.command.compact.t2.desc,The root of every Assembly. Sets the mount budget; the power capacity and the speed cap. Lose it and the Assembly is over.
+part.str.hub.axle_station.t2.name,Axle Station
+part.str.hub.axle_station.t2.desc,A short structural hub with a drive face on either flank. What a Motive Assembly bolts to.
+part.str.panel.medium.t2.name,Medium Panel
+part.str.panel.medium.t2.desc,Plain structure. Cheap armour and somewhere to hang the next thing.
+part.mot.wheeled.allroad.t2.name,All-Road Steered Contact
+part.mot.wheeled.allroad.t2.desc,A steered rolling contact with long suspension travel. Put these forward of the centre.
+part.mot.wheeled.fixed_rear.t2.name,Fixed Rear Contact
+part.mot.wheeled.fixed_rear.t2.desc,An unsteered rolling contact. An Assembly on which everything steers crabs instead of turning.
+part.mot.tracked.short_bogie.t2.name,Short Track Bogie
+part.mot.tracked.short_bogie.t2.desc,A tracked flank that turns by counter-rotating against its opposite number. Slow; hard to stop.
+part.mot.limb.strider.t4.name,Strider Limb
+part.mot.limb.strider.t4.desc,An ambulatory limb. Walks over ground nothing rolling can cross; drifts in yaw and is slow to turn.
+part.mot.rotor.coaxial_mid.t3.name,Coaxial Rotor Disc
+part.mot.rotor.coaxial_mid.t3.desc,A lift disc with no net reaction torque. Needs a mast to carry it and a second disc to stay level.
+part.pmv.combustion.standard.t2.name,Standard Prime Mover
+part.pmv.combustion.standard.t2.desc,Shaft power for everything that drives. One is enough for a light Assembly.
+part.cel.static.standard.t3.name,Standard Energy Cell
+part.cel.static.standard.t3.desc,Supplies the power an Effector Module or a rotor disc draws. Fit it before the thing that needs it.
+part.eff.ballistic.autocannon_30.t3.name,30 mm Ballistic Effector
+part.eff.ballistic.autocannon_30.t3.desc,A traversing autocannon. Fires fast; the recoil at the mount yaws a light hull that shoots while turning.
+part.eff.melee.beam_edge.t4.name,Beam Edge
+part.eff.melee.beam_edge.t4.desc,A close-range edge. Enormous damage a swing and nothing at all beyond its reach.
+part.apx.arm.manipulator.t3.name,Manipulator Appendage
+part.apx.arm.manipulator.t3.desc,An articulated arm that carries a held Effector Module in its grip.
+garage.inspector.title,PART
+garage.inspector.empty,Nothing selected
+garage.part.mass,Mass
+garage.part.integrity,Integrity
+garage.part.armour,Armour
+garage.part.cost,Build cost
+garage.part.mounts,Mount weight
+garage.part.power_draw,Power draw
+garage.part.power_supply,Power supply
+garage.part.speed_cap,Speed cap
+garage.part.mount_budget,Mount budget
+garage.part.power_capacity,Power capacity
+garage.part.mass_tolerance,Mass tolerance
+garage.part.family,Locomotion
+garage.part.steering,Steering
+garage.part.driven,Driven
+garage.part.rated_load,Rated load
+garage.part.grip,Grip
+garage.part.torque,Shaft torque
+garage.part.discharge,Discharge limit
+garage.part.cycle,Cycle time
+garage.part.muzzle,Muzzle velocity
+garage.part.traverse,Traverse
+garage.part.elevation,Elevation
+garage.part.recoil,Recoil
+garage.part.reach,Reach
+garage.part.swing_arc,Swing arc
+garage.part.strike,Strike damage
+garage.part.role,Role
+garage.part.magnitude,Magnitude
+garage.part.grip_rating,Grip rating
+garage.value.kg,%.0f kg
+garage.value.pu,%.0f pu
+garage.value.nm,%.0f N·m
+garage.value.ns,%.0f N·s
+garage.value.mps,%.1f m/s
+garage.value.m,%.2f m
+garage.value.s,%.2f s
+garage.value.deg,%.0f°
+garage.value.arc,%.0f° / %.0f°
+garage.value.int,%d
+garage.value.ratio,%.2f
+garage.value.yes,Yes
+garage.value.no,No
+garage.value.fixed,Fixed
+garage.family.wheeled_steered,Wheeled — steered
+garage.family.wheeled_fixed,Wheeled — fixed
+garage.family.tracked,Tracked
+garage.family.omni_roller,Omnidirectional roller
+garage.family.ambulatory,Ambulatory
+garage.family.repulsor,Repulsor pad
+garage.family.rotor,Rotor disc
+garage.role.heat_sink,Heat sink
+garage.role.magazine_store,Magazine store
+garage.role.integrity_field,Integrity field
+garage.role.signature_damper,Signature damper
+garage.role.repair_emitter,Repair emitter

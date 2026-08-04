@@ -57,16 +57,29 @@ const ARC_COST_WEIGHT: float = 140.0
 const ARC_PROBE_RANGE_M: float = 40.0
 
 ## Speed, in m/s, below which a driver counts as having arrived rather than as
-## still going round. It reaches 11 m/s on the approach, so this separates the
-## two states by a factor of five and pins neither.
+## still going round.
 ##
-## It is not tighter than that because holding a stand-off is not holding still.
-## §15.7.1's closing test is a hard range comparison, so a driver parked at its
-## demand crosses it in both directions as the hull settles and the target
-## drifts — throttle on, brake on, throttle on — and idles at something over a
-## metre a second rather than at zero. That is the law working, not an orbit, and
-## the two are told apart by the round count below rather than by this.
-const ARRIVED_SPEED_MPS: float = 2.0
+## It is not tight because holding a stand-off is not holding still. §15.7.1's
+## closing test is a hard range comparison, so a driver parked at its demand
+## crosses it in both directions as the hull settles and the target drifts —
+## throttle on, brake on, throttle on — and idles at a few metres a second rather
+## than at zero. That is the law working, not an orbit, and the two are told
+## apart by the round count below rather than by this.
+##
+## [b]It was 2.0, which was a description of the idle rather than a separation
+## between the two states, and it broke on a change that cannot have touched
+## it.[/b] Session 26 added an integration file that opens a match — four
+## Assemblies spawned and freed before this file runs — and the measured arrival
+## speed went from under 2 m/s to 3.86 with nothing in the AI or the motion layer
+## changed. That is LEARNED_FACTS.md §1 fact 54 exactly: once several bodies
+## share a space the solver's float ordering depends on the allocation history of
+## the whole process, so a threshold sitting just above a measurement is a
+## threshold that measures the suite.
+##
+## The bound is now half the 11 m/s this driver reaches on the approach, which is
+## the state it has to be distinguished [i]from[/i]. Re-measuring and re-asserting
+## 4.0 would have moved the fragility to whoever adds the next file.
+const ARRIVED_SPEED_MPS: float = 5.5
 
 ## Rounds a driver that actually stopped at its stand-off must get away, against
 ## the one that an orbiting driver manages.

@@ -684,6 +684,38 @@ var cascade: Array[BuildCommand] = []   # child commands undone/redone atomicall
 
 Undo depth is capped at 128 commands. Because every command is expressed in integer lattice terms, undo is exact — there is no float drift between the original placement and its restoration.
 
+### 9.4 The Blueprint
+
+A **blueprint** is an ordered list of placements that reconstructs one Assembly. It is the form a build takes between the place that made it and the place that uses it: the garage hands one to a match, `AUTO_ASSEMBLE_ALGORITHM.md`'s generator produces one, and `HEADLESS_NETWORK_SYNC.md` §4.3's `BlueprintCodec` is this object on the wire.
+
+```gdscript
+class_name Blueprint
+extends RefCounted
+
+class Placement:
+    var part_key: StringName
+    var origin_cell: Vector3i
+    var orientation_index: int
+
+var placements: Array[Placement] = []
+
+func apply(ctx: BuildContext, on_reject: Callable = Callable()) -> int
+static func from_context(ctx: BuildContext) -> Blueprint
+func copy() -> Blueprint
+```
+
+Four properties, and each of them is a rule rather than an implementation note.
+
+**It reconstructs through §7's chain and has no other path.** `apply` builds a `PlacementCandidate` per placement and hands it to `PlacementValidator.validate`, exactly as an interactive placement does. That is `CLAUDE.md` §10 rule 9 stated as a data type: a blueprint cannot describe a build the garage would have refused, which is what makes it safe to accept one from a client. Re-validating a build that was legal ten seconds ago in the same process is not redundancy — the path a build takes from the garage to a match is the path it will take from a client to a server, and a shortcut in the first is a hole in the second.
+
+**Order is content.** Placement *n* mates against what the first *n* built, so the list is a construction sequence and not a set. The Core Module is first because Invariant I-2 puts it on slot 0 and `allocate_slot` hands out the lowest free slot; a station goes down before what hangs off it; and §7.4's budgets are checked against what the context holds at the moment of the placement, so an Energy Cell may have to precede the draw it covers. That is the same order a player has to build in. `from_context` reads slots in ascending order, which reproduces it: a parent's slot is lower than its child's at the moment the child was placed, so the parent is always committed when the child is validated.
+
+**A refusal stops the apply and names itself.** `apply` returns the index of the first refused placement, or `-1`. What was committed before it stays committed: a partially built Assembly is inspectable and a rolled-back one is not, and a caller that needs all-or-nothing applies to a fresh context and discards it. The `on_reject` callable receives the index and a **localisation key** rather than a `Reject` value, because one of the reasons is not a rejection — a part key the registry does not hold is `PART_DATA_SCHEMA.md` §14's manifest mismatch, and widening the frozen reject enum to carry a data-version problem would put it in a table §12 asserts is about geometry.
+
+**It stores part keys, not runtime ids.** A `part_def_id` is an index into the manifest and is the right thing on the wire, where the manifest hash is checked first (doc 12 §4.2). In memory a key survives a registry that has grown a part since, and it is what a reader of a stack trace can look up.
+
+`copy()` exists because the shell holds one blueprint for a whole session and hands it to a match; a match that edited the object it was given would be editing the build the garage is still holding.
+
 ---
 
 ## 10. Symmetry Mirroring

@@ -148,3 +148,47 @@ static func locomotion_of(kind: int) -> int:
 ## eventually forget [constant EffectorKind.ENERGY_MELEE].
 static func is_melee_effector(kind: int) -> bool:
 	return kind == EffectorKind.KINETIC_MELEE or kind == EffectorKind.ENERGY_MELEE
+
+
+## Localisation key naming each [enum PartClass], indexed by the enum. Doc 01
+## §2's terminology table, as the strings a player reads.
+##
+## Here rather than in the interface, because the vocabulary CLAUDE.md §8 makes
+## binding is a property of the domain and not of one screen: the catalogue, the
+## inspector, the validator's rejection strip and the diagnostics overlay all
+## name a class, and four tables would be four chances to write "wheel".
+const CLASS_NAME_KEYS: Array[StringName] = [
+	&"part.class.core_module",
+	&"part.class.structural_component",
+	&"part.class.motive_assembly",
+	&"part.class.prime_mover",
+	&"part.class.effector_module",
+	&"part.class.support_module",
+	&"part.class.control_surface",
+	&"part.class.energy_cell",
+	&"part.class.appendage",
+]
+
+## Prefix on a tier grade, as it appears in a part key's last segment.
+const TIER_PREFIX: String = "T"
+
+
+## Localisation key for [param part_class].
+##
+## An out-of-range class answers the Structural Component key and pushes an
+## error, for [method locomotion_of]'s reason: it is a data error, and reading
+## past the array would take down the screen a player is building on.
+static func class_key(part_class: int) -> StringName:
+	if part_class < 0 or part_class >= CLASS_NAME_KEYS.size():
+		push_error("PartEnums: PartClass %d has no name key" % part_class)
+		return CLASS_NAME_KEYS[PartClass.STRUCTURAL_COMPONENT]
+	return CLASS_NAME_KEYS[part_class]
+
+
+## [param tier] as it is written on a part card and in a part key: "T2".
+##
+## Not localised, and deliberately: the grade is the number in
+## [code]mot.wheeled.allroad.t2[/code], so a player reading a card and a player
+## reading a key are reading the same token.
+static func tier_label(tier: int) -> String:
+	return TIER_PREFIX + str(tier)

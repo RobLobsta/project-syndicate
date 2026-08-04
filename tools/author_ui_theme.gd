@@ -14,10 +14,10 @@ extends SceneTree
 ## tools/ci/godot.sh --headless --path . --script tools/author_ui_theme.gd
 ## [/codeblock]
 ##
-## Only the types with a consumer today are emitted. The garage variations §8.1
-## lists — [code]PartCard[/code], [code]ToolbarButton[/code],
-## [code]SheetPanel[/code] — are added with the garage that uses them; authoring
-## them now would be guessing at metrics nothing can check.
+## Only the types with a consumer today are emitted. [code]SheetPanel[/code] is
+## still one §8.1 lists and nothing builds: it belongs to the compact tier's
+## bottom sheet, which the garage does not have yet, and authoring metrics
+## nothing can check is how a theme grows entries nobody can delete.
 
 const OUT_PATH := "res://data/ui/syndicate_theme.tres"
 
@@ -33,6 +33,11 @@ const PANEL_MARGIN_PX: int = 10
 const PANEL_ALPHA: float = 0.72
 const BAR_HEIGHT_PX: int = 4
 
+const BUTTON_CORNER_PX: int = 3
+const BUTTON_MARGIN_X_PX: int = 10
+const BUTTON_MARGIN_Y_PX: int = 6
+const FOCUS_RING_PX: int = 2
+
 
 func _process(_dt: float) -> bool:
 	var theme := Theme.new()
@@ -41,6 +46,7 @@ func _process(_dt: float) -> bool:
 	_add_labels(theme)
 	_add_panels(theme)
 	_add_progress_bar(theme)
+	_add_buttons(theme)
 
 	var err := ResourceSaver.save(theme, OUT_PATH)
 	if err != OK:
@@ -79,6 +85,51 @@ func _add_panels(theme: Theme) -> void:
 	theme.set_stylebox("panel", "DockPanel", _panel_box(UiTokens.SURFACE_RAISED))
 
 
+## The three button shapes the garage needs, as variations of one base.
+##
+## A [PartCard] is a [Button] because everything a card does is what a button
+## does — hover, focus, press, and a pressed state that survives the pointer
+## leaving — and §7.4's gamepad focus navigation walks buttons. Giving it a
+## panel-like face rather than a button-like one is the whole of the difference,
+## and that is a stylebox rather than a class.
+func _add_buttons(theme: Theme) -> void:
+	theme.add_type("Button")
+	theme.set_color("font_color", "Button", UiTokens.TEXT_PRIMARY)
+	theme.set_color("font_hover_color", "Button", UiTokens.TEXT_PRIMARY)
+	theme.set_color("font_pressed_color", "Button", UiTokens.SURFACE_BASE)
+	theme.set_color("font_disabled_color", "Button", UiTokens.TEXT_MUTED)
+	theme.set_font_size("font_size", "Button", FONT_SIZE_BASE)
+	theme.set_stylebox("normal", "Button", _button_box(UiTokens.SURFACE_RAISED))
+	theme.set_stylebox("hover", "Button", _button_box(UiTokens.SURFACE_OVERLAY))
+	theme.set_stylebox("pressed", "Button", _button_box(UiTokens.ACCENT_PRIMARY))
+	theme.set_stylebox("focus", "Button", _outline_box(UiTokens.ACCENT_PRIMARY))
+	theme.set_stylebox("disabled", "Button", _button_box(UiTokens.SURFACE_BASE))
+
+	theme.add_type("ToolbarButton")
+	theme.set_type_variation("ToolbarButton", "Button")
+	theme.set_font_size("font_size", "ToolbarButton", FONT_SIZE_CAPTION)
+
+	# The one button on a screen that a first-time player should press. §10 rule
+	# 5: it is also the widest and carries the clearest word, so the emphasis is
+	# not only the colour.
+	theme.add_type("PrimaryButton")
+	theme.set_type_variation("PrimaryButton", "Button")
+	theme.set_color("font_color", "PrimaryButton", UiTokens.SURFACE_BASE)
+	theme.set_color("font_hover_color", "PrimaryButton", UiTokens.SURFACE_BASE)
+	theme.set_stylebox("normal", "PrimaryButton", _button_box(UiTokens.ACCENT_SECONDARY))
+	theme.set_stylebox(
+		"hover", "PrimaryButton", _button_box(UiTokens.ACCENT_SECONDARY.lightened(0.15))
+	)
+	theme.set_stylebox("pressed", "PrimaryButton", _button_box(UiTokens.ACCENT_PRIMARY))
+
+	theme.add_type("PartCard")
+	theme.set_type_variation("PartCard", "Button")
+	theme.set_stylebox("normal", "PartCard", _card_box(UiTokens.SURFACE_BASE))
+	theme.set_stylebox("hover", "PartCard", _card_box(UiTokens.SURFACE_OVERLAY))
+	theme.set_stylebox("pressed", "PartCard", _card_box(UiTokens.ACCENT_PRIMARY))
+	theme.set_color("font_pressed_color", "PartCard", UiTokens.TEXT_PRIMARY)
+
+
 func _add_progress_bar(theme: Theme) -> void:
 	theme.add_type("ProgressBar")
 
@@ -95,6 +146,43 @@ func _add_progress_bar(theme: Theme) -> void:
 	fill.bg_color = Color.WHITE
 	fill.set_corner_radius_all(1)
 	theme.set_stylebox("fill", "ProgressBar", fill)
+
+
+## A card face: the panel shape, with a left edge the class swatch sits against
+## and no rounded corner on that side, so a grid of them reads as a list rather
+## than as a scatter of lozenges.
+func _card_box(colour: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(colour, PANEL_ALPHA)
+	box.set_corner_radius_all(BUTTON_CORNER_PX)
+	box.content_margin_left = BUTTON_MARGIN_X_PX
+	box.content_margin_right = BUTTON_MARGIN_X_PX
+	box.content_margin_top = BUTTON_MARGIN_Y_PX
+	box.content_margin_bottom = BUTTON_MARGIN_Y_PX
+	return box
+
+
+func _button_box(colour: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(colour, PANEL_ALPHA)
+	box.set_corner_radius_all(BUTTON_CORNER_PX)
+	box.content_margin_left = BUTTON_MARGIN_X_PX
+	box.content_margin_right = BUTTON_MARGIN_X_PX
+	box.content_margin_top = BUTTON_MARGIN_Y_PX
+	box.content_margin_bottom = BUTTON_MARGIN_Y_PX
+	return box
+
+
+## The focus ring §7.4's navigation needs. A ring rather than a fill, because a
+## focused button that has changed colour is indistinguishable from a pressed
+## one, and a gamepad player moves focus far more often than they press.
+func _outline_box(colour: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(colour, 0.0)
+	box.set_corner_radius_all(BUTTON_CORNER_PX)
+	box.set_border_width_all(FOCUS_RING_PX)
+	box.border_color = colour
+	return box
 
 
 func _panel_box(colour: Color) -> StyleBoxFlat:

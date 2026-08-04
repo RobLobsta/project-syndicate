@@ -6,36 +6,40 @@ extends Node
 ## Its only job is to decide what to show and to instantiate it. It holds no
 ## gameplay state and survives no transition.
 ##
-## A boot node rather than setting the arena as [code]run/main_scene[/code]
+## A boot node rather than setting a screen as [code]run/main_scene[/code]
 ## directly is what keeps a headless server from constructing a camera, a HUD,
 ## and a viewport it has no use for. [code]SubsystemGate[/code] disables the
 ## [i]tags[/i]; this branch is what stops the nodes being built at all, which is
 ## the distinction doc 12 §9.2 draws between gating a subsystem and never
 ## instantiating one.
+##
+## A client gets a [ShellRoot], which owns the screen flow from that point on.
+## This node decides once, between a client and a server, and never again.
 
-const MATCH_SCENE := "res://scenes/match/arena_basin.tscn"
 const SERVER_SCENE := "res://scenes/net/dedicated_server.tscn"
 
 
 func _ready() -> void:
-	var path := MATCH_SCENE
 	if _is_headless():
-		path = SERVER_SCENE
-		if not ResourceLoader.exists(path):
+		if not ResourceLoader.exists(SERVER_SCENE):
 			# Doc 12's server scene is not written yet. Saying so and stopping is
-			# the honest failure: silently falling through to the match scene
+			# the honest failure: silently falling through to the client shell
 			# would build a camera and a HUD on a machine with no display and
 			# present as a server that mysteriously costs a GPU.
-			push_error("MainBoot: %s does not exist; doc 12 §9 is unwritten" % path)
+			push_error("MainBoot: %s does not exist; doc 12 §9 is unwritten" % SERVER_SCENE)
 			get_tree().quit(1)
 			return
-
-	var packed: PackedScene = load(path)
-	if packed == null:
-		push_error("MainBoot: could not load %s" % path)
-		get_tree().quit(1)
+		var packed: PackedScene = load(SERVER_SCENE)
+		if packed == null:
+			push_error("MainBoot: could not load %s" % SERVER_SCENE)
+			get_tree().quit(1)
+			return
+		add_child(packed.instantiate())
 		return
-	add_child(packed.instantiate())
+
+	var shell := ShellRoot.new()
+	shell.name = "ShellRoot"
+	add_child(shell)
 
 
 ## A dedicated-server build, or any run with no rendering device. The feature tag

@@ -14,16 +14,18 @@ extends Node3D
 ## replaces its [i]driver[/i]. The arena counts ticks to a verdict; this draws.
 ## Keeping both is the point — the fixture asserts, the scene is played.
 ##
-## [b]One thing here is standing in for a system that does not exist yet[/b], and
-## it is named so nobody mistakes it for a design:
+## [b]The player drives what they built.[/b] [member player_blueprint] arrives
+## from the garage as a list of integer placements and every one of them goes
+## back through [PlacementValidator] here — the same chain the garage used and
+## the same chain doc 12 §4.3 makes a server run on a blueprint a client sent.
+## Re-validating a build that was legal ten seconds ago in the same process looks
+## redundant and is the point: this is the path a build will take across a
+## network, and a shortcut in it now is a hole in it then.
 ##
-## [enum]
-## [*] [b]The builds are laid out in code.[/b] They should come from a blueprint
-##     in [code]data/[/code] through the identical [PlacementValidator] chain
-##     (CLAUDE.md §10 rule 9) — which they already do, part by part; what is
-##     missing is the serialised form, not the validation. Doc 02 §9.3's
-##     [code]BuildCommand[/code] and the blueprint codec are where that lands.
-## [/enum]
+## The opponents are spawned from [method StarterBlueprint.skirmisher] rather
+## than from the player's build. A test run against three copies of whatever the
+## player just made is a different game every time and is not a measurement of
+## anything; doc 06's generator is what eventually varies them.
 ##
 ## Each opponent carries an [AiDriver] — doc 05 §15.7 — on the other side of a
 ## roster this class owns and every driver shares. They close, aim through the
@@ -31,6 +33,12 @@ extends Node3D
 ## finite store. Nothing about them is privileged: the same eight numbers, the
 ## same aim point, the same jam chance, and a miss that puts a real round into
 ## the terrain.
+
+## Raised when the player asks to go back and change the build. [ShellRoot] frees
+## this screen and opens the garage on the blueprint they arrived with.
+signal garage_requested
+## Raised when the player asks to fight the same build again.
+signal rematch_requested
 
 ## ===== ARENA ===========================================================
 
@@ -79,37 +87,13 @@ const OPPONENT_TEAM: int = 1
 const OPPONENT_DIFFICULTY: float = 0.55
 
 ## ===== BUILD ===========================================================
-## The wheeled recipe, on the lattice. Integer coordinates throughout
-## (Invariant I-6).
 
-const CORE_KEY: StringName = &"core.command.compact.t2"
-const HUB_KEY: StringName = &"str.hub.axle_station.t2"
-const WHEEL_KEY: StringName = &"mot.wheeled.allroad.t2"
-const REAR_KEY: StringName = &"mot.wheeled.fixed_rear.t2"
-const POWER_KEY: StringName = &"pmv.combustion.standard.t2"
-const CELL_KEY: StringName = &"cel.static.standard.t3"
-const GUN_KEY: StringName = &"eff.ballistic.autocannon_30.t3"
+## What the player drives. Assigned by [ShellRoot] before this node enters the
+## tree; a match that was handed nothing spawns the shipped starter, which is
+## what makes the arena scene runnable on its own.
+var player_blueprint: Blueprint = null
+
 const ROUND_KEY: StringName = &"proj.kinetic.ap_30"
-
-const BUILD_CORE := Vector3i(24, 4, 24)
-const BUILD_POWER := Vector3i(24, 7, 24)
-const BUILD_CELL := Vector3i(24, 4, 29)
-## On the nose, at the Core Module's own height. Handoff §4.11 and §4.14: what
-## decides whether a round of the shipped autocannon flips the shipped chassis is
-## not the impulse but the height of the muzzle above the centre of mass, because
-## the fore-aft offset is parallel to the recoil and contributes no moment at
-## all. On the roof one round is 3.6 rad/s of pitch. Here it is a shove.
-const BUILD_GUN := Vector3i(24, 6, 21)
-
-const BUILD_HUBS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
-]
-const BUILD_WHEELS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
-]
-## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
-## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
-const FRONT_AXLE_Z: int = 24
 
 ## ===== PRESENTATION ====================================================
 
@@ -187,10 +171,20 @@ func _ready() -> void:
 	# leave the spawns hanging over unstreamed ground.
 	ground_streamer.prime()
 
-	_player = _spawn(PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, PLAYER_TEAM, true)
+	if player_blueprint == null:
+		player_blueprint = StarterBlueprint.skirmisher()
+	_player = _spawn(
+		player_blueprint, PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, PLAYER_TEAM, true
+	)
+	var opponent := StarterBlueprint.skirmisher()
 	for xz: Vector2 in TARGET_SPAWN_XZ:
 		_spawn(
-			xz, _yaw_towards(xz, PLAYER_SPAWN_XZ), TARGET_ROUNDS, OPPONENT_TEAM, false
+			opponent,
+			xz,
+			_yaw_towards(xz, PLAYER_SPAWN_XZ),
+			TARGET_ROUNDS,
+			OPPONENT_TEAM,
+			false
 		)
 	# The Assemblies now anchor it themselves.
 	ground_streamer.extra_anchors = PackedVector3Array()
@@ -201,7 +195,7 @@ func _ready() -> void:
 	EventBus.part_damaged.connect(_on_part_damaged)
 	EventBus.part_destroyed.connect(_on_part_destroyed)
 	MatchClock.tick_started.connect(_on_tick_started)
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	InputMethod.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 func _exit_tree() -> void:
@@ -216,15 +210,32 @@ func _exit_tree() -> void:
 	_contexts.clear()
 
 
-## Releases the mouse so the player can reach the window controls. A captured
-## mouse with no way out is the oldest bad manner a 3D game has.
+## Two meanings for one key, decided by whether the match is over.
+##
+## [b]During the match[/b] [code]build_cancel[/code] releases the mouse, because
+## a captured mouse with no way out is the oldest bad manner a 3D game has, and a
+## click takes it back.
+##
+## [b]After the conclusion[/b] it leaves for the garage, and
+## [code]ui_accept[/code] fights the same build again. §16.2 keeps the mouse
+## captured at the conclusion on purpose — §13.6 reads mouse motion for the look,
+## so a released mouse is an orbit camera that cannot orbit — which means the two
+## ways out of a finished match have to be keys, and the end card names them.
 func _unhandled_input(event: InputEvent) -> void:
+	if _concluded:
+		if event.is_action_pressed(&"build_cancel"):
+			garage_requested.emit()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed(&"ui_accept"):
+			rematch_requested.emit()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"build_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		InputMethod.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if InputMethod.mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+			InputMethod.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 ## ===== CONSTRUCTION ====================================================
@@ -386,7 +397,12 @@ func _build_hud() -> void:
 
 
 func _spawn(
-	ground_xz: Vector2, yaw_rad: float, rounds: int, team: int, is_player: bool
+	blueprint: Blueprint,
+	ground_xz: Vector2,
+	yaw_rad: float,
+	rounds: int,
+	team: int,
+	is_player: bool
 ) -> AssemblyRuntime:
 	var assembly_id := _next_assembly_id
 	_next_assembly_id += 1
@@ -395,7 +411,7 @@ func _spawn(
 
 	var ctx := BuildContext.with_physics(assembly_id)
 	_contexts.append(ctx)
-	_lay_out(ctx)
+	_lay_out(ctx, blueprint)
 
 	var runtime := AssemblyRuntime.new()
 	runtime.name = "Assembly%d" % assembly_id
@@ -489,39 +505,23 @@ func _attach_driver(
 	runtime.add_child(driver)
 
 
-func _lay_out(ctx: BuildContext) -> void:
-	_place(ctx, CORE_KEY, BUILD_CORE, OrientationTable.IDENTITY_INDEX)
-	_place(ctx, POWER_KEY, BUILD_POWER, OrientationTable.IDENTITY_INDEX)
-	_place(ctx, CELL_KEY, BUILD_CELL, OrientationTable.IDENTITY_INDEX)
-	_place(ctx, GUN_KEY, BUILD_GUN, OrientationTable.IDENTITY_INDEX)
-	for cell: Vector3i in BUILD_HUBS:
-		_place(ctx, HUB_KEY, cell, OrientationTable.IDENTITY_INDEX)
-	for cell: Vector3i in BUILD_WHEELS:
-		var key := WHEEL_KEY if cell.z < FRONT_AXLE_Z else REAR_KEY
-		var inboard := Vector3.RIGHT if cell.x < BUILD_CORE.x else Vector3.LEFT
-		_place(ctx, key, cell, OrientationTable.upright_facing(inboard))
-
-
+## Rebuilds [param bp] into [param ctx] through the ordinary validation chain.
+##
 ## CLAUDE.md §10 rule 9: the garage, the auto-assembler, blueprint loading and
 ## server-side re-validation all go through this identical chain, and so does
 ## this. A scene that placed parts by writing state directly would be the one
 ## build in the project that had never been validated.
-static func _place(
-	ctx: BuildContext, key: StringName, cell: Vector3i, orientation: int
-) -> void:
-	var def := PartRegistry.definition_by_key(key)
-	if def == null:
-		push_error("MatchScreen: unknown part key '%s'" % key)
-		return
-	var candidate := PlacementCandidate.create(def, cell, orientation)
-	var reject := PlacementValidator.validate(ctx, candidate)
-	if reject != PlacementValidator.Reject.NONE:
-		push_error(
-			"MatchScreen: '%s' at %s rejected (%d): %s"
-			% [key, cell, reject, PlacementValidator.REJECT_KEYS[reject]]
-		)
-		return
-	PlacementValidator.commit(ctx, candidate)
+##
+## A refusal is reported and the Assembly is spawned with what was committed
+## before it. Dropping the whole build would take a player who edited one part
+## too many from "that part is not there" to "the match did not start", and the
+## first of those is the one they can act on.
+static func _lay_out(ctx: BuildContext, bp: Blueprint) -> void:
+	bp.apply(ctx, _on_placement_refused)
+
+
+static func _on_placement_refused(index: int, reason_key: StringName) -> void:
+	push_error("MatchScreen: blueprint placement %d refused: %s" % [index, reason_key])
 
 
 ## ===== PER TICK ========================================================

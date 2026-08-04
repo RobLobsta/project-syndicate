@@ -54,6 +54,12 @@ thirteen documents in `/docs/`, named just before it.
 All verified against 4.7.1 in this repo, not recalled. They are numbered for
 cross-reference and the numbers are stable; nothing here is in priority order.
 
+**Two numbers are used twice** — 62 and 63 each name a fact in this half and
+another after the rule below it. That is a defect and it is deliberately not
+being repaired: `src/`, `tests/` and `tools/` cite these numbers in comments, and
+renumbering to tidy the list would silently point every one of them at a
+different fact. Read a citation with its subject, which is always named.
+
 1. **`--import` does not catch parse errors.** It registers `class_name` globals
    by scanning source without compiling it, so a broken script imports cleanly
    and only explodes when something first loads it. `tests/arch/test_scripts_parse.gd`
@@ -713,6 +719,38 @@ cross-reference and the numbers are stable; nothing here is in priority order.
     sort out what is already gone". The pattern that works is for the helper to
     **drop its own handle**: `_release` erases the entry before freeing, and
     `after_all` drains what is left, which is by construction still live.
+
+68. **A GDScript lambda captures by value, so a closure that writes to a local
+    outside it writes to its own copy.** A test that passed
+    `func(i, k): seen = k` as a callback and then asserted on `seen` asserted on
+    the value `seen` started with, in a run where the callback had fired
+    correctly every time. It presents as "the callback was never called", which
+    is the one explanation it rules out. Use a small `RefCounted` recorder, or an
+    `Array`/`Dictionary` — those are reference types, and a closure writing
+    *into* one is visible outside it.
+
+69. **`Object.free()` on a node that is currently emitting a signal you are
+    handling tears down the object whose method is running,** and the engine
+    reports it as `Condition "p_child->data.parent != this" is true` — a
+    parenting error naming neither the node nor the signal. The screen simply
+    does not change.
+
+    Every transition in `ShellRoot` arrives this way, because a screen is left by
+    pressing something on it. `remove_child` and then `queue_free()` is the
+    pattern, and both halves matter: removal is immediate and runs `_exit_tree`,
+    which is where a screen joins its worker tasks and disposes its contexts
+    (fact 53 is why that has to happen before anything is freed), and deletion
+    lands at the end of the frame by which time the emission has returned. The
+    removal is what makes the deferral safe rather than merely later — a node out
+    of the tree can do nothing further whether it has been deleted yet or not.
+
+70. **`Input.mouse_mode` is a hard error headless rather than a no-op**, which is
+    fact 66's general shape applied to the property every screen wants to set. A
+    screen that assigned it directly could not be constructed in a test at all,
+    because the suite wrapper fails a run on any engine error (fact 34). The
+    guard belongs in one place — `InputMethod.set_mouse_mode` and
+    `InputMethod.mouse_mode` — which that autoload already needed for its own
+    use, and two owners of one branch is how one of them drifts.
 
 ---
 
@@ -1425,6 +1463,31 @@ would take the debris, the craters and the hulk with it, and the orbit camera
 §16.2 hands the player would then be circling an empty basin. It also costs
 nothing — the runtime is already inert once slot 0 is destroyed — which is the
 part that makes "leave it" the cheap answer as well as the right one.
+
+**A blueprint is re-validated at every screen boundary, in one process, and that
+is not redundancy.** The garage produces one, the shell carries it, the match
+rebuilds it, and each crossing runs the identical `PlacementValidator` chain. It
+would be cheaper to hand the match the `BuildContext` the garage already holds —
+and doing so would make the garage-to-match path different from the
+client-to-server path doc 12 §4.3 specifies, which is the one path that has to be
+right. The redundancy is the rehearsal.
+
+**The opponents are not built from the player's build.** A test run against three
+copies of whatever the player just made is a different game every time and
+measures nothing; a player who has fitted a rotor disc would be fighting three
+things that fly. Doc 06's generator is what eventually varies them, from an
+archetype and a seed.
+
+**The garage is the only way into a match.** The menu could offer "fight" beside
+"build" and it does not, because a player who has never seen the build screen
+does not know the game has one — and the build screen is the game.
+
+**`build_cancel` means two things in a match, decided by whether it is over.**
+During the match it releases the mouse; after the conclusion it leaves for the
+garage. That is not overloading for want of a key: doc 11 §16.2 keeps the mouse
+captured at the conclusion so the orbit camera can be orbited, which means the
+exits have to be keys, and the mouse-release meaning has nothing left to do on a
+screen the player is leaving.
 
 **`tests/physics/` builds its ground out of a `StaticBody3D` slab and says so.**
 Document 09 owns Dynamic Ground Arrays and nothing in a test may pre-empt it. The

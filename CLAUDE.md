@@ -63,6 +63,8 @@ When a value appears in more than one place, exactly one document **owns** it an
 | `CraterProfile`, `SurfaceTable` (incl. traction multipliers) | 09 |
 | Static Volume materials, fracture budgets | 10 |
 | Breakpoints, colour tokens, **input map actions** | 11 |
+| Screen flow, the shell, and what survives a transition | 11 |
+| Blueprint format and the placement-sequence rule | 02 |
 | Camera framing, lag rates, aim-ray constants | 11 |
 | Reticle states, HUD flash and feed constants | 11 |
 | Match outcome rule, end card and control card constants | 11 |
@@ -124,14 +126,15 @@ project-syndicate/
 │   │   ├── collections/            ← ring_buffer.gd, object_pool.gd
 │   │   └── util/                   ← mesh_util.gd, geometry helpers, hashing,
 │   │                                 proxy_mesh_builder.gd, proxy_mesh_cache.gd,
-│   │                                 greybox_material.gd
+│   │                                 greybox_material.gd, part_mesh_factory.gd
 │   │
 │   ├── assembly/
 │   │   ├── lattice/                ← lattice_occupancy.gd, footprint_solver.gd,
 │   │   │                             resolved_node.gd, placement_candidate.gd,
 │   │   │                             placement_validator.gd, build_context.gd,
 │   │   │                             build_budget_ledger.gd, build_shape_cache.gd,
-│   │   │                             build_command.gd
+│   │   │                             build_command.gd, blueprint.gd,
+│   │   │                             starter_blueprint.gd
 │   │   ├── graph/                  ← chassis_graph.gd, detachment_solver.gd,
 │   │   │                             detachment_scheduler.gd, island_detacher.gd,
 │   │   │                             mate_selector.gd, mate_record.gd
@@ -140,7 +143,8 @@ project-syndicate/
 │   │   ├── runtime/                ← assembly_runtime.gd, chassis_body_ref.gd,
 │   │   │                             assembly_interpolator.gd, assembly_registry.gd,
 │   │   │                             debris_body_ref.gd, debris_pool.gd,
-│   │   │                             debris_reaper.gd
+│   │   │                             debris_reaper.gd, assembly_stats.gd,
+│   │   │                             assembly_stat_solver.gd
 │   │   └── autobuild/              ← auto_assembler.gd, generation_context.gd,
 │   │                                 archetype_profile.gd, objective.gd
 │   │
@@ -178,15 +182,16 @@ project-syndicate/
 │   │                                 quat_codec.gd, blueprint_codec.gd
 │   │
 │   ├── ui/
-│   │   ├── boot/                   ← main_boot.gd
-│   │   ├── garage/                 ← garage_screen.gd, garage_layout_controller.gd,
+│   │   ├── boot/                   ← main_boot.gd, shell_root.gd, main_menu.gd
+│   │   ├── garage/                 ← garage_screen.gd, garage_preview.gd,
 │   │   │                             catalogue_presenter.gd, part_card.gd,
+│   │   │                             part_inspector.gd,
 │   │   │                             assembly_stat_panel.gd, touch_placement_controller.gd
 │   │   ├── match/                  ← match_screen.gd, chase_camera.gd, hud_frame.gd
 │   │   ├── hud/                    ← match_hud.gd, reticle.gd, damage_indicator.gd,
 │   │   │                             control_card.gd, match_end_card.gd
 │   │   └── common/                 ← meter_row.gd, stat_row.gd, toast_stack.gd,
-│   │                                 input_prompt.gd
+│   │                                 input_prompt.gd, ui_tokens.gd, breakpoint.gd
 │   │
 │   ├── vfx/
 │   │   ├── fusion/                 ← occupancy_sdf_baker.gd, skirting_builder.gd,
@@ -197,8 +202,8 @@ project-syndicate/
 │   └── ai/                         ← ai_context.gd, ai_target_selector.gd, ai_driver.gd
 │
 ├── scenes/
-│   ├── boot/                       ← main.tscn, splash.tscn
-│   ├── garage/                     ← garage_screen.tscn, part_card.tscn
+│   ├── boot/                       ← main.tscn, main_menu.tscn
+│   ├── garage/                     ← garage_screen.tscn
 │   ├── match/                      ← arena_*.tscn, match_hud.tscn
 │   ├── net/                        ← dedicated_server.tscn
 │   └── prefabs/                    ← assembly_runtime.tscn, debris_body.tscn
