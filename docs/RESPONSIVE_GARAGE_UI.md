@@ -1230,8 +1230,8 @@ releasing the mouse is not discoverable, and a player who finds neither plays a
 materially worse game than the one that was built — with a camera stuck behind
 the hull and a mouse they cannot get back.
 
-`ControlCard` is a centred panel raised on entry to a match, listing one row per
-control that a first-time player needs and cannot infer:
+`ControlCard` is a panel raised on entry to a match, listing one row per control
+that a first-time player needs and cannot infer:
 
 | Row | Action(s) |
 |---|---|
@@ -1259,19 +1259,47 @@ from the string table, because a keyboard layout is not a translation: a French
 player pressing the key §7.1 calls `W` wants to read `Z`, which no `tr()` key
 could know. The captions beside them are localised in the ordinary way.
 
-**Timing.** The card stays up for `DWELL_S = 11.0` seconds and fades out over the
-last `FADE_S = 0.35`, which is §9.2's toast fade so that everything in this
-interface that goes away goes away at the same speed. Eleven seconds is long
-enough to read seven rows unhurried and short enough to be gone before the
-opponents arrive — they close in about fifteen. `hud_toggle_stats` raises it
-again at any time, and that is the first consumer that action has ever had: in a
-match the card *is* the HUD's expanded panel, because there is no separate stat
-panel to expand.
+**Placement.** The card is laid out inside the **upper left** of the viewport —
+`BAND_LEFT/TOP/RIGHT/BOTTOM = 0.0, 0.0, 0.34, 0.66`, inset `BAND_INSET_PX = 16`
+from the two edges it hugs.
 
-It is raised unconditionally rather than on a first-run flag, because there is
-nowhere yet to store "they have seen it". A card that goes away by itself costs a
-returning player eleven seconds of translucent panel; a card nobody ever sees
-costs a new player the whole game.
+This section originally centred it, in the upper two fifths, on the reasoning that
+a card over the middle of the screen is the thing a player looks at and that the
+upper band cleared the player's own hull. **The first capture of a real match
+falsified that.** The opponents close from ahead, so the middle of the screen is
+exactly where a first-time player must be looking, and the dwell below outlasts
+the engagement that decides the match: the capture has an opponent directly
+behind the panel at seven seconds and the card still up at ten. A player read
+their first fight through a legend.
+
+The upper left is chosen rather than any other corner because it is the only
+quarter of this interface with nothing in it. §14.2's status panel is bottom left,
+§14.3's speed readout bottom right, and §14.4's event feed top right.
+
+**Timing, and standing down.** The card fades out over `FADE_S = 0.35`, which is
+§9.2's toast fade so that everything in this interface that goes away goes away at
+the same speed. `hud_toggle_stats` raises it again at any time, and that is the
+first consumer that action has ever had: in a match the card *is* the HUD's
+expanded panel, because there is no separate stat panel to expand.
+
+`DWELL_S = 11.0` is a **ceiling and not a duration**. The card stands down as soon
+as the player drives, steers, or fires — `ACTED_ACTIONS`, tested through
+`Input.is_action_pressed` so that a rebind is honoured here exactly as it is on
+the row that lists it — collapsing whatever dwell is left to the fade. A player
+who has taken hold of the machine has demonstrated the half of this card that
+matters, and eleven seconds is what remains for a player who does nothing at all.
+
+The three actions are chosen and the other four are excluded on purpose. Camera,
+zoom, and mouse release are the rows a player is *least* likely to find alone, so
+pressing one is not evidence of having read the rest — the card being up is how
+they find the next one.
+
+It is still raised unconditionally rather than on a first-run flag, because there
+is nowhere yet to store "they have seen it". That half is `SyndicateSettings`
+work and is waiting on there being more than one match. With the placement and
+the stand-down above, what it costs a returning player is a corner panel that
+leaves on their first input, which is a price worth paying to never lose a new
+one.
 
 ---
 
