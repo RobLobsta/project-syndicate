@@ -16,6 +16,7 @@ can be found again.
 
 | § | What is in it |
 |---|---|
+| 0 | Where the old `HANDOFF.md` section numbers went — the one copy |
 | 1 | Engine facts, verified against Godot 4.7.1 in this repository |
 | 2 | What the fault sweeps taught, and what uncaught faults taught |
 | 3 | Conventions for adding to the suite |
@@ -23,7 +24,7 @@ can be found again.
 
 ---
 
-### Where the old section numbers went
+## 0. Where the old section numbers went
 
 These three files were one `HANDOFF.md` until session 24. Older comments in
 `src/`, `tests/` and `tools/` refer to its sections, and so does some text kept
@@ -772,6 +773,112 @@ different fact. Read a citation with its subject, which is always named.
     it — a `--script` `SceneTree` that touches no autoload is four lines
     (fact 3).
 
+72. **A tyre friction model is stiff enough to be unstable at a 60 Hz tick, and
+    it hides that by saturating rather than diverging.** Measured in session 32
+    on doc 05 §7.4's contact integration, and it is the most expensive thing in
+    this file for anyone touching the motion layer.
+
+    The friction reaction opposing a contact's spin is a very steep function of
+    that spin near the rolling condition. Differentiating §7.2's curve through
+    §7.1's two divisions:
+
+    ```
+    dF/dω = μ·N · f'(0) / κ_peak · r / max(|v_long|, V_REF)
+    f'(0) = C·B / sin(C·atan(B)) = 12.415
+    ```
+
+    At the shipped all-road figures — `I_c = 8.5 kg·m²`, `r = 0.5 m`, `μ = 1.05`,
+    5 kN of load — that is `2.9e5 N per rad/s`, giving `dω̇/dω ≈ −1.7e4 s⁻¹`.
+    Explicit Euler is stable below `2/1.7e4` = **117 µs**. The tick is 16.7 ms.
+    **The step is 142× outside its own stability limit**, and the lateral axis is
+    worse, because §7.1 floors its denominator at `V_REF` and a hull creeping
+    sideways at 0.05 m/s already draws most of a friction budget.
+
+    **It does not blow up, and that is why nobody found it for thirty-one
+    sessions.** The Pacejka form saturates past its peak, so the excursion is
+    bounded and the contact settles into a limit cycle: measured at ±4.7 rad/s
+    reversing every single tick under a build standing still, against a
+    free-rolling 0.036 rad/s.
+
+    Three things to carry from it. **An unstable step in a saturating model
+    presents as noise, not as a crash** — look for it wherever a force is a steep
+    function of the state it is integrated against. **The chatter was destroying
+    lateral grip by about 37×**: a combined slip of ±20 puts `sy/s` near zero, so
+    every handling constant in this project was tuned against a machine that
+    could not corner. And **stabilising it is not a damping term** — see fact 73,
+    which is the part that cost the second session.
+
+73. **Stabilising a stiff contact: the two ways to do it wrong, both measured.**
+    Fact 72 is the defect; this is the repair, and it is recorded separately
+    because both wrong turns look correct on paper and each costs most of a day.
+
+    **Wrong turn one: damp the rate.** Take `I_c ω̇ = τ − r·F(ω)` implicitly in
+    `ω`, so the stiffness lands in the denominator as `I_c + dt·r·k`. It is
+    unconditionally stable, it kills the limit cycle exactly as intended, and it
+    is wrong, because the fictitious inertia that damps the residual also resists
+    a contact **genuinely spinning up with an accelerating hull**. Measured: full
+    throttle reached **0.20 m/s**. The cure is to step the quantity the friction
+    actually depends on — the slip velocity `u = ω·r − v_long` — and reconstruct
+    `ω = (v_long + u)/r` afterwards. The contact then follows the hull for free
+    instead of having to be integrated into following it.
+
+    **Wrong turn two: use the tangent at zero as the stiffness.** It is the
+    natural choice and the reasoning is sound as far as it goes: §7.2's curve is
+    steepest at the origin, so that slope bounds every other slope, and an
+    implicit step is stable for any bound at or above the true one. What the
+    reasoning omits is the cost of overestimating. Measured on the shipped build,
+    the tangent over-damps by a factor of **317**, so a contact knocked to a slip
+    of −0.05 m/s takes forty ticks to recover and drags several kilonewtons the
+    whole time — and the Assembly does not accelerate at all. The chord
+    `|F| / |u|` is the average slope actually traversed, is never above the
+    tangent, collapses to the right small number past the peak, and costs one
+    division of two quantities already in hand.
+
+    The general shape, and it is worth more than the contact: **an implicit
+    factor is a statement about how fast the state may move, so an overestimate
+    is not conservative — it is a brake you did not intend to fit.** Bound it by
+    what the system actually did over the step, not by the worst it could ever do.
+
+74. **The reference build is nose-heavy enough to stand on its front axle, and has
+    been for the life of the project.** With the shipped starter settled on level
+    ground, the two **rear** contacts report zero normal load, permanently.
+    Nothing noticed, because fact 72's chatter produced enough force anyway — and
+    it is what makes fact 73's repair look broken, since a correct integrator on a
+    two-wheeled stance gives 0.09 m/s under full throttle and a porpoising hull.
+
+    The cause is arithmetic, not mystery. Against a 1.50 m wheelbase the centre of
+    mass sits 0.40 m aft of the front axle, which is a **73/27** static split —
+    940 kg on the front pair and 342 kg on the rear — and
+    `eff.ballistic.autocannon_30.t3`'s own centre is a further **1.12 m forward of
+    the front axle**. A 2.25 m gun cantilevered a metre past the front wheels of a
+    vehicle whose wheelbase is 1.50 m is the whole finding, and it is also why a
+    braking or rammed opponent pitches onto its barrel.
+
+    **Two traps around it.** The right-hand wheel cells are authored one cell
+    forward of the left — `(28, 3, 21)` against `(19, 3, 22)` — which looks
+    exactly like doc 02 §10's old mirror off-by-one and is not: squaring them up
+    fails `test_the_shipped_starter_is_its_own_mirror` immediately, because the
+    mirror is correct and the wheel's pivot is off-centre, so cells that are
+    symmetric are metres that are not. And the whole Assembly is **39 kg/m³** of
+    its bounding box — a fifth of balsa — so every figure doc 05 §6.4 retunes
+    against `rated_load_kg` is being asked about loads the build never reaches.
+
+75. **A part table can be internally consistent and still be the wrong shape, and
+    only a picture shows it.** Measured after a capture prompted the question
+    "why is the gun bigger than the vehicle": at `LATTICE_UNIT_M = 0.25`, the Core
+    Module is 5 cells long and the autocannon is 9, so the weapon is **50% of the
+    reference build's length and the cabin 28%**. Every validator passes, every
+    mass is plausible in isolation, and the silhouette is a gun with a car
+    attached.
+
+    The lesson is the general one and it is cheap to act on: **the registry has no
+    check that compares one part against another**, so proportion is the one
+    property of the part table that no test can see and that a single frame of
+    capture answers immediately. Ratios worth watching, all derivable from
+    `occupancy_cells` and `mass_kg` with no engine at all: weapon length against
+    hull length, cabin against hull, wheel diameter against ride height, and mass
+    against bounding-box volume.
+
 ---
 
 ## 2. What fault injection taught
@@ -962,6 +1069,21 @@ in `tests/physics/` recorded rounds, ticks, kills and travel; none recorded
 **attitude**. So a build ending the fight on its roof moved no number, and the
 worst thing a player could experience was invisible to six thousand checks while
 being obvious in six frames of a capture. The instrument was twenty lines.
+
+**A limit cycle averages to zero, so every aggregate is blind to it. Sample the
+sign, not the mean.** Session 32's, and it is the sharp version of the lesson
+above rather than a repeat of it. §7.4's contact spin was reversing on ten of
+every twelve ticks, at a hundred and thirty times the rate the hull's own speed
+could account for, and **no quantity any fixture recorded moved at all**: the mean
+force was right, the mean position was right, the speed was a couple of tenths,
+and six thousand checks were green. The instrument that saw it in twenty lines was
+a count of *sign changes* in a per-tick sample.
+
+So the question to ask of an oscillating suspect is not "what is it doing" — the
+answer is "nothing, on average, which is the point" — but "how often does it
+change direction, and is that rate physical". The same shape applies to anything
+integrated per tick: a per-tick alternation is invisible to every statistic that
+does not preserve order.
 
 Before adding an assertion to an engagement fixture, read what the record class
 already holds and ask what a player would notice that is **not on the list**. The

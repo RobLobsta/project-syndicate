@@ -18,30 +18,50 @@ extends CenterContainer
 ## allowlisted [code]_process[/code] in the HUD and already ages the event feed
 ## against real time for §14.4. A second timer on a second node would be a second
 ## answer to how long a message stays up.
+##
+## [b]It stands down when the player shows they do not need it, and it sits out of
+## the way until then.[/b] Both halves were found by looking at a capture rather
+## than at a test: centred, it covered exactly the band of screen the three
+## opponents approach through, for the whole of the opening engagement, which is
+## decided inside its own dwell. §14.6 owns both constants.
 
 ## ===== TIMING (§14.6) ==================================================
 
-## How long the card stays up unprompted at the start of a match. Long enough to
-## read eight rows without hurrying, short enough that it is gone before the
-## opponents arrive — they close in about fifteen seconds.
+## How long the card stays up unprompted at the start of a match, for a player
+## who does nothing at all. It is a ceiling rather than a duration:
+## [method age] takes the card down as soon as the player drives, steers, or
+## fires, which is almost always first.
 const DWELL_S: float = 11.0
 ## The fade at the end of the dwell, borrowed from §9.2's toast so that
-## everything in this interface that goes away goes away at the same speed.
+## everything in this interface that goes away goes away at the same speed. It is
+## also what the dwell collapses to when the player acts, so the card leaves the
+## same way whichever thing takes it down.
 const FADE_S: float = 0.35
 
 const PANEL_MIN_WIDTH_PX: float = 300.0
 const ROW_SEPARATION_PX: int = 2
 
-## Fraction of the viewport height the card is centred within, measured from the
-## top.
+## ===== PLACEMENT (§14.6) ===============================================
+
+## The band of viewport the card is laid out inside, as fractions of the whole,
+## and the inset from the two edges it hugs.
 ##
-## [b]Not the whole screen, and this was found by looking at it.[/b] Centred on
-## the viewport the card sits exactly on top of the player's own Assembly, which
-## §13.5 frames at about the middle — so the first thing a new player is shown is
-## a panel over the one object the panel is telling them how to drive. Centred in
-## the upper two fifths it clears the hull and still reads as the thing to look
-## at, because nothing else is up there.
-const VERTICAL_BAND: float = 0.44
+## [b]The upper left, and this was decided by looking at a capture.[/b] Centred —
+## which is what this was, in the upper two fifths — the card covers the middle of
+## the screen for the whole of a dwell that the opening engagement is decided
+## inside. The three opponents close from ahead, so "the middle" is precisely
+## where a first-time player needs to be looking, and the capture that found it
+## has an opponent directly behind the panel at seven seconds.
+##
+## The other three corners are taken: §14.2's status panel is bottom left, §14.3's
+## speed readout bottom right, and §14.4's event feed top right. The upper left is
+## the only quarter of this interface with nothing in it, which is why the card
+## can be moved at all rather than merely shrunk.
+const BAND_LEFT: float = 0.0
+const BAND_TOP: float = 0.0
+const BAND_RIGHT: float = 0.34
+const BAND_BOTTOM: float = 0.66
+const BAND_INSET_PX: float = 16.0
 
 ## ===== STRING KEYS =====================================================
 ## CLAUDE.md §10 rule 8: never a literal user-facing string.
@@ -74,6 +94,19 @@ const ACTION_ZOOM_OUT: StringName = &"cam_zoom_out"
 const ACTION_RELEASE_MOUSE: StringName = &"build_cancel"
 const ACTION_TOGGLE_CARD: StringName = &"hud_toggle_stats"
 
+## ===== STAND-DOWN (§14.6) ==============================================
+
+## The actions that count as the player having learned the controls.
+##
+## Driving, steering, and firing — the three the card is mostly there to teach,
+## and the three a player reaches for first. Deliberately [b]not[/b] the camera
+## toggle, the zoom, or the mouse release: those are the rows a player is least
+## likely to find on their own, so pressing one is not evidence they have read the
+## rest, and the card being up is how they find the next one.
+const ACTED_ACTIONS: Array[StringName] = [
+	ACTION_THROTTLE, ACTION_BRAKE, ACTION_STEER_LEFT, ACTION_STEER_RIGHT, ACTION_FIRE
+]
+
 ## Seconds of dwell left, or zero when the card is down. Negative is not a state:
 ## the card is either up with time on it or not up at all.
 var _remaining_s: float = 0.0
@@ -84,8 +117,13 @@ var _rows: VBoxContainer = null
 
 
 func _init() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	anchor_bottom = VERTICAL_BAND
+	anchor_left = BAND_LEFT
+	anchor_top = BAND_TOP
+	anchor_right = BAND_RIGHT
+	anchor_bottom = BAND_BOTTOM
+	offset_left = BAND_INSET_PX
+	offset_top = BAND_INSET_PX
+	offset_right = 0.0
 	offset_bottom = 0.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
@@ -137,14 +175,33 @@ func toggle() -> void:
 
 ## Ages the dwell by [param dt] seconds of real time, fading over the last
 ## [constant FADE_S] of it. Driven by [MatchHud]; see the class comment.
+##
+## A player who drives, steers, or fires has demonstrated the half of this card
+## that matters, so the remaining dwell collapses to the fade rather than running
+## out on a clock. It reads the live [InputMap] through
+## [method Input.is_action_pressed] and never a keycode, so a rebind is honoured
+## here exactly as it is on the row that lists it.
 func age(dt: float) -> void:
 	if _remaining_s <= 0.0:
 		return
+	if _remaining_s > FADE_S and player_has_acted():
+		_remaining_s = FADE_S
 	_remaining_s -= dt
 	if _remaining_s <= 0.0:
 		dismiss()
 		return
 	modulate.a = minf(1.0, _remaining_s / FADE_S)
+
+
+## True while the player is holding any of [constant ACTED_ACTIONS].
+##
+## Public because it is the whole of the stand-down rule and a test that could
+## only reach it through [method age] would be asserting two things at once.
+func player_has_acted() -> bool:
+	for action: StringName in ACTED_ACTIONS:
+		if Input.is_action_pressed(action):
+			return true
+	return false
 
 
 ## ===== PRIVATE =========================================================

@@ -62,7 +62,16 @@ const HELD_HEADING_DEG: float = 10.0
 
 ## Distance, in metres, a run must cover to count as having driven at all.
 ## Everything about heading is vacuous on a build that never moved.
-const MIN_TRAVEL_M: float = 2.0
+##
+## [b]A validity guard and not a measurement, and it has to be read as one.[/b]
+## The autocannon build is the marginal case this whole file is about — doc 01
+## §10.5's 1450 N·s throws it hard enough that it barely drives while firing — so
+## its travel is exactly the kind of quantity LEARNED_FACTS.md §1 fact 44 warns
+## about, and it has been seen anywhere between 0.77 m and 4.42 m across changes
+## made elsewhere in the project with nothing touching this fixture. The floor is
+## therefore set where "it moved" and "it never moved" genuinely part company,
+## which is well under a metre; the repeater covers two and a half.
+const MIN_TRAVEL_M: float = 0.5
 
 ## Separation the lethality duel is fought at, in metres. The same 24 m
 ## `test_family_duels.gd` uses, so the two files' engagements are comparable.

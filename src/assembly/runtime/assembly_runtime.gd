@@ -461,6 +461,47 @@ func part_world_position(slot: int) -> Vector3:
 func apply_mass_properties(mp: MassSolver.MassProperties) -> void:
 	mass_properties = mp
 	MassSolver.apply_mass_properties(body, mp)
+	_set_simulated(mp.part_count > 0)
+
+
+## §3.7. A body with no live parts left is not simulated.
+##
+## §3.5 floors the mass at one kilogramme and the inertia at one, because the
+## engine refuses a zero mass outright and reads a zero inertia as "derive it
+## from the collision shapes" — the coupling Architectural Invariant I-1 forbids.
+## Those floors are the engine's requirement and they are not a claim about the
+## world: an Assembly that has lost every part is not a one-kilogramme object, it
+## is nothing at all, and leaving it dynamic hands the solver a hull-sized
+## collider on a gramme of mass. Anything that so much as brushes it launches it,
+## which is precisely what doc 11 §16.2 says must not happen — the hulk is the
+## visible record of the fight and it stays where it fell.
+##
+## [b]This is not §3.6's rule and does not weaken it.[/b] §3.6 stops the motion
+## layer on a terminated Assembly and says explicitly that it is not "freeze the
+## body": the wreck still falls, still rolls, still takes impacts, and still
+## tumbles under §3.4. That remains true of a terminated Assembly with parts on
+## it. This fires one condition further along — when the last part has gone — and
+## by then there is no motion left to preserve, because there is no mass to carry
+## it and, once the islands have detached, no live geometry either.
+##
+## [b]The ordering is what makes it safe.[/b] The solve that lands with no parts
+## is the one triggered by the last island detaching, and doc 04 §6 has already
+## read this body's linear and angular velocity to give the debris the [code]v +
+## ω × r[/code] it left with. Freezing before that would drop every fragment
+## straight down.
+##
+## Reversible, because doc 08 §10's repair path is not written yet and a latent
+## one-way door is how it arrives broken: a solve that finds parts again puts the
+## body back into the simulation.
+func _set_simulated(simulated: bool) -> void:
+	var frozen := not simulated
+	if body.freeze == frozen:
+		return
+	if frozen:
+		body.linear_velocity = Vector3.ZERO
+		body.angular_velocity = Vector3.ZERO
+	body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	body.freeze = frozen
 
 
 ## Total shapes ever added to the body, disabled or not. Diagnostics and tests.
