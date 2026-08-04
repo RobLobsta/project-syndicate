@@ -208,22 +208,29 @@ Ranked by what would most improve a first-time player's experience:
    §14.6 raises it on every entry because there is nowhere to store "they have
    seen it"; the placement and the dwell are separable from that and cheaper.
    **§3.2.**
-3. **One arena and one opponent recipe.** Every test drive is the same three
+3. **You cannot ask the machine to slow down.** The brakes work — the AI's
+   arrival brake is the same mechanism and it stops an 18 m/s approach — but
+   `S` is one key meaning both "brake" and "reverse", the service brake's torque
+   vanishes at exactly zero contact speed, and the handbrake that would hold a
+   stop is bound to Space and read by nothing. A player who wants to decelerate
+   and sit still has no input that says so, and a player on limbs has no brake
+   at all. **§3.3.**
+4. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. Doc 06's generator
    is the intended answer.
-4. **Nothing rewards a good build over a heavy one** — except which Effector
+5. **Nothing rewards a good build over a heavy one** — except which Effector
    Module you fit, which is now a real decision because the two published
    direct-fire rows are good at different things. One axis out of the six the
    stat panel names.
-5. **The garage teaches nothing about *composition* until a placement is
+6. **The garage teaches nothing about *composition* until a placement is
    refused.** The inspector names figures; nothing says a rotor disc needs a mast
    under it and a second disc opposite it, or that supply goes on before draw.
-6. **The opponents still shoot each other**, and nothing in `src/combat/` knows
-   what a team is (§3.3).
-7. **A destroyed part still simply vanishes**, because `VisualDamageController`
+7. **The opponents still shoot each other**, and nothing in `src/combat/` knows
+   what a team is (§3.4).
+8. **A destroyed part still simply vanishes**, because `VisualDamageController`
    (doc 08 §9) is unwritten.
-8. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.6), and the garage will let a player fit limbs.
+9. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§3.7), and the garage will let a player fit limbs.
 
 **The bad news, plainly.** Four things.
 
@@ -243,14 +250,14 @@ reference build is 4.8 m long, so the stand-off was inside the hulls and the ste
 is still under one. The stand-off is fixed. **The step is knowingly left wrong**,
 because moving it moves every engagement measurement in `tests/physics/` at once
 and it is not what was driving over the player. It is a `balance-review` decision
-and it is open (§3.9).
+and it is open (§3.10).
 
 **A parked Assembly never comes to rest.** Found while building the fixture, and
 not fixed: a wheeled build with no throttle and no brake reads 0.38 m/s at the
 end of a 90-tick settle and still 0.38 m/s after 360, and covers two to three
 metres over an engagement. Nothing under doc 05 §7 puts a rolling resistance on a
 free contact. A player who lets go of the keys on level ground drifts, which is
-small but is the kind of thing that reads as the vehicle being broken (§3.9).
+small but is the kind of thing that reads as the vehicle being broken (§3.10).
 
 **And the drivable module still loses a straight duel.** Repeater against
 autocannon at 24 m, both stationary and trading: the repeater build's Core Module
@@ -305,7 +312,53 @@ change.
 Verify by capture rather than by test — this is a question about what is legible,
 and `LEARNED_FACTS.md` §1 fact 55 is the route.
 
-### 3.3 Decide whether friendly fire exists
+### 3.3 A player cannot brake — the mechanism exists and no input reaches it
+
+**Read the first line before acting on this one: the brakes are not missing.**
+The chain is complete and correct for the wheeled and tracked families, and
+session 31's arrival brake is proof it works — it is the only thing that stopped
+a driver arriving at 18 m/s. `veh_brake` → `ControlInput.brake` →
+`brake_torque_nm × demand` in `MotiveSystem._apply_traction` → opposed to the
+contact's spin in `TractionSolver.integrate_contact` → the contact slips and
+doc 05 §7.2's longitudinal force retards the hull. There is even a zero-crossing
+guard whose docstring names the symptom it prevents: "a vehicle that will not
+quite come to rest."
+
+**What is missing is any way for a person to ask for it.** Three things, and the
+third is the one that is simply absent rather than conflated.
+
+1. **`S` is one key meaning two opposite things.** `ControlSystem.sample` builds
+   `drive := axis(ACTION_BRAKE, ACTION_THROTTLE)` and writes it to
+   `input.throttle`, *and separately* writes
+   `input.brake = get_action_strength(ACTION_BRAKE)`. So one press of `S`
+   demands full braking and full **reverse drive torque** in the same tick. A
+   player who wants to shed thirty metres a second and hold position has no
+   input that says so; they have one that says "stop, then go backwards".
+2. **A stop is a moment, not a state.** `brake_sign := -signf(contact_omega)`,
+   and `signf(0.0)` is `0.0` — so at exactly rest the brake torque vanishes and
+   the reverse drive torque from the same key is all that is left. The Assembly
+   cannot be held stationary on the brake at all. Whether that matters is a
+   design question about a combined brake/reverse axis, which is a real
+   convention and not obviously wrong; what is not defensible is that nothing
+   else can hold it either.
+3. **`veh_handbrake` is bound to Space, sampled into `ControlInput.handbrake`,
+   and read by nothing** — the natural answer to (2), already listed in §4 and
+   still unwritten. Doc 05 does not define what a handbrake does to a contact,
+   which is the actual blocker.
+
+**And there is no braking at all for two of the four families.** `input.brake` is
+read in exactly one place, `_apply_traction`, which only `GROUND` and `TRACKED`
+reach. An ambulatory build and a rotary one have no deceleration control of any
+kind — not conflated, not weak: absent. The rotary case is partly §3.7's, since
+nothing flies one anyway; the ambulatory case is not, because a player can build
+and drive one today.
+
+The cheapest honest first step is a decision rather than code: doc 05 §15.1 owns
+the input→`ControlInput` mapping and §7 owns what a contact does with it, and
+neither says whether "decelerate" is a demand distinct from "reverse". Nothing
+here should be invented in `ControlSystem` without that section saying so.
+
+### 3.4 Decide whether friendly fire exists
 
 §15.7.5's ladder fixed the *geometry* — three drivers converging on one target no
 longer stand in each other's line — and deliberately did not touch the rule.
@@ -317,7 +370,7 @@ That is doc 08's question and it is a real one, not an oversight. The roster
 already exists on `AiContext` and the match layer owns it; what does not exist is
 a decision about whether the resolver should be told.
 
-### 3.4 Sweep the bounds nobody reaches
+### 3.5 Sweep the bounds nobody reaches
 
 Invariant I-12 lists eighteen bounds and the suite demonstrably reaches almost
 none of them. Deleting each in turn and watching for green is a cheap way to find
@@ -326,7 +379,7 @@ minutes a sweep. The fixture that closes one has to be built to *exceed* it and
 then to assert that it exceeds it. Likeliest to be untested: chain-reaction depth
 3, collapse cascades, melee sweep segments, and the two debris caps.
 
-### 3.5 Fight with the edge
+### 3.6 Fight with the edge
 
 **A player can now reach this and could not before**: the garage's catalogue
 carries the Appendage and the edge, so a build with one is a build somebody will
@@ -339,7 +392,7 @@ measurement: 640 damage a swing has to survive a 26 m approach into 120 damage a
 round at seven a second, and §15.4's own impulse shoves the target 7 m/s clear of
 a second swing.
 
-### 3.6 A stability-augmentation layer, and the rotary family
+### 3.7 A stability-augmentation layer, and the rotary family
 
 `CombatArena._fly` is three loops through `ControlInput` and is still the only
 thing in the repository that can hold a hover. A **player** flying a rotary build
@@ -348,7 +401,7 @@ wants a layer between both `ControlInput` producers and the motion layer, which
 doc 05 does not have. An `AiDriver` handed a rotary Assembly aims and fires but
 does not fly.
 
-### 3.7 §15.5's sustained contact, and `DotScheduler`
+### 3.8 §15.5's sustained contact, and `DotScheduler`
 
 Two small, self-contained pieces of doc 07 and doc 08. `eff.melee.beam_edge.t4`
 authors sustained contact, `MeleeSolver.sustained_channel_damage` is written and
@@ -357,7 +410,7 @@ instead of per tick. `DotScheduler` (doc 08 §7.3) is about sixty lines and is t
 difference between thermal damage that resolves correctly when submitted and
 thermal damage that actually burns.
 
-### 3.8 The rest of document 10
+### 3.9 The rest of document 10
 
 Comparable in size to what document 09 cost, in dependency order: the CSG bake
 (doc 10 §3.1–§3.2), fragment decomposition (§3.3), support graph and collapse
@@ -367,7 +420,7 @@ survivable — is built and tested. Worth knowing before starting: a Voronoi cel
 is an intersection of half-spaces, so for a *convex* Section this is repeated
 plane slicing and needs no CSG at all.
 
-### 3.9 Smaller, and worth doing when passing
+### 3.10 Smaller, and worth doing when passing
 
 - **A parked Assembly never comes to rest.** Session 31, found while building the
   ram fixture and deliberately not fixed in it. A wheeled build with no throttle
@@ -422,7 +475,7 @@ fixing. None of these is a surprise waiting to be found.
 
 ### The motion layer
 - **There is no stability-augmentation layer, and a rotary Assembly needs one to
-  exist in a test.** Owned by §3.6.
+  exist in a test.** Owned by §3.7.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
   §4.21, measured at 170° over five seconds, and now the family's limiting
   defect. It wants a heading term in doc 05 §13, which §13.8 currently forbids
@@ -435,7 +488,13 @@ fixing. None of these is a surprise waiting to be found.
   handbrake nothing implements would be writing a field for a behaviour that does
   not exist. Nothing in `src/motion/` reads either. Doc 05 does not define what
   a handbrake does to a contact and inventing it here would be worse than the
-  gap.
+  gap. **This is worse than it reads as a standalone gap, and §3.3 has the
+  whole of it**: the handbrake is the only control that could hold an Assembly
+  stationary, because `veh_brake` is the same key as reverse and the service
+  brake's torque vanishes at exactly zero contact speed.
+- **`ControlInput.brake` is read in exactly one place**, `_apply_traction`, so
+  the wheeled and tracked families brake and the ambulatory and rotary families
+  have no deceleration control of any kind. §3.3.
 - **Nothing consumes `AeroSolver`, and no `ctl.*` part is authored**, so drag,
   downforce, and Control Surfaces have never acted on a moving Assembly. It is
   complete and matches doc 05 §8; what it needs is a per-part pressure-centre
@@ -490,7 +549,7 @@ fixing. None of these is a surprise waiting to be found.
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **No engagement has ever been fought at contact range.** Owned by §3.5.
+- **No engagement has ever been fought at contact range.** Owned by §3.6.
 - **A second projectile type exists and only one join is asserted.** Until this
   session every module in the catalogue chambered `proj.kinetic.ap_30`, so "which
   round does this module fire", "which stores is this Assembly granted" and
@@ -500,13 +559,13 @@ fixing. None of these is a surprise waiting to be found.
   equivalent for an AI opponent, and for a build carrying two modules that
   chamber different rounds, is still unasserted.
 - **§15.5's sustained contact is not implemented.** The edge authors it, the
-  solver computes it, and nothing calls it. Owned by §3.7.
+  solver computes it, and nothing calls it. Owned by §3.8.
 - **A melee strike can never ricochet**, because its packet's normal is derived
   from its own direction. Not a defect — the query reports no surface normal —
   but see §5 before assuming doc 08 §4's angle gate means anything here.
 - **`DotScheduler` is not written** (doc 08 §7.3), so thermal and corrosive
   packets resolve correctly when submitted and nothing submits them over time.
-  Owned by §3.7.
+  Owned by §3.8.
 - **`VisualDamageController` is not written** (doc 08 §9) and neither is §10's
   repair path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so that a band transition upward fires the same signal as one
@@ -522,7 +581,7 @@ fixing. None of these is a surprise waiting to be found.
   it is on, so friendly fire is decided by whichever hull the ray reaches first.
   The roster lives on `AiContext` and on `MatchState`, both owned by the match
   layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
-  converging on one target and deliberately not the rule. Owned by §3.3.
+  converging on one target and deliberately not the rule. Owned by §3.4.
 - **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
   decides that the wreck stays, which is right. What follows it is now §15's
   loop — fight again, or go back to the garage — and what is still missing is a
