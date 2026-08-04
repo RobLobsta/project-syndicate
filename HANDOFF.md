@@ -48,19 +48,24 @@ thirteen documents in `/docs/`, named just before it.
 
 ## Where this stands
 
-**It is a game with a loop.** `godot --path .` opens on a menu. The menu opens a
-garage, where a wheeled Assembly is standing on the Build Lattice with a
-catalogue of thirteen parts beside it and its mass, power, mounts, top speed,
-integrity and rollover threshold on the right. TEST DRIVE puts that build — the
-one on the screen, whatever the player has done to it — into a basin with 15 m of
-relief against three opponents. They fight. A card says which way it went and
-names the two keys that fight again or go back to the garage.
+**It is a game with a loop, the loop forgives a mistake, and the garage now
+builds the way a player expects it to.** `godot --path .` opens on a menu. The
+menu opens a garage, where a wheeled Assembly is standing on the Build Lattice
+with a catalogue of thirteen parts beside it and its mass, power, mounts, top
+speed, integrity and rollover threshold on the right. The part under the pointer
+lights up and the inspector says what it is. **M** mirrors placements onto the
+other flank, so a symmetric build is half the clicks; **Ctrl+Z** takes back a
+misclick, including both halves of a mirrored pair at once. A removal that would
+orphan something asks first, and RESET asks before it throws the build away. TEST
+DRIVE puts that build into a basin with 15 m of relief against three opponents.
+They fight. A card says which way it went and names the two keys that fight again
+or go back to the garage.
 
 **What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-no undo, and a garage in which nothing tells a player what a part *does* until
-they have driven it.
+suspension a player cannot see working, and no reason yet to prefer one build to
+another beyond the numbers in the stat panel.
 
-**83 files, 5582 checks, 0 failures.**
+**85 files, 6023 checks, 0 failures.**
 
 ---
 
@@ -93,7 +98,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**83 files, 5582 checks, 0 failures.**
+**85 files, 6023 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -128,10 +133,14 @@ with `-j4`:
 
 ```bash
 python3 tools/ci/sweeps/ai_layer_sweep.py            # all of them, 4 workers
-python3 tools/ci/sweeps/match_layer_sweep.py         # doc 11 §16, §14.3, §14.6
+python3 tools/ci/sweeps/garage_edit_sweep.py         # doc 02 §9: undo, removal, order
 python3 tools/ci/sweeps/ai_layer_sweep.py --list     # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
+
+There are five of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
+`BASELINE` is a check count and moves with the suite; update it in the same
+change as anything that moves the count.
 
 Workers run in throwaway copies of the project under `/tmp`, so `-j2` and above
 cannot leave a planted fault in your checkout. `-j1` still patches in place, and
@@ -150,62 +159,67 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the menu, the
-garage, and 900 frames of a match with no player input at all.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the boot flow,
+and the garage on its own through `--main-scene`, which is the cheap way to look
+at one screen without driving the menu.
 
-**It is a game you can start, build in, and play again.** The menu is legible
-from frame 1 and its one green button says ENTER THE GARAGE. The garage opens on
-a build that is already a working machine rather than on an empty lattice — which
-matters more than it sounds, because Invariant I-2's "every Assembly has exactly
-one Core Module" is a rule nothing on the screen states and a player starting
-from nothing would have to guess. The stat panel fills a tick after any edit. The
-match is the same fight it was, and **the wreck now stays where it fell**: the
-capture that ended session 25 at 92 m/s and climbing ends this one at 0.0 m/s
-with the end card up.
+**The garage now looks like a garage.** Before this session the build rendered as
+one dark silhouette — one sun over a dark sky, every shaded face falling to an
+ambient term sampled from that sky — so doc 13's class tints were carrying no
+information and a player could not see where their Prime Mover was. With a fill,
+a bounce off the plate and a raised ambient, the same build reads as a pale steel
+hull, a brass Prime Mover, a cyan Energy Cell, a dark autocannon and four
+contacts. That is the same build, the same tints, and three lights.
+
+**And it builds the way a player expects.** MIRROR · M in the toolbar; the
+shipped starter is twelve placements and eight gestures with it on. The part
+under the pointer lights up, so the inspector is describing something the player
+can point to rather than one of four parts of the same class.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **There is no undo.** Doc 02 §9.3's `BuildCommand` is unwritten, so a misclick
-   is permanent until RESET, which throws away everything. It is the first thing
-   a player meets in their first minute of building and the cheapest large thing
-   left.
-2. **Every build is placed one part at a time down both flanks.** Doc 02 §10's
-   mirroring is written and unimplemented and `build_mirror_toggle` has a binding
-   and no consumer. The shipped starter is four stations and four contacts, half
-   of them the mirror of the other half.
-3. **The wheels are boxes, and they are drawn where the part was placed rather
-   than where the suspension put them** (§3.4). In the garage they are four pale
-   blocks under a hull; in the match they hang in the air on every crest. It is
-   the biggest gap between how the game *looks* and how it *works*.
-4. **You still cannot drive and shoot at the same time** (§3.3). Unchanged, and
-   now the oldest thing on the list.
-5. **One arena and one opponent recipe.** Every test drive is the same three
-   wheeled builds at the same three spawns on the same basin. The scene is
-   parameterised for none of it, and doc 06's generator is the intended answer.
-6. **The garage teaches nothing about what a placement is refused for until it is
-   refused.** The status strip names the reason and the inspector names the
-   figures, and neither says that a rotor disc needs a mast under it and a second
-   disc opposite it. That is a *composition* rule rather than a part figure, and
-   nothing on the screen carries one.
-7. **The opponents still shoot each other**, less than they did, and nothing in
-   `src/combat/` knows what a team is (§3.5).
-8. **A destroyed part still simply vanishes**, because `VisualDamageController`
+1. **The wheels do not move.** They are drawn where the part was placed rather
+   than where the suspension put them, so on 15 m of relief they hang in the air
+   on every crest and the machine reads as a sliding prop. It is now the largest
+   gap between how the game looks and how it works, and §3.4 owns it.
+2. **You still cannot drive and shoot at the same time** (§3.2). The oldest thing
+   on the list and the one a player will meet in their first fight.
+3. **One arena and one opponent recipe.** Every test drive is the same three
+   wheeled builds at the same three spawns on the same basin. Doc 06's generator
+   is the intended answer.
+4. **Nothing rewards a good build over a heavy one.** The stat panel names mass,
+   power, mounts, speed, integrity and rollover, and the match tests exactly one
+   of those. A player who spends ten minutes in the garage has no way to find out
+   whether it was worth it beyond winning slightly faster.
+5. **The garage teaches nothing about *composition* until a placement is
+   refused.** The inspector names figures; nothing says a rotor disc needs a mast
+   under it and a second disc opposite it, or that supply goes on before draw.
+6. **The opponents still shoot each other**, less than they did, and nothing in
+   `src/combat/` knows what a team is (§3.3).
+7. **A destroyed part still simply vanishes**, because `VisualDamageController`
    (doc 08 §9) is unwritten.
-9. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.7), and a player can now *reach* that build — the garage will let them fit
-   limbs. That moves it from a test-only defect to something a player can meet.
+8. **A walking build turns 170° in five seconds while commanded straight ahead**
+   (§3.5), and the garage will let a player fit limbs.
 
-**The garage's silence is half closed.** Hovering a part now says what it is —
-this contact steers 32° and that one is fixed, this module traverses 360° and
-elevates 34° and depresses 8°, this Prime Mover turns 3200 N·m. What it still
-does not say is anything about *composition*: that a disc needs a mast, that
-supply goes on before draw, that four steered contacts crab instead of turning.
+**The bad news, plainly.** Doc 02 §10's own worked example is wrong, and had it
+been implemented as written the mirror would have been one cell out on every part
+that ships — a defect that looks like a physics bug rather than a placement one,
+because the build simply comes out asymmetric and drives crooked. It was caught
+only because the shipped starter happens to be a hand-mirrored build and could be
+used as ground truth. **There is no second such build in the repository**, so the
+next hand-authored symmetric thing anybody adds is worth writing the same test
+against.
 
-The honest summary: **the game has a loop and the loop is worth going round.** A
-player can build, drive what they built, and come back and change it, and each of
-those three now tells them something. What it does not have is forgiveness — no
-undo, no mirroring — so building is more typing than it should be, and that is
-the next thing.
+Two smaller ones. The mirror ghost is validated against the build *as it stands*
+rather than as it will be once the primary commits, so a mirrored placement whose
+legality depends on its own other half previews red and commits green; that is
+honest but it is not what the player sees. And the toolbar is now six controls
+wide at the expanded tier, which the compact tier — which still has no bottom
+sheet — cannot hold at all.
+
+The summary: **the garage is now a decent place to spend ten minutes, and the
+match has not caught up with it.** Everything worth doing next is on the other
+side of the TEST DRIVE button.
 
 ---
 
@@ -214,29 +228,25 @@ the next thing.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 An undo stack — the top item
+### 3.1 Make the wheels follow their contacts — the top item
 
-Doc 02 §9.3's `BuildCommand` is specified in full — kind, slot, cell,
-orientation, prior parent, cascade, 128 deep — and unwritten. A misclick in the
-garage is permanent until RESET, which discards the whole build. It is the first
-thing a player meets in their first minute of building and the cheapest large
-thing left.
+`spawn_visual` draws a Motive Assembly at the cell it was placed in, not at its
+probe hit point, so suspension travel is invisible and a limb does not bend. On
+15 m of relief the wheels hang in the air on every crest and the machine reads as
+a prop sliding over the ground rather than as something driving on it.
 
-It is also what unblocks doc 02 §9.2's other half: `PlacementValidator.remove`
-returns the cascade list and the garage reports the count in the status strip,
-where §9.2 wants a confirmation prompt. A prompt a player cannot undo after
-agreeing to is a question with one answer, so the modal is owed *alongside* the
-stack rather than before it.
+It moved to the top for two reasons. The garage now looks like a garage, so the
+match is the weaker of the two screens — and this is the cheapest large thing
+left in it. `AssemblyRuntime.visual_of(slot)` is the hook and the contact's
+`point_world` is the answer; doc 05 does not cover the visual side and should.
 
-### 3.2 Symmetry mirroring
+Worth knowing before starting: Invariant I-1 is not in the way and is easy to
+think it is. Moving a *mesh* to follow a probe is presentation following the
+simulation, which is the direction the invariant permits — what it forbids is the
+reverse. The collider stays where the part was placed, because a part's physical
+footprint is fixed from placement to destruction.
 
-Doc 02 §10 is written and unimplemented, and `build_mirror_toggle` has a binding
-and no consumer. Every build a player makes by hand is currently placed one part
-at a time down both flanks — the shipped starter is four stations and four
-contacts, and half of those placements are the mirror of the other half. It is
-the difference between building a machine and typing one in twice.
-
-### 3.3 Decide what a build does about recoil at a traversed mount
+### 3.2 Decide what a build does about recoil at a traversed mount
 
 Unchanged from session 24, and now the oldest thing on the list. The recoil is
 applied at the muzzle and the mount sits 2.25 m forward of the centre of mass, so
@@ -258,16 +268,7 @@ Three candidates, and they are genuinely different games:
 `tests/physics/test_recoil_geometry.gd` reports the lever and the yaw per round
 and is the instrument. Measure before choosing.
 
-### 3.4 Make the wheels follow their contacts
-
-`spawn_visual` draws a Motive Assembly at the cell it was placed in, not at its
-probe hit point, so suspension travel is invisible and a limb does not bend. On
-15 m of relief the wheels hang in the air on every crest. This is the cheapest
-large improvement to how the game *looks* that is available; doc 05 does not
-cover it and should. `AssemblyRuntime.visual_of(slot)` is the hook and the
-contact's `point_world` is the answer.
-
-### 3.5 Decide whether friendly fire exists
+### 3.3 Decide whether friendly fire exists
 
 §15.7.5's ladder fixed the *geometry* — three drivers converging on one target no
 longer stand in each other's line — and deliberately did not touch the rule.
@@ -279,7 +280,7 @@ That is doc 08's question and it is a real one, not an oversight. The roster
 already exists on `AiContext` and the match layer owns it; what does not exist is
 a decision about whether the resolver should be told.
 
-### 3.6 Sweep the bounds nobody reaches
+### 3.4 Sweep the bounds nobody reaches
 
 Invariant I-12 lists eighteen bounds and the suite demonstrably reaches almost
 none of them. Deleting each in turn and watching for green is a cheap way to find
@@ -288,7 +289,7 @@ minutes a sweep. The fixture that closes one has to be built to *exceed* it and
 then to assert that it exceeds it. Likeliest to be untested: chain-reaction depth
 3, collapse cascades, melee sweep segments, and the two debris caps.
 
-### 3.7 Fight with the edge
+### 3.5 Fight with the edge
 
 **A player can now reach this and could not before**: the garage's catalogue
 carries the Appendage and the edge, so a build with one is a build somebody will
@@ -301,7 +302,7 @@ measurement: 640 damage a swing has to survive a 26 m approach into 120 damage a
 round at seven a second, and §15.4's own impulse shoves the target 7 m/s clear of
 a second swing.
 
-### 3.8 A stability-augmentation layer, and the rotary family
+### 3.6 A stability-augmentation layer, and the rotary family
 
 `CombatArena._fly` is three loops through `ControlInput` and is still the only
 thing in the repository that can hold a hover. A **player** flying a rotary build
@@ -310,7 +311,7 @@ wants a layer between both `ControlInput` producers and the motion layer, which
 doc 05 does not have. An `AiDriver` handed a rotary Assembly aims and fires but
 does not fly.
 
-### 3.9 §15.5's sustained contact, and `DotScheduler`
+### 3.7 §15.5's sustained contact, and `DotScheduler`
 
 Two small, self-contained pieces of doc 07 and doc 08. `eff.melee.beam_edge.t4`
 authors sustained contact, `MeleeSolver.sustained_channel_damage` is written and
@@ -319,7 +320,7 @@ instead of per tick. `DotScheduler` (doc 08 §7.3) is about sixty lines and is t
 difference between thermal damage that resolves correctly when submitted and
 thermal damage that actually burns.
 
-### 3.10 The rest of document 10
+### 3.8 The rest of document 10
 
 Comparable in size to what document 09 cost, in dependency order: the CSG bake
 (doc 10 §3.1–§3.2), fragment decomposition (§3.3), support graph and collapse
@@ -329,7 +330,7 @@ survivable — is built and tested. Worth knowing before starting: a Voronoi cel
 is an intersection of half-spaces, so for a *convex* Section this is repeated
 plane slicing and needs no CSG at all.
 
-### 3.11 Smaller, and worth doing when passing
+### 3.9 Smaller, and worth doing when passing
 
 - **A second steered wheeled row.** Makes one of the three surviving uncaught
   faults visible, gives rule 13 a second tier, and gives the garage a real choice
@@ -360,7 +361,7 @@ fixing. None of these is a surprise waiting to be found.
 
 ### The motion layer
 - **There is no stability-augmentation layer, and a rotary Assembly needs one to
-  exist in a test.** Owned by §3.8.
+  exist in a test.** Owned by §3.6.
 - **The ambulatory gait drifts in yaw and no steering demand can null it.**
   §4.21, measured at 170° over five seconds, and now the family's limiting
   defect. It wants a heading term in doc 05 §13, which §13.8 currently forbids
@@ -384,7 +385,7 @@ fixing. None of these is a surprise waiting to be found.
   numerically — `retune` is pure and its inputs are constant between structural
   events — but §6.4 says "fires on mass recompute only" and the code does not.
 - **The visual wheel does not follow the contact**, and since the terrain landed
-  it is visible rather than theoretical. Owned by §3.4.
+  it is visible rather than theoretical. Owned by §3.1.
 - **A tracked pivot drifts a couple of metres** rather than turning about a
   point. The flanks counter-rotate correctly but their forces do not cancel
   exactly, because the two bogies sit at slightly different offsets. Whether that
@@ -407,20 +408,20 @@ fixing. None of these is a surprise waiting to be found.
 ### Combat
 - **An Assembly cannot drive and fire at the same time.** The muzzle offset that
   was blamed for it is closed and the behaviour is unchanged; the lever is the
-  mount's position, not the bore's. Owned by §3.3.
+  mount's position, not the bore's. Owned by §3.2.
 - **Only direct fire is implemented.** Doc 07 §5.3's arced solve, §5.4's guided
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **No engagement has ever been fought at contact range.** Owned by §3.7.
+- **No engagement has ever been fought at contact range.** Owned by §3.5.
 - **§15.5's sustained contact is not implemented.** The edge authors it, the
-  solver computes it, and nothing calls it. Owned by §3.9.
+  solver computes it, and nothing calls it. Owned by §3.7.
 - **A melee strike can never ricochet**, because its packet's normal is derived
   from its own direction. Not a defect — the query reports no surface normal —
   but see §5 before assuming doc 08 §4's angle gate means anything here.
 - **`DotScheduler` is not written** (doc 08 §7.3), so thermal and corrosive
   packets resolve correctly when submitted and nothing submits them over time.
-  Owned by §3.9.
+  Owned by §3.7.
 - **`VisualDamageController` is not written** (doc 08 §9) and neither is §10's
   repair path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so that a band transition upward fires the same signal as one
@@ -436,7 +437,7 @@ fixing. None of these is a surprise waiting to be found.
   it is on, so friendly fire is decided by whichever hull the ray reaches first.
   The roster lives on `AiContext` and on `MatchState`, both owned by the match
   layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
-  converging on one target and deliberately not the rule. Owned by §3.5.
+  converging on one target and deliberately not the rule. Owned by §3.3.
 - **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
   decides that the wreck stays, which is right. What follows it is now §15's
   loop — fight again, or go back to the garage — and what is still missing is a
@@ -467,14 +468,31 @@ fixing. None of these is a surprise waiting to be found.
   lighter gun; someone has to pick.
 
 ### The lattice and the garage
-- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written**, and a
-  player now meets that: the garage places and removes for real. Owned by §3.2.
-- **`PlacementValidator.remove` returns the cascade list rather than acting on
-  it.** §9.2 requires a player confirmation showing the affected count; the
-  garage names the count in the status strip instead, which is honest and is not
-  a prompt. Owned by §3.2.
-- **The garage has no inspector.** Doc 11 §4's `InspectorDock` and `StatRows` are
-  unbuilt, so nothing tells a player what a part does. Owned by §3.1.
+- **Doc 11 §9.1's confirmation does not highlight what it is about to take.** It
+  names the count, which is the half a player acts on. This got cheaper rather
+  than done: `GaragePreview.highlight_slot` now exists for the hover wash, and
+  what the dialog needs is that wash in `danger` over a *set* of slots rather
+  than one. A `highlight_slots(PackedByteArray, Color)` and a call from
+  `_remove_at` is the whole of it.
+- **Doc 02 §10's mirror ghost previews against the build as it stands**, not as
+  it will be once the primary commits — so a mirrored placement whose legality
+  depends on its own other half shows red and commits green. Validating against a
+  hypothetical commit would mean running the whole chain twice per pointer move
+  to answer a question the click answers a frame later; the honest fix is a
+  `BuildContext` that can speculate, and nothing else wants one yet.
+- **Removal is not mirrored, deliberately.** Doc 02 §10.2 records the reasoning:
+  §9.2's cascade already takes parts the player did not point at, and crossing
+  the build to take one more would be two surprises in one click.
+- **The toolbar is six controls wide at the expanded tier** and the compact tier
+  has nowhere to put them. MIRROR, UNDO and REDO each carry their binding in the
+  caption, which is what makes them discoverable and what makes them wide.
+- **The confirmation counts dependents, and the status strip counts the
+  cascade.** The two numbers differ whenever an orphan finds another parent, and
+  that is deliberate: what the cascade will be is only knowable by performing the
+  removal, so asking first can only name the upper bound. Doc 02 §9.2 records it.
+- **Doc 02 §9.3's `REPAINT` and `REORIENT` kinds do not exist**, because no
+  operation produces them — there is no tint editor and no in-place reorient.
+  They arrive with those operations.
 - **The compact tier has no bottom sheet.** Doc 11 §3.2 gives it one and
   §4's tree names it; below 900 logical units wide the garage hides its docks and
   a player is left with a toolbar and a 3D view. A phone cannot build.
@@ -521,17 +539,21 @@ fixing. None of these is a surprise waiting to be found.
 - **The control card has no first-run flag.** Doc 11 §14.6 raises it on every
   entry to a match because there is nowhere to store "they have seen it", which
   is `SyndicateSettings` work and is waiting on there being more than one match.
-- **`cam_orbit` and `cam_pan` have keyboard/mouse bindings only and no consumer.**
-  Session 20 added four analogue `cam_look_*` actions for the match camera rather
-  than overloading `cam_orbit`, which is a single action and cannot express two
-  axes (§4.27). `cam_orbit` and `cam_pan` are now waiting on the garage, which is
-  where doc 11 §7.1 always intended them.
-- **The suite is about 40 seconds and `tests/physics/` is most of it.** Three of
+- **`cam_pan` has a keyboard/mouse binding and no consumer.** `cam_orbit` found
+  one in the garage; `cam_pan` is still waiting on it. Session 20 added four
+  analogue `cam_look_*` actions for the match camera rather than overloading
+  `cam_orbit`, which is a single action and cannot express two axes (§4.27).
+- **Nothing verifies the confirmation dialog's own presentation.** The screen
+  flow file asserts that RESET does not edit the build until it is agreed to and
+  that agreeing works, which is the rule; whether the dialog is legible, sized,
+  or dismissable by the keyboard is capture work and has not been done.
+- **The suite is about 200 seconds and `test_screen_flow` is most of it**, at
+  91 s for the two `MatchScreen`s it opens (§1). Inside `tests/physics/`, three of
   the four multi-Assembly files soak for hundreds of ticks by construction, and
   the two that time out — the ambulatory mirror and the five-a-side — spend their
-  full budget every run on purpose. It was 4 min 15 s until `LEARNED_FACTS.md` §1 fact 50; if the wall
-  time ever becomes a problem again, the honest lever is closing §4.21 so the
-  ambulatory mirror reaches a decision, not shortening its window.
+  full budget every run on purpose. If the wall time ever becomes a problem, the
+  honest levers are making a match cheaper to construct and closing §4.21 so the
+  ambulatory mirror reaches a decision, not shortening any window.
 - **§12.3's self-immunity window is inert in both directions.** Setting it to
   zero and pinning it permanently on both leave the suite green, because no
   shipped recipe mounts a module whose muzzle overhangs its own hull. It is

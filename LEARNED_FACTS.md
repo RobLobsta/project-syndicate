@@ -752,6 +752,26 @@ different fact. Read a citation with its subject, which is always named.
     `InputMethod.mouse_mode` — which that autoload already needed for its own
     use, and two owners of one branch is how one of them drifts.
 
+71. **A `ConfirmationDialog` works fully under `--headless`, and that is not
+    obvious given facts 66 and 70.** A `Window` subclass sounds exactly like the
+    kind of node that needs a display server, and the two facts above establish
+    that a `DisplayServer` method meaningful only with a window is a hard error
+    headless rather than a no-op — which the suite wrapper fails a run on. So the
+    tempting move is to build a `Control` panel standing in for doc 11 §4.2's
+    `ConfirmDialog` and record an amendment.
+
+    Measured instead: `root.gui_embed_subwindows` is true, `popup_centered`
+    reports `visible = true`, `get_ok_button()` answers, and `hide()` reports
+    `visible = false`, with no engine error at any step. The dialog is an
+    embedded subwindow drawn by the viewport, so no platform window is involved.
+    A screen that raises one is constructible in a test.
+
+    The general shape, and it is the counterweight to facts 66 and 70 rather
+    than a contradiction of them: **whether a node needs the display server is a
+    question about what it draws with, not about what it inherits from.** Probe
+    it — a `--script` `SceneTree` that touches no autoload is four lines
+    (fact 3).
+
 ---
 
 ## 2. What fault injection taught
@@ -797,6 +817,19 @@ listed per session:
   and both are gated on the same authority; comparing aid-on against aid-off
   under throttle compares two Assemblies at *different speeds*. Releasing the
   throttle first turned an unmeasurable effect into a factor of two and a half.
+- **A comment that states an invariant is the best place in the repository to
+  look for a defect.** Session 27's two player-visible findings were both found
+  this way and neither was found by the suite, which was green through both.
+  `Blueprint.from_context` said it could read slots in ascending order *because*
+  a parent's slot is lower than its child's; that reason is true of a build which
+  has only ever grown and false at the first removal, and the consequence was a
+  test drive arriving with a build the player had not made.
+  `ChassisGraph.children` said "ascending, by construction because slots are
+  allocated lowest-first and appended in allocation order", and both halves of
+  that reason fail under ordinary editing. The tell in each case is a docstring
+  that argues rather than describes: **a justification is a claim about code
+  somewhere else, and nothing checks it.** Read the reason, find the code it is
+  about, and ask what breaks it.
 - **Sweeps confirm; integration finds.** Not one of §4's findings came from a
   fault sweep. Every one came from the first test that assembled the real pieces
   and asked for a real behaviour — and the largest of them, session 15's
@@ -875,6 +908,25 @@ Two of session 14's faults no longer apply to code session 16 rewrote, and the
 script says `PATCH-MISS` and carries on. Read the misses as carefully as the
 survivals — a fault that cannot be planted is a defence that has been removed
 without anybody deciding to remove it.
+
+**A slot is reused, so anything keyed on one has to be dropped when its part
+leaves rather than when the next arrives.** `BuildContext.allocate_slot` hands
+out the lowest free slot, so the slot a removal frees is the slot the next
+placement is given. The garage's hover wash is keyed on a slot and clears itself
+in `part_removed` for this reason; a highlight that waited for the next hover
+would arrive on a new part already lit. The same shape bit `BuildCommand`, which
+is why a command names a cell instead — and the two answers are different because
+a wash is presentation that can be dropped and a command is a record that cannot.
+
+**A signal keyed on a slot must be emitted per slot.** Session 27's, and it
+generalises past the one signal: `part_removed` announced the part the player
+named and not the cascade that went with it, because doc 02 §9.2's sketch emits
+once at the end of a function that removes one part. Every listener that
+*recomputes from the context* — the mass solver, the stat panel — was right
+anyway, which is what kept it alive: the listeners that were wrong are the ones
+holding per-slot state, and in a headless suite there is exactly one of those and
+it draws meshes. **Ask of every signal carrying an id: does a caller ever do this
+to more than one at a time?**
 
 **A fixture's ground is not the game's ground.** Session 24's, and it is the
 first lesson here that no test can enforce. Every fixture in `tests/physics/`
@@ -1463,6 +1515,47 @@ would take the debris, the craters and the hulk with it, and the orbit camera
 §16.2 hands the player would then be circling an empty basin. It also costs
 nothing — the runtime is already inert once slot 0 is destroyed — which is the
 part that makes "leave it" the cheap answer as well as the right one.
+
+**A build command names a cell, not a slot, and that is the whole of doc 02
+§9.3's exactness claim.** `BuildContext.allocate_slot` hands out the lowest free
+slot, so a part restored after two removals lands in whichever hole is lowest
+rather than in the one it came out of — undo two removals in the order undo has
+to take them and the parts come back holding each other's slots. The build is
+right and every command still on the stack that named a slot points at the wrong
+part. A cell does not move, and the pivot cell is inside the part's own footprint
+by construction, so `LatticeOccupancy.slot_at` always answers with whoever holds
+it now. Invariant I-6 says placement is integer arithmetic over the lattice; this
+is the same statement about identity.
+
+It is caught by exactly one fixture —
+`test_two_removals_undo_through_each_other_s_holes`, and only because that
+fixture goes on to *redo*, which is the sole operation that has to find a part it
+did not just put there. The slot-keyed variant was run against the whole suite by
+hand and nothing else noticed.
+
+**A pivot is not the middle of a footprint, and every transform of a placement
+has to deal with that separately.** Doc 02 §10 mirrors a cell; mirroring a
+*placement* is a different operation, because the origin cell is the part's pivot
+and an authored footprint need not be centred on its own pivot — the shipped
+station is two cells wide and pivots at the high-x end. The mirrored part is also
+rotated, which moves the pivot within the footprint again, so the correction is
+not a constant. The rule that works is: **transform the footprint's bounding box,
+then solve for the origin that seats the transformed part in it.** Anything that
+transforms the origin directly is right for symmetric parts and one cell out for
+everything else, which is the worst available failure — it looks like a physics
+problem, because the build comes out asymmetric and drives crooked.
+
+`FootprintSolver.origin_for_seated_footprint` already existed for the
+auto-assembler and answers the same shape of question. If a third caller ever
+needs it, that is the function to widen rather than to copy.
+
+**The shipped starter is the repository's only hand-mirrored build, and that
+makes it a test fixture rather than only a fixture.** It was authored flank by
+flank, so its two sides carry different origin cells wherever the pivot is
+off-centre — which is exactly the ground truth a mirror implementation needs and
+exactly what nobody would think to write down as an expectation. Any future
+hand-authored symmetric build is worth the same treatment; there is currently no
+second one.
 
 **A blueprint is re-validated at every screen boundary, in one process, and that
 is not redundancy.** The garage produces one, the shell carries it, the match

@@ -35,6 +35,12 @@ const SAFE_MARGIN_PX: int = 12
 const DOCK_SEPARATION_PX: int = 8
 const TOOLBAR_SEPARATION_PX: int = 6
 
+## Minimum size of §4.2's `ConfirmDialog`, in logical units. Wide enough for a
+## sentence naming a count without the dialog resizing as the count changes.
+const CONFIRM_MIN_SIZE: Vector2i = Vector2i(420, 140)
+## §4.2's `ModalLayer` sits above every dock.
+const MODAL_CANVAS_LAYER: int = 10
+
 ## Assembly id the garage's build carries. Distinct from anything a match spawns:
 ## the bus is global and a garage that used id 1 would answer signals meant for
 ## the player's Assembly in a match running behind it.
@@ -49,6 +55,9 @@ const KEY_TITLE: StringName = &"garage.title"
 const KEY_TEST_DRIVE: StringName = &"garage.action.test_drive"
 const KEY_MENU: StringName = &"garage.action.menu"
 const KEY_RESET: StringName = &"garage.action.reset"
+const KEY_UNDO: StringName = &"garage.action.undo"
+const KEY_REDO: StringName = &"garage.action.redo"
+const KEY_MIRROR: StringName = &"garage.action.mirror"
 const KEY_SEARCH_PLACEHOLDER: StringName = &"garage.catalogue.search"
 const KEY_CLASS_ANY: StringName = &"garage.catalogue.any_class"
 const KEY_HINT: StringName = &"garage.hint"
@@ -57,9 +66,30 @@ const KEY_SELECTED_NONE: StringName = &"garage.selected.none"
 const KEY_REMOVED: StringName = &"garage.removed"
 const KEY_CASCADE: StringName = &"garage.removed.cascade"
 const KEY_NO_CORE: StringName = &"garage.no_core"
+const KEY_UNDONE: StringName = &"garage.undone"
+const KEY_REDONE: StringName = &"garage.redone"
+const KEY_NOTHING_TO_UNDO: StringName = &"garage.undo.none"
+const KEY_NOTHING_TO_REDO: StringName = &"garage.redo.none"
+const KEY_CONFIRM_TITLE: StringName = &"garage.confirm.title"
+const KEY_CONFIRM_REMOVE: StringName = &"garage.confirm.remove"
+const KEY_CONFIRM_RESET: StringName = &"garage.confirm.reset"
+const KEY_MIRROR_ON: StringName = &"garage.mirror.on"
+const KEY_MIRROR_OFF: StringName = &"garage.mirror.off"
+const KEY_MIRROR_REFUSED: StringName = &"garage.mirror.refused"
 
 ## The build being edited. Every placement in it went through the validator.
 var context: BuildContext = null
+
+## Doc 02 §9.3's command stack. Every edit the player makes goes through it and
+## none goes round it: a placement committed straight through
+## [PlacementValidator] is a placement undo cannot see, which is worse than no
+## undo at all because the stack then puts the build into a state the player
+## never built.
+var history: BuildHistory = BuildHistory.new()
+
+## Doc 02 §10's mirror mode. Off on open: a player who has not asked for it and
+## does not know it exists must not find two parts appearing per click.
+var mirror_enabled: bool = false
 
 ## The blueprint the garage opened on, kept so that Reset can put it back. The
 ## live build is the context; this is the starting point.
@@ -82,6 +112,14 @@ var _class_filter: HFlowContainer = null
 var _status: Label = null
 var _selection_label: Label = null
 var _centre: Control = null
+var _undo_button: Button = null
+var _redo_button: Button = null
+var _mirror_toggle: CheckButton = null
+var _confirm: ConfirmationDialog = null
+## What §4.2's `ConfirmDialog` will do if the player agrees. Cleared as it runs,
+## so a dialog dismissed and re-raised for something else cannot fire the
+## previous question's answer.
+var _confirmed_action: Callable = Callable()
 var _tier: Breakpoint.Tier = Breakpoint.Tier.EXPANDED
 var _catalogue_configured: bool = false
 
@@ -150,6 +188,13 @@ func _exit_tree() -> void:
 ## input and the middle of the screen does not, so a press that reaches this
 ## function is a press on the build.
 func _unhandled_input(event: InputEvent) -> void:
+	# A raised dialog owns the screen. Stated here rather than left to the
+	# subwindow's own input grab, because what has to be true is that the build
+	# cannot be edited while the player is being asked about editing it, and that
+	# is a property of this screen rather than of how Godot happens to route an
+	# embedded window's events.
+	if _confirm != null and _confirm.visible:
+		return
 	if preview != null and preview.handle_camera_input(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -162,6 +207,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"build_cancel"):
 		catalogue.select(-1)
 		preview.hide_ghost()
+		get_viewport().set_input_as_handled()
+		return
+	# Redo before undo: `build_redo` is `Ctrl+Shift+Z` and `build_undo` is
+	# `Ctrl+Z`, and Godot matches a key action on its keycode and modifiers, so
+	# the shifted press satisfies neither the other way round — but testing the
+	# more specific binding first is what keeps that true if either is rebound.
+	if event.is_action_pressed(&"build_mirror_toggle"):
+		set_mirror_enabled(not mirror_enabled)
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(&"build_redo"):
+		_redo()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(&"build_undo"):
+		_undo()
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"build_place"):
@@ -212,10 +273,30 @@ func _update_ghost(screen_pos: Vector2) -> void:
 
 	var reject := PlacementValidator.validate(context, candidate)
 	preview.show_ghost(def, candidate, reject)
+	_show_mirror_ghost(def, candidate)
 	_status.text = (
 		"" if reject == PlacementValidator.Reject.NONE
 		else tr(PlacementValidator.reject_key(reject))
 	)
+
+
+## Doc 02 §10's second ghost, when mirror mode is on and the placement has a
+## reflection distinct from itself.
+##
+## The mirror is validated against the build [i]as it stands[/i], which is not
+## the build the mirror will land in — the primary goes down first. That is a
+## preview rather than a promise, and it is the honest one available: validating
+## against a hypothetical commit would mean running the whole chain twice per
+## pointer move to answer a question the click itself answers a frame later.
+func _show_mirror_ghost(def: PartDefinition, candidate: PlacementCandidate) -> void:
+	if not mirror_enabled:
+		preview.hide_mirror_ghost()
+		return
+	var mirror := candidate.mirrored_x()
+	if mirror.occupies_the_same_cells_as(candidate):
+		preview.hide_mirror_ghost()
+		return
+	preview.show_mirror_ghost(def, mirror, PlacementValidator.validate(context, mirror))
 
 
 func _place_at(screen_pos: Vector2) -> void:
@@ -229,21 +310,38 @@ func _place_at(screen_pos: Vector2) -> void:
 	if reject != PlacementValidator.Reject.NONE:
 		_status.text = tr(PlacementValidator.reject_key(reject))
 		return
-	PlacementValidator.commit(context, candidate)
-	_status.text = ""
-	_invalidate_ghost()
+
+	# Doc 02 §10. A placement that is its own reflection — a part straddling the
+	# Assembly's centre plane — has no second half, and offering one would put the
+	# mirror on top of the primary and report it as refused.
+	var mirror: PlacementCandidate = null
+	if mirror_enabled:
+		mirror = candidate.mirrored_x()
+		if mirror.occupies_the_same_cells_as(candidate):
+			mirror = null
+
+	var cmd := history.attach(context, candidate, mirror)
+	# §10: a refused mirror never blocks a legal placement, and the player is told
+	# without being stopped. The status strip is this garage's non-blocking
+	# notification; §9.2's dialog is what blocking looks like here.
+	_status.text = (
+		tr(KEY_MIRROR_REFUSED) if mirror != null and cmd != null and cmd.attach_size() < 2
+		else ""
+	)
+	_after_edit()
 	_update_ghost(screen_pos)
 
 
 ## Doc 02 §9.2. Removing a part re-parents what it was carrying where a legal
 ## alternative parent exists and removes the rest with it.
 ##
-## The cascade is [i]reported[/i] rather than confirmed. §9.2 requires a
-## confirmation prompt showing the affected count, and that needs the undo stack
-## of §9.3 to be worth agreeing to — a player who is told "this will also remove
-## four parts", agrees, and then cannot undo it has been asked a question with
-## one answer. The toast names the count; the modal is owed alongside
-## [BuildCommand].
+## Doc 11 §9.1 asks for a confirmation when the removal orphans at least one
+## dependent, and the question it asks is about dependents rather than about the
+## cascade: what the cascade will be is only knowable by performing the removal,
+## because whether an orphan finds another parent is §9.2's own answer and
+## re-deriving it here would be a second implementation of the rule. So the
+## dialog names what rests on the part — the honest upper bound — and the status
+## strip names what actually went, which is usually fewer.
 func _remove_at(screen_pos: Vector2) -> void:
 	var slot := preview.slot_at(screen_pos)
 	if slot == SyndicateConstants.INVALID_SLOT:
@@ -254,11 +352,71 @@ func _remove_at(screen_pos: Vector2) -> void:
 		# to putting one back is DUPLICATE_CORE the moment a second is placed.
 		_status.text = tr(KEY_NO_CORE)
 		return
-	var cascade := PlacementValidator.remove(context, slot)
+
+	var dependents := context.graph.subtree_slots(slot).size() - 1
+	if dependents > 0:
+		_ask(tr(KEY_CONFIRM_REMOVE) % dependents, _commit_removal.bind(slot))
+		return
+	_commit_removal(slot)
+
+
+func _commit_removal(slot: int) -> void:
+	var cmd := history.remove(context, slot)
+	if cmd == null:
+		return
 	_status.text = (
-		tr(KEY_REMOVED) if cascade.is_empty() else tr(KEY_CASCADE) % cascade.size()
+		tr(KEY_REMOVED) if cmd.cascade_size() == 0
+		else tr(KEY_CASCADE) % cmd.cascade_size()
 	)
+	_after_edit()
+
+
+## ===== §10 MIRRORING ===================================================
+
+
+## Turns doc 02 §10's mirror mode on or off, from the key or from the toggle.
+##
+## Public because the toggle and the binding are two producers of one state and
+## neither owns it; the screen does, and both go through here so the button
+## cannot say one thing while the placement path does another.
+func set_mirror_enabled(enabled: bool) -> void:
+	mirror_enabled = enabled
+	if _mirror_toggle != null:
+		_mirror_toggle.set_pressed_no_signal(enabled)
+	_status.text = tr(KEY_MIRROR_ON) if enabled else tr(KEY_MIRROR_OFF)
 	_invalidate_ghost()
+
+
+## ===== §9.3 UNDO =======================================================
+
+
+func _undo() -> void:
+	var cmd := history.undo(context)
+	_status.text = tr(KEY_NOTHING_TO_UNDO) if cmd == null else tr(KEY_UNDONE)
+	_after_edit()
+
+
+func _redo() -> void:
+	var cmd := history.redo(context)
+	_status.text = tr(KEY_NOTHING_TO_REDO) if cmd == null else tr(KEY_REDONE)
+	_after_edit()
+
+
+## Everything that has to happen after the build changes, wherever it changed
+## from. The ghost is dropped because the cell under the pointer may have just
+## become free or occupied, and the two history buttons are the only part of the
+## interface that has no event to react to — the stack is not on the bus, by the
+## same reasoning doc 04 §8 applies to every candidate signal.
+func _after_edit() -> void:
+	_invalidate_ghost()
+	_refresh_history_buttons()
+
+
+func _refresh_history_buttons() -> void:
+	if _undo_button == null:
+		return
+	_undo_button.disabled = not history.can_undo()
+	_redo_button.disabled = not history.can_redo()
 
 
 ## The inspector shows what the pointer means: the armed part when there is one,
@@ -275,22 +433,33 @@ func _inspect_under_pointer(screen_pos: Vector2) -> void:
 	if inspector == null:
 		return
 	if _armed_definition() != null:
+		# Placing, not inspecting. The wash would otherwise sit on a part the
+		# player is no longer asking about while a ghost hangs over another one.
+		preview.highlight_slot(SyndicateConstants.INVALID_SLOT)
 		return
 	var slot := preview.slot_at(screen_pos)
 	if slot == _inspected_slot:
 		return
 	_inspected_slot = slot
+	preview.highlight_slot(slot)
 	inspector.show_part(
 		null if slot == SyndicateConstants.INVALID_SLOT else context.definition_at(slot)
 	)
 
 
 ## Replaces the build with [param bp]. Used on open and by Reset.
+##
+## The command stack goes with it. Its commands name cells belonging to a build
+## that no longer exists, and an undo of one of them would put a part back into
+## somebody else's Assembly — which is why doc 11 §9.1 wants the player asked
+## before this runs rather than offered an undo afterwards.
 func _load(bp: Blueprint) -> void:
 	_clear()
+	history.clear()
 	var failed := bp.apply(context, _on_blueprint_reject)
 	if failed != Blueprint.APPLIED_CLEANLY:
 		push_error("GarageScreen: blueprint placement %d was refused" % failed)
+	_after_edit()
 
 
 func _clear() -> void:
@@ -318,8 +487,10 @@ func _on_test_drive_pressed() -> void:
 	test_drive_requested.emit(Blueprint.from_context(context))
 
 
+## Doc 11 §9.1's "clear the entire Assembly" row. Reset is the one action in the
+## garage that undo cannot reach, so it is the one that has to ask.
 func _on_reset_pressed() -> void:
-	_load(initial_blueprint)
+	_ask(tr(KEY_CONFIRM_RESET), _load.bind(initial_blueprint))
 
 
 func _on_menu_pressed() -> void:
@@ -339,6 +510,8 @@ func _on_part_selected(_part_def_id: int) -> void:
 	_invalidate_ghost()
 	_refresh_selection_label()
 	_inspected_slot = SyndicateConstants.INVALID_SLOT
+	if preview != null:
+		preview.highlight_slot(SyndicateConstants.INVALID_SLOT)
 	if inspector != null:
 		inspector.show_part(_armed_definition())
 
@@ -464,6 +637,40 @@ func _build_interface() -> void:
 
 	main.add_child(_build_right_column())
 	rows.add_child(_build_status_row())
+	_build_modal_layer()
+
+
+## §4.2's `ModalLayer`. A [CanvasLayer] rather than a [Control] in the row stack,
+## because a dialog that a breakpoint change could reflow is a dialog whose
+## buttons move under the pointer while the player is reading it.
+func _build_modal_layer() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "ModalLayer"
+	layer.layer = MODAL_CANVAS_LAYER
+	add_child(layer)
+
+	_confirm = ConfirmationDialog.new()
+	_confirm.name = "ConfirmDialog"
+	_confirm.title = tr(KEY_CONFIRM_TITLE)
+	_confirm.confirmed.connect(_on_confirmed)
+	layer.add_child(_confirm)
+
+
+## Raises §4.2's `ConfirmDialog` and remembers what agreeing means.
+func _ask(text: String, on_yes: Callable) -> void:
+	_confirmed_action = on_yes
+	_confirm.dialog_text = text
+	_confirm.popup_centered(CONFIRM_MIN_SIZE)
+
+
+func _on_confirmed() -> void:
+	# Taken and cleared before it runs: the action edits the build, and an edit
+	# that somehow raised the dialog again would otherwise find the answer to the
+	# previous question still armed.
+	var action := _confirmed_action
+	_confirmed_action = Callable()
+	if action.is_valid():
+		action.call()
 
 
 func _build_toolbar() -> PanelContainer:
@@ -488,6 +695,26 @@ func _build_toolbar() -> PanelContainer:
 	_selection_label.text = tr(KEY_SELECTED_NONE)
 	row.add_child(_selection_label)
 
+	# §4.2's UndoButton and RedoButton, each naming its own binding. A player who
+	# never looks at the toolbar still finds Ctrl+Z; one who never tries Ctrl+Z
+	# still finds the button — and neither has to be told twice in the hint line,
+	# which is already carrying four controls at the narrowest tier.
+	# §4.2's MirrorToggle. A [CheckButton] rather than a pressed [Button] because
+	# it is a mode rather than an action, and a player who left it on and came
+	# back to the screen has to be able to see that from across the room.
+	_mirror_toggle = CheckButton.new()
+	_mirror_toggle.name = "MirrorToggle"
+	_mirror_toggle.theme_type_variation = &"ToolbarButton"
+	_mirror_toggle.text = tr(KEY_MIRROR) % InputPrompt.label_for(&"build_mirror_toggle")
+	_mirror_toggle.toggled.connect(set_mirror_enabled)
+	row.add_child(_mirror_toggle)
+
+	_undo_button = _history_button(KEY_UNDO, &"build_undo", _undo)
+	row.add_child(_undo_button)
+	_redo_button = _history_button(KEY_REDO, &"build_redo", _redo)
+	row.add_child(_redo_button)
+	_refresh_history_buttons()
+
 	row.add_child(_toolbar_button(KEY_RESET, _on_reset_pressed))
 	row.add_child(_toolbar_button(KEY_MENU, _on_menu_pressed))
 
@@ -495,6 +722,14 @@ func _build_toolbar() -> PanelContainer:
 	test_drive.theme_type_variation = &"PrimaryButton"
 	row.add_child(test_drive)
 	return panel
+
+
+## A toolbar button captioned with its own binding, read live out of
+## [InputMap] so a rebind moves the label with it.
+func _history_button(key: StringName, action: StringName, handler: Callable) -> Button:
+	var button := _toolbar_button(key, handler)
+	button.text = tr(key) % InputPrompt.label_for(action)
+	return button
 
 
 func _toolbar_button(key: StringName, handler: Callable) -> Button:

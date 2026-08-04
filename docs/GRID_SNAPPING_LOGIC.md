@@ -660,29 +660,57 @@ func remove(ctx: BuildContext, slot: int) -> void:
 
 `_find_alternate_parent` scans the orphan's resolved attachment nodes for an adjacent occupied cell whose owning slot is still connected to the Core Module. It prefers, in order: a node with `can_bear_load = true`, then the highest `joint_strength_n`, then the lowest slot index for determinism.
 
+**Amendment: the emission is per part, not per call.** The sketch above emits `part_removed` once, for the slot the player named, and the implementation did the same until session 27. Every listener but the mass solver is keyed on the slot — `GaragePreview` holds one mesh per slot and drops it on this signal — so a cascade announced once left the rest of its meshes standing in the air over the hole they came out of. Take a station off the shipped starter and the contact it was carrying stays hanging where it was. `remove` now emits once per released slot, the named part first and then the cascade in the order it was released, and it emits after the loop rather than inside it so a listener that reads the context sees a build with no further removal pending.
+
+**The confirmation is about dependents, not about the cascade.** §9.1 of `RESPONSIVE_GARAGE_UI.md` asks for a prompt when a removal orphans at least one dependent. What the cascade will actually be is only knowable by performing the removal, because whether an orphan finds another parent is this function's own answer — so the garage asks `ChassisGraph.subtree_slots` what rests on the part, names that count in the dialog, and names the count that actually went in the status strip afterwards. The second number is usually smaller and that is the honest shape of it: re-deriving the cascade before the fact would be a second implementation of the rule above.
+
 ### 9.3 Undo Model
 
-The garage maintains a command stack of `BuildCommand` objects. Each command stores enough state to invert itself exactly:
+The garage maintains a command stack of `BuildCommand` objects, held by `BuildHistory`. Each command stores enough state to invert itself exactly:
 
 ```gdscript
 class_name BuildCommand
 extends RefCounted
 
-enum Kind { ATTACH, REMOVE, REPAINT, REORIENT }
+enum Kind { ATTACH, REMOVE }
+
+const NO_PARENT_CELL := Vector3i(-1, -1, -1)
+
+class Placed:                              # one part, as putting it back needs it
+    var part_def_id: int
+    var origin_cell: Vector3i
+    var orientation_index: int
+    var parent_cell: Vector3i              # NO_PARENT_CELL for the Core Module
+
+class Reparent:                            # a survivor §9.2 moved
+    var cell: Vector3i
+    var prior_parent_cell: Vector3i
 
 var kind: Kind
-var slot: int
-var part_def_id: int
-var origin_cell: Vector3i
-var orientation_index: int
-var parent_slot: int
-var prior_parent_slot: int
-var prior_orientation_index: int
-var prior_tint: Color
-var cascade: Array[BuildCommand] = []   # child commands undone/redone atomically
+var placements: Array[Placed] = []         # ATTACH: one. REMOVE: the part and its cascade.
+var reparents: Array[Reparent] = []        # REMOVE only.
+
+static func attach(ctx: BuildContext, cand: PlacementCandidate) -> BuildCommand
+static func remove(ctx: BuildContext, slot: int) -> BuildCommand
+func undo(ctx: BuildContext) -> bool
+func redo(ctx: BuildContext) -> bool
 ```
 
 Undo depth is capped at 128 commands. Because every command is expressed in integer lattice terms, undo is exact — there is no float drift between the original placement and its restoration.
+
+Four properties, and each of them is a rule rather than an implementation note.
+
+**A part is identified by its cell, never by its slot.** `BuildContext.allocate_slot` hands out the lowest free slot, so a part put back after two removals lands in whichever hole is lowest rather than in the one it came out of. Undo two removals in the order undo has to take them — last first — and the parts come back holding each other's slots: the build is right and every command still on the stack that named a slot now points at the wrong part. A cell does not move. The pivot cell is inside the part's own footprint by construction, so `LatticeOccupancy.slot_at` answers with whatever slot holds that part now. Invariant I-6 says placement is integer arithmetic over the lattice; this is the same statement about identity, and it is why the record above carries no slot field.
+
+**A command is created by performing the edit.** `attach` commits and `remove` removes, because the state a command needs in order to invert itself is the state the edit destroys: which slots cascaded is `PlacementValidator.remove`'s answer, and by the time it has answered, their states are gone. A record assembled by the caller before or after the fact is a second description of what happened, and the two drift the first time the cascade rule changes.
+
+**The tree is restored, not re-derived.** §9.2 re-parents an orphan onto whatever it still rests on. That is a change to the Chassis Graph the removal made and recorded nowhere else, so an undo that only puts parts back leaves the survivor hanging off the wrong neighbour — a tree that is legal, is not the one the player had, and attributes strain to a different joint. Both halves are restored: each part goes back under its recorded parent, and each survivor the removal moved goes back under the parent it had.
+
+**Redoing a removal replays it rather than reading it.** Re-running `PlacementValidator.remove` reproduces the cascade and the re-parenting through the same §9.2 code that produced them the first time, over a build that is in the state it was in. Applying the stored list instead would be a second implementation of the rule, which is the same objection that keeps the confirmation prompt counting dependents.
+
+`REPAINT` and `REORIENT` are named in this section's history and are not in the enum. There is no tint editor and no in-place reorient — a placement is rotated before it is committed — so both would be branches nothing can reach, and `CLAUDE.md` §10 rule 16 forbids committing them ahead of the operations that produce them. They arrive with those operations, each carrying the prior value it needs.
+
+Reset is the one garage action undo cannot reach, because it replaces the build wholesale and the stack's commands name cells belonging to a build that is gone. `BuildHistory.clear` runs with it, and `RESPONSIVE_GARAGE_UI.md` §9.1's "clear the entire Assembly" row is why it asks first.
 
 ### 9.4 The Blueprint
 
@@ -708,7 +736,11 @@ Four properties, and each of them is a rule rather than an implementation note.
 
 **It reconstructs through §7's chain and has no other path.** `apply` builds a `PlacementCandidate` per placement and hands it to `PlacementValidator.validate`, exactly as an interactive placement does. That is `CLAUDE.md` §10 rule 9 stated as a data type: a blueprint cannot describe a build the garage would have refused, which is what makes it safe to accept one from a client. Re-validating a build that was legal ten seconds ago in the same process is not redundancy — the path a build takes from the garage to a match is the path it will take from a client to a server, and a shortcut in the first is a hole in the second.
 
-**Order is content.** Placement *n* mates against what the first *n* built, so the list is a construction sequence and not a set. The Core Module is first because Invariant I-2 puts it on slot 0 and `allocate_slot` hands out the lowest free slot; a station goes down before what hangs off it; and §7.4's budgets are checked against what the context holds at the moment of the placement, so an Energy Cell may have to precede the draw it covers. That is the same order a player has to build in. `from_context` reads slots in ascending order, which reproduces it: a parent's slot is lower than its child's at the moment the child was placed, so the parent is always committed when the child is validated.
+**Order is content.** Placement *n* mates against what the first *n* built, so the list is a construction sequence and not a set. The Core Module is first because Invariant I-2 puts it on slot 0 and `allocate_slot` hands out the lowest free slot; a station goes down before what hangs off it; and §7.4's budgets are checked against what the context holds at the moment of the placement, so an Energy Cell may have to precede the draw it covers. That is the same order a player has to build in.
+
+**Amendment: ascending slot order is not a construction order, and the correction is `from_context`'s.** This section used to say that `from_context` reads slots in ascending order because a parent's slot is lower than its child's at the moment the child was placed. That holds on a build which has only ever grown and stops holding at the first removal: `allocate_slot` hands the hole to the next placement whatever that placement attaches to, so a part put on top of slot 9 while slot 3 is free is written as placement 3 and the thing holding it up as placement 9. `apply` then refuses the child for having nothing to mate with, and a player who edited their build in the ordinary way loses it at the screen boundary with nothing on screen having gone wrong.
+
+`from_context` therefore writes **the lowest slot whose primary parent has already been written**, repeatedly. On a build where ascending order is already legal — every build that has not been edited, and every shipped starter — it emits the identical list, so this is the old ordering with its premise checked rather than a new one. It is deterministic by construction (Invariant I-9): the choice at every step is the lowest slot that can legally go next. The parent link is sufficient rather than necessary — §7.3 accepts a placement with any legal mate — and sufficiency is what a reconstruction needs.
 
 **A refusal stops the apply and names itself.** `apply` returns the index of the first refused placement, or `-1`. What was committed before it stays committed: a partially built Assembly is inspectable and a rolled-back one is not, and a caller that needs all-or-nothing applies to a fresh context and discards it. The `on_reject` callable receives the index and a **localisation key** rather than a `Reject` value, because one of the reasons is not a rejection — a part key the registry does not hold is `PART_DATA_SCHEMA.md` §14's manifest mismatch, and widening the frozen reject enum to carry a data-version problem would put it in a table §12 asserts is about geometry.
 
@@ -745,6 +777,48 @@ static func mirror_orientation_x(index: int) -> int:
 ```
 
 When the mirrored placement fails validation, the mirror is skipped and the primary placement still commits, with a non-blocking notification. Mirror mode never blocks a legal placement.
+
+The two statics live where they belong to: `LatticeMath.mirror_x` and `OrientationTable.mirror_x_index`. The second is renamed from the sketch's `mirror_orientation_x` — it is a member of the orientation group answering about the orientation group, and every other function on that class is named for what it returns rather than for what it operates on.
+
+### 10.1 A Placement Is Not A Cell
+
+**`mirror_x` reflects a cell, and applying it to an origin cell is wrong for every part that ships.** This was the shape of the whole section until session 28 and it is the one thing to carry out of it.
+
+An origin cell is a *pivot*, and a pivot is not the middle of a footprint: `str.hub.axle_station.t2` is two cells wide with its pivot at the high-x end, the Core Module is four wide with its pivot two cells from the low end, and nothing requires an authored footprint to be centred on its own pivot at all. Reflect the pivot of a station standing at x 21–22 and the answer is cell 25, while its reflection occupies 25–26 and therefore pivots at 26. One cell out, on every part whose pivot is off-centre, in the direction that looks almost right.
+
+The mirrored part is additionally **rotated**, and a rotation moves the pivot within the footprint again — so the correction is not a constant that could be folded into the formula.
+
+So the reflection is of the footprint:
+
+```gdscript
+func mirrored_x() -> PlacementCandidate:                  # PlacementCandidate
+    var orientation := OrientationTable.mirror_x_index(orientation_index)
+    var here := FootprintSolver.bounds_of(cells)
+    var there := FootprintSolver.bounds_of(
+        FootprintSolver.resolve_cells(definition, Vector3i.ZERO, orientation)
+    )
+    return PlacementCandidate.create(definition, Vector3i(
+        LatticeMath.mirror_x(here[1]).x - there[0].x,     # far side becomes near side
+        here[0].y - there[0].y,                           # y and z do not move
+        here[0].z - there[0].z
+    ), orientation)
+```
+
+The x extent is seated against the reflection of this footprint's far side; y and z are carried across unchanged, because the reflection does not move them and the mirrored orientation may still have shifted the pivot within them.
+
+**The mirror plane is the Core Module's.** It runs between cells `ORIGIN.x - 1` and `ORIGIN.x` — hence the `-1` in `mirror_x` — because the shipped Core Module is four cells wide and seated on the origin, spanning 22–25, and the only plane that maps it onto itself is the one between 23 and 24. A build's symmetry is the Core Module's symmetry; Invariant I-2 makes it the root everything else hangs from.
+
+**The shipped starter is the test.** It was authored placement by placement, and its two flanks carry *different* origin cells on every part that is not on the centre line — 22 against 26 on the stations, (19, 22) against (28, 21) on the contacts — for exactly the reasons above. `tests/unit/test_mirroring.gd` takes each of its twelve parts in turn and demands that the reflection is the part already standing opposite. A mirror that reflects the pivot reproduces neither flank.
+
+### 10.2 One Gesture, One Command
+
+A mirrored pair is committed as a single `BuildCommand` (§9.3), not as two. The player made one gesture, and two commands would mean a mirrored build comes apart under undo one flank at a time — which is the thing mirror mode exists to stop them doing by hand.
+
+That composes with the rule above it rather than conflicting: a refused mirror is simply not in the command's placement list, so undo takes back exactly what went on. `BuildHistory.attach` validates the mirror, because whether there is a second placement is something the command has to know before it can record what it did.
+
+A part straddling the mirror plane is its own reflection and gets no second half. It is worth distinguishing from a refusal in what the player is told: the mirror of a centreline part lands on the part itself, so the validator's honest answer is `CELL_OCCUPIED`, and reporting that as "the mirrored half would not fit" reads as mirroring being broken on the one placement where it has nothing to do.
+
+**Mirroring is placement only.** Removal is not mirrored: §9.2's cascade already takes parts the player did not point at, and a removal that also crossed the build to take a part on the other flank would be two surprises in one click. Undo is what makes a wrong removal cheap; a wrong *doubled* removal is twice as much to read back.
 
 ---
 

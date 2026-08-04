@@ -162,6 +162,38 @@ static func upright_facing(face: Vector3) -> int:
 	return IDENTITY_INDEX
 
 
+## The member of the group that best stands in for [param index] reflected in the
+## Assembly's x plane, per [code]docs/GRID_SNAPPING_LOGIC.md[/code] §10.
+##
+## [b]A reflection is not a rotation and there is no exact answer.[/b] The
+## twenty-four are the rotation group; reflecting one produces an improper
+## transform with determinant −1, which is not in it. So the reflected frame is
+## scored against every member on the two axes that decide how a part reads —
+## where it points and which way is up — and the best is returned. For a part
+## placed upright and facing an axis, which is every placement a player makes
+## with one rotation key, the best is exact: mirroring a contact whose drive face
+## points inboard gives the contact whose drive face points inboard on the other
+## flank.
+##
+## Where it is [i]not[/i] exact, the mirrored part is a legal placement that is
+## not a perfect reflection, and §10 already says what happens next: it goes
+## through the validator like any other placement and is skipped if refused.
+static func mirror_x_index(index: int) -> int:
+	var b := basis_for(index)
+	# Reflect each axis vector in x: the component along x flips, the rest stay.
+	var want_forward := Vector3(-b.z.x, b.z.y, b.z.z)
+	var want_up := Vector3(-b.y.x, b.y.y, b.y.z)
+	var best := index
+	var best_score := -INF
+	for k: int in COUNT:
+		var kb := basis_for(k)
+		var score := kb.z.dot(want_forward) + kb.y.dot(want_up)
+		if score > best_score:
+			best_score = score
+			best = k
+	return best
+
+
 ## Recovers the orientation index of an integral basis, or -1 when the basis is
 ## not a member of the group. Used by blueprint import and by the tools that
 ## bake authored transforms down to an index.

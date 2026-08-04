@@ -253,6 +253,41 @@ func test_subtree_slots_is_breadth_first_and_ascending() -> void:
 	check_eq(g.subtree_slots(2), PackedByteArray([2]), "a leaf is its own subtree")
 
 
+## [member ChassisGraph.children] declares itself ascending, and two ordinary
+## garage edits break that if the insertion point is not sought.
+##
+## A re-parent files an orphan under a survivor that already has higher-numbered
+## children — that is doc 02 §9.2 running on every removal that orphans
+## something. And [method BuildContext.allocate_slot] hands out the lowest free
+## slot, so a part placed after a removal is a lower id than siblings placed
+## before it. Neither is exotic and both leave [method subtree_slots] answering
+## in an order that depends on edit history rather than on the tree, which is
+## Invariant I-9's determinism gone for every consumer of it — the cascade order
+## a removal reports, and the depth ordering the strain solver walks.
+func test_children_stay_ascending_through_editing() -> void:
+	var g := _graph_with_core()
+	_attach(g, 3, CORE, M_A)
+	_attach(g, 4, CORE, M_A)
+	# The hole a removal left, handed to the next placement.
+	_attach(g, 1, CORE, M_A)
+	check_eq(
+		g.children[CORE], PackedByteArray([1, 3, 4]),
+		"a low slot placed last is filed before the siblings placed before it"
+	)
+
+	_attach(g, 5, 4, M_B)
+	_attach(g, 2, 4, M_B)
+	g.reparent(2, CORE)
+	check_eq(
+		g.children[CORE], PackedByteArray([1, 2, 3, 4]),
+		"and a re-parented orphan is filed by slot, not appended"
+	)
+	check_eq(
+		g.subtree_slots(CORE), PackedByteArray([0, 1, 2, 3, 4, 5]),
+		"so the breadth-first walk is a property of the tree and not of its history"
+	)
+
+
 func test_debug_report_is_reproducible() -> void:
 	# §10's dump is consumed by tests and by the developer overlay. Two runs
 	# over the same graph must diff clean, so it carries no timestamp and no

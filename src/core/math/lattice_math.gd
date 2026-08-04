@@ -36,6 +36,24 @@ static func local_to_cell(p: Vector3) -> Vector3i:
 	)
 
 
+## Reflection of [param cell] in the Assembly's own centre plane, per
+## [code]docs/GRID_SNAPPING_LOGIC.md[/code] §10.
+##
+## The plane runs between cells [code]ORIGIN.x - 1[/code] and [code]ORIGIN.x[/code]
+## rather than through the middle of a cell, which is why the formula carries a
+## [code]-1[/code]. That is not an arbitrary choice: the shipped Core Module is
+## four cells wide and seated on the origin, so it spans 22..25 and the only
+## plane that maps it onto itself is the one between 23 and 24. A build's
+## symmetry is the Core Module's symmetry, because the Core Module is the root
+## every other part hangs from (Invariant I-2).
+##
+## Cells only. Mirroring a [i]placement[/i] is a different question — a pivot is
+## not the middle of a footprint and a mirrored part is rotated — and belongs to
+## [method PlacementCandidate.mirrored_x].
+static func mirror_x(cell: Vector3i) -> Vector3i:
+	return Vector3i(2 * ORIGIN.x - cell.x - 1, cell.y, cell.z)
+
+
 static func in_bounds(cell: Vector3i) -> bool:
 	return (
 		cell.x >= 0

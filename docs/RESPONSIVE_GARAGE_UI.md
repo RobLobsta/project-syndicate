@@ -256,6 +256,22 @@ GarageScreen                          (Control, anchors full rect)
     └── ToastStack                    (VBoxContainer, top-right)
 ```
 
+### 4.2.1 Reading The Build
+
+The tree above says where the controls are and says nothing about whether a player can see what they are building. Session 28 looked, and could not: the preview lit the Assembly with one sun over a dark procedural sky, so every face turned away from it fell to the ambient term, the ambient term samples that sky, and the build read as one silhouette. `EXTENSION_PIPELINE.md` §2.1's class tints were doing nothing — a tint nothing illuminates carries no information — and the Prime Mover a player is meant to protect was the same near-black as the panel beside it.
+
+Three things fix it, and none of them is a brighter tint. Brightening the tints would wash out the sunlit faces to rescue the shaded ones, and the tints are owned by doc 13 and are shared with the match.
+
+1. **A fill light**, cool, from behind and to the other side, at roughly a third of the key's energy. Enough to separate two adjacent shaded faces; not enough to flatten the form, which is what a fill matched to its key does.
+2. **A bounce**, warmer and weaker, angled up off the build plate, so a part's underside is not the darkest surface on the screen. A build is looked at from slightly above and its undersides are where the Motive Assemblies are.
+3. **A raised ambient term.** The sky is dark by design — it is a garage, not a showroom — so the ambient energy has to carry more than a daylight scene's would.
+
+Only the key casts a shadow. A fill that casts is a second set of shadows crossing the first, which reads as dirt on the model rather than as light.
+
+**The hover wash** is the other half of the same problem. The inspector names a class and a set of figures, and a build carries four parts of one class, so the dock was answering a question the player had no way to ask precisely. The part under the pointer takes a faint accent-tinted `material_overlay` — the mesh drawn a second time unshaded, so it reads as the part lighting up rather than as the part changing colour, which matters because its colour is doc 13's class tint and is carrying information the highlight must not overwrite. It is deliberately faint: nothing on this screen is selectable, and a highlight strong enough to be a selection would claim to be one.
+
+The wash is keyed on the slot and is dropped when that part leaves, rather than when the next one is hovered. `BuildContext.allocate_slot` hands out the lowest free slot, so the slot a removal frees is the slot the next placement is given — and a highlight that outlived its part would arrive on a new one already lit.
+
 ### 4.3 The Inspector
 
 The inspector dock answers "what is this part", and it is what makes a catalogue
@@ -750,6 +766,16 @@ A confirmation dialog appears only when an action is destructive and non-trivial
 | Load a blueprint over unsaved changes | Yes |
 | Auto-assemble over an existing build | Yes, with a "keep my parts" option that sets `locked_placements` |
 | Sell a part from inventory | Yes |
+
+Two of these rows are built and the rest wait on the features they guard. What the garage asks before, session 27:
+
+- **A removal that orphans a dependent.** The dialog names the count and does **not** highlight the affected parts in `danger`. Highlighting wants a per-slot tint on the preview's meshes, which is the same path doc 08 §9's `VisualDamageController` will want, and building a second one first is how the two end up disagreeing. The count is the honest half and it is the half a player acts on.
+
+  The count is of **dependents**, not of the cascade. What the cascade will be is only knowable by performing the removal — whether an orphan finds another parent is `GRID_SNAPPING_LOGIC.md` §9.2's own answer — so the dialog names what rests on the part and the status strip afterwards names what actually went. The second number is usually smaller.
+
+- **Reset.** The "clear the entire Assembly" row, and the one action in the garage that undo cannot reach: §9.3's stack names cells belonging to a build that is about to stop existing, so it is cleared with the build. Asking is the only protection there is.
+
+`ConfirmDialog` is §4.2's `ConfirmationDialog` and not a `Control` panel standing in for one. That was worth measuring rather than assuming, because `DisplayServer` methods meaningful only with a window are hard errors headless rather than no-ops (`LEARNED_FACTS.md` §1 facts 66 and 70) and the suite constructs this screen: an embedded subwindow pops, reports `visible`, hands out its OK button and hides again with no engine error under `--headless`.
 
 ### 9.2 Toasts
 

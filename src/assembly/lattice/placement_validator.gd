@@ -225,7 +225,15 @@ static func remove(ctx: BuildContext, slot: int) -> PackedByteArray:
 				ctx.graph.reparent(orphan, alt)
 				ctx.states[orphan].parent_slot = alt
 
+	# One emission per slot that actually left, not one per call. Every listener
+	# but the mass solver is keyed on the slot — the garage preview holds a mesh
+	# per slot and drops it here — so announcing only the part the player named
+	# leaves the cascade's meshes standing in the air over the hole they came out
+	# of. Emitted after the loop rather than inside it so that a listener which
+	# reads the context sees a build no further removal is pending on.
 	EventBus.part_removed.emit(ctx.assembly_id, slot)
+	for s in cascaded:
+		EventBus.part_removed.emit(ctx.assembly_id, int(s))
 	return cascaded
 
 

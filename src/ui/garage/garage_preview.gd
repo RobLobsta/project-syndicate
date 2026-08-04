@@ -53,6 +53,22 @@ const GRID_AXIS_COLOUR := Color(0.55, 0.62, 0.72, 0.85)
 
 const GHOST_ALPHA_VALID: float = 0.45
 const GHOST_ALPHA_REJECTED: float = 0.30
+## Doc 02 §10's mirror, drawn fainter than the placement the pointer is on.
+## Both are the player's placement and only one is under the cursor, so the
+## difference has to be visible without either reading as rejected — which is
+## what the [constant UiTokens.DANGER] tint is for and this is not.
+const GHOST_ALPHA_MIRROR: float = 0.24
+
+## Wash laid over the part the pointer is on. A [member
+## GeometryInstance3D.material_overlay] draws the mesh a second time unshaded, so
+## it reads as the part lighting up rather than as the part changing colour —
+## which matters because a part's colour is doc 13 §2.1's class tint and is
+## carrying information the highlight must not overwrite.
+##
+## Faint on purpose. The inspector already says what the part is; this only has
+## to answer "which one is that", and a highlight strong enough to be a selection
+## would read as one on a screen where nothing is selectable.
+const HOVER_ALPHA: float = 0.18
 
 ## How far the pointer ray is tested. Doc 02 §6.2.
 const PICK_DISTANCE_M: float = 200.0
@@ -75,7 +91,32 @@ const SUN_ENERGY: float = 1.25
 const SKY_TOP := Color("#1A2029")
 const SKY_HORIZON := Color("#2E3742")
 const FLOOR_ALBEDO := Color("#22272E")
-const AMBIENT_ENERGY: float = 0.55
+
+## ===== READING THE BUILD ===============================================
+##
+## A garage lit by one sun over a dark sky is a garage in which half of every
+## part is unlit, and the sky is what the ambient term samples — so the shaded
+## faces of a build sitting inside these colours fall to near black and the
+## Assembly reads as one silhouette rather than as parts. That is not a taste
+## question: doc 13 §2.1's class tints exist so a player can see where their
+## Prime Mover is, and a tint nothing illuminates carries no information at all.
+##
+## The fix is two lights and a floor bounce rather than brighter tints, because
+## brighter tints would wash out the sunlit faces to fix the shaded ones.
+
+const AMBIENT_ENERGY: float = 0.9
+## A cool fill from behind and to the other side, at a fraction of the key's
+## energy. Enough to separate two adjacent shaded faces; not enough to flatten
+## the form, which is what a fill matched to its key does.
+const FILL_EULER_DEG := Vector3(-16.0, 138.0, 0.0)
+const FILL_ENERGY: float = 0.45
+const FILL_COLOUR := Color("#8FA6C4")
+## Bounced up off the plate, so a part's underside is not the darkest surface on
+## the screen. A build is looked at from slightly above, and its undersides are
+## where the Motive Assemblies are.
+const BOUNCE_EULER_DEG := Vector3(62.0, -10.0, 0.0)
+const BOUNCE_ENERGY: float = 0.22
+const BOUNCE_COLOUR := Color("#6E7686")
 
 ## The Assembly whose [signal EventBusService.part_attached] this preview draws.
 ## Assigned before the node enters the tree.
@@ -97,6 +138,13 @@ var _visuals: Dictionary = {}
 var _focus: Node3D = null
 var _ghost: MeshInstance3D = null
 var _ghost_material: StandardMaterial3D = null
+var _mirror_ghost: MeshInstance3D = null
+var _mirror_material: StandardMaterial3D = null
+var _hover_material: StandardMaterial3D = null
+## Slot the wash is on, or [constant SyndicateConstants.INVALID_SLOT]. Held so a
+## pointer moving across one part writes nothing, and so a part removed while
+## highlighted does not leave the map naming a mesh that has gone.
+var _hovered_slot: int = SyndicateConstants.INVALID_SLOT
 var _yaw_rad: float = START_YAW_RAD
 var _pitch_rad: float = START_PITCH_RAD
 var _distance_m: float = START_DISTANCE_M
@@ -304,8 +352,63 @@ func show_ghost(
 	_ghost.visible = true
 
 
+## Doc 02 §10's mirror of the placement [method show_ghost] is showing.
+##
+## A second ghost rather than a marker, because what a player needs to know
+## before they click is what the second part will [i]be[/i]: mirroring rotates
+## the part as well as moving it, and on a Motive Assembly that is the difference
+## between a contact that drives inboard and one that drives into the hull.
+func show_mirror_ghost(
+	def: PartDefinition, candidate: PlacementCandidate, reject: PlacementValidator.Reject
+) -> void:
+	var mesh: Mesh = ProxyMeshCache.get_or_build(def)
+	if mesh == null or candidate == null:
+		hide_mirror_ghost()
+		return
+	_mirror_ghost.mesh = mesh
+	_mirror_ghost.transform = PartMeshFactory.pose(
+		def.visual_profile, candidate.origin_cell, candidate.orientation_index
+	)
+	var accepted := reject == PlacementValidator.Reject.NONE
+	var colour := UiTokens.ACCENT_SECONDARY if accepted else UiTokens.DANGER
+	colour.a = GHOST_ALPHA_MIRROR
+	_mirror_material.albedo_color = colour
+	_mirror_ghost.visible = true
+
+
+func hide_mirror_ghost() -> void:
+	_mirror_ghost.visible = false
+
+
+## Lights up [param slot], and takes the wash off whatever had it.
+##
+## [constant SyndicateConstants.INVALID_SLOT] clears it. Nothing else in the
+## garage tells a player which part the inspector is describing — the dock names
+## a class and a set of figures, and a build carries four parts of one class —
+## so without this the inspector is answering a question the player cannot ask
+## precisely.
+func highlight_slot(slot: int) -> void:
+	if slot == _hovered_slot:
+		return
+	var previous: MeshInstance3D = _visuals.get(_hovered_slot, null)
+	if previous != null and is_instance_valid(previous):
+		previous.material_overlay = null
+	_hovered_slot = slot
+	var node: MeshInstance3D = _visuals.get(slot, null)
+	if node != null:
+		node.material_overlay = _hover_material
+
+
+## The slot the wash is on. Diagnostics and tests.
+func highlighted_slot() -> int:
+	return _hovered_slot
+
+
+## Hides both. The mirror never stands on its own: it is drawn beside a placement
+## and goes when that placement goes.
 func hide_ghost() -> void:
 	_ghost.visible = false
+	_mirror_ghost.visible = false
 
 
 ## ===== CAMERA ==========================================================
@@ -385,14 +488,26 @@ func _build_environment() -> void:
 	world_env.environment = env
 	add_child(world_env)
 
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation = Vector3(
-		deg_to_rad(SUN_EULER_DEG.x), deg_to_rad(SUN_EULER_DEG.y), deg_to_rad(SUN_EULER_DEG.z)
-	)
-	sun.light_energy = SUN_ENERGY
+	var sun := _directional("Sun", SUN_EULER_DEG, SUN_ENERGY, Color.WHITE)
+	# One shadow caster. A fill that casts is a second set of shadows crossing the
+	# first, which reads as dirt on the model.
 	sun.shadow_enabled = true
 	add_child(sun)
+	add_child(_directional("Fill", FILL_EULER_DEG, FILL_ENERGY, FILL_COLOUR))
+	add_child(_directional("Bounce", BOUNCE_EULER_DEG, BOUNCE_ENERGY, BOUNCE_COLOUR))
+
+
+static func _directional(
+	node_name: String, euler_deg: Vector3, energy: float, colour: Color
+) -> DirectionalLight3D:
+	var light := DirectionalLight3D.new()
+	light.name = node_name
+	light.rotation = Vector3(
+		deg_to_rad(euler_deg.x), deg_to_rad(euler_deg.y), deg_to_rad(euler_deg.z)
+	)
+	light.light_energy = energy
+	light.light_color = colour
+	return light
 
 
 ## The plate a build stands on.
@@ -472,17 +587,32 @@ func _build_camera() -> void:
 
 
 func _build_ghost() -> void:
-	_ghost_material = StandardMaterial3D.new()
-	_ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ghost_material.albedo_color = UiTokens.ACCENT_SECONDARY
+	_hover_material = _new_ghost_material()
+	var wash := UiTokens.ACCENT_SECONDARY
+	wash.a = HOVER_ALPHA
+	_hover_material.albedo_color = wash
+	_ghost_material = _new_ghost_material()
+	_ghost = _new_ghost_node("PlacementGhost", _ghost_material)
+	_mirror_material = _new_ghost_material()
+	_mirror_ghost = _new_ghost_node("MirrorGhost", _mirror_material)
 
-	_ghost = MeshInstance3D.new()
-	_ghost.name = "PlacementGhost"
-	_ghost.material_override = _ghost_material
-	_ghost.layers = RenderLayers.LAYER_GARAGE_ONLY
-	_ghost.visible = false
-	add_child(_ghost)
+
+static func _new_ghost_material() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = UiTokens.ACCENT_SECONDARY
+	return mat
+
+
+func _new_ghost_node(node_name: String, material: StandardMaterial3D) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = node_name
+	node.material_override = material
+	node.layers = RenderLayers.LAYER_GARAGE_ONLY
+	node.visible = false
+	add_child(node)
+	return node
 
 
 ## ===== THE BUILD =======================================================
@@ -515,6 +645,11 @@ func _on_part_removed(changed_id: int, slot: int) -> void:
 		remove_child(node)
 		node.queue_free()
 	_visuals.erase(slot)
+	# The wash is keyed on the slot, and a slot that has just been freed is one
+	# the next placement may be handed (lowest-free-first). Forgetting it here is
+	# what stops a new part arriving already lit.
+	if slot == _hovered_slot:
+		_hovered_slot = SyndicateConstants.INVALID_SLOT
 
 
 ## Slots this preview is currently drawing. Diagnostics and tests: the claim the

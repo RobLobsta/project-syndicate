@@ -601,6 +601,27 @@ func test_removal_emits_part_removed() -> void:
 	check_eq(seen.count, 1, "exactly one part_removed")
 
 
+## One emission per part that left, not one per call.
+##
+## Every listener but the mass solver is keyed on the slot — the garage preview
+## holds a mesh per slot and drops it here — so a cascade announced once leaves
+## the rest of its meshes standing in the air over the hole they came out of.
+## That is what a player saw: take a station off the shipped starter and the
+## contact it was carrying stays hanging where it was.
+func test_a_cascade_announces_every_part_it_took() -> void:
+	var ctx := _reparent_fixture()
+	var seen := _SignalProbe.new()
+	EventBus.part_removed.connect(seen.on_part)
+	var cascaded := PlacementValidator.remove(ctx, 1)
+	EventBus.part_removed.disconnect(seen.on_part)
+
+	check_eq(cascaded, PackedByteArray([2]), "the fixture cascades one part")
+	check_eq(seen.count, 2, "both the part named and the one that went with it")
+	check_eq(seen.slots, PackedByteArray([1, 2]), "the named part first, then the cascade")
+	for s in seen.slots:
+		check_null(ctx.state(int(s)), "slot %d is gone by the time it is announced" % int(s))
+
+
 func test_commit_removal_cycles_do_not_drift() -> void:
 	# Every structure the validator touches is maintained incrementally, and
 	# none of them fails loudly. Twenty-five cycles make a one-part-per-cycle
@@ -878,8 +899,12 @@ class _SignalProbe:
 	var count: int = 0
 	var last_assembly: int = -1
 	var last_slot: int = -1
+	## Every slot the signal named, in the order it named them. A closure
+	## capturing a local would capture a copy (LEARNED_FACTS.md §1 fact 68).
+	var slots: PackedByteArray = PackedByteArray()
 
 	func on_part(assembly_id: int, slot: int) -> void:
 		count += 1
 		last_assembly = assembly_id
 		last_slot = slot
+		slots.append(slot)
