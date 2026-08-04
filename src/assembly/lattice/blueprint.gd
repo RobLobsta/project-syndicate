@@ -127,23 +127,68 @@ func apply(ctx: BuildContext, on_reject: Callable = Callable()) -> int:
 	return APPLIED_CLEANLY
 
 
-## The blueprint that reconstructs [param ctx], in slot order.
+## The blueprint that reconstructs [param ctx]: the lowest slot whose parent has
+## already been written, over and over until the build is spent.
 ##
-## Slot order is construction order and not merely correlated with it:
-## [method BuildContext.allocate_slot] hands out the lowest free slot, so a part
-## placed after a removal takes the hole rather than the end. What that
-## guarantees is that a parent's slot is lower than its child's at the moment the
-## child was placed — which is all [method apply] needs, because the parent is
-## then already committed when the child is validated.
+## [b]Slot order alone is not a construction order, and it took a removal to show
+## it.[/b] [method BuildContext.allocate_slot] hands out the lowest free slot, so
+## on a build that has only ever grown a parent's slot is lower than its child's
+## and ascending order is exactly the order the player built in. Remove a part
+## from the middle and the hole is handed to the next placement whatever it
+## attaches to — put a part on slot 9 while slot 3 is free and the child is
+## written as placement 3 and its parent as placement 9. [method apply] then
+## refuses the child for having nothing to attach to, and a player who edited
+## their build in the ordinary way loses it at the screen boundary.
+##
+## Taking the lowest [i]eligible[/i] slot each time is the smallest repair that
+## closes it: on a build where ascending order is already legal — which is every
+## build that has not been edited, including every shipped starter — this emits
+## the identical list, so it is not a new ordering so much as the old one with
+## its premise checked. Deterministic by construction (Invariant I-9): the choice
+## at every step is the lowest slot that can legally go next.
+##
+## The parent link is the primary tree's, so a part's parent is one of the
+## neighbours it mates with. It is sufficient rather than necessary — doc 02
+## §7.3 accepts a placement with any legal mate, not specifically its recorded
+## parent — and sufficiency is what a reconstruction needs.
 static func from_context(ctx: BuildContext) -> Blueprint:
 	var out := Blueprint.new()
+	var written := PackedByteArray()
+	written.resize(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY)
+	written.fill(0)
+
+	var remaining := 0
 	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
-		var st := ctx.state(slot)
-		if st == null:
-			continue
+		if ctx.state(slot) != null:
+			remaining += 1
+
+	while remaining > 0:
+		var next := _lowest_writable(ctx, written)
+		if next == SyndicateConstants.INVALID_SLOT:
+			# Every remaining part is held up by something already released, which
+			# the graph cannot produce: a live slot's parent is live.
+			push_error("Blueprint: %d parts in assembly %d have no writable order"
+				% [remaining, ctx.assembly_id])
+			return out
+		var st := ctx.state(next)
+		written[next] = 1
+		remaining -= 1
 		var def := PartRegistry.definition(st.part_def_id)
 		if def == null:
-			push_error("Blueprint: slot %d holds unknown part id %d" % [slot, st.part_def_id])
+			push_error("Blueprint: slot %d holds unknown part id %d" % [next, st.part_def_id])
 			continue
 		out.add(def.part_key, st.origin_cell, st.orientation_index)
 	return out
+
+
+## The lowest occupied slot not yet written whose primary parent has been, or
+## [constant SyndicateConstants.INVALID_SLOT] when there is none.
+static func _lowest_writable(ctx: BuildContext, written: PackedByteArray) -> int:
+	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
+		var st := ctx.state(slot)
+		if st == null or written[slot] == 1:
+			continue
+		var parent := st.parent_slot
+		if parent == SyndicateConstants.INVALID_SLOT or written[parent] == 1:
+			return slot
+	return SyndicateConstants.INVALID_SLOT

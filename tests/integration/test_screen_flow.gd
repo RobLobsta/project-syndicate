@@ -142,6 +142,83 @@ func test_the_garage_edits_a_copy_of_the_sessions_build() -> void:
 	)
 
 
+## Doc 02 §9.3 reaches the player through a key, and the key is the half that a
+## green suite has been wrong about before.
+##
+## The stack itself is covered by [code]tests/unit/test_build_history.gd[/code].
+## What is covered here is that pressing the thing a player presses runs it:
+## session 26 shipped an end card whose rematch key went to the title screen with
+## the suite green and the capture showing the right label. So the event goes in
+## through [method Node._unhandled_input] — the entry point the engine calls —
+## rather than through the handler behind it.
+##
+## The pointer half cannot be reached: resolving a click into a cell needs a
+## camera in a [SubViewport], and a [SubViewport]'s world is null headless
+## (LEARNED_FACTS.md §1 fact 28). So the edit is made through the same
+## [BuildHistory] call the click would have made, and the key is what undoes it.
+func test_a_key_press_undoes_an_edit_in_the_garage() -> void:
+	_reset()
+	_shell.show_garage()
+	var garage := _shell.current_node() as GarageScreen
+	check_not_null(garage, "the garage is on show")
+	if garage == null:
+		return
+	var before := Blueprint.from_context(garage.context).size()
+
+	garage.history.remove(garage.context, _highest_slot(garage.context))
+	check_eq(
+		Blueprint.from_context(garage.context).size(), before - 1, "the part came off"
+	)
+
+	garage._unhandled_input(_action_press(&"build_undo"))
+	check_eq(
+		Blueprint.from_context(garage.context).size(),
+		before,
+		"and Ctrl+Z put it back"
+	)
+	garage._unhandled_input(_action_press(&"build_redo"))
+	check_eq(
+		Blueprint.from_context(garage.context).size(),
+		before - 1,
+		"and Ctrl+Shift+Z took it off again"
+	)
+	_reset()
+
+
+## Doc 11 §9.1's "clear the entire Assembly" row. Reset is the one garage action
+## undo cannot reach — the stack's commands name cells belonging to a build that
+## is gone — so it is the one that has to ask, and asking is worth nothing if the
+## build changes before the answer.
+func test_reset_asks_before_it_discards_the_build() -> void:
+	_reset()
+	_shell.show_garage()
+	var garage := _shell.current_node() as GarageScreen
+	check_not_null(garage, "the garage is on show")
+	if garage == null:
+		return
+	garage.history.remove(garage.context, _highest_slot(garage.context))
+	var edited := Blueprint.from_context(garage.context).size()
+
+	garage._on_reset_pressed()
+	check_eq(
+		Blueprint.from_context(garage.context).size(),
+		edited,
+		"the build is untouched while the question is on the screen"
+	)
+
+	garage._on_confirmed()
+	check_eq(
+		Blueprint.from_context(garage.context).size(),
+		edited + 1,
+		"and agreeing puts the starter back"
+	)
+	check_false(
+		garage.history.can_undo(),
+		"with the command stack forgotten, because its cells are a build that is gone"
+	)
+	_reset()
+
+
 ## The handoff, which is the whole point of the screen flow: what a player built
 ## is what a match is given.
 func test_a_test_drive_hands_the_edited_build_to_the_match() -> void:
@@ -237,6 +314,19 @@ func _open_match_once() -> void:
 
 ## The highest occupied slot: a leaf by construction, so removing it exercises no
 ## cascade and the edit is exactly one part.
+## A press of [param action], as the engine would deliver it.
+##
+## An [InputEventAction] rather than a synthesised key: what is under test is the
+## screen's dispatch, and building an [InputEventKey] would additionally be
+## asserting that this file agrees with `project.godot` about which key carries
+## the action — which [code]tests/arch/test_input_actions.gd[/code] already owns.
+static func _action_press(action: StringName) -> InputEventAction:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = true
+	return event
+
+
 static func _highest_slot(ctx: BuildContext) -> int:
 	for slot: int in range(SyndicateConstants.MAX_PARTS_PER_ASSEMBLY - 1, -1, -1):
 		if ctx.state(slot) != null:

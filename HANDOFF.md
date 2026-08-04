@@ -48,19 +48,21 @@ thirteen documents in `/docs/`, named just before it.
 
 ## Where this stands
 
-**It is a game with a loop.** `godot --path .` opens on a menu. The menu opens a
-garage, where a wheeled Assembly is standing on the Build Lattice with a
-catalogue of thirteen parts beside it and its mass, power, mounts, top speed,
-integrity and rollover threshold on the right. TEST DRIVE puts that build — the
-one on the screen, whatever the player has done to it — into a basin with 15 m of
+**It is a game with a loop, and the loop now forgives a mistake.** `godot --path .`
+opens on a menu. The menu opens a garage, where a wheeled Assembly is standing on
+the Build Lattice with a catalogue of thirteen parts beside it and its mass,
+power, mounts, top speed, integrity and rollover threshold on the right. Ctrl+Z
+takes back a misclick, a removal that would orphan something asks first, and
+RESET asks before it throws the build away. TEST DRIVE puts that build — the one
+on the screen, whatever the player has done to it — into a basin with 15 m of
 relief against three opponents. They fight. A card says which way it went and
 names the two keys that fight again or go back to the garage.
 
 **What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-no undo, and a garage in which nothing tells a player what a part *does* until
-they have driven it.
+no mirroring, and a build that is hard to *see*: at the shipped tints the Core
+Module, the panels and the Prime Mover are one dark mass.
 
-**83 files, 5582 checks, 0 failures.**
+**84 files, 5874 checks, 0 failures.**
 
 ---
 
@@ -93,7 +95,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**83 files, 5582 checks, 0 failures.**
+**84 files, 5874 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -128,10 +130,14 @@ with `-j4`:
 
 ```bash
 python3 tools/ci/sweeps/ai_layer_sweep.py            # all of them, 4 workers
-python3 tools/ci/sweeps/match_layer_sweep.py         # doc 11 §16, §14.3, §14.6
+python3 tools/ci/sweeps/garage_edit_sweep.py         # doc 02 §9: undo, removal, order
 python3 tools/ci/sweeps/ai_layer_sweep.py --list     # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
+
+There are five of them and `CHANGE_LOG.md` §3 says what each covers. A sweep's
+`BASELINE` is a check count and moves with the suite; update it in the same
+change as anything that moves the count.
 
 Workers run in throwaway copies of the project under `/tmp`, so `-j2` and above
 cannot leave a planted fault in your checkout. `-j1` still patches in place, and
@@ -150,62 +156,65 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the menu, the
-garage, and 900 frames of a match with no player input at all.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900: the boot flow,
+and the garage on its own through `--main-scene`, which is the cheap way to look
+at one screen without driving the menu.
 
-**It is a game you can start, build in, and play again.** The menu is legible
-from frame 1 and its one green button says ENTER THE GARAGE. The garage opens on
-a build that is already a working machine rather than on an empty lattice — which
-matters more than it sounds, because Invariant I-2's "every Assembly has exactly
-one Core Module" is a rule nothing on the screen states and a player starting
-from nothing would have to guess. The stat panel fills a tick after any edit. The
-match is the same fight it was, and **the wreck now stays where it fell**: the
-capture that ended session 25 at 92 m/s and climbing ends this one at 0.0 m/s
-with the end card up.
+**Building is no longer typing without a backspace.** UNDO · Ctrl+Z and REDO ·
+Ctrl+Shift+Z sit in the toolbar naming their own bindings and are correctly
+greyed out on open; a removal that would orphan something says how many parts
+rest on it before doing anything; RESET says it cannot be undone before
+discarding the build. Two things a player would have met are gone: a station
+removed from the shipped starter used to leave the contact it was carrying
+hanging in the air as a mesh with nothing behind it, and a build that had been
+edited — anything removed and anything then placed into the hole — could hand
+the match a blueprint that refused halfway through, so the test drive arrived
+with a build the player had not made.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **There is no undo.** Doc 02 §9.3's `BuildCommand` is unwritten, so a misclick
-   is permanent until RESET, which throws away everything. It is the first thing
-   a player meets in their first minute of building and the cheapest large thing
-   left.
+1. **You cannot see what you are building.** In the capture the Core Module, the
+   panels and the Prime Mover are one dark mass, the two visible contacts are
+   pale blocks, and the shape reads as a blob rather than as a machine. The
+   greybox class tints (doc 13 §5) are all low-value blues and greys against a
+   dark background. This is now the first thing a player meets and the cheapest
+   large thing left — a lighting change and a tint spread, not new geometry.
 2. **Every build is placed one part at a time down both flanks.** Doc 02 §10's
    mirroring is written and unimplemented and `build_mirror_toggle` has a binding
    and no consumer. The shipped starter is four stations and four contacts, half
    of them the mirror of the other half.
 3. **The wheels are boxes, and they are drawn where the part was placed rather
    than where the suspension put them** (§3.4). In the garage they are four pale
-   blocks under a hull; in the match they hang in the air on every crest. It is
-   the biggest gap between how the game *looks* and how it *works*.
+   blocks under a hull; in the match they hang in the air on every crest.
 4. **You still cannot drive and shoot at the same time** (§3.3). Unchanged, and
-   now the oldest thing on the list.
+   the oldest thing on the list.
 5. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. The scene is
    parameterised for none of it, and doc 06's generator is the intended answer.
-6. **The garage teaches nothing about what a placement is refused for until it is
+6. **The garage teaches nothing about *composition* until a placement is
    refused.** The status strip names the reason and the inspector names the
    figures, and neither says that a rotor disc needs a mast under it and a second
-   disc opposite it. That is a *composition* rule rather than a part figure, and
-   nothing on the screen carries one.
+   disc opposite it, or that supply goes on before draw.
 7. **The opponents still shoot each other**, less than they did, and nothing in
    `src/combat/` knows what a team is (§3.5).
 8. **A destroyed part still simply vanishes**, because `VisualDamageController`
    (doc 08 §9) is unwritten.
 9. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.7), and a player can now *reach* that build — the garage will let them fit
-   limbs. That moves it from a test-only defect to something a player can meet.
+   (§3.7), and a player can reach that build — the garage will let them fit
+   limbs.
 
-**The garage's silence is half closed.** Hovering a part now says what it is —
-this contact steers 32° and that one is fixed, this module traverses 360° and
-elevates 34° and depresses 8°, this Prime Mover turns 3200 N·m. What it still
-does not say is anything about *composition*: that a disc needs a mast, that
-supply goes on before draw, that four steered contacts crab instead of turning.
+**The bad news, plainly.** Two of the three things this session fixed were
+defects a player would have hit in their first few minutes, and both had been
+sitting behind a comment that asserted the opposite. Neither was found by the
+suite, which was green through both of them; both were found by reading a
+docstring's justification and checking whether the code kept it. That is worth
+carrying forward more than the undo stack is — see `LEARNED_FACTS.md` §2's
+opening lessons. And the confirmation dialog still does not highlight the parts
+it is about to take, which doc 11 §9.1 asks for; the count is the honest half.
 
-The honest summary: **the game has a loop and the loop is worth going round.** A
-player can build, drive what they built, and come back and change it, and each of
-those three now tells them something. What it does not have is forgiveness — no
-undo, no mirroring — so building is more typing than it should be, and that is
-the next thing.
+The summary: **the loop is worth going round and the garage is now safe to
+experiment in.** What it is not yet is legible — a player can build, but not
+easily see what they have built — and that is what the next session should take.
 
 ---
 
@@ -214,27 +223,44 @@ the next thing.
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 An undo stack — the top item
-
-Doc 02 §9.3's `BuildCommand` is specified in full — kind, slot, cell,
-orientation, prior parent, cascade, 128 deep — and unwritten. A misclick in the
-garage is permanent until RESET, which discards the whole build. It is the first
-thing a player meets in their first minute of building and the cheapest large
-thing left.
-
-It is also what unblocks doc 02 §9.2's other half: `PlacementValidator.remove`
-returns the cascade list and the garage reports the count in the status strip,
-where §9.2 wants a confirmation prompt. A prompt a player cannot undo after
-agreeing to is a question with one answer, so the modal is owed *alongside* the
-stack rather than before it.
-
-### 3.2 Symmetry mirroring
+### 3.1 Symmetry mirroring — the top item
 
 Doc 02 §10 is written and unimplemented, and `build_mirror_toggle` has a binding
-and no consumer. Every build a player makes by hand is currently placed one part
-at a time down both flanks — the shipped starter is four stations and four
-contacts, and half of those placements are the mirror of the other half. It is
-the difference between building a machine and typing one in twice.
+and no consumer. Every build a player makes by hand is placed one part at a time
+down both flanks — the shipped starter is four stations and four contacts, and
+half of those placements are the mirror of the other half. It is the difference
+between building a machine and typing one in twice.
+
+It is also cheaper than it was: `BuildHistory` is the place a mirrored pair goes
+in as **one** command, so a mirror that half-succeeds does not leave the player
+undoing twice. `BuildCommand.placements` is already a list for the cascade's
+sake, so a mirrored attach is two entries in it and `undo` needs no new shape —
+what it needs is for `_erase` to take them all rather than the first.
+
+§10's rule that a refused mirror still commits the primary, with a non-blocking
+notification, is the part to get right: the toast exists nowhere yet and the
+status strip is where this garage puts that kind of sentence.
+
+### 3.2 Make the build legible
+
+The §2 capture's finding, and now the first thing a player meets. At the shipped
+greybox tints the Core Module, the panels and the Prime Mover are one dark mass
+against a dark background; the two visible contacts read as pale blocks stuck to
+it. A player cannot tell what they have built, which undermines the inspector
+that tells them what a part does.
+
+Three levers, cheapest first, and doc 13 §5 owns the tints:
+
+- **Spread the class tints in value, not just in hue.** They are all low-value
+  blues and greys. A Prime Mover that is plainly lighter than the panel beside it
+  costs one table edit.
+- **Light the preview from two sides.** `GaragePreview._build_environment` has
+  one key light; a fill at a different angle is what makes an edge an edge.
+- **Outline the part under the pointer.** The inspector already knows which slot
+  is hovered and nothing on the screen shows the player which part that is.
+
+This is also what doc 11 §9.1's unbuilt half needs — highlighting the parts a
+removal is about to take — so the per-slot tint path is worth building once.
 
 ### 3.3 Decide what a build does about recoil at a traversed mount
 
@@ -467,14 +493,17 @@ fixing. None of these is a surprise waiting to be found.
   lighter gun; someone has to pick.
 
 ### The lattice and the garage
-- **`BuildCommand` and the undo stack (doc 02 §9.3) are not written**, and a
-  player now meets that: the garage places and removes for real. Owned by §3.2.
-- **`PlacementValidator.remove` returns the cascade list rather than acting on
-  it.** §9.2 requires a player confirmation showing the affected count; the
-  garage names the count in the status strip instead, which is honest and is not
-  a prompt. Owned by §3.2.
-- **The garage has no inspector.** Doc 11 §4's `InspectorDock` and `StatRows` are
-  unbuilt, so nothing tells a player what a part does. Owned by §3.1.
+- **Doc 11 §9.1's confirmation does not highlight what it is about to take.** It
+  names the count, which is the half a player acts on; highlighting wants a
+  per-slot tint on the preview, and building a second one before doc 08 §9's
+  `VisualDamageController` is how the two end up disagreeing. Owned by §3.2.
+- **The confirmation counts dependents, and the status strip counts the
+  cascade.** The two numbers differ whenever an orphan finds another parent, and
+  that is deliberate: what the cascade will be is only knowable by performing the
+  removal, so asking first can only name the upper bound. Doc 02 §9.2 records it.
+- **Doc 02 §9.3's `REPAINT` and `REORIENT` kinds do not exist**, because no
+  operation produces them — there is no tint editor and no in-place reorient.
+  They arrive with those operations.
 - **The compact tier has no bottom sheet.** Doc 11 §3.2 gives it one and
   §4's tree names it; below 900 logical units wide the garage hides its docks and
   a player is left with a toolbar and a 3D view. A phone cannot build.
@@ -521,17 +550,21 @@ fixing. None of these is a surprise waiting to be found.
 - **The control card has no first-run flag.** Doc 11 §14.6 raises it on every
   entry to a match because there is nowhere to store "they have seen it", which
   is `SyndicateSettings` work and is waiting on there being more than one match.
-- **`cam_orbit` and `cam_pan` have keyboard/mouse bindings only and no consumer.**
-  Session 20 added four analogue `cam_look_*` actions for the match camera rather
-  than overloading `cam_orbit`, which is a single action and cannot express two
-  axes (§4.27). `cam_orbit` and `cam_pan` are now waiting on the garage, which is
-  where doc 11 §7.1 always intended them.
-- **The suite is about 40 seconds and `tests/physics/` is most of it.** Three of
+- **`cam_pan` has a keyboard/mouse binding and no consumer.** `cam_orbit` found
+  one in the garage; `cam_pan` is still waiting on it. Session 20 added four
+  analogue `cam_look_*` actions for the match camera rather than overloading
+  `cam_orbit`, which is a single action and cannot express two axes (§4.27).
+- **Nothing verifies the confirmation dialog's own presentation.** The screen
+  flow file asserts that RESET does not edit the build until it is agreed to and
+  that agreeing works, which is the rule; whether the dialog is legible, sized,
+  or dismissable by the keyboard is capture work and has not been done.
+- **The suite is about 200 seconds and `test_screen_flow` is most of it**, at
+  91 s for the two `MatchScreen`s it opens (§1). Inside `tests/physics/`, three of
   the four multi-Assembly files soak for hundreds of ticks by construction, and
   the two that time out — the ambulatory mirror and the five-a-side — spend their
-  full budget every run on purpose. It was 4 min 15 s until `LEARNED_FACTS.md` §1 fact 50; if the wall
-  time ever becomes a problem again, the honest lever is closing §4.21 so the
-  ambulatory mirror reaches a decision, not shortening its window.
+  full budget every run on purpose. If the wall time ever becomes a problem, the
+  honest levers are making a match cheaper to construct and closing §4.21 so the
+  ambulatory mirror reaches a decision, not shortening any window.
 - **§12.3's self-immunity window is inert in both directions.** Setting it to
   zero and pinning it permanently on both leave the suite green, because no
   shipped recipe mounts a module whose muzzle overhangs its own hull. It is

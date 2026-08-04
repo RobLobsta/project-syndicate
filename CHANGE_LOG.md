@@ -67,7 +67,52 @@ they found are in `LEARNED_FACTS.md`.
 | 23 | **Something shoots back.** `src/ai/` — context, target selector, driver. The match spawns three opponents that close, aim and fire through the same systems a player's trigger reaches. Found the recoil-yaw handling defect, a duplicated `assembly_terminated`, and that the ambulatory drift's *direction* is not reproducible. |
 | 24 | **The bore is centred, and it did not fix what it was for.** Doc 01 §14 rule 27; the module is 4×4×9 and its bore is on the centre of mass. An Assembly still cannot drive and shoot — the lever is the mount's position, not the bore's offset. Also: §15.7.1's throttle floor was outside its own window; the fix for that was green on every test and broke the game on real terrain; two fixtures were resting on one lucky round from the ambulatory build. Sweeps rebuilt — 10× faster, cannot hang, baselines measured rather than declared. |
 | 26 | **The game has a loop.** A menu, a garage a player builds in, a TEST DRIVE that fights three opponents with what they built, and two keys on the end card that fight again or go back. `Blueprint` carries a build across every screen boundary and is re-validated at each one. Doc 11 §4.3's inspector says what a part does. Doc 05 §3.6 stops the motion layer solving a terminated Assembly — the wreck no longer accelerates. |
+| 27 | **A misclick is survivable.** Doc 02 §9.3's undo stack — `BuildCommand`, `BuildHistory`, `Ctrl+Z` and two toolbar buttons — and §9.2's confirmation before a removal that orphans something. Two defects found by checking what a docstring claimed: a cascade announced itself once, leaving the rest of its meshes floating, and `Blueprint.from_context` assumed slot order was build order, so an ordinary edit produced a build that could not reach a match. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
+
+### Session 27, in more detail
+
+The task was doc 02 §9.3's undo stack. Most of the value came from two things
+found on the way to it, and both were found the same way: by reading a comment
+that stated an invariant and asking whether the code kept it.
+
+- **`BuildCommand` and `BuildHistory`.** A command is created by performing the
+  edit, identifies a part by the **cell it sits on** rather than by its slot, and
+  restores the primary tree rather than re-deriving it. The cell rule is not
+  fastidiousness: `allocate_slot` hands out the lowest free slot, so two removals
+  undone in the order undo has to take them come back holding each other's slots.
+  Verified by hand — a slot-keyed variant fails exactly one fixture,
+  `test_two_removals_undo_through_each_other_s_holes`, and nothing else in the
+  suite notices. Depth 128, redo branch discarded by the next edit.
+
+- **A cascade announced itself once.** `PlacementValidator.remove` emitted
+  `part_removed` for the slot the player named and not for the parts that came
+  with it, and doc 02 §9.2's sketch is where that came from. Every listener but
+  the mass solver is keyed on the slot, so taking a station off the shipped
+  starter left the contact it was carrying hanging in the air as a mesh with no
+  part behind it. Emission is now per released part.
+
+- **`Blueprint.from_context` assumed slot order was construction order.** Its own
+  docstring said so and gave the reason — a parent's slot is lower than its
+  child's — which holds until the first removal leaves a hole for a later
+  placement to drop into. Remove a wheel, put something on a part placed after
+  it, press TEST DRIVE: the blueprint refuses partway through and the match gets
+  a build one part short, with nothing on screen having gone wrong. It now writes
+  the lowest slot whose parent is already written, which is byte-identical on
+  every build that has not been edited.
+
+- **`ChassisGraph.children` said "ascending" and appended.** Both `reparent` and
+  slot reuse break it, so `subtree_slots` was a function of edit history rather
+  than of the tree — Invariant I-9 on the cascade order a removal reports and on
+  the depth ordering the strain solver walks.
+
+- **Doc 11 §9.1's confirmations.** A removal that orphans a dependent asks first,
+  naming what rests on the part; RESET asks first, because it is the one action
+  undo cannot reach. The dialog is §4.2's `ConfirmationDialog`, which was
+  measured headless rather than assumed (`LEARNED_FACTS.md` §1 fact 71).
+
+Eleven planted faults, none survived. The twelfth — a command keyed on a slot —
+cannot be planted by substituting one line and was run by hand instead.
 
 ### Session 26, in more detail
 
@@ -191,8 +236,9 @@ what matters is which test defends which behaviour.
 | `test_input_actions` | an action deleted from `project.godot` |
 | `test_part_registry_validator` | definition on disk absent from the manifest (R02); duplicated manifest key (R02); collider shrunk to 60% coverage (R08); resistance above the 0.85 ceiling (R07); and every rule 17–24 check: rotor thrust vs rated load, rotor zero-fields, malformed disc geometry, inverted collective limits, melee mix sum, melee mix length, melee emission fields, melee bounds, AXLE keying, an AXLE node on a class that may not carry one, family payload missing, family payload on a kind that takes none, two payloads at once, limb suspension fields, limb gait bounds, cadence ceiling below its floor, an over-long step, track steer angle, track station bounds, malformed track parameters, the shared non-zero helper neutered, rule 23 never firing, **a torqueless Prime Mover accepted, and a supply-less Energy Cell accepted** |
 | `test_part_registry_data` | manifest order swapped; four attachment nodes dropped from a `.tres`; a part missing from a class bucket; a locomotion family with no shipped part |
-| `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent |
-| `test_chassis_graph` | mass propagation stops at the immediate parent; orphaning children forgets to shed their mass; connectivity walks the tree rather than support edges; duplicate support edges kept |
+| `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent; *(session 27)* **a cascade announcing only the part the player named**, and the mirror of it |
+| `test_build_history` | *(session 27)* an attach that undoes to nothing; a restored part left under whatever now mates; §9.2's re-parenting never recorded; a cascade restored child-first; a redo branch surviving an edit; the 128 depth removed; an undone command that cannot be redone — and, by hand, **a command keyed on a slot rather than on a cell** |
+| `test_chassis_graph` | mass propagation stops at the immediate parent; orphaning children forgets to shed their mass; connectivity walks the tree rather than support edges; duplicate support edges kept; *(session 27)* **`children` appended rather than filed in ascending order**, which it has claimed since it was written |
 | `test_mate_selector` | depth tie-break dropped; weaker-joint preference inverted; joint rated by the stronger node; joint bears load when either end does; load-bearing key dropped from the ordering; re-parent ignores core reachability |
 | `test_build_budget_ledger` | ledger's remove forgets the mount weight |
 | `test_chassis_strain` | strain charges the part alone not its subtree; dynamic factor never applied; deposits not summed over the subtree; peak deposit replaced by the latest; candidate set only grows; dwell keyed on the ordered pair; dwell fires without waiting out the window |
@@ -205,9 +251,9 @@ what matters is which test defends which behaviour.
 | `test_debris_pool` | 45 faults across exhaustion order, retirement, linger, visibility dwell, shape reuse, and bounds — see session 7's record in git history for the full list |
 | `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
 | `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step` |
-| `test_blueprint` | a blueprint that commits without validating; `copy()` returning a reference rather than an independent list |
+| `test_blueprint` | a blueprint that commits without validating; `copy()` returning a reference rather than an independent list; *(session 27)* **`from_context` writing ascending slot order**, which stops being a construction order at the first removal |
 | `test_breakpoint` | the stat dock hidden below the expanded tier |
-| `test_screen_flow` | the shell keeping the outgoing screen alive behind the incoming one |
+| `test_screen_flow` | the shell keeping the outgoing screen alive behind the incoming one; *(session 27)* the undo and redo keys reaching their handlers, and RESET editing the build before it is agreed to |
 | `test_degradation_table` | a band multiplier changed off its documented value; a table that does not terminate at zero; a table that is not monotonic; a table of the wrong length; the out-of-range clamp removed; a table missing from `all_tables()` |
 | `test_suspension_solver` | compression not clamped to travel; an ungrounded probe still compressing; rebound damped like compression; force allowed to pull; bottom-out clamp removed; settle scale always applied; damp multiplier ignored; retune scale unclamped; damper not derived from corner mass; axle pairing ignoring longitudinal distance; axle pairing accepting the same side; anti-roll ignoring the difference |
 | `test_traction_solver` | slip ratio dividing by raw speed; slip angle using a signed denominator; Pacejka curve unnormalised; load sensitivity unclamped; band multiplier dropped from μ; **longitudinal sign flipped**; lateral grip ratio applied after the solve; zero-slip guard removed; brake zero-crossing guard removed; the guard catching negative drive too; ground reaction term dropped; contact inertia using full mass; torque split evenly rather than by load; rolling resistance ignoring the band |
@@ -264,13 +310,14 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Four committed sweeps, 84 faults between them, all driven by
+Five committed sweeps, 95 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
 | Script | Covers | Faults |
 |---|---|---|
 | `engagement_sweep.py` | the paths the engagement files rest on (sessions 15–16) | 14 |
+| `garage_edit_sweep.py` | doc 02 §9's editing model: the command stack, removal's announcement, `from_context`'s order, `children`'s ordering | 11 |
 | `combat_layer_sweep.py` | damage, effector and projectile layers (session 14), plus doc 07 §15 (session 18) | 45 |
 | `ai_layer_sweep.py` | `src/ai/`, doc 05 §15.7, doc 07 §10, doc 01 rule 27 | 13 |
 | `match_layer_sweep.py` | doc 11 §16's outcome rule, §14.3's target bracket, §14.6's binding lookup, doc 05 §15.7.5's ladder | 12 |

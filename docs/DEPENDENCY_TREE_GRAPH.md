@@ -43,7 +43,7 @@ const CORE := SyndicateConstants.CORE_SLOT
 
 ## --- Primary tree -----------------------------------------------------
 var parent: PackedByteArray = PackedByteArray()        # slot -> parent slot
-var children: Array = []                               # slot -> PackedByteArray
+var children: Array = []                               # slot -> PackedByteArray, ascending
 var depth: PackedByteArray = PackedByteArray()         # slot -> tree depth
 
 ## --- Support edge graph ----------------------------------------------
@@ -602,7 +602,7 @@ Every signal the graph consumes or emits, with its exact payload. These are decl
 |---|---|---|
 | `part_destroyed` | `(assembly_id: int, slot: int, cause: int)` | `DamageResolver` when integrity reaches 0 |
 | `joint_failed` | `(assembly_id: int, slot_a: int, slot_b: int)` | `ChassisGraph.evaluate_strain` |
-| `part_removed` | `(assembly_id: int, slot: int)` | Garage build commands |
+| `part_removed` | `(assembly_id: int, slot: int)` | Garage build commands, **once per part released** |
 | `part_attached` | `(assembly_id: int, slot: int)` | Garage build commands, blueprint load |
 | `tick_resolved` | `()` | `MatchClock`, end of each physics tick |
 

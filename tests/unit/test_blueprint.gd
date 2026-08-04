@@ -14,6 +14,12 @@ const PANEL_KEY: StringName = &"str.panel.medium.t2"
 const CORE_CELL := Vector3i(24, 4, 24)
 ## A cell nothing occupies and nothing is adjacent to.
 const ORPHAN_CELL := Vector3i(12, 20, 12)
+## On the Core Module's deck.
+const DECK_CELL := Vector3i(24, 7, 24)
+## Beside it, bridging to the deck's aft edge and to the panel above.
+const BESIDE_DECK_CELL := Vector3i(24, 7, 28)
+## Directly on top of that one, and touching nothing else.
+const ABOVE_BESIDE_CELL := Vector3i(24, 8, 28)
 
 var _contexts: Array[BuildContext] = []
 
@@ -28,6 +34,18 @@ func _context() -> BuildContext:
 	var ctx := BuildContext.headless(_contexts.size() + 1)
 	_contexts.append(ctx)
 	return ctx
+
+
+## Places [param key] at [param cell] and returns its slot, failing the test
+## rather than returning a slot nothing is in if the fixture does not build.
+func _commit(ctx: BuildContext, key: StringName, cell: Vector3i) -> int:
+	var def := PartRegistry.definition_by_key(key)
+	var cand := PlacementCandidate.create(def, cell, OrientationTable.IDENTITY_INDEX)
+	var reject := PlacementValidator.validate(ctx, cand)
+	if reject != PlacementValidator.Reject.NONE:
+		fail("fixture: '%s' at %v was refused with %d" % [key, cell, reject])
+		return SyndicateConstants.INVALID_SLOT
+	return PlacementValidator.commit(ctx, cand)
 
 
 func test_the_starter_applies_cleanly_and_reconstructs_itself() -> void:
@@ -159,6 +177,56 @@ func test_order_is_content_and_not_presentation() -> void:
 		log.key,
 		PlacementValidator.reject_key(PlacementValidator.Reject.NO_MATING_NODE),
 		"because the station it mates through is not there yet"
+	)
+
+
+## The order [method Blueprint.from_context] writes is a construction order even
+## when ascending slot order is not one, and the difference is one ordinary
+## garage session away.
+##
+## [method BuildContext.allocate_slot] hands out the lowest free slot, so a
+## removal leaves a hole and the next placement drops into it whatever that
+## placement attaches to. Take a part off the deck, put one on top of its
+## neighbour, and the child is now slot 1 while the thing holding it up is slot
+## 2 — at which point ascending order describes a build that cannot be built.
+## What the player sees is a test drive that arrives one part short, or does not
+## arrive, with nothing on the screen having gone wrong.
+##
+## Asserted through [method Blueprint.apply] rather than by reading the order,
+## because the property is "this reconstructs" and not "this is sorted".
+func test_a_build_edited_into_a_slot_hole_still_reconstructs() -> void:
+	var ctx := _context()
+	_commit(ctx, CORE_KEY, CORE_CELL)
+	var removed := _commit(ctx, PANEL_KEY, DECK_CELL)
+	var support := _commit(ctx, PANEL_KEY, BESIDE_DECK_CELL)
+	check_eq(removed, 1, "the panel on the deck took slot 1")
+	check_eq(support, 2, "and the one beside it took slot 2")
+
+	check_eq(
+		PlacementValidator.remove(ctx, removed),
+		PackedByteArray(),
+		"removing the first panel takes nothing with it"
+	)
+	var child := _commit(ctx, PANEL_KEY, ABOVE_BESIDE_CELL)
+	check_eq(child, 1, "the new panel drops into the hole the removal left")
+	check_eq(int(ctx.graph.parent[child]), support, "and rests on slot 2")
+
+	# The claim: the blueprint that comes out of that context builds again. In
+	# ascending slot order it does not — placement 1 is the child and placement 2
+	# is what holds it up.
+	var bp := Blueprint.from_context(ctx)
+	check_eq(bp.size(), 3, "the Core Module, the survivor, and the part on top of it")
+	var log := RejectLog.new()
+	var rebuilt := _context()
+	check_eq(
+		bp.apply(rebuilt, log.record),
+		Blueprint.APPLIED_CLEANLY,
+		"and every one of them is accepted in the order it was written"
+	)
+	check_eq(
+		rebuilt.occupancy.occupied_count,
+		ctx.occupancy.occupied_count,
+		"the rebuild occupies the same cells"
 	)
 
 

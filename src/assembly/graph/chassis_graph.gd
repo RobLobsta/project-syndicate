@@ -212,9 +212,7 @@ func attach(
 	mass_kg[slot] = part_mass_kg
 
 	if primary_parent != INVALID:
-		var kids: PackedByteArray = children[primary_parent]
-		kids.push_back(slot)
-		children[primary_parent] = kids
+		_add_child(primary_parent, slot)
 
 	for m in mates:
 		_add_edge(slot, m.other_slot, m.joint_strength_n, m.bears_load)
@@ -371,9 +369,7 @@ func reparent(slot: int, new_parent: int) -> void:
 		_propagate_mass_delta(old_parent, -moved)
 
 	parent[slot] = new_parent
-	var new_kids: PackedByteArray = children[new_parent]
-	new_kids.push_back(slot)
-	children[new_parent] = new_kids
+	_add_child(new_parent, slot)
 	_propagate_mass_delta(new_parent, moved)
 	_refresh_depths(slot)
 
@@ -750,6 +746,25 @@ func debug_report() -> String:
 
 
 ## ===== PRIVATE =========================================================
+
+
+## Files [param slot] under [param owner_slot] in ascending order.
+##
+## [member children] declares itself ascending and two things break that if the
+## insertion point is not sought: [method reparent] appends an orphan onto a
+## survivor that already has higher-numbered children, and
+## [method BuildContext.allocate_slot] hands out the lowest free slot, so a part
+## placed after a removal is a lower id than siblings placed before it. Both are
+## ordinary garage editing. The list is a handful of entries and the scan is
+## cheaper than the sort every reader would otherwise have to do to make
+## [method subtree_slots] deterministic (Invariant I-9).
+func _add_child(owner_slot: int, slot: int) -> void:
+	var kids: PackedByteArray = children[owner_slot]
+	var at := 0
+	while at < kids.size() and int(kids[at]) < slot:
+		at += 1
+	kids.insert(at, slot)
+	children[owner_slot] = kids
 
 
 func _add_edge(a: int, b: int, strength: float, bears_load: bool) -> void:

@@ -133,8 +133,8 @@ project-syndicate/
 │   │   │                             resolved_node.gd, placement_candidate.gd,
 │   │   │                             placement_validator.gd, build_context.gd,
 │   │   │                             build_budget_ledger.gd, build_shape_cache.gd,
-│   │   │                             build_command.gd, blueprint.gd,
-│   │   │                             starter_blueprint.gd
+│   │   │                             build_command.gd, build_history.gd,
+│   │   │                             blueprint.gd, starter_blueprint.gd
 │   │   ├── graph/                  ← chassis_graph.gd, detachment_solver.gd,
 │   │   │                             detachment_scheduler.gd, island_detacher.gd,
 │   │   │                             mate_selector.gd, mate_record.gd

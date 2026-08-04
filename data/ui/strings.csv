@@ -43,6 +43,8 @@ garage.title,GARAGE
 garage.action.test_drive,TEST DRIVE
 garage.action.menu,MENU
 garage.action.reset,RESET
+garage.action.undo,UNDO · %s
+garage.action.redo,REDO · %s
 garage.catalogue.search,Search parts
 garage.catalogue.any_class,All
 garage.hint,%s place · %s remove · %s rotate · %s orbit · hover to inspect
@@ -51,6 +53,13 @@ garage.selected.none,Pick a part from the catalogue
 garage.removed,Part removed
 garage.removed.cascade,Part removed — %d more came with it
 garage.no_core,An Assembly needs its Core Module
+garage.undone,Undone
+garage.redone,Redone
+garage.undo.none,Nothing left to undo
+garage.redo.none,Nothing to redo
+garage.confirm.title,Are you sure?
+garage.confirm.remove,"%d parts rest on this one. Remove it anyway?"
+garage.confirm.reset,"Discard this build and start again from the standard one? This cannot be undone."
 garage.card.cost_mass,%d · %.0f kg
 garage.card.class_tier,%s · %s
 garage.stats.title,ASSEMBLY

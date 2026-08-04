@@ -751,6 +751,16 @@ A confirmation dialog appears only when an action is destructive and non-trivial
 | Auto-assemble over an existing build | Yes, with a "keep my parts" option that sets `locked_placements` |
 | Sell a part from inventory | Yes |
 
+Two of these rows are built and the rest wait on the features they guard. What the garage asks before, session 27:
+
+- **A removal that orphans a dependent.** The dialog names the count and does **not** highlight the affected parts in `danger`. Highlighting wants a per-slot tint on the preview's meshes, which is the same path doc 08 §9's `VisualDamageController` will want, and building a second one first is how the two end up disagreeing. The count is the honest half and it is the half a player acts on.
+
+  The count is of **dependents**, not of the cascade. What the cascade will be is only knowable by performing the removal — whether an orphan finds another parent is `GRID_SNAPPING_LOGIC.md` §9.2's own answer — so the dialog names what rests on the part and the status strip afterwards names what actually went. The second number is usually smaller.
+
+- **Reset.** The "clear the entire Assembly" row, and the one action in the garage that undo cannot reach: §9.3's stack names cells belonging to a build that is about to stop existing, so it is cleared with the build. Asking is the only protection there is.
+
+`ConfirmDialog` is §4.2's `ConfirmationDialog` and not a `Control` panel standing in for one. That was worth measuring rather than assuming, because `DisplayServer` methods meaningful only with a window are hard errors headless rather than no-ops (`LEARNED_FACTS.md` §1 facts 66 and 70) and the suite constructs this screen: an embedded subwindow pops, reports `visible`, hands out its OK button and hides again with no engine error under `--headless`.
+
 ### 9.2 Toasts
 
 Non-blocking feedback goes to `ToastStack`. Toasts are pooled (8 instances), never allocated per message, and auto-dismiss after `3.2 s` with a `0.25 s` fade.
