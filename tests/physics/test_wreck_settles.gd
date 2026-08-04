@@ -87,6 +87,12 @@ const ALIVE_COMMANDED_FLOOR_MPS: float = 2.0
 ## stopping, and anything that is not stopping is being pushed.
 const COAST_DECAY_CEILING: float = 0.5
 
+## Metres the hulk may cover over the tail of the coast window, once the mass
+## solve that follows the last island has landed. Doc 05 §3.7 freezes the body,
+## so the measured figure is exactly zero; the ceiling is a threshold on "moved at
+## all" rather than a description of anything.
+const WRECK_TRAVEL_CEILING_M: float = 0.25
+
 var _ran: bool = false
 var _terminated: bool = false
 var _speed_under_power_mps: float = 0.0
@@ -94,6 +100,8 @@ var _mass_before_kg: float = 0.0
 var _mass_after_kg: float = 0.0
 var _speed_at_conclusion_mps: float = 0.0
 var _speed_coasting_mps: float = 0.0
+var _wreck_travel_m: float = 0.0
+var _wreck_frozen: bool = false
 var _speed_commanded_mps: float = 0.0
 var _speed_alive_commanded_mps: float = 0.0
 var _contacts_after_termination: int = 0
@@ -176,6 +184,27 @@ func test_the_remains_slow_down_rather_than_accelerate() -> void:
 	)
 
 
+## Doc 05 §3.7, and doc 11 §16.2's decision made good. Slowing down is not the
+## rule; staying put is. §3.5's floors leave a body that no longer holds anything
+## describing itself as a one-kilogramme object with a hull-sized collider, and
+## anything that brushes one of those launches it — which is what the capture
+## caught climbing past 27 m/s under the end card.
+##
+## The first check is what makes the second mean anything: a wreck that had been
+## deleted, or one whose colliders had all gone with its islands, would sit at
+## zero travel for the wrong reason.
+func test_the_wreck_stays_where_it_fell() -> void:
+	await _run_all()
+	check_true(_wreck_frozen, "a body with no live parts left is out of the simulation")
+	check_true(
+		_wreck_travel_m < WRECK_TRAVEL_CEILING_M,
+		(
+			"the hulk moved %.2f m over the last %d ticks of the window; doc 11 §16.2 "
+			+ "has it staying where it fell"
+		) % [_wreck_travel_m, COAST_TICKS - COAST_TICKS / 3]
+	)
+
+
 ## Runs once. The fixture is destructive — an Assembly whose Core Module has gone
 ## cannot be put back — so every method above asserts one thing about one run
 ## (LEARNED_FACTS.md §1 fact 43).
@@ -245,8 +274,17 @@ func _measure_the_collapse() -> void:
 	_terminated = not c.is_alive()
 	_speed_at_conclusion_mps = c.runtime.body.linear_velocity.length()
 
-	await physics_frames(COAST_TICKS)
+	# Sampled a third of the way through the window rather than at the conclusion.
+	# The islands detach on the resolve phase of the tick the Core Module died on
+	# and the solve that notices lands two ticks later (doc 05 §4.3), so a
+	# displacement measured from the conclusion would be measuring those two ticks
+	# of ballistic travel and calling them drift.
+	await physics_frames(COAST_TICKS / 3)
+	var settled_at := c.runtime.body.global_position
+	await physics_frames(COAST_TICKS - COAST_TICKS / 3)
 	_speed_coasting_mps = c.runtime.body.linear_velocity.length()
+	_wreck_travel_m = c.runtime.body.global_position.distance_to(settled_at)
+	_wreck_frozen = c.runtime.body.freeze
 	# Read here rather than at the conclusion. The severance is scheduled and the
 	# re-solve runs on a worker (doc 05 §4.3), so which tick the new mass lands on
 	# is the scheduler's business and not this file's claim; that it lands is.

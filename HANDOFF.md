@@ -75,10 +75,13 @@ close to a six-metre stand-off between two hulls that touch at 4.8 m, arrive at
 the same capture now shows the player upright at ten seconds, at 41% integrity,
 trading fire with something that has stopped and is shooting back.
 
-**What it lacks now is depth rather than shape.** One arena, one opponent recipe,
-and nothing yet that rewards a good build over a heavy one.
+**What it lacks now is depth rather than shape** — one arena, one opponent
+recipe, and nothing yet that rewards a good build over a heavy one — **and the
+ground physics under it is less sound than a green suite suggests.** Session 32
+measured doc 05 §7.4's contact integration at 142 times outside its own stability
+limit; §2 and §3.1 have it.
 
-**88 files, 6165 checks, 0 failures.**
+**89 files, 6173 checks, 0 failures.**
 
 ---
 
@@ -111,7 +114,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**88 files, 6165 checks, 0 failures.**
+**89 files, 6173 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -178,121 +181,139 @@ look at a fight without driving the menu and the garage first, since
 `MatchScreen` falls back to the shipped starter when no blueprint arrives. The
 player is not driven, which is the exact case that used to get run over.
 
-**You survive the opening.** The whole of the last session's top finding, gone.
-Where the previous capture had an 1107 kg hull on its flank at five seconds and
+**You survive the opening.** The whole of session 30's top finding, gone. Where
+the previous capture had an 1107 kg hull on its flank at five seconds and
 destroyed at seven, the same scene now reads: **upright and 100% at five seconds,
-upright and 86% at seven, upright and 41% at ten**, standing in a firefight with
-an opponent that has stopped ten metres away and is shooting back. Three defects
-were under that one symptom and §3's history has them; the short version is that
-the drivers arrived at 18 m/s at a stand-off six metres long between two hulls
-that touch at 4.8 m.
+upright and 86% at seven, upright and 62% at ten**, standing in a firefight with
+an opponent that has stopped ten metres away and is shooting back, and with one
+opponent's remains lying in the basin where they fell.
 
-**You can drive and shoot at the same time**, from the session before: doc 01
-§10.5's `eff.ballistic.repeater_12.t2` at 26 N·s against the autocannon's 1450,
-measured at 2.9° of heading drift and 30 rounds against 99.1° and 2. **And the
-wheels are on the ground**, from the one before that.
+**And what you kill now stays killed where it died.** Session 32's, and it was
+the top item: doc 05 §3.7 takes a body with no live parts out of the simulation
+instead of leaving a hull-sized collider on a gramme of mass for the next thing
+to punt. Measured 2.80 m of hulk travel under the end card before, **0.00 m**
+after.
+
+**You can drive and shoot at the same time**, from session 30. **And the wheels
+are on the ground**, from session 29.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **A destroyed Assembly's wreck is launched over the horizon.** Now the top
-   item. Doc 11 §16.2 says the wreck stays where it fell and it does not: losing
-   the Core Module orphans every part, the islands detach, and doc 05 §3.5's mass
-   floor leaves a 1 kg body that the next thing to touch it punts away. Measured
-   climbing past 27 m/s under the end card, which is free fall from wherever it
-   was kicked to. **§3.1 owns it and it is cheap.**
-2. **The controls card sits in the middle of the screen for the whole first
-   fight.** `ControlCard.DWELL_S` is 11 s and the opening engagement is decided
-   inside that, so a first-time player reads the fight through a legend. It is
-   centred, opaque, and covers exactly the band of screen the opponents approach
-   through — all three of them are behind it in the frames that matter. Doc 11
+1. **The controls card sits in the middle of the screen for the whole first
+   fight.** Now the top item, and session 32's capture confirms it twice over: at
+   seven seconds an opponent is directly behind the card, and at ten seconds it
+   is still up. `ControlCard.DWELL_S` is 11 s and the opening engagement is
+   decided inside that, so a first-time player reads their first fight through an
+   opaque legend covering exactly the band the opponents approach through. Doc 11
    §14.6 raises it on every entry because there is nowhere to store "they have
    seen it"; the placement and the dwell are separable from that and cheaper.
-   **§3.2.**
-3. **You cannot ask the machine to slow down.** The brakes work — the AI's
-   arrival brake is the same mechanism and it stops an 18 m/s approach — but
-   `S` is one key meaning both "brake" and "reverse", the service brake's torque
+   **§3.2, and it is the cheapest thing on this list.**
+2. **The machine never sits still, and the HUD says so.** The capture's own speed
+   readout shows **0.7 m/s with nobody touching a key**. This was §3.10's
+   "a parked Assembly never comes to rest" and it now has a cause rather than a
+   suspicion: doc 05 §7.4's contact integration is 142× outside its stability
+   limit and the contact reverses ten times in twelve ticks. **§3.1 owns it, the
+   repair is written down and measured, and it is a balance pass rather than a
+   bug fix** — see the bad news below.
+3. **You cannot ask the machine to slow down.** Unchanged from session 31. `S` is
+   one key meaning both "brake" and "reverse", the service brake's torque
    vanishes at exactly zero contact speed, and the handbrake that would hold a
-   stop is bound to Space and read by nothing. A player who wants to decelerate
-   and sit still has no input that says so, and a player on limbs has no brake
-   at all. **§3.3.**
+   stop is bound to Space and read by nothing. A player on limbs has no brake at
+   all. **§3.3.**
 4. **One arena and one opponent recipe.** Every test drive is the same three
    wheeled builds at the same three spawns on the same basin. Doc 06's generator
    is the intended answer.
 5. **Nothing rewards a good build over a heavy one** — except which Effector
-   Module you fit, which is now a real decision because the two published
-   direct-fire rows are good at different things. One axis out of the six the
-   stat panel names.
+   Module you fit. One axis out of the six the stat panel names.
 6. **The garage teaches nothing about *composition* until a placement is
-   refused.** The inspector names figures; nothing says a rotor disc needs a mast
-   under it and a second disc opposite it, or that supply goes on before draw.
+   refused.**
 7. **The opponents still shoot each other**, and nothing in `src/combat/` knows
    what a team is (§3.4).
-8. **A destroyed part still simply vanishes**, because `VisualDamageController`
-   (doc 08 §9) is unwritten.
+8. **A destroyed part vanishes from the mass budget and stays on the hull.**
+   Session 32's incidental finding: `AssemblyRuntime.release_part` disables a
+   destroyed part's colliders and its mesh, and **nothing in `src/` calls it**. So
+   a part that dies but stays attached still blocks rounds and is still drawn,
+   while contributing no mass. `VisualDamageController` (doc 08 §9) being unwritten
+   is the smaller half of this.
 9. **A walking build turns 170° in five seconds while commanded straight ahead**
-   (§3.7), and the garage will let a player fit limbs.
+   (§4.21), and the garage will let a player fit limbs.
 
-**The bad news, plainly.** Four things.
+**The bad news, plainly.** Three things, and the first is the largest finding this
+project has had in some time.
 
-**The suite could not see the ram, and the reason generalises.** Every engagement
-fixture in this repository records rounds, ticks, kills and travel. Not one of
-them recorded **attitude**, so a build ending the fight on its roof moved no
-number and six thousand checks were green through it. That is fixed for roll — the
-instrument is twenty lines and `tests/physics/test_ram_attitude.gd` is what it is
-for — but the shape of the mistake is not: the fixtures record what the systems
-emit, and a player watches what the machine *does*. Ask of any new engagement
-assertion what physical state is missing from the record class, not what count.
+**The ground physics has been wrong the whole time, in a way that flatters every
+number the suite records.** Doc 05 §7.4 integrates the contact's spin explicitly
+against a friction reaction of about 2.9e5 N per rad/s. That is stable below
+117 microseconds; the tick is 16.7 milliseconds. It does not diverge, because the
+Pacejka curve saturates — it limit-cycles, at ±4.7 rad/s reversing every tick
+under a build standing still. **No quantity any fixture recorded moved at all**:
+the mean force was right, the mean position was right, and six thousand checks
+were green through it for thirty-one sessions.
 
-**Two of the three constants involved were authored against geometry nobody had
-measured.** `GROUND_STAND_OFF_M` at 6.0 m, and doc 05 §15.7.5's 4.5 m ladder
-step justified in the document as "a little over an Assembly's own length" — the
-reference build is 4.8 m long, so the stand-off was inside the hulls and the step
-is still under one. The stand-off is fixed. **The step is knowingly left wrong**,
-because moving it moves every engagement measurement in `tests/physics/` at once
-and it is not what was driving over the player. It is a `balance-review` decision
-and it is open (§3.10).
+The repair was built and measured, and then reverted, and the measurements are
+why. It fixes what it is for — resting reversals 11 of 12 to none, drift 2–3 m to
+0.49 m, and full-throttle acceleration *up* from 3.87 to 8.06 m/s because the
+chatter had been spending grip on nothing. It also halves part-throttle response,
+collapses an imposed 1 rad/s yaw to 0.057 rad/s in six ticks where the fixture
+expects a quarter of it to survive, and takes the AI engagement from ten rounds
+fired to one. **None of that is a defect in the repair.** The chatter was
+destroying lateral grip by about thirty-seven times, so the authored drive torque,
+steering lock and yaw-controller authority were all compensating for a machine
+that could not corner. Landing it means re-tuning those against a capture, and
+landing half of it is worse than the defect. §3.1.
 
-**A parked Assembly never comes to rest.** Found while building the fixture, and
-not fixed: a wheeled build with no throttle and no brake reads 0.38 m/s at the
-end of a 90-tick settle and still 0.38 m/s after 360, and covers two to three
-metres over an engagement. Nothing under doc 05 §7 puts a rolling resistance on a
-free contact. A player who lets go of the keys on level ground drifts, which is
-small but is the kind of thing that reads as the vehicle being broken (§3.10).
+**A destroyed part keeps its collider and its mesh.** `release_part` is written,
+documented in doc 08 §5.4, unit-tested, and called by nothing. Every round that
+stops on a part that no longer exists is stopping on this, which means the
+overpenetration budget — the bound that keeps fights decidable — has never been
+measured against the geometry it was meant for.
 
 **And the drivable module still loses a straight duel.** Repeater against
 autocannon at 24 m, both stationary and trading: the repeater build's Core Module
-goes in 89 ticks. That is the trade working as designed, but nobody has checked
-whether the trade is *fun*, and the only build in the game that fights with it is
-the one every opponent also carries.
+goes in 89 ticks. That is the trade working as designed, and nobody has checked
+whether the trade is *fun*.
 
-The summary: **the first fight is now a fight.** You are not decided by your own
-gun and you are not decided by being rammed. What decides it next is that you
-cannot see it past the controls card, and that whatever you kill leaves the map.
-
----
+The summary: **the loop is sound and the simulation under it is not as sound as
+six thousand green checks suggested.** What a player meets first is a legend they
+cannot see past; what they would meet next, if they looked, is a machine that
+shivers.
 
 ## 3. The work queue
 
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Keep the wreck where it fell — the top item
+### 3.1 Close §7.4's contact integration, and the balance pass behind it
 
-Doc 11 §16.2 decides that a destroyed Assembly's hulk stays put, and the capture
-shows it climbing past 27 m/s under the end card — free fall, from wherever the
-last thing to touch it kicked it.
+**Read doc 05 §7.4's open-defect block before anything else. The diagnosis, the
+arithmetic, the working scheme, and the measured cost of landing it are all in
+it, and re-deriving them costs a session.**
 
-The mechanism is understood and the fix is a decision rather than an
-investigation: losing the Core Module orphans every part, the islands detach, and
-doc 05 §3.5's mass floor leaves the chassis at **one kilogramme**. Anything that
-touches a 1 kg body with a hull-sized collider sends it over the horizon.
-`tests/physics/test_wreck_settles.gd` already prints `1.000 kg` and passes,
-because nothing in its fixture ever touches the wreck.
+The short version. The contact's angular rate is integrated explicitly against a
+friction reaction of about 2.9e5 N per rad/s, which is stable below 117 µs
+against a 16.7 ms tick — a factor of 142. It saturates rather than diverging, so
+it presents as a limit cycle: ±4.7 rad/s reversing every tick under a build
+standing still, against a free-rolling 0.036. `tests/physics/test_rest_stability.gd`
+measures it and is **asserted as it fails**, so closing this turns that file red
+and the fix there is to re-measure and re-assert, never to loosen.
 
-Two candidate readings, and doc 04 owns the choice: a terminated Assembly's parts
-should not detach at all — the hulk is one dead object — or the floor should be
-the surviving parts' mass rather than a constant. The first is closer to what
-§16.2 describes and is the cheaper of the two.
+The repair is not a damping term and not a smaller step — an implicit
+formulation was tried and took full throttle to 0.20 m/s, because the fictitious
+inertia that damps the residual also resists a contact genuinely spinning up with
+an accelerating hull. What works is the impulse rule: a friction force may not do
+more than stop the sliding it opposes, on both axes, which can tell those two
+cases apart. §7.4 has it written out.
+
+**What makes this a session of its own is the second half.** Landing the repair
+moves: part-throttle response (2.0+ → 1.60 m/s on the `test_ground_assembly`
+fixture), the yaw-controller fixture's control premise (an imposed 1 rad/s decays
+to 0.057 in six ticks, where it expects 0.25 to survive), and the AI engagement
+(reaches its stand-off, fires 1 round where it fired 10). Those are not
+regressions in the repair; they are the authored constants meeting real grip for
+the first time. Expect to re-tune `drive_torque_nm`, and to re-measure every
+threshold in `test_ground_assembly.gd`, `test_ai_engagement.gd` and
+`test_drive_and_shoot.gd` against a capture rather than against the suite. It is
+a `balance-review` change.
 
 ### 3.2 Get the controls card out of the fight
 
@@ -422,17 +443,16 @@ plane slicing and needs no CSG at all.
 
 ### 3.10 Smaller, and worth doing when passing
 
-- **A parked Assembly never comes to rest.** Session 31, found while building the
-  ram fixture and deliberately not fixed in it. A wheeled build with no throttle
-  and no brake reads 0.38 m/s at the end of a 90-tick settle and **still
-  0.38 m/s after 360** — the drift does not decay, because nothing in doc 05 §7
-  puts a rolling resistance on a free contact. `TractionSolver` has a rolling
-  resistance term and it is charged against a *driven* contact; what a coasting
-  one gets is nothing. Two to three metres of wander over an engagement, and a
-  player who lets go of the keys on level ground drifts. Whoever takes it should
-  know it cost an assertion first: "a stationary 1107 kg hull ended three metres
-  from its spawn" reads as unarguable proof of a ram and was the fixture's own
-  baseline.
+- **`AssemblyRuntime.release_part` has no caller in `src/`.** Session 32, found
+  while measuring the wreck. It disables a destroyed part's colliders and hides
+  its mesh, it is documented in doc 08 §5.4 and unit-tested, and nothing in
+  production calls it — so a destroyed part that stays attached still stops
+  rounds and is still drawn, while contributing no mass. Closing it moves every
+  overpenetration measurement in `tests/physics/` at once, which is why it was
+  not bundled with the wreck fix that found it. Note the interaction with doc 05
+  §3.7: with `release_part` wired up, a terminated Assembly's body has **no**
+  enabled shapes at all, and §3.7's freeze is what stops it falling through the
+  world for ever.
 - **Doc 05 §15.7.5's ladder step is under one hull length.** §15.7.5 justifies
   4.5 m as "a little over an Assembly's own length"; the reference build measures
   4.8 m from nose to tail, so a friend one rung out is still partly in the line.
@@ -583,10 +603,11 @@ fixing. None of these is a surprise waiting to be found.
   layer. Doc 05 §15.7.5's ladder answers the *geometry* of several drivers
   converging on one target and deliberately not the rule. Owned by §3.4.
 - **A destroyed Assembly is never removed and never respawns.** Doc 11 §16.2
-  decides that the wreck stays, which is right. What follows it is now §15's
-  loop — fight again, or go back to the garage — and what is still missing is a
-  `SpawnDirector`, so a match is over the moment the player's Core Module goes
-  rather than putting them back in.
+  decides that the wreck stays, which is right, and doc 05 §3.7 now makes it
+  actually stay rather than being punted over the horizon. What follows it is
+  §15's loop — fight again, or go back to the garage — and what is still missing
+  is a `SpawnDirector`, so a match is over the moment the player's Core Module
+  goes rather than putting them back in.
 - **`killer_id` arrives on `assembly_terminated` and nothing reads it.** Doc 04
   §8.2's second consumer — scoring — is unwritten, and `MatchState` deliberately
   does not guess at one.

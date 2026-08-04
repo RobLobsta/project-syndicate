@@ -269,7 +269,7 @@ func apply_mass_properties(body: RigidBody3D, mp: MassSolver.MassProperties) -> 
 
 Setting `center_of_mass` rather than re-origining the colliders is deliberate: the collider transforms stay in stable assembly-local space, so losing a part shifts the COM without touching a single shape transform.
 
-**The two floors are the engine's requirement and not a modelling choice.** `RigidBody3D.mass = 0.0` is refused outright, and `inertia = Vector3.ZERO` is accepted and means "derive it from the collision shapes" — the exact physics/visual coupling Invariant I-1 forbids. So both are floored. The consequence is §3.6's, and it is the reason that section exists: an Assembly that has lost every part is a **one-kilogramme body still carrying every collider and every suspension probe the intact build had**.
+**The two floors are the engine's requirement and not a modelling choice.** `RigidBody3D.mass = 0.0` is refused outright, and `inertia = Vector3.ZERO` is accepted and means "derive it from the collision shapes" — the exact physics/visual coupling Invariant I-1 forbids. So both are floored. The consequence is §3.6's and §3.7's, and it is the reason those sections exist: an Assembly that has lost every part is a **one-kilogramme body still carrying every collider and every suspension probe the intact build had**. §3.6 takes the motion layer off it and §3.7 takes it out of the simulation.
 
 ### 3.6 Liveness
 
@@ -291,6 +291,20 @@ Three things are worth stating about the shape of the rule.
 - **It is a liveness test on slot 0, read from the part.** `AiDriver` already reads it the same way and for the same reason: a flag a system keeps for itself is a flag that can disagree with `DamageResolver`, which is the one authority on integrity.
 - **It is not "freeze the body".** The wreck still falls, still rolls, still takes impacts, and still tumbles under §3.4. What stops is the layer that was pushing it, and nothing else.
 - **A flat fixture cannot see it.** With a neutral control record on level ground the residual forces are roughly vertical and the remains do slow down, which is why a green suite never caught it. The slope is what turns them into a direction. So the assertion is a law rather than a speed: a terminated Assembly held at full throttle from rest does not move.
+
+### 3.7 An Empty Body Is Not Simulated
+
+§3.6 stops the motion layer. It does not stop the body, and it says so: the wreck still falls, still rolls, still takes impacts, and still tumbles under §3.4. That is the right rule for a terminated Assembly that still has parts on it, and this section does not weaken it.
+
+One condition further along the same sequence, it stops being the right rule. Losing the Core Module orphans every part; §5.5 of `DEPENDENCY_TREE_GRAPH.md` severs the islands and §6 hands them to the debris pool. What is left is a body with **no live parts at all**, and §3.5's two floors then describe it as a one-kilogramme object with an inertia of one about every axis.
+
+Those floors are the engine's requirement — a zero mass is refused outright and a zero inertia means "derive it from the collision shapes", the exact coupling Invariant I-1 forbids — and they are not a claim about the world. An Assembly that has lost every part is not a light object. It is not an object. Leaving it dynamic hands the solver a hull-sized collider on a gramme of mass, and anything that brushes it launches it: measured climbing past 27 m/s under the end card, which is the last thing a player sees and is exactly what `RESPONSIVE_GARAGE_UI.md` §16.2 decides must not happen. The hulk is the visible record of the fight and it stays where it fell.
+
+**So a solve that finds no live parts freezes the body where it stands**, with `freeze_mode = FREEZE_MODE_STATIC` and both velocities zeroed. It keeps its transform, its remaining geometry, and its visibility to every query (a frozen body is still hit by a swept ray and still resolves damage), so it goes on being the obstacle `CLAUDE.md` §5.1's `MASK_ASSEMBLY_HULL` expects. What it stops doing is responding to impulses, which is the whole of what was wrong with it.
+
+**The ordering is what makes this safe rather than merely correct.** The solve that finds no parts is the one triggered by the last island detaching (§4.1), and by the time it lands, `DEPENDENCY_TREE_GRAPH.md` §6 has already read this body's linear and angular velocity to give each fragment the `v + ω × r` it left with. Freezing any earlier would drop every fragment straight down.
+
+It is **reversible**. `COMPONENT_HEALTH_DAMAGE.md` §10's repair path is not written, and a one-way door left in the mass layer is how it arrives broken: a solve that finds parts again returns the body to the simulation on the same test.
 
 ---
 
@@ -766,6 +780,33 @@ func _integrate_contact(slot: int, drive_nm: float, brake_nm: float,
 ```
 
 The zero-crossing guard on braking is what prevents the contact from oscillating around zero and injecting energy — another classic stutter source.
+
+> **Open defect — the integration of this balance is unstable, and rolling resistance is not in it.** Diagnosed and measured in session 32, deliberately not repaired in it. The balance above is right; what follows is about the step that integrates it.
+>
+> `F_long` is a very stiff function of `ω` near the rolling condition. Differentiating §7.2 through §7.1's two divisions:
+>
+> ```
+> dF_long/dω = μ·N · f'(0) / κ_peak · r / max(|v_long|, V_REF)
+> f'(0) = C·B / sin(C·atan(B)) = 12.415
+> ```
+>
+> At the shipped `mot.wheeled.allroad.t2` figures — `I_c = 8.5 kg·m²`, `r = 0.5 m`, `μ = 1.05`, about 5 kN of load under a settled 1107 kg build — that is `2.9e5 N per rad/s`, so `dω̇/dω ≈ −1.7e4 s⁻¹` and explicit Euler is stable only below **117 µs**. This project runs a fixed 16.7 ms tick (§10.1). **The step is a factor of 142 outside its own stability limit**, and the lateral axis is stiffer still, because §7.1 floors its denominator at `V_REF` and a hull creeping sideways at 0.05 m/s already draws most of a friction budget.
+>
+> It does not diverge, because §7.2's curve saturates. It settles into a limit cycle. Measured on a build standing still on level ground with no throttle and no brake: `ω` reverses **every single tick** — +0.81, −4.29, +0.90, −4.43, +0.78, −4.44 rad/s — with the slip ratio swinging between +0.56 and −2.95 against a peak of 0.14, and two of the four contacts reading zero load throughout because the hull is rocking on the other two. That is §10's stutter arriving from the one place §10 does not look. What a player sees is the parked Assembly that shivers, wanders two to three metres over an engagement, and never comes to rest.
+>
+> **The repair is known and is not a smaller step, a softer curve, or a damping term.** It is that a friction force may not do more than stop the sliding it opposes — the idea behind this section's own brake zero-crossing guard, one level down. Work in the slip velocity `u = ω·r − v_long`, whose update carries a term for each body the force acts on:
+>
+> ```
+> u' = u + dt · ( r·τ/I_c − F_long · A )        A = r²/I_c + 1/m_share
+> ```
+>
+> and where a whole tick of `F_long` would carry `u` through zero — and only where that force could have done it alone, not where `τ` is spinning the contact through the rolling condition — answer instead with the force that lands `u` exactly **on** zero, `F = (u/dt + r·τ/I_c) / A`. The contact has stopped sliding; a real one would have stuck. The lateral axis takes the same law with no torque term, so its nulling force is `|v_lat| · m_share / dt`. Both may only ever *reduce* a force, so neither can inject energy (§11 invariant 10); both are exact at the transition rather than asymptotic; and both are silent under drive, so §7.6's launch and wheelspin behaviour is untouched.
+>
+> **It was built, measured, and reverted, and the measurements are why it is recorded here rather than shipped.** Against the suite: the resting contact went from eleven sign reversals in twelve ticks to none, the parked build's drift from 2–3 m to 0.49 m with its speed decaying 0.39 → 0.08 m/s, and full-throttle acceleration *rose* from 3.87 to 8.06 m/s over the same window, because the chatter had been spending grip on nothing. It also moved everything else: part-throttle response fell from over 2.0 to 1.60 m/s, an imposed 1 rad/s yaw decayed to 0.057 rad/s in six ticks where the fixture expects a quarter of it to survive, and the AI engagement reached its stand-off but fired one round where it had fired ten.
+>
+> None of those is a defect in the repair. They are the same measurement from the other side: **the chatter was destroying lateral grip by a factor of about 37** — a combined slip of ±20 puts `sy/s` near zero, so `F_lat` was a thirty-seventh of the budget — and every handling constant in the project was tuned against a machine that could not corner and could not hold a heading. Fixing the step makes the Assembly grip, and what it exposes is that the *authored* drive torque, steering lock, and yaw-controller authority were compensating for it. That is a `balance-review` pass with a capture, not a bug fix, and doing it half-way would be worse than the defect. `tests/physics/test_rest_stability.gd` measures the defect and is asserted as it fails.
+>
+> **Rolling resistance goes in with that repair and not before.** It is authored per part in doc 01 §7.2, given a degradation column in §7.3 above, implemented as `TractionSolver.rolling_resistance_n`, and called by nothing, so a coasting contact has no dissipation of any kind — §7.2's friction drives the slip toward zero and produces nothing there, and a build set rolling on level ground rolls forever. It belongs in `τ` as a torque opposing the spin, summed with the brake before the sign is taken so neither is applied in the direction the other resists, and covered by the same zero-crossing guard: a rolling resistance that reversed a contact would be driving the Assembly along. On its own, inside an unstable step, it is a small correct term inside a large wrong one.
 
 **Amendment — naming.** This section originally wrote `wheel_omega`, `m_wheel`, and `_integrate_wheel`. `CLAUDE.md` §8 prohibits *wheel* in identifiers, and §7.1's own contact frame already uses the neutral vocabulary. The conflict was invisible while nothing implemented the section; it surfaced the moment the traction solver was written, and the document was corrected rather than the code allowed to diverge from it. `MotiveContact.contact_omega` is the field name throughout. The prose retains the word where it is explaining a physical intuition, which §8 permits and which is the same latitude §10.3 of document 01 already takes with its `mot.wheeled.*` family tags.
 

@@ -772,6 +772,46 @@ different fact. Read a citation with its subject, which is always named.
     it — a `--script` `SceneTree` that touches no autoload is four lines
     (fact 3).
 
+72. **A tyre friction model is stiff enough to be unstable at a 60 Hz tick, and
+    it hides that by saturating rather than diverging.** Measured in session 32
+    on doc 05 §7.4's contact integration, and it is the most expensive thing in
+    this file for anyone touching the motion layer.
+
+    The friction reaction opposing a contact's spin is a very steep function of
+    that spin near the rolling condition. Differentiating §7.2's curve through
+    §7.1's two divisions:
+
+    ```
+    dF/dω = μ·N · f'(0) / κ_peak · r / max(|v_long|, V_REF)
+    f'(0) = C·B / sin(C·atan(B)) = 12.415
+    ```
+
+    At the shipped all-road figures — `I_c = 8.5 kg·m²`, `r = 0.5 m`, `μ = 1.05`,
+    5 kN of load — that is `2.9e5 N per rad/s`, giving `dω̇/dω ≈ −1.7e4 s⁻¹`.
+    Explicit Euler is stable below `2/1.7e4` = **117 µs**. The tick is 16.7 ms.
+    **The step is 142× outside its own stability limit**, and the lateral axis is
+    worse, because §7.1 floors its denominator at `V_REF` and a hull creeping
+    sideways at 0.05 m/s already draws most of a friction budget.
+
+    **It does not blow up, and that is why nobody found it for thirty-one
+    sessions.** The Pacejka form saturates past its peak, so the excursion is
+    bounded and the contact settles into a limit cycle: measured at ±4.7 rad/s
+    reversing every single tick under a build standing still, against a
+    free-rolling 0.036 rad/s.
+
+    Three things to carry from it. **An unstable step in a saturating model
+    presents as noise, not as a crash** — look for it wherever a force is a steep
+    function of the state it is integrated against. **Stabilising it is not a
+    damping term**: an implicit formulation was built first, and the fictitious
+    inertia that damped the residual also resisted a contact genuinely spinning
+    up with an accelerating hull, which took full-throttle acceleration to
+    0.20 m/s while fixing the rest perfectly. What works is the impulse rule — a
+    friction force may not do more than stop the sliding it opposes — because it
+    can tell those two cases apart. And **the chatter was destroying lateral grip
+    by about 37×**: a combined slip of ±20 puts `sy/s` near zero, so every
+    handling constant in this project was tuned against a machine that could not
+    corner. Doc 05 §7.4 carries the whole of it.
+
 ---
 
 ## 2. What fault injection taught
@@ -962,6 +1002,21 @@ in `tests/physics/` recorded rounds, ticks, kills and travel; none recorded
 **attitude**. So a build ending the fight on its roof moved no number, and the
 worst thing a player could experience was invisible to six thousand checks while
 being obvious in six frames of a capture. The instrument was twenty lines.
+
+**A limit cycle averages to zero, so every aggregate is blind to it. Sample the
+sign, not the mean.** Session 32's, and it is the sharp version of the lesson
+above rather than a repeat of it. §7.4's contact spin was reversing on ten of
+every twelve ticks, at a hundred and thirty times the rate the hull's own speed
+could account for, and **no quantity any fixture recorded moved at all**: the mean
+force was right, the mean position was right, the speed was a couple of tenths,
+and six thousand checks were green. The instrument that saw it in twenty lines was
+a count of *sign changes* in a per-tick sample.
+
+So the question to ask of an oscillating suspect is not "what is it doing" — the
+answer is "nothing, on average, which is the point" — but "how often does it
+change direction, and is that rate physical". The same shape applies to anything
+integrated per tick: a per-tick alternation is invisible to every statistic that
+does not preserve order.
 
 Before adding an assertion to an engagement fixture, read what the record class
 already holds and ask what a player would notice that is **not on the list**. The

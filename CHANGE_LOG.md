@@ -72,7 +72,48 @@ they found are in `LEARNED_FACTS.md`.
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+| 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 32, in more detail
+
+Two halves, and the second one is the reason the first is the only thing that
+shipped.
+
+**The wreck.** Doc 11 §16.2 decides the hulk stays where it fell and it did not.
+The mechanism was already written down and was half wrong in an instructive way:
+losing the Core Module orphans every part, the islands detach, and doc 05 §3.5's
+floors then describe what is left as a one-kilogramme object. What the record did
+not have is that **one collider survives on it** — `AssemblyRuntime.release_part`
+disables a destroyed part's shapes and *nothing in `src/` calls it*, so the
+destroyed Core Module's own primitive is still there. A hull-sized collider on a
+gramme of mass is a thing anything can punt over the horizon. Doc 05 §3.7 freezes
+a body that has no live parts, after the islands have taken their `v + ω × r`.
+2.80 m of travel before, 0.00 m after, and the fault plant fires both checks.
+
+`release_part` having no caller is left as a finding rather than fixed: a
+destroyed part that stays attached keeps its collider and its mesh, so rounds
+still stop on it, and closing that moves every overpenetration measurement in
+`tests/physics/`. It is `HANDOFF.md` §4's now.
+
+**The physics assessment.** The queue's §3.10 said a parked Assembly never comes
+to rest because nothing puts a rolling resistance on a free contact. The first
+half is true and the second is not the cause. §7.4's contact integration is
+explicit against a friction reaction of about 2.9e5 N per rad/s, which puts the
+stability limit at 117 µs against a 16.7 ms tick — **a factor of 142**. It does
+not diverge because §7.2's curve saturates; it limit-cycles, at ±4.7 rad/s
+reversing every tick against a free-rolling 0.036.
+
+The repair — a friction force may not reverse the slip it opposes, on both axes —
+was built and measured: resting reversals 11 of 12 → 0, drift 2–3 m → 0.49 m,
+and full-throttle acceleration *up* from 3.87 to 8.06 m/s, because the chatter had
+been spending grip on nothing. It also halved part-throttle response, collapsed an
+imposed 1 rad/s yaw to 0.057 rad/s in six ticks, and took the AI engagement from
+ten rounds to one. **None of those is a defect in the repair**: the chatter was
+destroying lateral grip by about 37×, and every handling constant in the project
+was tuned against a machine that could not corner. That is a `balance-review` pass
+with a capture, and half of it is worse than the defect. Doc 05 §7.4 carries the
+diagnosis, the arithmetic, and the scheme.
 
 ### Session 31, in more detail
 
@@ -422,6 +463,7 @@ what matters is which test defends which behaviour.
 | `test_part_registry_validator` | definition on disk absent from the manifest (R02); duplicated manifest key (R02); collider shrunk to 60% coverage (R08); resistance above the 0.85 ceiling (R07); and every rule 17–24 check: rotor thrust vs rated load, rotor zero-fields, malformed disc geometry, inverted collective limits, melee mix sum, melee mix length, melee emission fields, melee bounds, AXLE keying, an AXLE node on a class that may not carry one, family payload missing, family payload on a kind that takes none, two payloads at once, limb suspension fields, limb gait bounds, cadence ceiling below its floor, an over-long step, track steer angle, track station bounds, malformed track parameters, the shared non-zero helper neutered, rule 23 never firing, **a torqueless Prime Mover accepted, and a supply-less Energy Cell accepted** |
 | `test_part_registry_data` | manifest order swapped; four attachment nodes dropped from a `.tres`; a part missing from a class bucket; a locomotion family with no shipped part |
 | `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent; *(session 27)* **a cascade announcing only the part the player named**, and the mirror of it |
+| `test_rest_stability` | *(session 32)* nothing yet, by construction: it is asserted as it fails, and what it defends is that §7.4's limit cycle stays visible until somebody repairs it |
 | `test_build_history` | *(session 27)* an attach that undoes to nothing; a restored part left under whatever now mates; §9.2's re-parenting never recorded; a cascade restored child-first; a redo branch surviving an edit; the 128 depth removed; an undone command that cannot be redone — and, by hand, **a command keyed on a slot rather than on a cell** |
 | `test_chassis_graph` | mass propagation stops at the immediate parent; orphaning children forgets to shed their mass; connectivity walks the tree rather than support edges; duplicate support edges kept; *(session 27)* **`children` appended rather than filed in ascending order**, which it has claimed since it was written |
 | `test_mate_selector` | depth tie-break dropped; weaker-joint preference inverted; joint rated by the stronger node; joint bears load when either end does; load-bearing key dropped from the ordering; re-parent ignores core reachability |
@@ -435,7 +477,7 @@ what matters is which test defends which behaviour.
 | `test_island_detachment` | island sink resolves nothing; `ω × r` term dropped; lever arm not rotated into world space; angular velocity not inherited; island centre of mass not mass-weighted; debris centre of mass left at the Assembly origin; island inertia taken about the Assembly origin; body transform composed the other way round; `FLAG_DETACHED` never set; reaper never scheduled; slot list never recorded; `island_detached` never emitted; mass counted per part rather than summed; total mass zeroed; mass properties never applied; hull shape left enabled after its island leaves; collider not rebased onto the island centre of mass; collider rebased with the wrong sign; minimum-parts guard removed |
 | `test_debris_pool` | 45 faults across exhaustion order, retirement, linger, visibility dwell, shape reuse, and bounds — see session 7's record in git history for the full list |
 | `test_assembly_registry` | ids appended rather than ordered; `ids()` returns the live array; unregister leaves the id behind; departure announced after the entry is dropped; arrival never announced; departure never announced; an unknown id announced anyway; `graph_of` does not read the runtime |
-| `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step` |
+| `test_wreck_settles` | doc 05 §3.6's liveness guard removed from `MotiveSystem.step`; *(session 32)* §3.7's freeze removed — the hulk drifts 2.80 m under the end card instead of staying put, and reports itself still simulated |
 | `test_mirroring` | *(session 28)* §10's mirror reflecting the pivot cell instead of the footprint; a mirrored part keeping its orientation; the mirror plane moved half a cell onto the origin column; a mirrored pair recorded as one placement so undo takes one flank; a refused mirror committed unvalidated |
 | `test_blueprint` | *(session 30)* **the shipped starter re-armed with a module its own chassis cannot fire while moving**, and the drivability ceiling raised past every published row so its own check could never fail; a blueprint that commits without validating; `copy()` returning a reference rather than an independent list; *(session 27)* **`from_context` writing ascending slot order**, which stops being a construction order at the first removal |
 | `test_breakpoint` | the stat dock hidden below the expanded tier |
