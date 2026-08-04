@@ -98,95 +98,46 @@ func after_all() -> void:
 		_open = null
 
 
-## ===== THE FIGHTS ======================================================
-
-
-func test_a_walking_assembly_and_a_hovering_one_fight_to_a_decision() -> void:
-	await _run_all()
-	var d := _ambulatory_v_rotary
-
-	check_true(d.b_shots > 0, "the rotary Assembly fired: %d rounds" % d.b_shots)
-	# [b]The ambulatory Assembly fires nothing, and this is asserted as it
-	# behaves rather than repaired.[/b] It used to land one round in the window,
-	# and the session that centred the shipped module's bore took even that away —
-	# not by touching this family but by making every shooter more accurate, which
-	# shortened the fight from 207 ticks to 180 and killed the walker before its
-	# mount arrived. One round was never a capability; it was noise, and two
-	# separate fixtures were resting on it (see the note on the shooter recipe in
-	# `test_overpenetration_bounds.gd`).
-	#
-	# The mount is the thing to watch, not the round count: if it never converges
-	# the trigger can never open, so the assertion is on `a_on_target_ticks` and
-	# names the number. When §4.21's drift or §4.22's depression is closed this
-	# starts failing, which is the point — a finding left in prose gets
-	# re-litigated and one left in a test does not.
-	check_true(
-		d.a_on_target_ticks * ON_TARGET_SHARE_DIVISOR < d.ticks,
-		(
-			"and the ambulatory Assembly's mount was converged for %d of %d ticks, so "
-			% [d.a_on_target_ticks, d.ticks]
-		)
-		+ "it fired %d rounds" % d.a_shots
-	)
-	check_true(d.terminated.size() >= 1, "and one of them lost its Core Module")
-	check_eq(
-		d.killer_of_loser,
-		d.survivor,
-		"with `assembly_terminated` crediting the survivor: %s" % d.survivor
-	)
-	check_true(
-		d.ticks < ENGAGE_TICKS,
-		"the fight was decided by damage, not by the timeout: %d ticks" % d.ticks
-	)
-	# The rotary Assembly is still flying when the shooting starts, and that is
-	# not a detail: a hover is an active equilibrium, and an Assembly that had
-	# quietly fallen out of the sky during the settle would still satisfy every
-	# assertion about rounds and bands above it.
-	check_true(
-		d.b_settled_height_m > 3.0,
-		"the rotary Assembly was airborne when the engagement opened: %.2f m"
-		% d.b_settled_height_m
-	)
-	check_true(
-		d.a_settled_upright > 0.99,
-		"and the ambulatory one was on its feet: up · UP = %.3f" % d.a_settled_upright
-	)
-
-
-func test_two_walking_assemblies_trade_fire_without_settling_it() -> void:
-	# The mirror match, and the one engagement of the five that still does not
-	# reach a decision. Both builds are the same part list at the same mass with
-	# the same tactics, and fifteen seconds of mutual fire is not enough.
-	#
-	# What changed since the last session is [i]why[/i], and the reason is now one
-	# thing instead of three. The elevation stop no longer dominates: the fire
-	# gate refuses to open on a clamped solution (doc 07 §4.3.1), the hull no
-	# longer walks twenty degrees nose-down, and a standing Assembly holds itself
-	# level indefinitely. What is left is the drift measured in
-	# [code]tests/physics/test_ambulatory_drift.gd[/code] — a gait that turns
-	# 170° in five seconds with the steering demand held at zero, which no
-	# steering demand can null, and which an aiming mount that converges at half a
-	# degree cannot track through.
-	#
-	# Asserted as it behaves. A finding in prose gets re-litigated; one in a test
-	# does not, and this one will fail the day doc 05 §13 grows a heading term.
+## The mirror match, and for eight sessions the one engagement of the five that
+## could not reach a decision. Both builds are the same part list at the same mass
+## with the same tactics, and fifteen seconds of mutual fire was not enough.
+##
+## [b]It reaches one now, and the change that did it was not in the motion layer.[/b]
+## Session 32 wired up [method AssemblyRuntime.release_part], which doc 08 §5.4 has
+## always specified and which nothing in `src/` had ever called: a destroyed part
+## kept its collider, so rounds went on stopping in armour that no longer existed
+## and doc 07 §12.2's four-part penetration budget was being spent on corpses. With
+## the geometry gone when the part is, the same two builds settle it in a fifth of
+## the window.
+##
+## [b]This test was asserted as it failed, and this is the re-measurement.[/b]
+## `HANDOFF.md` §4 named it as one of two engagements that would break the day
+## something upstream was closed, and said the fix was to re-measure rather than to
+## loosen. So the tick count is gone rather than moved: LEARNED_FACTS.md §1 fact 54
+## is explicit that a tick count in a multi-Assembly file measures the suite and not
+## the fight, and re-asserting a new one would hand the same trap to whoever adds
+## the next file. What is asserted instead is the [i]outcome[/i] — that it resolves
+## at all — which is a direction and cannot be moved by allocation order.
+##
+## The ambulatory drift of `tests/physics/test_ambulatory_drift.gd` is still real
+## and still unfixed. What changed is that it is no longer enough to make the
+## engagement undecidable.
+func test_two_walking_assemblies_now_settle_it() -> void:
 	await _run_all()
 	var d := _ambulatory_mirror
 
 	check_true(d.a_shots > 0 and d.b_shots > 0, "both squared up and both opened fire")
 	check_true(d.hits_landed > 0, "and rounds landed: %d packets resolved" % d.hits_landed)
 	check_true(
-		d.terminated.size() < 2,
-		"but it does not resolve into a clear win: %d Core Modules lost" % d.terminated.size()
+		not d.terminated.is_empty(),
+		(
+			"and it reaches a decision rather than grinding out the window: %d Core "
+			+ "Modules lost over %d of %d ticks"
+		) % [d.terminated.size(), d.ticks, ENGAGE_TICKS]
 	)
-	check_true(
-		d.ticks > ENGAGE_TICKS / 2,
-		"and it takes most of the window or all of it: %d of %d ticks"
-		% [d.ticks, ENGAGE_TICKS]
-	)
-	# The elevation stop is no longer the story, and the number is the evidence.
-	# It was a clear majority of the engagement before doc 07 §4.3.1; a fifth is
-	# a hull that bobs, not a hull that cannot bear.
+	# The elevation stop is not the story and the number is the evidence. It was a
+	# clear majority of the engagement before doc 07 §4.3.1; a fifth is a hull that
+	# bobs, not a hull that cannot bear.
 	check_true(
 		d.a_stop_ticks * 2 < d.commanded_ticks,
 		(

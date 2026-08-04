@@ -420,6 +420,20 @@ func _destroy_part(
 ) -> void:
 	st.flags |= PartFlags.FLAG_DESTROYED
 	st.integrity = 0.0
+	# §5.4: "a part taken out of the simulation has its shapes disabled". This is
+	# that line, and until session 32 nothing in `src/` executed it —
+	# [method AssemblyRuntime.release_part] was written, documented here, and
+	# unit-tested, with no production caller. A destroyed part that stayed attached
+	# therefore kept its collider and its mesh: rounds went on stopping in it, the
+	# shape-index map went on attributing hits to it, and a player went on seeing
+	# it, while it contributed no mass and no function.
+	#
+	# Here rather than on [signal EventBusService.part_destroyed], because the
+	# geometry must already be gone when that signal is delivered. The detachment
+	# scheduler, the mass scheduler, and the visual layer all react to it, and a
+	# listener that queried the space would otherwise see a part this function has
+	# just declared dead.
+	runtime.release_part(st.slot)
 
 	if def.part_class == PartEnums.PartClass.PRIME_MOVER and def.prime_mover_profile != null:
 		var mover := def.prime_mover_profile
