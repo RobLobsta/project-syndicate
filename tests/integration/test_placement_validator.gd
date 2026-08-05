@@ -18,6 +18,20 @@ extends TestCase
 
 const CORE_KEY := &"core.command.compact.t2"
 const PANEL_KEY := &"str.panel.medium.t2"
+## Doc 01 §7.1's two family-locked chassis, and one Motive Assembly per family.
+const STRIDER_KEY := &"core.ambulatory.strider.t3"
+const LIFTER_KEY := &"core.rotary.lifter.t3"
+const WHEEL_KEY := &"mot.wheeled.allroad.t2"
+const LIMB_KEY := &"mot.limb.strider.t4"
+const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
+
+## Each probe hung off the Core Module's `-X` flank, at a height inside the
+## `y` 4..7 band all three chassis share and at `z` 24, which every chassis
+## occupies whether it is nine cells long or thirteen. The three differ only
+## because the three parts have different pivots.
+const FLANK_WHEEL := Vector3i(19, 6, 24)
+const FLANK_LIMB := Vector3i(19, 7, 24)
+const FLANK_ROTOR := Vector3i(19, 4, 24)
 
 ## The Core Module seated at the lattice origin. Occupies x 21..26, y 4..7,
 ## z 18..30; its whole top face at y = 7 is DECK polarity.
@@ -646,6 +660,94 @@ func test_commit_removal_cycles_do_not_drift() -> void:
 			"core subtree mass after cycle %d" % i
 		)
 	check_eq(ctx.graph.live_slots(), PackedByteArray([0]), "only the Core Module is left")
+
+
+## ===== §7.4 CHASSIS FAMILY =============================================
+
+
+## Doc 02 §7.4 and doc 01 §7.1: a Motive Assembly's locomotion family must be one
+## the committed Core Module declares.
+##
+## Asserted as the whole three-by-three matrix rather than as one refusal,
+## because the two halves fail differently and both are shipping defects. A mask
+## that refuses too much leaves a chassis nothing can move; a mask that refuses
+## too little is the state this check was written to end, and it passes every
+## test that only looks for a rejection.
+##
+## All three probes hang off the Core Module's `-X` flank at a height every
+## chassis shares, so the only thing that differs between the nine cases is the
+## part at slot 0 — which is what makes a rejection attributable to the chassis
+## rather than to the geometry.
+func test_a_chassis_takes_its_own_locomotion_family_and_no_other() -> void:
+	var chassis: Array[StringName] = [CORE_KEY, STRIDER_KEY, LIFTER_KEY]
+	var motive: Array[StringName] = [WHEEL_KEY, LIMB_KEY, ROTOR_KEY]
+	var origins: Array[Vector3i] = [FLANK_WHEEL, FLANK_LIMB, FLANK_ROTOR]
+
+	for c: int in chassis.size():
+		var core := PartRegistry.definition_by_key(chassis[c])
+		if not check_not_null(core, "%s is registered" % chassis[c]):
+			continue
+		for m: int in motive.size():
+			var part := PartRegistry.definition_by_key(motive[m])
+			if not check_not_null(part, "%s is registered" % motive[m]):
+				continue
+			var ctx := _new_context()
+			PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+			var r := PlacementValidator.validate(
+				ctx, PlacementCandidate.create(part, origins[m], 0)
+			)
+			var expected := (
+				PlacementValidator.Reject.NONE
+				if c == m
+				else PlacementValidator.Reject.MOTIVE_FAMILY_MISMATCH
+			)
+			check_eq(r, expected, "%s on %s" % [motive[m], chassis[c]])
+
+
+## The refusal must arrive before the budgets, not instead of them.
+##
+## An unreachable check reads exactly like a working one from the outside: if
+## [method _check_budgets] rejected first, every case above would still pass on a
+## chassis whose mounts happened to be full, and the family rule would be dead
+## code nobody could see. The strider offers thirty-four mounts and a rotor disc
+## costs four, so the only reason this candidate can be refused is its family.
+func test_the_family_refusal_is_not_a_budget_refusal_in_disguise() -> void:
+	var core := PartRegistry.definition_by_key(STRIDER_KEY)
+	var rotor := PartRegistry.definition_by_key(ROTOR_KEY)
+	if core == null or rotor == null:
+		fail("fixture: the strider chassis and the rotor disc must both be registered")
+		return
+	var ctx := _new_context()
+	PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+	check_true(
+		ctx.budgets.mount_used + rotor.mount_weight <= ctx.budgets.mount_budget(),
+		"the mount budget has room for the disc"
+	)
+	check_eq(
+		PlacementValidator.validate(ctx, PlacementCandidate.create(rotor, FLANK_ROTOR, 0)),
+		PlacementValidator.Reject.MOTIVE_FAMILY_MISMATCH,
+		"and it is refused on its family anyway"
+	)
+
+
+## A lattice with no Core Module refuses nothing on family grounds.
+##
+## Not reachable through the garage, the auto-assembler or blueprint loading —
+## §7.3 admits only a Core Module into an empty lattice — but reachable from a
+## fixture, and an absent chassis declaring nothing is the same answer
+## `mount_budget()` already gives. The rejection here is the mating one, which is
+## the check that owns the case.
+func test_a_lattice_with_no_chassis_refuses_on_mating_rather_than_on_family() -> void:
+	var rotor := PartRegistry.definition_by_key(ROTOR_KEY)
+	if not check_not_null(rotor, "the rotor disc is registered"):
+		return
+	check_eq(
+		PlacementValidator.validate(
+			_new_context(), PlacementCandidate.create(rotor, FLANK_ROTOR, 0)
+		),
+		PlacementValidator.Reject.NO_MATING_NODE,
+		"an empty lattice takes a Core Module first and says so"
+	)
 
 
 ## ===== CONTRACT ========================================================

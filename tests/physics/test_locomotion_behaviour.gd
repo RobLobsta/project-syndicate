@@ -26,6 +26,10 @@ extends TestCase
 ## exactly, to the newton, against synthetic inputs nothing ever fed them.
 
 const CORE_KEY := &"core.command.compact.t2"
+## The walking build is rooted on the ambulatory chassis, per doc 01 §7.1: a
+## limb cannot be placed on [constant CORE_KEY] and is not meant to be. Nine
+## cells long rather than thirteen, and 1350 kg rather than 1800.
+const WALKER_CORE_KEY := &"core.ambulatory.strider.t3"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const TRACK_KEY := &"mot.tracked.short_bogie.t2"
@@ -448,7 +452,9 @@ func _build_walker() -> Array:
 	var ctx := BuildContext.with_physics(32)
 	_contexts.append(ctx)
 	PlacementValidator.commit(
-		ctx, PlacementCandidate.create(PartRegistry.definition_by_key(CORE_KEY), WALKER_CORE, 0)
+		ctx, PlacementCandidate.create(
+			PartRegistry.definition_by_key(WALKER_CORE_KEY), WALKER_CORE, 0
+		)
 	)
 	PlacementValidator.commit(
 		ctx,

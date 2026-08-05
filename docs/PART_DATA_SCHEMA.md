@@ -509,6 +509,7 @@ extends Resource
 class_name CoreModuleProfile
 extends Resource
 
+@export var locomotion_mask: int = PartEnums.CHASSIS_GROUND
 @export var power_capacity_pu: float = 240.0
 @export var mount_budget: int = 28
 @export var speed_cap_mps: float = 22.0
@@ -519,6 +520,14 @@ extends Resource
 ```
 
 The Core Module is the graph root and the `RigidBody3D` owner. There is exactly one per Assembly and it is always slot `0`.
+
+**Amendment — the chassis declares its locomotion families.** `locomotion_mask` carries one bit per `LocomotionMode`, and `PlacementValidator` refuses a Motive Assembly whose family the mask does not admit (§7.4 of `GRID_SNAPPING_LOGIC.md`, reject code `MOTIVE_FAMILY_MISMATCH`). The three composite masks are `PartEnums.CHASSIS_GROUND`, `CHASSIS_AMBULATORY` and `CHASSIS_ROTARY`; the default is `CHASSIS_GROUND`, so a profile authored before the field existed behaves exactly as it did.
+
+This is **not** a retreat from §4.1. An Assembly that walks is still one `RigidBody3D`, one Chassis Graph, one damage model and one Core Module at slot `0`, and `MotiveSystem` still selects its solver by one array index rather than by asking what the hull is. What changed is a claim §4.1 never made and the part table quietly assumed: that the *same part* should root all three families. Every published figure on a Core Module — a speed cap, a mass tolerance, a mount budget — describes a machine of a particular kind, and `core.command.compact.t2`'s describe one that stands on the ground. A limb bolted to it inherited a 24 m/s cap it cannot reach and a mount budget sized for four contacts and their stations, which left a walking Assembly two mounts short of an Energy Cell. That is not a locomotion family being supported; it is one being tolerated.
+
+**A mask rather than a single family**, for one reason worth stating: `GROUND` and `TRACKED` are separate solver families for the shape of their contact sets (§4.1), not because a tracked machine is built on a different hull from a wheeled one. A chassis that had to name one would need a third ground row for no design reason at all. Rotary and ambulatory share with nothing, and the mask says so by carrying a single bit.
+
+**The one-directional check is deliberate.** A Core Module is always placed first — the validator refuses anything else into an empty lattice and refuses a second Core Module after — so no order exists in which a chassis arrives underneath a family it does not carry. Swapping a chassis means starting the build again, which is what §9.1's removal cascade would do anyway.
 
 ### 7.2 `MotiveAssemblyProfile`
 
@@ -970,15 +979,33 @@ Three joins are load-bearing when a mass moves, and each of them broke once duri
 
 ### 10.1 Core Modules
 
-| `part_key` | Cells (X×Y×Z) | Mass (kg) | Integrity | Armour | Power Cap (PU) | Mounts | Speed Cap (m/s) | Mass Tol. (kg) |
-|---|---|---|---|---|---|---|---|---|
-| `core.command.compact.t2` | 6×4×13 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 |
-| `core.command.balanced.t2` | 5×4×6 | 520 | 1900 | 22 | 310 | 34 | 21.0 | 4800 |
-| `core.command.bastion.t3` | 6×5×7 | 780 | 2850 | 31 | 380 | 40 | 17.5 | 7200 |
-| `core.command.skirmish.t3` | 4×3×4 | 300 | 1150 | 15 | 260 | 24 | 28.0 | 2900 |
-| `core.command.siege.t4` | 7×5×8 | 1140 | 4200 | 39 | 520 | 48 | 14.0 | 11000 |
-| `core.command.vanguard.t4` | 5×4×6 | 560 | 2350 | 27 | 460 | 38 | 25.5 | 5400 |
-| `core.command.apex_prime.t5` | 6×5×7 | 820 | 3600 | 35 | 640 | 46 | 23.0 | 8600 |
+| `part_key` | Cells (X×Y×Z) | Mass (kg) | Integrity | Armour | Power Cap (PU) | Mounts | Speed Cap (m/s) | Mass Tol. (kg) | Chassis mask |
+|---|---|---|---|---|---|---|---|---|---|
+| `core.command.compact.t2` | 6×4×13 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 | `CHASSIS_GROUND` |
+| `core.ambulatory.strider.t3` | 6×4×9 | 1350 | 3600 | 20 | 560 | 34 | 12.0 | 7400 | `CHASSIS_AMBULATORY` |
+| `core.rotary.lifter.t3` | 6×4×9 | 900 | 2400 | 10 | 640 | 26 | 34.0 | 5200 | `CHASSIS_ROTARY` |
+| `core.command.balanced.t2` | 5×4×6 | 520 | 1900 | 22 | 310 | 34 | 21.0 | 4800 | `CHASSIS_GROUND` |
+| `core.command.bastion.t3` | 6×5×7 | 780 | 2850 | 31 | 380 | 40 | 17.5 | 7200 | `CHASSIS_GROUND` |
+| `core.command.skirmish.t3` | 4×3×4 | 300 | 1150 | 15 | 260 | 24 | 28.0 | 2900 | `CHASSIS_GROUND` |
+| `core.command.siege.t4` | 7×5×8 | 1140 | 4200 | 39 | 520 | 48 | 14.0 | 11000 | `CHASSIS_GROUND` |
+| `core.command.vanguard.t4` | 5×4×6 | 560 | 2350 | 27 | 460 | 38 | 25.5 | 5400 | `CHASSIS_GROUND` |
+| `core.command.apex_prime.t5` | 6×5×7 | 820 | 3600 | 35 | 640 | 46 | 23.0 | 8600 | `CHASSIS_GROUND` |
+
+The three authored rows are `core.command.compact.t2`, `core.ambulatory.strider.t3` and `core.rotary.lifter.t3`; the `core.command.*` rows below them are on the pre-rebuild scale this section opens with.
+
+**The two family chassis are the command core's width and height and shorter along `Z`, and that is a decision.** Six by four is what puts an `AXLE` station on a flank and a deck four cells up, so every mount cell that hangs off a flank or sits on a roof is the same cell on all three; thirteen cells of length is what a wheelbase needs and neither of these families has one. Nine cells — 2.25 m — leaves a station at each end of an ambulatory stance and keeps a rotary hull's mass off the lever whose fulcrum is the disc line.
+
+The three read as a design triangle, and each figure is the family paying for what it gets:
+
+| | Ground | Ambulatory | Rotary |
+|---|---|---|---|
+| Mass | 1800 kg | 1350 kg | **900 kg** — everything held up by thrust is lift the discs owe |
+| Armour / integrity | 18 / 4200 | **20 / 3600** — braced for the shock its own gait puts through it | **10 / 2400** — the softest chassis in the registry; a rotary build's defence is being somewhere else |
+| Mounts | 28 | **34** | 26 |
+| Speed cap | 24.0 m/s | **12.0 m/s** — a gait is a cadence, not a road speed | **34.0 m/s** |
+| Mass tolerance | 5300 kg | **7400 kg** — four limbs rated 4500 kg carry more than four contacts rated 1100 | 5200 kg |
+
+The mount budget is the figure that changes a build rather than a number on a card. Four limbs cost four mounts apiece and their stations one each; against twenty-eight that left two, and an Energy Cell costs three, so a walking Assembly could not carry supply at all. `tests/combat_arena.gd` recorded that as a constraint of the shipped part set. It was a constraint of the wheeled chassis it was borrowing.
 
 ### 10.2 Structural Components
 
@@ -1236,6 +1263,8 @@ Resistance values are fractions in `[0.0, 0.85]`. The hard ceiling of `0.85` is 
 | Family | KINETIC | BLAST | IMPACT | THERMAL | CORROSIVE |
 |---|---|---|---|---|---|
 | `core.command.*` | 0.15 | 0.20 | 0.25 | 0.10 | 0.05 |
+| `core.ambulatory.*` | 0.18 | 0.16 | 0.30 | 0.10 | 0.05 |
+| `core.rotary.*` | 0.08 | 0.14 | 0.12 | 0.10 | 0.05 |
 | `str.panel.light` | 0.05 | 0.00 | 0.10 | 0.00 | 0.00 |
 | `str.panel.medium` | 0.18 | 0.10 | 0.20 | 0.05 | 0.05 |
 | `str.panel.heavy` | 0.34 | 0.22 | 0.30 | 0.10 | 0.10 |
@@ -1338,7 +1367,7 @@ Defined in `HEADLESS_NETWORK_SYNC.md` §5. `PART_DATA_SCHEMA.md` fixes only the 
 12. `mass_kg <= 0.0` or `integrity_max <= 0.0`.
 13. Tier scaling deviates beyond ±8% without a `balance_exception_note`.
 14. `visual_profile` references a mesh that carries any collision-generating flag.
-15. A `CORE_MODULE` definition has `mount_budget < 8` or `power_capacity_pu <= 0`.
+15. A `CORE_MODULE` definition has `mount_budget < 8`, `power_capacity_pu <= 0`, or a `locomotion_mask` with no bit set in `[0, LOCOMOTION_MODE_COUNT)` — a chassis that carries no locomotion family cannot be moved by anything in the game, and the failure is invisible until a player has finished building on it.
 16. Any Effector Module has `yaw_limit_deg.x > yaw_limit_deg.y` or `pitch_limit_deg.x > pitch_limit_deg.y`.
 17. A Motive Assembly's family payload does not match its `kind`: `ROTOR_DISC` without a `rotor_profile`, `AMBULATORY_LIMB` without a `limb_profile`, `TRACKED_SEGMENT` without a `track_profile`, any other kind with any of the three non-null, or more than one non-null at once.
 18. A part carries an `AXLE` attachment node and is neither a `MOTIVE_ASSEMBLY` nor a `STRUCTURAL_COMPONENT` whose `AXLE` nodes restrict `accepts_classes` to `MOTIVE_ASSEMBLY` (§4.2). **Additionally**, a `MOTIVE_ASSEMBLY`'s `AXLE` node must not have a non-empty `accepts_classes` that excludes `STRUCTURAL_COMPONENT`. `PlacementValidator._check_mating` tests `accepts_class` in *both* directions, so a drive face carrying the station's own restriction refuses the station — and the part becomes unmountable on anything in the game. All four `mot.*` rows of §10.3 shipped that way and no rule, test, or conformance check noticed, because the fault is invisible until something attempts a placement.

@@ -1375,7 +1375,17 @@ Three things the garage consumes that nothing did before: `cam_orbit` and `cam_z
 
 It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and that is precisely why §14.1's rule can be enforced everywhere else: there is one place where the two worlds meet, and it is a class whose entire job is to be that place.
 
-The opponents are spawned from the shipped starter rather than from the player's build. A test run against three copies of whatever the player just made is a different game every time and is not a measurement of anything; doc 06's generator is what eventually varies them.
+The opponent is spawned from the shipped starter rather than from the player's build. A test run against a copy of whatever the player just made is a different game every time and is not a measurement of anything; doc 06's generator is what eventually varies it.
+
+**There is one opponent, and it is a duel.** It was three, spread across an arc at 34 to 46 m, and that composition was never argued for — it was what the scene happened to be built with while nothing in it could kill anybody. Once `src/ai/` landed it meant three Assemblies built from the same blueprint as the player's, each firing seven rounds a second, against one hull that has to choose which of them to point at; the capture recorded 100% integrity at three seconds, 46% at seven, and the Core Module gone before ten.
+
+Three arguments for one, and the third is the one that decides it:
+
+1. **Three-on-one is not a difficulty setting, it is a different game.** Numbers are the crudest possible lever and they interact with everything else: a player who cannot beat three cannot tell whether their build is wrong, their driving is wrong, or the fight was never winnable.
+2. **The store asymmetry existed to cover it.** Each opponent carried a third of the player's ammunition because three magazines that never run out is a wall rather than a fight. With one opponent that brake is unnecessary, and the two sides now carry the same 600 rounds.
+3. **A duel is what the garage prepares somebody for.** The screen a player just left is about what they built. A fight against one identical build measures exactly that and nothing else; a fight against three measures how well they retreat.
+
+The remaining asymmetry is `OPPONENT_DIFFICULTY` — an aim-point offset of about half a metre at forty metres, and nothing else. Having exactly one handicap is worth more than having three, because it can be moved by a settings screen when doc 11 §17 gets one.
 
 ### 15.6 Why the arena is a scene and not a fixture
 

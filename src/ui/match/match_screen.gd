@@ -58,17 +58,30 @@ const GROUND_AMPLITUDE_M: float = 15.0
 const DROP_HEIGHT_M: float = 1.4
 
 const PLAYER_SPAWN_XZ := Vector2(0.0, 0.0)
-const TARGET_SPAWN_XZ: Array[Vector2] = [
-	Vector2(0.0, -34.0), Vector2(-22.0, -46.0), Vector2(21.0, -44.0)
-]
+## [b]One opponent, and it is a duel.[/b] It was three, spread across an arc at
+## 34 to 46 m, and the arithmetic of that was never defensible: three Assemblies
+## built from the same blueprint as the player's, firing seven rounds a second
+## each, is three times the incoming fire against one hull that has to choose
+## which of them to point at. The capture recorded the consequence — 100%
+## integrity at three seconds, 46% at seven, Core Module gone before ten — and
+## the honest reading is that a first-time player was being asked to win a fight
+## nobody had checked was winnable.
+##
+## A duel is the fight the garage actually prepares somebody for: the same build
+## on both sides, so what decides it is what they made and how they drive it.
+## That is the whole point of a test drive, and three-on-one measured neither.
+const TARGET_SPAWN_XZ: Array[Vector2] = [Vector2(0.0, -34.0)]
 
 const PLAYER_ROUNDS: int = 600
-## What each opponent is given. Finite, and a third of the player's, because the
-## asymmetry is the difficulty setting nobody has built a screen for yet: three
-## Assemblies firing seven rounds a second at one is an unwinnable first minute
-## if all three can do it indefinitely, and a store that runs out is a fight that
-## turns rather than a wall that does not.
-const TARGET_ROUNDS: int = 200
+## The same store the player is given, because a duel between identical builds is
+## the one thing here that should be symmetric.
+##
+## It was 200 — a third — and the asymmetry was doing a job: it was the only
+## brake on three Assemblies with an unlimited magazine, and a store that runs
+## out is a fight that turns rather than a wall that does not. With one opponent
+## the brake is not needed and taking it out costs nothing, because the fight now
+## ends when a Core Module goes rather than when a magazine does.
+const TARGET_ROUNDS: int = PLAYER_ROUNDS
 
 ## Which side each spawn is on. Doc 07 §10.1: the roster is the match layer's,
 ## because nothing in [code]src/combat/[/code] knows what a team is and the AI
@@ -82,8 +95,13 @@ const OPPONENT_TEAM: int = 1
 ##
 ## 0.55 is about half a metre of spread at forty metres, which is a hit on a hull
 ## and a miss on a Motive Assembly. It was picked by watching the fight rather
-## than by arithmetic: at 0.9 the three of them converge on the same Core Module
-## and the match is over before a player has turned round.
+## than by arithmetic, back when three of them converged on one Core Module and
+## anything near 0.9 ended the match before a player had turned round.
+##
+## It is left where it is now that the fight is a duel, and it is now the only
+## asymmetry in it: same build, same store, same spawn distance, and one side
+## aims half a metre wide. That is the handicap a first-time player gets, and
+## having exactly one of them is easier to reason about than having three.
 const OPPONENT_DIFFICULTY: float = 0.55
 
 ## ===== BUILD ===========================================================

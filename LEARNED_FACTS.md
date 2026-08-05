@@ -890,9 +890,11 @@ different fact. Read a citation with its subject, which is always named.
 
     The symptom is a held-weapon fixture that can bolt a sword to a Structural
     Component, which reads as a polarity bug in the validator. **The authoring
-    order is `first` → `combat` → `locomotion` → `appendage`**, and the general
-    shape is worth more than the order: a generator that reads a file another
-    generator writes is order-dependent, and nothing in `tools/` declares that.
+    order is `first` → `combat` → `locomotion` → `appendage` → `chassis`**, and
+    the general shape is worth more than the order: a generator that reads a file
+    another generator writes is order-dependent, and nothing in `tools/` declares
+    that. `author_chassis_parts.gd` reads nothing and is safe anywhere, which is
+    why it is last rather than because it has to be.
 
 77. **A driver that has a target, is pointed at it, and is demanding full
     throttle is not a tactics defect — read the contacts, not the law.** Session
@@ -937,6 +939,47 @@ different fact. Read a citation with its subject, which is always named.
     hold it up. **Anything that turns it has to be re-derived against the square
     of the size, not against the mass**, and a fixture window sized for the old
     inertia measures nothing on the new one.
+
+79. **Only two fields on a `CoreModuleProfile` are read by the simulation, and
+    the four a balance change would reach for first are not among them.**
+    `mount_budget` and `power_capacity_pu` reach `BuildBudgetLedger` and decide
+    what may be placed. `speed_cap_mps` reaches `MotiveSystem._speed_cap_mps`,
+    which for the ambulatory family is then floored by
+    `GaitSolver.top_speed_mps` — 2.42 m/s on the shipped limb — so a chassis cap
+    anywhere above that is inert. `mass_tolerance_kg` and `control_authority`
+    are read by `AssemblyStatPanel` and `PartInspector` and by nothing else at
+    all; `operator_seat_offset_m` and `respawn_integrity_fraction` are read by
+    nothing.
+
+    Worth knowing in both directions. Authoring a new chassis is cheap, because
+    most of its published figures cannot destabilise anything. And a session that
+    tries to *tune* a family through its chassis figures will change a number on
+    a card and nothing else — the levers that move an Assembly are on the Motive
+    Assembly, the Prime Mover, and doc 05's constants.
+
+    What a new Core Module *does* move, and it moves it hard, is the mass and the
+    inertia — fact 78. `core.ambulatory.strider.t3` is 450 kg lighter and four
+    cells shorter than the chassis the walking recipe used to borrow, and every
+    number in `test_ambulatory_drift` changed: uncommanded yaw drift 140° → 92°,
+    standing drift 51° → 18°, standing lean 0.999 → 0.989 of upright.
+
+80. **A physics fixture in `tests/physics/` can be byte-reproducible even with
+    four Assemblies in the space, and checking is four minutes.** Fact 44 says a
+    multi-Assembly test is not reproducible run to run, and fact 54 says a tick
+    count measures the suite. Both are true and neither means *give up on the
+    number*: `test_ambulatory_drift` spawns four Assemblies into one arena and
+    reported `neutral -92.2°, hard over +24.6°, counter +19.9°, standing -18.10°`
+    identically on two consecutive full runs.
+
+    The distinction is what varies. Those four Assemblies are built by one file,
+    in one order, with an identical allocation history in front of them, and
+    nothing else is in the space. A brawl in `test_team_engagement` is twenty
+    bodies interacting, which is where the float ordering bites.
+
+    So before deciding a surprising physics result is noise, **run the suite
+    twice and compare**. If the number repeats it is attributable, and a
+    regression can be reasoned about rather than shrugged at. If it does not, the
+    assertion was always wrong and fact 54 tells you what to write instead.
 
 ---
 

@@ -25,6 +25,29 @@ const CORE_SPEED_CAP_MPS: float = 24.0
 const CORE_MASS_TOLERANCE_KG: float = 5300.0
 const CORE_RESISTANCE: Array[float] = [0.15, 0.20, 0.25, 0.10, 0.05]
 
+## §10.1's two family-locked chassis, quoted. Both are 6x4x9 — the command
+## core's section, shorter along Z — which is what keeps every flank and deck
+## mount cell the same on all three.
+const STRIDER_KEY: StringName = &"core.ambulatory.strider.t3"
+const LIFTER_KEY: StringName = &"core.rotary.lifter.t3"
+const FAMILY_CHASSIS_CELLS: Vector3i = Vector3i(6, 4, 9)
+const STRIDER_MASS_KG: float = 1350.0
+const STRIDER_INTEGRITY: float = 3600.0
+const STRIDER_ARMOUR: float = 20.0
+const STRIDER_POWER_CAPACITY_PU: float = 560.0
+const STRIDER_MOUNT_BUDGET: int = 34
+const STRIDER_SPEED_CAP_MPS: float = 12.0
+const STRIDER_MASS_TOLERANCE_KG: float = 7400.0
+const STRIDER_RESISTANCE: Array[float] = [0.18, 0.16, 0.30, 0.10, 0.05]
+const LIFTER_MASS_KG: float = 900.0
+const LIFTER_INTEGRITY: float = 2400.0
+const LIFTER_ARMOUR: float = 10.0
+const LIFTER_POWER_CAPACITY_PU: float = 640.0
+const LIFTER_MOUNT_BUDGET: int = 26
+const LIFTER_SPEED_CAP_MPS: float = 34.0
+const LIFTER_MASS_TOLERANCE_KG: float = 5200.0
+const LIFTER_RESISTANCE: Array[float] = [0.08, 0.14, 0.12, 0.10, 0.05]
+
 const PANEL_KEY: StringName = &"str.panel.medium.t2"
 const PANEL_CELLS: Vector3i = Vector3i(4, 1, 4)
 const PANEL_MASS_KG: float = 100.0
@@ -103,6 +126,8 @@ const SHIPPED_KEYS: Array[String] = [
 	"eff.ballistic.autocannon_30.t3",
 	"apx.arm.manipulator.t3",
 	"eff.ballistic.repeater_12.t2",
+	"core.ambulatory.strider.t3",
+	"core.rotary.lifter.t3",
 ]
 
 
@@ -147,7 +172,11 @@ func test_part_ids_reverse_resolve() -> void:
 
 
 func test_class_buckets_are_populated() -> void:
-	check_eq(PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(), 1, "one Core")
+	check_eq(
+		PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(),
+		3,
+		"one chassis per locomotion family: ground, ambulatory, rotary"
+	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT).size(),
 		2,
@@ -251,6 +280,106 @@ func test_core_module_matches_the_documented_table() -> void:
 
 	# The Core Module owns the mount budget; spending its own would be circular.
 	check_eq(def.mount_weight, 0, "the Core Module costs no mounts")
+
+	# §7.1's mask, as a set. The ground chassis carries both ground-contact
+	# families and neither of the other two — doc 01 §4.1 splits GROUND from
+	# TRACKED for the shape of the contact set, not because a tracked machine is
+	# built on a different hull.
+	check_true(profile.carries(PartEnums.LocomotionMode.GROUND), "carries rolling contacts")
+	check_true(profile.carries(PartEnums.LocomotionMode.TRACKED), "and tracked ones")
+	check_false(profile.carries(PartEnums.LocomotionMode.AMBULATORY), "and refuses a limb")
+	check_false(profile.carries(PartEnums.LocomotionMode.ROTARY), "and refuses a disc")
+
+
+## §10.1's two family chassis, and the mask that is the whole reason they exist.
+##
+## The masks are asserted as [i]sets[/i] — every family, admitted or refused —
+## rather than by comparing the integer against [constant
+## PartEnums.CHASSIS_AMBULATORY]. A test that reads the same constant the data
+## does asserts nothing (LEARNED_FACTS.md §2): a mask authored as `CHASSIS_ROTARY`
+## on the strider would satisfy the comparison the moment somebody changed the
+## constant, and would satisfy nothing here.
+func test_the_family_chassis_match_the_documented_table() -> void:
+	_check_family_chassis(
+		STRIDER_KEY,
+		STRIDER_MASS_KG,
+		STRIDER_INTEGRITY,
+		STRIDER_ARMOUR,
+		STRIDER_RESISTANCE,
+		PartEnums.LocomotionMode.AMBULATORY
+	)
+	_check_family_chassis(
+		LIFTER_KEY,
+		LIFTER_MASS_KG,
+		LIFTER_INTEGRITY,
+		LIFTER_ARMOUR,
+		LIFTER_RESISTANCE,
+		PartEnums.LocomotionMode.ROTARY
+	)
+
+	var strider := PartRegistry.definition_by_key(STRIDER_KEY)
+	var lifter := PartRegistry.definition_by_key(LIFTER_KEY)
+	if strider == null or lifter == null:
+		return
+	check_approx(
+		strider.core_profile.power_capacity_pu, STRIDER_POWER_CAPACITY_PU, "strider power capacity"
+	)
+	check_eq(strider.core_profile.mount_budget, STRIDER_MOUNT_BUDGET, "strider mount budget")
+	check_approx(strider.core_profile.speed_cap_mps, STRIDER_SPEED_CAP_MPS, "strider speed cap")
+	check_approx(
+		strider.core_profile.mass_tolerance_kg,
+		STRIDER_MASS_TOLERANCE_KG,
+		"strider mass tolerance"
+	)
+	check_approx(
+		lifter.core_profile.power_capacity_pu, LIFTER_POWER_CAPACITY_PU, "lifter power capacity"
+	)
+	check_eq(lifter.core_profile.mount_budget, LIFTER_MOUNT_BUDGET, "lifter mount budget")
+	check_approx(lifter.core_profile.speed_cap_mps, LIFTER_SPEED_CAP_MPS, "lifter speed cap")
+	check_approx(
+		lifter.core_profile.mass_tolerance_kg, LIFTER_MASS_TOLERANCE_KG, "lifter mass tolerance"
+	)
+
+	# The four limbs and their stations cost twenty of these, which against the
+	# ground chassis's twenty-eight left two and an Energy Cell costs three.
+	# §10.1 records that as the figure that changes a build.
+	check_true(
+		strider.core_profile.mount_budget > PartRegistry.definition_by_key(
+			CORE_KEY
+		).core_profile.mount_budget,
+		"a walking Assembly has the mounts for supply that a ground one does not"
+	)
+
+
+func _check_family_chassis(
+	key: StringName,
+	mass_kg: float,
+	integrity: float,
+	armour: float,
+	resistance: Array[float],
+	family: int
+) -> void:
+	var def := PartRegistry.definition_by_key(key)
+	if not check_not_null(def, "%s must load" % key):
+		return
+	check_eq(def.part_class, PartEnums.PartClass.CORE_MODULE, "%s class" % key)
+	check_eq(def.tier, PartEnums.TierGrade.REFINED, "%s t3 is REFINED" % key)
+	check_eq(def.bounds_size_cells, FAMILY_CHASSIS_CELLS, "%s §10.1 gives 6x4x9 cells" % key)
+	check_approx(def.mass_kg, mass_kg, "%s mass" % key)
+	check_approx(def.integrity_max, integrity, "%s integrity" % key)
+	check_approx(def.armour_rating, armour, "%s armour" % key)
+	_check_resistance(def, resistance)
+	check_eq(def.mount_weight, 0, "%s costs no mounts" % key)
+
+	var profile := def.core_profile
+	if not check_not_null(profile, "%s payload must survive the round trip" % key):
+		return
+	for mode: int in PartEnums.LOCOMOTION_MODE_COUNT:
+		check_eq(
+			profile.carries(mode),
+			mode == family,
+			"%s carries family %d: %s" % [key, mode, mode == family]
+		)
 
 
 func test_panel_matches_the_documented_table() -> void:

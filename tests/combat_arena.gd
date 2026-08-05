@@ -57,11 +57,15 @@ enum Recipe {
 	## anything else here, and is a far better gun platform standing still than
 	## walking — see [constant AMBULATORY_STAND_OFF_M].
 	##
-	## It carries no Energy Cell, and not for want of trying: four limbs at four
-	## mount weights apiece leave two of the Core Module's twenty-eight, and a
-	## cell costs three. The ballast that would balance the nose does not fit,
-	## which is a real constraint of the shipped part set rather than an accident
-	## of this recipe.
+	## It carries no Energy Cell, and that used to be forced: four limbs at four
+	## mount weights apiece left two of the ground chassis's twenty-eight and a
+	## cell costs three, so the ballast that would balance the nose did not fit.
+	## [b]`core.ambulatory.strider.t3` offers thirty-four and it now would.[/b]
+	## The recipe still declines it, and deliberately — it is the fixture every
+	## gait measurement in [code]tests/physics/[/code] is taken against, and a
+	## 450 kg change to the build is a change to all of them at once. What was a
+	## constraint of the shipped part set is now a choice of this recipe, and doc
+	## 01 §10.1 records which of the two it always was.
 	AMBULATORY,
 	## A pair of coaxial rotor discs on outboard stations, an Energy Cell to
 	## cover their draw, and an Effector Module. It hovers, which means nothing
@@ -81,6 +85,12 @@ enum Recipe {
 }
 
 const CORE_KEY := &"core.command.compact.t2"
+## Doc 01 §7.1: a Core Module declares which locomotion families it carries, and
+## the validator refuses the rest. These two recipes cannot be built on
+## [constant CORE_KEY] and are not meant to be — a limb and a disc each have a
+## chassis now.
+const AMBULATORY_CORE_KEY := &"core.ambulatory.strider.t3"
+const ROTARY_CORE_KEY := &"core.rotary.lifter.t3"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
 const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
@@ -160,7 +170,22 @@ const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)
 
 ## The ambulatory build sits high in the lattice because a limb hangs below its
 ## station and the lattice floor is at y = 0.
+##
+## [b]The chassis is `core.ambulatory.strider.t3` and it is nine cells long where
+## the ground chassis is thirteen[/b], so it spans `z` 20–28 rather than 18–30.
+## Its width, its height and its deck row are identical, which is why every
+## station and limb cell below is untouched by the split: doc 01 §10.1 records
+## that as the reason the two family chassis kept the command core's 6×4 section.
 const AMBULATORY_CORE := Vector3i(24, 14, 24)
+## Unchanged by the chassis split, and the two cells it now hangs past the tail
+## are not slack that could be taken up. The deck is nine cells long; the Prime
+## Mover is six and the Effector Module seven, so thirteen cells of parts have to
+## sit on nine and something overhangs. Moving the mover forward to close its own
+## gap puts it through the Module's breech — measured, and the validator says so
+## with `cell_occupied`.
+##
+## What it looks like is right anyway: a barrel over the nose and a power pack
+## over the tail, which is where both belong on a body slung between four limbs.
 const AMBULATORY_POWER := Vector3i(24, 18, 28)
 const AMBULATORY_GUN := Vector3i(24, 18, 24)
 ## Station, then the limb hanging off it, four times. A station at orientation 8
@@ -198,6 +223,12 @@ const HUB_AXLE_DOWN_ORIENTATION: int = 8
 ## a flank carries its mast three quarters of a metre off the centreline, and a
 ## single disc there rolls the Assembly over. The pair is symmetric, doubles the
 ## lift, and costs a second 150 PU draw — which is what the Energy Cell is for.
+##
+## [b]The chassis is `core.rotary.lifter.t3`[/b] — nine cells long and 900 kg
+## against the ground chassis's thirteen and 1800. Both halves help here. The
+## shorter hull keeps the Energy Cell's aft moment on a shorter lever, and the
+## lighter one is 900 kg of lift the discs no longer owe: the recipe went from
+## 5166 kg to 4266 against a pair of discs rated 8300 kg each.
 const ROTARY_CORE := Vector3i(24, 4, 24)
 const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(19, 5, 24), Vector3i(27, 5, 24)]
 const ROTARY_DISCS: Array[Vector3i] = [Vector3i(19, 7, 24), Vector3i(29, 7, 24)]
@@ -942,7 +973,7 @@ func _lay_out_tracked(ctx: BuildContext) -> void:
 
 
 func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
-	_place(ctx, CORE_KEY, AMBULATORY_CORE, 0)
+	_place(ctx, AMBULATORY_CORE_KEY, AMBULATORY_CORE, 0)
 	_place(ctx, POWER_KEY, AMBULATORY_POWER, 0)
 	if armed:
 		_place(ctx, GUN_KEY, AMBULATORY_GUN, 0)
@@ -956,7 +987,7 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 	# holds at the moment of the placement, so the second disc is refused if the
 	# Energy Cell that covers it has not been bolted on yet — the same rule a
 	# player meets in the garage, and the same order they have to build in.
-	_place(ctx, CORE_KEY, ROTARY_CORE, 0)
+	_place(ctx, ROTARY_CORE_KEY, ROTARY_CORE, 0)
 	_place(ctx, POWER_KEY, ROTARY_POWER, 0)
 	_place(ctx, CELL_KEY, ROTARY_CELL, 0)
 	for cell: Vector3i in ROTARY_MAST_HUBS:

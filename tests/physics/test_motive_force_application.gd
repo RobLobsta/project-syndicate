@@ -23,7 +23,10 @@ extends TestCase
 ## under test here — [code]tests/unit/test_rotor_solver.gd[/code] owns that. What
 ## is under test is that the number reaches the body.
 
-const CORE_KEY := &"core.command.compact.t2"
+## Doc 01 §7.1: a disc goes on a rotary chassis and the validator refuses it
+## anywhere else. This fixture predates the split and was building on the ground
+## chassis, which is the placement the split exists to stop.
+const CORE_KEY := &"core.rotary.lifter.t3"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 
@@ -35,8 +38,10 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 const POWER_ORIGIN := Vector3i(21, 0, 20)
 const ROTOR_ORIGIN := Vector3i(19, 4, 21)
 
-## 1800 kg Core Module, 620 kg Prime Mover, 848 kg disc.
-const EXPECTED_MASS_KG: float = 3268.0
+## 900 kg Core Module, 620 kg Prime Mover, 848 kg disc. It was 3268 on the
+## 1800 kg ground chassis; the rotary one is half the mass, which is doc 01
+## §10.1's whole argument for it.
+const EXPECTED_MASS_KG: float = 2368.0
 
 var _ctx: BuildContext = null
 var _runtime: AssemblyRuntime = null

@@ -54,6 +54,27 @@ const LOCOMOTION_OF_MOTIVE_KIND: Array[int] = [
 	LocomotionMode.ROTARY,  # ROTOR_DISC
 ]
 
+## Number of locomotion families; sizes the bit range of a chassis mask.
+const LOCOMOTION_MODE_COUNT: int = 4
+
+## ===== CHASSIS MASKS ===================================================
+## Which locomotion families a Core Module is built to carry, as one bit per
+## [enum LocomotionMode]. Owned by doc 01 §7.1 and read through
+## [member CoreModuleProfile.locomotion_mask].
+##
+## A mask rather than a single family, because the two ground-contact families
+## genuinely share a chassis: doc 01 §4.1 routes `TRACKED` through its own solver
+## for the shape of its contact set and not because a tracked machine is built
+## differently from a wheeled one. Rotary and ambulatory do not share with
+## anything, which is the whole point of the split.
+
+## A hull that stands on the ground, on contacts or on road stations.
+const CHASSIS_GROUND: int = (1 << LocomotionMode.GROUND) | (1 << LocomotionMode.TRACKED)
+## A body slung between limbs.
+const CHASSIS_AMBULATORY: int = 1 << LocomotionMode.AMBULATORY
+## A body slung under discs.
+const CHASSIS_ROTARY: int = 1 << LocomotionMode.ROTARY
+
 enum EffectorKind {
 	BALLISTIC_DIRECT = 0,
 	BALLISTIC_ARCED = 1,
@@ -138,6 +159,18 @@ static func locomotion_of(kind: int) -> int:
 		push_error("PartEnums: MotiveKind %d has no locomotion family" % kind)
 		return LocomotionMode.GROUND
 	return LOCOMOTION_OF_MOTIVE_KIND[kind]
+
+
+## True when a chassis carrying [param mask] admits locomotion [param mode].
+##
+## An out-of-range family answers false rather than reading past the bit range:
+## a locomotion mode with no bit is a data error, and admitting it silently is
+## how a limb ends up on a chassis with no gait behind it.
+static func chassis_carries(mask: int, mode: int) -> bool:
+	if mode < 0 or mode >= LOCOMOTION_MODE_COUNT:
+		push_error("PartEnums: LocomotionMode %d has no chassis bit" % mode)
+		return false
+	return (mask & (1 << mode)) != 0
 
 
 ## True when [param kind] is one of the two melee [enum EffectorKind] values.
