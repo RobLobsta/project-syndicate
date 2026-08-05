@@ -10,8 +10,8 @@ extends TestCase
 const DOC_SAMPLE_SPACING_M: float = 0.5
 const DOC_CHUNK_SAMPLES: int = 129
 const DOC_CHUNK_SPAN_M: float = 64.0
-const DOC_WORLD_CHUNKS: Vector2i = Vector2i(32, 32)
-const DOC_WORLD_SPAN_M: float = 2048.0
+const DOC_WORLD_CHUNKS: Vector2i = Vector2i(64, 64)
+const DOC_WORLD_SPAN_M: float = 4096.0
 const DOC_HEIGHT_MIN_M: float = -128.0
 const DOC_HEIGHT_MAX_M: float = 384.0
 const DOC_HEIGHT_RANGE_M: float = 512.0
@@ -84,7 +84,7 @@ func test_world_and_sample_coordinates_round_trip() -> void:
 		Vector2i(0, 0),
 		"the negative corner is sample zero"
 	)
-	for s: Vector2i in [Vector2i(0, 0), Vector2i(1, 7), Vector2i(2048, 2048), Vector2i(4096, 4096)]:
+	for s: Vector2i in [Vector2i(0, 0), Vector2i(1, 7), Vector2i(4096, 4096), Vector2i(8192, 8192)]:
 		var w := GroundMath.sample_to_world_xz(s)
 		check_eq(
 			GroundMath.world_to_sample(Vector3(w.x, 0.0, w.y)),

@@ -106,6 +106,81 @@ func test_the_index_is_the_first_thing_after_the_title() -> void:
 		)
 
 
+## ===== IMPLEMENTATION STATUS ===========================================
+
+
+## Every document carries a status banner, and the banner is checked against the
+## source tree rather than trusted.
+##
+## [b]A document is normative whether or not anything implements it, and the prose
+## cannot be told apart.[/b] Four of the thirteen describe software that does not
+## exist — `src/net/` holds one file against doc 12's authority matrix, and three
+## directories are empty against docs 03, 06 and 10 — while doc 09, which reads
+## identically, is fully built and heavily used. A reader deciding whether a figure
+## is a measurement or an intention has no way to tell.
+##
+## The witness is what stops the banner rotting: a path that must exist for a
+## `BUILT` or `PARTIAL` claim and must [b]not[/b] exist for a `PLANNED` one, so
+## the day somebody writes `src/net/net_server.gd` this test fails and the banner
+## has to be updated with it.
+const STATUS_WITNESSES: Dictionary = {
+	"PART_DATA_SCHEMA.md": ["BUILT", "res://src/autoload/part_registry.gd"],
+	"GRID_SNAPPING_LOGIC.md": ["BUILT", "res://src/assembly/lattice/placement_validator.gd"],
+	"PART_FUSION_SHADER.md": ["PLANNED", "res://src/vfx/fusion/occupancy_sdf_baker.gd"],
+	"DEPENDENCY_TREE_GRAPH.md": ["BUILT", "res://src/assembly/graph/chassis_graph.gd"],
+	"DYNAMIC_MASS_PHYSICS.md": ["PARTIAL", "res://src/motion/motive_system.gd"],
+	"AUTO_ASSEMBLE_ALGORITHM.md": ["PLANNED", "res://src/assembly/autobuild/auto_assembler.gd"],
+	"WEAPON_TARGETING_LOGIC.md": ["PARTIAL", "res://src/combat/effectors/effector_system.gd"],
+	"COMPONENT_HEALTH_DAMAGE.md": ["PARTIAL", "res://src/combat/damage/damage_resolver.gd"],
+	"TERRAIN_CRATER_DEFORMER.md": ["BUILT", "res://src/world/ground/ground_deform_system.gd"],
+	"PROCEDURAL_STRUCTURE_SLICING.md": ["PLANNED", "res://src/world/volumes/convex_slicer.gd"],
+	"RESPONSIVE_GARAGE_UI.md": ["PARTIAL", "res://src/ui/garage/garage_screen.gd"],
+	"HEADLESS_NETWORK_SYNC.md": ["PLANNED", "res://src/net/net_server.gd"],
+	"EXTENSION_PIPELINE.md": ["PARTIAL", "res://src/core/util/proxy_mesh_builder.gd"],
+}
+
+
+func test_every_document_declares_an_implementation_status() -> void:
+	for path: String in _documents():
+		var name := path.get_file()
+		if not check_true(
+			STATUS_WITNESSES.has(name), "%s has no declared status" % name
+		):
+			continue
+		var declared: String = STATUS_WITNESSES[name][0]
+		var text := SourceScanner.read(path)
+		check_true(
+			text.contains("**Status: %s" % declared),
+			(
+				"%s's banner must read '%s'; run python3 tools/ci/doc_index.py"
+				% [name, declared]
+			)
+		)
+
+
+func test_a_planned_document_has_no_implementation_and_a_built_one_does() -> void:
+	for name: String in STATUS_WITNESSES:
+		var declared: String = STATUS_WITNESSES[name][0]
+		var witness: String = STATUS_WITNESSES[name][1]
+		var exists := ResourceLoader.exists(witness) or FileAccess.file_exists(witness)
+		if declared == "PLANNED":
+			check_false(
+				exists,
+				(
+					"%s is banner-marked PLANNED and %s now exists — the document "
+					+ "has an implementation and the banner is lying"
+				) % [name, witness]
+			)
+		else:
+			check_true(
+				exists,
+				(
+					"%s is banner-marked %s and its witness %s is missing"
+					% [name, declared, witness]
+				)
+			)
+
+
 ## ===== PARSING =========================================================
 
 

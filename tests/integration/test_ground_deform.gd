@@ -12,7 +12,11 @@ extends TestCase
 ## deformation is stage 4's work and it has nothing to do with the height field;
 ## leaving it on would make the file slow and would assert nothing extra.
 
-const CENTRE_SAMPLE: int = 2048  # the world origin, from §2.3's centred mapping
+## The world origin, from §2.3's centred mapping: half of `WORLD_CHUNKS.x`
+## chunks of 128 quads. It moves with doc 09 §2.1's world size and is stated by
+## value here rather than derived, so a change to that size lands as a failure in
+## this file rather than as a crater dug somewhere nobody looks.
+const CENTRE_SAMPLE: int = 4096
 const BLAST_RADIUS_M: float = 4.0
 const BLAST_DAMAGE: float = 400.0  # §3.2's reference energy: depth is exactly K
 
@@ -113,7 +117,7 @@ func test_the_crater_interior_reclassifies_to_deformed() -> void:
 ## a sample on a boundary lives in two chunks and both copies must be written.
 func test_a_crater_on_a_chunk_seam_writes_every_copy_of_the_shared_samples() -> void:
 	_reset()
-	# The seam between chunk (15,15) and (16,15) is sample x = 16 * 128 = 2048,
+	# The seam between chunk (31,31) and (32,31) is sample x = 32 * 128 = 4096,
 	# which is the world origin — so a crater at the origin straddles four
 	# chunks by construction.
 	var seam := Vector2i(CENTRE_SAMPLE, CENTRE_SAMPLE)

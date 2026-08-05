@@ -524,7 +524,23 @@ static func driveline_drag_nm(
 	var lift := clampf(
 		1.0 - absf(throttle) / DRIVELINE_DRAG_RELEASE_THROTTLE, 0.0, 1.0
 	)
-	return DRIVELINE_DRAG_FRACTION * absf(drive_capacity_nm) * lift * taper
+	var drag := DRIVELINE_DRAG_FRACTION * absf(drive_capacity_nm) * lift * taper
+	# [b]The throttle may never be a brake.[/b] The taper alone leaves a band below
+	# about an eighth of the throttle where the drag still exceeds the drive, so a
+	# demand to accelerate retards the Assembly — true of a real driveline and
+	# indefensible as a control. Capping the drag at the drive being commanded
+	# turns that band into a coasting zone instead: the first sliver of throttle
+	# *releases* the engine braking, and only then does it add drive.
+	#
+	# The cap is skipped at a shut throttle, and it has to be: there is no drive to
+	# cap against, and taking `min(drag, 0)` there would delete the term this
+	# function exists for. That is a discontinuity at the moment the throttle
+	# leaves zero, and it is the one the model cannot avoid — full retardation at
+	# rest and none at any positive demand cannot both hold continuously. It is
+	# placed where a driver expects it, at the instant they touch the throttle.
+	if is_zero_approx(throttle):
+		return drag
+	return minf(drag, absf(drive_capacity_nm) * absf(throttle))
 
 
 ## §7.8's governor: the fraction of the drive torque that survives at

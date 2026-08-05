@@ -1287,6 +1287,68 @@ there is only one section here.)
     sometimes that it stays where it is with the *reason* corrected — which is a
     better answer than the void one it replaced.
 
+96. **A retardation at zero input and none at any positive input cannot both hold
+    continuously — pick where the discontinuity goes.** Doc 05 §7.8's driveline
+    drag is full at a shut throttle and must never oppose an open one, and those
+    two requirements are incompatible for any continuous function: the drag has a
+    positive value at `t = 0` and must be under `τ_capacity · t` for every `t > 0`.
+
+    Three ways out, and only one is defensible. A **coasting band** where a small
+    throttle still retards is what a real driveline does and reads as a control
+    that cannot be trusted. A **dead band** where a small throttle does nothing
+    reads as a control with slack in it. **Capping the drag at the drive it is
+    opposing** puts the step at the instant the throttle leaves zero, which is
+    where a driver already expects one — lifting off gives engine braking, touching
+    the pedal takes it away — and it is worth 1.23 m/s² on the reference build.
+
+    The general rule: when two requirements are provably incompatible, the design
+    question is not which to abandon but **where the incompatibility is least
+    visible**, and that is a question about the player rather than about the maths.
+
+97. **Splitting a family apart does not fix the family, and this one is a worked
+    example of a plausible structural change that measures worse.** Doc 01 §7.1's
+    `CHASSIS_GROUND` carried `GROUND` and `TRACKED` together; the tracked recipe
+    rode 4.7° nose-up on a 1.42 m base under a 3.25 m hull and inverted in a turn,
+    and giving tracked its own nine-cell chassis is the obvious repair.
+
+    Measured: the rest pitch goes 4.7° → **1.6°** and the front-to-rear load spread
+    3.2× → **1.45×**, and the dynamics do not move at all. It still inverts, still
+    yaws 0.03 rad/s at full lock, and it *loses* the ability to brake without going
+    over — because nine cells cannot carry a six-cell Prime Mover and a nine-cell
+    Effector Module without one of them overhanging that same short base.
+
+    So the shipped `core.command.compact.t2` keeps `CHASSIS_GROUND_TRANSITIONAL`,
+    named to say it is a holding position, and `core.tracked.hauler.t3` ships
+    beside it unused. **The finding is that the family needs a contact base longer
+    than its hull, and the part set cannot express one**:
+    `mot.tracked.short_bogie.t2` runs eight cells and two per flank fit on no
+    chassis in the registry. A static-stance improvement that leaves the dynamics
+    alone is evidence that the model, not the layout, is where the defect lives.
+
+98. **The Ground Array is 4096 m square and the ceiling is memory and float32,
+    not the chunk grid.** Chunks are allocated sparsely, so span costs nothing
+    until something drives on it. What bounds it:
+
+    | Span | Samples/edge | Heights + surface, fully explored | float32 ULP at the corner |
+    |---|---|---|---|
+    | 2048 m | 4097 | 34 + 17 MB | 0.12 mm |
+    | 4096 m | 8193 | 134 + 67 MB | 0.24 mm |
+    | 8192 m | 16385 | 537 + 269 MB | 0.49 mm |
+    | 16384 m | 32769 | 2148 + 1074 MB | 0.98 mm |
+
+    **4 km is the comfortable ceiling and 8 km is where paging and a
+    `precision=double` build stop being optional.** For scale, the reference build's
+    governed top speed is 22.6 m/s, so crossing 4096 m takes three minutes — and a
+    match currently uses about thirty metres of it, which is the limit that actually
+    bites.
+
+    One trap when the span changes: **the world-origin sample index moves with it**
+    (`WORLD_CHUNKS.x · 128 / 2`), and two fixtures state it by value. A third,
+    `test_ground_terrain`, searches for a pair of probes that differ in height and
+    found 0.9 m of relief at 2048 m and 0.23 at 4096 — the noise field is sampled by
+    index, so every fixture standing on a particular patch of terrain stands on a
+    different one afterwards.
+
 ---
 
 ## 2. What fault injection taught

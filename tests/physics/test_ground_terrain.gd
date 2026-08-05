@@ -210,7 +210,12 @@ func test_the_field_is_not_transposed() -> void:
 	var a := Vector2.ZERO
 	var b := Vector2.ZERO
 	var best := 0.0
-	for step: float in [12.0, 16.0, 20.0, 26.0, 32.0]:
+	# A wider ladder than the claim needs, because which pair differs is a property
+	# of where this spawn lands in the noise field and that moved when doc 09 §2.1's
+	# world span did: at 2048 m a 12–32 m ladder found 0.9 m of relief here and at
+	# 4096 it found 0.23. Searching further is the honest fix; lowering the 0.5 m
+	# floor would weaken the assertion to something a transposed mapping could pass.
+	for step: float in [12.0, 16.0, 20.0, 26.0, 32.0, 40.0, 48.0, 56.0, 64.0, 72.0]:
 		var pa := SPAWN_XZ + Vector2(step, 0.0)
 		var pb := SPAWN_XZ + Vector2(0.0, step)
 		var gap := absf(

@@ -507,15 +507,13 @@ func test_the_drag_is_released_before_any_useful_throttle_and_never_exceeds_the_
 		"and full throttle certainly does",
 		1e-6
 	)
-	# Two properties over the whole range, and the first version of this test
-	# demanded a third that is not true and should not be: below about an eighth of
-	# the throttle a real driveline still retards, which is what a coasting zone is.
-	#
-	# What must hold is that **more throttle is never less net torque** — a control
-	# that is not monotonic is one a player cannot learn — and that the crossover
-	# sits below every throttle the project actually commands.
+	# [b]The property the throttle must have, and the first version of this test
+	# demanded something weaker.[/b] It asked only that net torque be monotonic and
+	# accepted a band below an eighth of the throttle where a demand to accelerate
+	# still retarded the Assembly — true of a real driveline and indefensible as a
+	# control. The drag is now capped at the drive it is opposing, so the first
+	# sliver of throttle releases the engine braking rather than losing to it.
 	var previous := -INF
-	var crossover := 1.0
 	for step: int in 41:
 		var throttle := float(step) / 40.0
 		var net := (
@@ -529,15 +527,21 @@ func test_the_drag_is_released_before_any_useful_throttle_and_never_exceeds_the_
 				+ "more throttle may never mean less"
 			) % [throttle, net, previous]
 		)
+		check_true(
+			net >= 0.0 or is_zero_approx(throttle),
+			(
+				"and a throttle of %.3f nets %+.0f N.m — a demand to accelerate may "
+				+ "never retard"
+			) % [throttle, net]
+		)
 		previous = net
-		if net > 0.0 and crossover > throttle:
-			crossover = throttle
-	check_true(
-		crossover < DRAG_RELEASE_THROTTLE,
-		(
-			"and the Assembly is accelerating by a throttle of %.3f, which is inside "
-			+ "the release and well below doc 05 §15.7.1's 0.35 floor"
-		) % crossover
+	# The other half: a shut throttle is still fully retarded, or the cap above has
+	# deleted the term rather than bounded it.
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 0.0, 10.0),
+		DRAG_FRACTION * CAPACITY_NM,
+		"while a shut throttle keeps the whole of it",
+		1e-3
 	)
 
 

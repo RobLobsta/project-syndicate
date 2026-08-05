@@ -18,9 +18,31 @@ const CHUNK_SAMPLES: int = 129
 const CHUNK_SPAN_M: float = float(CHUNK_SAMPLES - 1) * SAMPLE_SPACING_M
 
 ## Chunk grid covering the world.
-const WORLD_CHUNKS: Vector2i = Vector2i(32, 32)
+##
+## [b]64 × 64 chunks of 64 m is 4096 m square, and the ceiling is worth stating
+## because it is not where most people would guess.[/b] Chunks are allocated
+## sparsely — [GroundArray] holds only the ones something has touched — so the
+## world span costs nothing until it is driven on. What bounds it is two things
+## and neither is the chunk count:
+##
+## [enum]
+## [*] [b]Height storage, fully explored.[/b] One `uint16` height and one `uint8`
+##     surface id per sample at 0.5 m spacing: 4096 m is 8193 samples an edge,
+##     which is 134 MB of height and 67 of surface if every chunk is visited.
+##     8192 m would be 537 MB and 268, which is the point paging stops being
+##     optional.
+## [*] [b]Single-precision position.[/b] Godot builds float32 by default, so the
+##     ULP at the far corner of a 4096 m world is 0.24 mm and at 8192 m it is
+##     0.49. Physics jitter becomes visible somewhere past a millimetre, so 8 km
+##     is roughly where a `precision=double` build starts being the honest answer.
+## [/enum]
+##
+## For scale: the reference build's governed top speed is 22.6 m/s, so crossing
+## 4096 m takes three minutes. The limit that actually bites is not this constant
+## — it is that a match currently uses about thirty metres of it.
+const WORLD_CHUNKS: Vector2i = Vector2i(64, 64)
 
-const WORLD_SPAN_M: float = 2048.0
+const WORLD_SPAN_M: float = float(WORLD_CHUNKS.x) * CHUNK_SPAN_M
 
 ## Samples along one edge of the world, counting the far shared edge once.
 const WORLD_SAMPLES: int = WORLD_CHUNKS.x * (CHUNK_SAMPLES - 1) + 1

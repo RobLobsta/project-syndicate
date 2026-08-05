@@ -104,7 +104,26 @@ and the garage camera orbits on the right stick.
 - **The drive torque was re-measured and did not move, with the reason
   corrected.** §3.1.1.
 
-**95 files, 7532 checks, 0 failures.** `drive_cycle_sweep.py` plants eighteen
+**Then five more, from the review's own bad news.**
+
+- **Every document says whether it is built.** A generated BUILT / PARTIAL /
+  PLANNED banner in each of the thirteen headers, checked against a witness path
+  in `src/` so a PLANNED document that acquires an implementation fails the build.
+  Four are PLANNED — 03, 06, 10, 12 — and five are PARTIAL.
+- **A normative formula producing a vector must state its direction.** CLAUDE.md
+  §10 rule 14, which is the rule doc 05 §6.5's inverted anti-roll couple broke.
+- **The throttle is never a brake.** §7.8's drag is capped at the drive it
+  opposes, so the first sliver of throttle releases engine braking rather than
+  losing to it.
+- **Tracked has a chassis of its own and it did not fix the family.**
+  `core.tracked.hauler.t3` ships; the shipped recipe stays on the command core
+  through `CHASSIS_GROUND_TRANSITIONAL`, because migrating improves the stance
+  (4.7° → 1.6°) and makes the dynamics worse. §3.1.2.
+- **The world is 4096 m square.** Doc 09 §2.1, with the ceiling analysis at the
+  constant: 4 km is comfortable, 8 km is where paging and a double-precision build
+  stop being optional.
+
+**95 files, 7617 checks, 0 failures.** `drive_cycle_sweep.py` plants eighteen
 faults over all of it and all eighteen are caught.
 
 ---
@@ -133,7 +152,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**95 files, 7532 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
+**95 files, 7617 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
 the rest suite. Three files are most of it: `integration/test_screen_flow.gd` at
 82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings; check before assuming where the cost
@@ -179,7 +198,7 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 
 ---
 
-## 2. The player-experience review (CLAUDE.md §10 rule 17)
+## 2. The player-experience review (CLAUDE.md §10 rule 18)
 
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
@@ -292,27 +311,45 @@ recipe.** §3.1.2. Raised to 9600 the suite fails in three places, all of them
 tracked: it cannot stop without pitching past vertical and cannot reverse at all.
 The torque goes up when a tracked build stands level.
 
-#### 3.1.2 The tracked family does not work, and nothing had ever asked it to
+#### 3.1.2 The tracked family, and the experiment that ruled out the obvious fix
 
-**Newly visible rather than newly broken**, and it is the second time this session
-that a family's defect turned out to be a manoeuvre nobody had written a fixture
-for. Measured at the shipped 6400 N·m on a flat slab:
+**It has its own chassis now and that did not fix it.** `core.tracked.hauler.t3`
+ships — nine cells rather than the command core's thirteen, `CHASSIS_TRACKED`,
+1700 kg, a 14 m/s cap that §7.8's governor now enforces — and the shipped recipe
+is **not on it**, because migrating measures worse:
 
-- **It rides 8.1° nose-up, permanently**, with its two forward road stations
-  carrying **zero** load and the rear pair carrying 10 kN each.
-- **A single station spikes to 35 kN** as the bogie bottoms out, and from there
-  the hull inverts.
-- **Full lock at 6 m/s yaws it 0.03 rad/s** — it does not turn at all.
-  `TrackProfile.pivot_taper_mps` is 9.0, so the differential is down to a third
-  by then, and `lateral_grip_ratio` of 1.35 gives the patch *more* lateral grip
-  than longitudinal, which is the wrong way round for a machine that steers by
-  breaking the patch loose.
+| Migrated to the nine-cell chassis | before | after |
+|---|---|---|
+| Rest pitch | 4.7° nose-up | **1.6°** |
+| Front-to-rear load spread | 3.2× | **1.45×** |
+| Inverts in a sustained turn | yes | **yes** |
+| Yaw at full lock, 6 m/s | 0.030 rad/s | 0.035 rad/s |
+| Brakes without going over | yes | **no** |
 
-The layout is `CombatArena`'s `TRACKED` recipe: two bogies on stations at
-`z` 24 and 23, four road stations each. The nose-up attitude says the load is not
-being distributed across the stations the way §14 assumes, and
-`TrackSolver.station_static_load_n` with `station_load_share = 0.22` against four
-stations is the first thing to check.
+`core.command.compact.t2` therefore keeps `CHASSIS_GROUND_TRANSITIONAL`, named so
+that nobody mistakes it for a design.
+
+**What the family actually needs is a contact base longer than its hull, and the
+part set cannot express one.** `mot.tracked.short_bogie.t2` runs **eight cells** —
+1.90 m — so one per flank is the design and two do not fit on any chassis in the
+registry. A nine-cell hull is 2.25 m over a 1.43 m base and still cannot carry a
+six-cell Prime Mover and a nine-cell Effector Module without one of them
+overhanging it.
+
+Three things to do, in order:
+
+1. **Author a longer bogie**, or a `t3` with more road stations, so a flank can
+   carry a patch as long as the hull. That is the one change that makes the rest
+   tractable.
+2. **Re-derive §14.2's `pivot_taper_mps`.** At 9.0 the differential is down to a
+   third by 6 m/s, which is why full lock yaws the build 0.03 rad/s — it cannot
+   turn at any speed a player drives at.
+3. **Question `lateral_grip_ratio = 1.35`.** A patch with *more* lateral grip than
+   longitudinal is the wrong way round for a machine that steers by breaking the
+   patch loose, and it is the other half of why it will not turn.
+
+The inversion is downstream of all three and should be re-measured once they are
+settled rather than chased on its own.
 
 #### 3.1.3 The ambulatory family needs a sign in its placement law
 

@@ -30,6 +30,89 @@ DOCS = os.path.join(ROOT, "docs")
 BEGIN = "<!-- SECTION INDEX -->"
 END = "<!-- END SECTION INDEX -->"
 
+# Implementation status, declared here and rendered into every document's header.
+#
+# **A document is normative whether or not anything implements it, and a reader
+# cannot tell the two apart from the prose.** Four of the thirteen describe
+# software that does not exist: `src/net/` holds one file against doc 12's whole
+# authority matrix, and `src/vfx/fusion/`, `src/world/volumes/` and
+# `src/assembly/autobuild/` are empty against docs 03, 10 and 06. Somebody
+# reading doc 10 has no way to know it is a page of intent where doc 09, which
+# reads identically, is fully built and heavily used.
+#
+# The witness is a source path the claim is checked against, so the banner cannot
+# drift: BUILT demands the file exists, PLANNED demands it does not, and PARTIAL
+# demands it exists while the document says what is missing.
+BUILT = "BUILT"
+PARTIAL = "PARTIAL"
+PLANNED = "PLANNED"
+
+STATUS = {
+    "PART_DATA_SCHEMA.md": (BUILT, "src/autoload/part_registry.gd", ""),
+    "GRID_SNAPPING_LOGIC.md": (BUILT, "src/assembly/lattice/placement_validator.gd", ""),
+    "PART_FUSION_SHADER.md": (
+        PLANNED, "src/vfx/fusion/occupancy_sdf_baker.gd",
+        "nothing in `src/vfx/fusion/` exists; parts render as greybox primitives",
+    ),
+    "DEPENDENCY_TREE_GRAPH.md": (BUILT, "src/assembly/graph/chassis_graph.gd", ""),
+    "DYNAMIC_MASS_PHYSICS.md": (
+        PARTIAL, "src/motion/motive_system.gd",
+        "§8's aerodynamics has no consumer and §7.5's power band is unread",
+    ),
+    "AUTO_ASSEMBLE_ALGORITHM.md": (
+        PLANNED, "src/assembly/autobuild/auto_assembler.gd",
+        "`src/assembly/autobuild/` is empty and `tests/generation/` runs nothing",
+    ),
+    "WEAPON_TARGETING_LOGIC.md": (
+        PARTIAL, "src/combat/effectors/effector_system.gd",
+        "direct fire and melee only — §5.3's arc, §5.4's guidance and §11's "
+        "prediction are unwritten",
+    ),
+    "COMPONENT_HEALTH_DAMAGE.md": (
+        PARTIAL, "src/combat/damage/damage_resolver.gd",
+        "§7.3's `DotScheduler`, §9's `VisualDamageController` and §10's repair "
+        "path are unwritten",
+    ),
+    "TERRAIN_CRATER_DEFORMER.md": (BUILT, "src/world/ground/ground_deform_system.gd", ""),
+    "PROCEDURAL_STRUCTURE_SLICING.md": (
+        PLANNED, "src/world/volumes/convex_slicer.gd",
+        "`src/world/volumes/` is empty; only `ManifoldChecker` exists, in "
+        "`src/core/util/`",
+    ),
+    "RESPONSIVE_GARAGE_UI.md": (
+        PARTIAL, "src/ui/garage/garage_screen.gd",
+        "no touch model, no compact-tier bottom sheet, and §5.3's four helper "
+        "classes do not exist",
+    ),
+    "HEADLESS_NETWORK_SYNC.md": (
+        PLANNED, "src/net/net_server.gd",
+        "`src/net/` holds one file; there is no server, no snapshot codec and no "
+        "prediction",
+    ),
+    "EXTENSION_PIPELINE.md": (
+        PARTIAL, "src/core/util/proxy_mesh_builder.gd",
+        "greybox and proxy stages only; no DCC assets have been promoted",
+    ),
+}
+
+BANNERS = {
+    BUILT: "**Status: BUILT.** The subsystem this document specifies exists in "
+           "`src/` and is exercised by the suite.",
+    PARTIAL: "**Status: PARTIAL — %s.** Everything else here is built and "
+             "exercised by the suite.",
+    PLANNED: "**Status: PLANNED — %s.** This document is normative for work that "
+             "has not been done. Nothing here has been tested against a running "
+             "implementation, so treat its figures as intent rather than as "
+             "measurements.",
+}
+
+
+def banner(name):
+    status, _witness, note = STATUS[name]
+    if status == BUILT:
+        return BANNERS[BUILT]
+    return BANNERS[status] % note
+
 # A top-level section: `## 7. Traction`. The number is required, which is what
 # keeps prose headings and the GDScript `##` doc comments inside fenced code
 # blocks out of the index.
@@ -58,17 +141,17 @@ def sections(text):
     return out
 
 
-def index_block(text):
+def index_block(text, name):
     found = sections(text)
     if not found:
         return None
     rows = " · ".join("**%s.** %s" % (n, t) for n, t in found)
-    return "%s\n\n%s\n\n%s\n%s" % (BEGIN, PREAMBLE, rows, END)
+    return "%s\n\n%s\n\n%s\n\n%s\n%s" % (BEGIN, banner(name), PREAMBLE, rows, END)
 
 
-def rewrite(text):
+def rewrite(text, name):
     """The document with its index replaced, or inserted after the title."""
-    block = index_block(text)
+    block = index_block(text, name)
     if block is None:
         return text
     if BEGIN in text and END in text:
@@ -90,7 +173,7 @@ def main(argv):
             continue
         path = os.path.join(DOCS, name)
         text = open(path).read()
-        updated = rewrite(text)
+        updated = rewrite(text, name)
         if updated == text:
             continue
         if check:

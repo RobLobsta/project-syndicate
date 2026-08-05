@@ -620,13 +620,15 @@ Any AI session producing code for this repository must obey the following. These
 
 13. **When adding a new part**, add it to `registry_manifest.tres` by appending only. Never reorder, never remove — `part_def_id` values are serialised in save data and network packets.
 
-14. **When a task conflicts with a document**, raise the conflict rather than implementing around it. Then, if the architecture genuinely must change, update the document and the conformance tests in the same change.
+14. **A normative formula that produces a vector must state the direction it is applied in.** A magnitude is half a specification. Doc 05 §6.5 published `F_arb = k_arb · (x_left − x_right)` and said nothing about which way the pair is pushed; the implementation applied it inverted for the life of the project, turning the anti-roll bar into a roll *amplifier* that put builds on their roofs from a walking pace, and the unit test over the formula passed the whole time because it asserted the number. Any document giving a force, a torque, an impulse or an offset must say what the positive sense means in world or body terms, and the test for it must assert that sense and not only the magnitude.
 
-15. **Match the surrounding code.** Comment density, naming, and idiom should be indistinguishable from the files around the change.
+15. **When a task conflicts with a document**, raise the conflict rather than implementing around it. Then, if the architecture genuinely must change, update the document and the conformance tests in the same change.
 
-16. **Do not stub.** Code committed to this repository is complete. `TODO`, `FIXME`, `implement later`, and `pass  # placeholder` are not acceptable in `src/`. If the full implementation is not yet possible, do not commit the partial one.
+16. **Match the surrounding code.** Comment density, naming, and idiom should be indistinguishable from the files around the change.
 
-17. **Play the game before you call the work done.** Before wrapping anything up, review the repository as it now stands and answer one question: **would a customer get the best possible experience from this game in this state?** Not "do the tests pass", not "is the architecture sound" — whether the thing is any good to play.
+17. **Do not stub.** Code committed to this repository is complete. `TODO`, `FIXME`, `implement later`, and `pass  # placeholder` are not acceptable in `src/`. If the full implementation is not yet possible, do not commit the partial one.
+
+18. **Play the game before you call the work done.** Before wrapping anything up, review the repository as it now stands and answer one question: **would a customer get the best possible experience from this game in this state?** Not "do the tests pass", not "is the architecture sound" — whether the thing is any good to play.
 
     This rule is a deliberate counterweight. Every other rule in this file pushes toward internal correctness, and a project can satisfy all of them while being unplayable: no scene, no camera, a vehicle that flips on its first shot, a locomotion family that cannot hold a heading. Those findings are invisible to a green suite, and a green suite is exactly what makes them easy to stop noticing.
 

@@ -39,6 +39,19 @@ extends SceneTree
 const CHASSIS_LO := Vector3i(-3, 0, -4)
 const CHASSIS_HI := Vector3i(2, 3, 4)
 
+## The tracked hull is the same nine cells as the two above, and for a third
+## reason: it has to be no longer than the track under it.
+##
+## `mot.tracked.short_bogie.t2` runs **eight cells** along the hull — a 1.90 m
+## patch — and one per flank is the design, not a pair. The command core is
+## thirteen, so a tracked build on it was a 3.25 m hull balanced on a 1.42 m base:
+## measured at rest the forward road stations carried 2527 N against 8169 at the
+## rear, it sat 4.7° nose-up, spiked a station to 35 kN as the bogie bottomed out,
+## and inverted in a sustained turn. Nine cells is 2.25 m over that same base,
+## which is a hull sitting on its track rather than see-sawing on it.
+const TRACKED_LO := CHASSIS_LO
+const TRACKED_HI := CHASSIS_HI
+
 ## A roof to build on, exactly as [code]core.command.compact.t2[/code] offers.
 const CHASSIS_FACES: Dictionary = {Vector3i(0, 1, 0): PartEnums.AttachmentPolarity.DECK}
 
@@ -57,6 +70,7 @@ func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_core_ambulatory_strider_t3())
 	keys.append(_author_core_rotary_lifter_t3())
+	keys.append(_author_core_tracked_hauler_t3())
 	for key in keys:
 		if key.is_empty():
 			return false
@@ -189,5 +203,65 @@ func _author_core_rotary_lifter_t3() -> String:
 		def,
 		"core",
 		PartAuthoring.single_box_collider(CHASSIS_LO, CHASSIS_HI),
+		&"plate_std"
+	)
+
+
+## §10.1: `core.tracked.hauler.t3`, 6×4×9 cells, 1700 kg, 4600 integrity,
+## 26 armour, 500 PU capacity, 30 mounts, 14.0 m/s cap, 9000 kg mass tolerance.
+## §11: the `core.command.*` resistance row, which a tracked hull shares — it is
+## the same steel box, differently proportioned.
+##
+## [b]The heaviest and slowest chassis in the registry, and both are the design.[/b]
+## A tracked Assembly's argument is that it stands on a patch rather than on four
+## points: it takes load its wheeled equivalent cannot and it goes nowhere quickly.
+## 1700 kg over 2.25 m of a 1.5 × 1.0 m section is 504 kg/m³ — the densest chassis
+## in the registry against the command core's 369 and the lifter's 267 — because a
+## tracked hull is mostly running gear and armour rather than cabin.
+##
+## The speed cap is 14 m/s against the command core's 24, which is doc 05 §7.8's
+## governor doing something real for the first time: a tracked build reaches its
+## cap and holds it, and the cap is what a track is for rather than a number
+## nobody enforces.
+func _author_core_tracked_hauler_t3() -> String:
+	var key := &"core.tracked.hauler.t3"
+	var def := PartDefinition.new()
+	def.part_key = key
+	def.display_name_key = &"part.core.tracked.hauler.t3.name"
+	def.description_key = &"part.core.tracked.hauler.t3.desc"
+	def.part_class = PartEnums.PartClass.CORE_MODULE
+	def.tier = PartEnums.TierGrade.REFINED
+
+	def.occupancy_cells = PartAuthoring.box_cells(TRACKED_LO, TRACKED_HI)
+	def.attachment_nodes = PartAuthoring.face_nodes(TRACKED_LO, TRACKED_HI, CHASSIS_FACES)
+
+	def.mass_kg = 1700.0
+	def.com_offset_m = PartAuthoring.box_centre_m(TRACKED_LO, TRACKED_HI)
+	def.inertia_box_half_extents_m = Vector3.ZERO
+
+	def.integrity_max = 4600.0
+	def.resistance = PackedFloat32Array([0.12, 0.18, 0.16, 0.14, 0.08])
+	def.armour_rating = 26.0
+	def.load_capacity_kg = 14000.0
+	def.occlusion = PartEnums.OcclusionProfile.OPAQUE_SOLID
+
+	var core := CoreModuleProfile.new()
+	core.locomotion_mask = PartEnums.CHASSIS_TRACKED
+	core.power_capacity_pu = 500.0
+	core.mount_budget = 30
+	core.speed_cap_mps = 14.0
+	core.control_authority = 1.0
+	core.mass_tolerance_kg = 9000.0
+	core.operator_seat_offset_m = Vector3(0.0, 0.35, 0.0)
+	core.respawn_integrity_fraction = 1.0
+	def.core_profile = core
+
+	def.build_cost = 1300
+	def.mount_weight = 0
+
+	return PartAuthoring.save_part(
+		def,
+		"core",
+		PartAuthoring.single_box_collider(TRACKED_LO, TRACKED_HI),
 		&"plate_std"
 	)

@@ -128,6 +128,7 @@ const SHIPPED_KEYS: Array[String] = [
 	"eff.ballistic.repeater_12.t2",
 	"core.ambulatory.strider.t3",
 	"core.rotary.lifter.t3",
+	"core.tracked.hauler.t3",
 ]
 
 
@@ -174,8 +175,8 @@ func test_part_ids_reverse_resolve() -> void:
 func test_class_buckets_are_populated() -> void:
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(),
-		3,
-		"one chassis per locomotion family: ground, ambulatory, rotary"
+		4,
+		"one chassis per locomotion family: wheeled, tracked, ambulatory, rotary"
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT).size(),
@@ -281,12 +282,17 @@ func test_core_module_matches_the_documented_table() -> void:
 	# The Core Module owns the mount budget; spending its own would be circular.
 	check_eq(def.mount_weight, 0, "the Core Module costs no mounts")
 
-	# §7.1's mask, as a set. The ground chassis carries both ground-contact
-	# families and neither of the other two — doc 01 §4.1 splits GROUND from
-	# TRACKED for the shape of the contact set, not because a tracked machine is
-	# built on a different hull.
+	# §7.1's mask, as a set. One family per chassis throughout — `CHASSIS_GROUND`
+	# used to carry GROUND and TRACKED together on the reading that a tracked
+	# machine is a wheeled one with a different contact set, and that reading cost
+	# the tracked family a hull thirteen cells long over a 1.42 m contact base.
 	check_true(profile.carries(PartEnums.LocomotionMode.GROUND), "carries rolling contacts")
-	check_true(profile.carries(PartEnums.LocomotionMode.TRACKED), "and tracked ones")
+	check_true(
+		profile.carries(PartEnums.LocomotionMode.TRACKED),
+		"and a bogie too, through CHASSIS_GROUND_TRANSITIONAL — asserted as it "
+		+ "stands, and it goes false when the shipped recipe migrates onto "
+		+ "`core.tracked.hauler.t3`"
+	)
 	check_false(profile.carries(PartEnums.LocomotionMode.AMBULATORY), "and refuses a limb")
 	check_false(profile.carries(PartEnums.LocomotionMode.ROTARY), "and refuses a disc")
 
