@@ -152,6 +152,148 @@ func test_an_action_bound_to_one_device_falls_back_to_it() -> void:
 	InputMethod.current = _method_before
 
 
+## ===== §7.2's GAMEPAD FAMILIES =========================================
+## The tables are asserted through their public statics with the family passed
+## in, which is the only way they can be checked at all: headless has no
+## controller, so [method InputPrompt.gamepad_family] can only ever answer
+## `GENERIC` here.
+
+
+## The reason the tables exist. A Switch pad's bottom button is printed `B` and an
+## Xbox pad's is printed `A`, so a card built from one naming tells half the
+## players to press the wrong button.
+func test_the_three_families_print_different_things_on_one_button() -> void:
+	var generic := InputPrompt.pad_button_glyph(JOY_BUTTON_A, InputPrompt.GamepadFamily.GENERIC)
+	var sony := InputPrompt.pad_button_glyph(
+		JOY_BUTTON_A, InputPrompt.GamepadFamily.PLAYSTATION
+	)
+	var nintendo := InputPrompt.pad_button_glyph(
+		JOY_BUTTON_A, InputPrompt.GamepadFamily.NINTENDO
+	)
+	check_eq(generic, "A", "the bottom face is A on a generic pad")
+	check_eq(sony, "Cross", "and Cross on a PlayStation one")
+	check_eq(nintendo, "B", "and B on a Nintendo one, which is the trap")
+	# The mirror, in the other direction: an Xbox B and a Nintendo B are not the
+	# same physical button, and a table that merely renamed the letters would pass
+	# the three checks above.
+	check_eq(
+		InputPrompt.pad_button_glyph(JOY_BUTTON_B, InputPrompt.GamepadFamily.NINTENDO),
+		"A",
+		"and the right face is A on a Nintendo pad — the row is mirrored, not renamed"
+	)
+
+
+func test_the_triggers_and_shoulders_are_named_per_family() -> void:
+	check_eq(
+		InputPrompt.pad_axis_glyph(
+			JOY_AXIS_TRIGGER_RIGHT, InputPrompt.GamepadFamily.PLAYSTATION
+		),
+		"R2",
+		"the right trigger is R2 on a PlayStation pad"
+	)
+	check_eq(
+		InputPrompt.pad_axis_glyph(JOY_AXIS_TRIGGER_RIGHT, InputPrompt.GamepadFamily.NINTENDO),
+		"ZR",
+		"and ZR on a Nintendo one"
+	)
+	check_eq(
+		InputPrompt.pad_axis_glyph(JOY_AXIS_TRIGGER_RIGHT, InputPrompt.GamepadFamily.GENERIC),
+		"RT",
+		"and RT everywhere else"
+	)
+	check_eq(
+		InputPrompt.pad_button_glyph(
+			JOY_BUTTON_LEFT_SHOULDER, InputPrompt.GamepadFamily.PLAYSTATION
+		),
+		"L1",
+		"the left shoulder is L1 on a PlayStation pad"
+	)
+
+
+## The worded controls go through the string table, because "D-Pad Up" is a phrase
+## and "Cross" is a marking moulded into plastic.
+func test_the_worded_controls_are_localised_and_the_same_on_every_family() -> void:
+	var first := InputPrompt.pad_button_glyph(
+		JOY_BUTTON_DPAD_UP, InputPrompt.GamepadFamily.GENERIC
+	)
+	check_ne(first, String(InputPrompt.KEY_PAD_DPAD_UP), "the D-pad key was translated")
+	check_eq(
+		InputPrompt.pad_button_glyph(JOY_BUTTON_DPAD_UP, InputPrompt.GamepadFamily.NINTENDO),
+		first,
+		"and a D-pad is a D-pad on every pad there is"
+	)
+	var stick := InputPrompt.pad_axis_glyph(JOY_AXIS_LEFT_X, InputPrompt.GamepadFamily.GENERIC)
+	check_ne(stick, String(InputPrompt.KEY_PAD_STICK_LEFT_X), "and so was the stick")
+	check_ne(
+		stick,
+		InputPrompt.pad_axis_glyph(JOY_AXIS_RIGHT_X, InputPrompt.GamepadFamily.GENERIC),
+		"and the two sticks do not read alike"
+	)
+
+
+## The fallback carries an index, and it is the one row with a format specifier in
+## it — applying `%` to a string without one is a runtime error rather than a
+## no-op, which is why it is asserted apart from the named rows.
+func test_a_button_no_family_names_falls_back_to_its_index() -> void:
+	var text := InputPrompt.pad_button_glyph(31, InputPrompt.GamepadFamily.GENERIC)
+	check_true(text.contains("31"), "an unnamed button is identified by index: got '%s'" % text)
+
+
+## Matched on the name Godot's controller database resolved, which is what makes
+## one binding set cover all three families.
+func test_a_pad_is_recognised_from_the_name_the_engine_reports() -> void:
+	var cases: Dictionary = {
+		"Sony DualSense Wireless Controller": InputPrompt.GamepadFamily.PLAYSTATION,
+		"PS4 Controller": InputPrompt.GamepadFamily.PLAYSTATION,
+		"Nintendo Switch Pro Controller": InputPrompt.GamepadFamily.NINTENDO,
+		"Joy-Con (L)": InputPrompt.GamepadFamily.NINTENDO,
+		"8BitDo SN30 Pro": InputPrompt.GamepadFamily.GENERIC,
+		"Xbox Series Controller": InputPrompt.GamepadFamily.GENERIC,
+		"": InputPrompt.GamepadFamily.GENERIC,
+	}
+	for name: String in cases:
+		check_eq(
+			InputPrompt.family_of_name(name),
+			cases[name],
+			"'%s' resolves to the family whose markings it carries" % name
+		)
+	# An 8BitDo switched into its Nintendo mode reports as one, and the point of
+	# matching on the resolved name rather than on a vendor id is that this works
+	# without the project knowing anything about 8BitDo.
+	check_eq(
+		InputPrompt.family_of_name("8BitDo SN30 Pro (Nintendo Switch Pro Controller)"),
+		InputPrompt.GamepadFamily.NINTENDO,
+		"and the same pad in its Switch mode carries Nintendo markings"
+	)
+
+
+## The whole reason this replaced [method InputEvent.as_text]: the engine's answer
+## for the bottom face button is forty-eight characters long.
+func test_a_pad_binding_reads_as_a_glyph_rather_than_a_sentence() -> void:
+	var button := InputEventJoypadButton.new()
+	button.button_index = JOY_BUTTON_A
+	var text := InputPrompt.text_for_event(button)
+	check_true(text.length() <= 12, "'%s' is short enough for a control card" % text)
+	check_false(text.contains("Joypad Button"), "and is not the engine's enumeration")
+	var motion := InputEventJoypadMotion.new()
+	motion.axis = JOY_AXIS_TRIGGER_RIGHT
+	motion.axis_value = 1.0
+	check_false(
+		InputPrompt.text_for_event(motion).contains("Joypad Motion"),
+		"and neither is an axis"
+	)
+
+
+## §14.6's rows are one control, and on a stick both halves of an axis are the
+## same control. "Left Stick X / Left Stick X" is a card nobody proof-read.
+func test_a_pair_bound_to_one_stick_reads_once() -> void:
+	InputMethod.current = InputMethodService.Method.GAMEPAD
+	var pair := InputPrompt.label_for_pair(&"veh_steer_left", &"veh_steer_right")
+	check_false(pair.contains(InputPrompt.PAIR_SEPARATOR), "one stick reads as one control")
+	check_eq(pair, InputPrompt.label_for(&"veh_steer_left"), "and names that control")
+	InputMethod.current = _method_before
+
+
 ## ===== §14.6's CAPTIONS ================================================
 
 

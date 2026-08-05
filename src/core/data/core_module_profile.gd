@@ -8,14 +8,14 @@ extends Resource
 
 ## Which locomotion families this chassis is built to carry, as one bit per
 ## [enum PartEnums.LocomotionMode]. Doc 01 §7.1, and the composite masks are
-## [constant PartEnums.CHASSIS_GROUND] and its two siblings.
+## [constant PartEnums.CHASSIS_WHEELED] and its three siblings.
 ##
 ## [PlacementValidator] refuses a Motive Assembly whose family this mask does not
 ## admit, which is what makes a chassis a chassis rather than a box every
 ## locomotion family is bolted to in turn. Defaulted to the ground families so
 ## that an unauthored profile behaves as every Core Module did before the field
 ## existed.
-@export var locomotion_mask: int = PartEnums.CHASSIS_GROUND
+@export var locomotion_mask: int = PartEnums.CHASSIS_GROUND_TRANSITIONAL
 
 @export var power_capacity_pu: float = 240.0
 @export var mount_budget: int = 28

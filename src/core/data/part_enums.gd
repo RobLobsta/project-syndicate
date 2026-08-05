@@ -62,14 +62,45 @@ const LOCOMOTION_MODE_COUNT: int = 4
 ## [enum LocomotionMode]. Owned by doc 01 §7.1 and read through
 ## [member CoreModuleProfile.locomotion_mask].
 ##
-## A mask rather than a single family, because the two ground-contact families
-## genuinely share a chassis: doc 01 §4.1 routes `TRACKED` through its own solver
-## for the shape of its contact set and not because a tracked machine is built
-## differently from a wheeled one. Rotary and ambulatory do not share with
-## anything, which is the whole point of the split.
+## [b]One family per chassis, and the ground pair used to be the exception.[/b]
+## `CHASSIS_GROUND` carried `GROUND` and `TRACKED` together on the reading that a
+## tracked machine is a wheeled one with a different contact set. That reading was
+## wrong in a way that only showed up when something finally turned a tracked
+## build: a tracked hull carries its whole weight on two short patches, so it needs
+## a chassis whose deck sits between them, and the command core is thirteen cells
+## long over a 1.42 m contact base. It rode 8° nose-up with its forward road
+## stations carrying nothing, spiked one station to 35 kN, and inverted in a turn.
+##
+## So the mask is now one bit per family throughout, and `core.tracked.hauler.t3`
+## exists for the same reason `core.ambulatory.strider.t3` and
+## `core.rotary.lifter.t3` do. A mask rather than a single enum is kept because a
+## chassis *may* legitimately declare more than one — nothing here forbids it — but
+## no shipped chassis does.
 
-## A hull that stands on the ground, on contacts or on road stations.
-const CHASSIS_GROUND: int = (1 << LocomotionMode.GROUND) | (1 << LocomotionMode.TRACKED)
+## A hull that stands on wheeled contacts.
+const CHASSIS_WHEELED: int = 1 << LocomotionMode.GROUND
+## A hull that stands on road stations. See above for why this is not the same
+## chassis as a wheeled one.
+const CHASSIS_TRACKED: int = 1 << LocomotionMode.TRACKED
+
+## [b]The transitional mask, and it is named so that it cannot be mistaken for a
+## design.[/b] `core.command.compact.t2` still declares both ground families
+## because migrating the shipped tracked recipe onto `core.tracked.hauler.t3`
+## makes the family measurably [i]worse[/i] rather than better, and shipping that
+## is not a trade worth making.
+##
+## The static stance improves and the dynamics do not: a nine-cell hull takes the
+## rest pitch from 4.7° to 1.6° and the front-to-rear load spread from 3.2× to
+## 1.45×, and the build still inverts in a sustained turn, still yaws 0.03 rad/s at
+## full lock, and now cannot brake without going over — because a nine-cell hull
+## cannot carry a six-cell Prime Mover and a nine-cell Effector Module without one
+## of them overhanging a **1.43 m** contact base.
+##
+## What the family needs is a contact base longer than its hull, and the shipped
+## part set cannot express one: `mot.tracked.short_bogie.t2` runs eight cells and
+## two per flank do not fit on any chassis in the registry. `HANDOFF.md` §3.1.2
+## carries it. This constant goes when that does.
+const CHASSIS_GROUND_TRANSITIONAL: int = CHASSIS_WHEELED | CHASSIS_TRACKED
 ## A body slung between limbs.
 const CHASSIS_AMBULATORY: int = 1 << LocomotionMode.AMBULATORY
 ## A body slung under discs.

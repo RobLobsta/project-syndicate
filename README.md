@@ -123,7 +123,7 @@ Full architecture — 13 documents covering data schemas, math, shaders, and pip
 | **Engine** | Godot 4, GDScript, Forward+ (Compatibility renderer on mobile) |
 | **Platforms** | Windows, Linux, macOS, Android, iOS |
 | **Multiplayer** | Dedicated headless server, 16 players, 60 Hz simulation, 30 Hz snapshots |
-| **Input** | Keyboard + mouse, gamepad, touch — all fully supported, all detected automatically |
+| **Input** | Keyboard + mouse and gamepad in a match, both detected automatically. One binding set covers PlayStation, Nintendo and generic pads, and prompts show the marking that pad actually prints. Touch, and building a machine on a gamepad, are specified and not yet built |
 | **Interface** | Single responsive layout across four breakpoints, from phone landscape to ultrawide |
 
 Visual quality settings scale from full fusion shading with procedural skirting down to flat greybox primitives. **None of them affect gameplay.** Hit registration, damage, mass, and handling are identical at every setting.

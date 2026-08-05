@@ -87,12 +87,24 @@ const PLAYER_SPAWN_XZ := Vector2(0.0, 0.0)
 ## happening.
 ##
 ## So the range is set by what the driver can actually cross rather than by what
-## looks right in a still: twenty-eight metres of run-in is about fourteen seconds
-## and leaves the opponent visible, approaching, and arriving inside the window a
-## player will give it. [b]The real constraint is the driver's cross-country speed
-## and not this constant[/b] — `HANDOFF.md` §3.1.4 has it — and when that moves,
-## this should move with it.
-const TARGET_SPAWN_XZ: Array[Vector2] = [Vector2(0.0, -42.0)]
+## looks right in a still. [b]The real constraint is the driver's cross-country
+## speed and not this constant[/b] — `HANDOFF.md` §3.1.3 has it — and when that
+## moves, this should move with it.
+##
+## [b]Forty-two was measured and is still too far.[/b] A capture at 1600×900 shows
+## the opponent a speck at one second, still closing with no shots exchanged at
+## seven, and opening fire around eleven — which is eleven seconds of watching
+## before a first-time player is in a fight, and it was the top item in the review
+## two sessions running. Twenty-two metres of run-in at the two metres a second a
+## driver actually makes across fifteen metres of relief is where that number comes
+## from.
+##
+## Thirty is the same arithmetic against a beat a player will sit through: ten
+## metres of closing, about five seconds, with the opponent still spawning far
+## enough away to be seen arriving rather than already on top of the player. It is
+## a hidden cost and it is named as one — the fight starts sooner because the
+## approach is shorter, not because the driver got faster.
+const TARGET_SPAWN_XZ: Array[Vector2] = [Vector2(0.0, -30.0)]
 
 const PLAYER_ROUNDS: int = 600
 ## The same store the player is given, because a duel between identical builds is

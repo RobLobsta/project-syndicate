@@ -246,11 +246,24 @@ func test_a_heavier_load_gets_a_stiffer_spring() -> void:
 ## ===== ANTI-ROLL AND PAIRING ===========================================
 
 
+## The magnitude, and it is [b]only[/b] the magnitude — which is the whole reason
+## §6.5's inverted application survived every run this suite has ever made. A
+## scalar that follows the compression difference is satisfied by a bar that
+## resists roll and by one that amplifies it, and the direction it is applied in
+## is [MotiveSystem]'s. `tests/physics/test_wheeled_drive_cycle.gd` asserts that
+## half; this one asserts the number it is given.
 func test_anti_roll_follows_the_compression_difference() -> void:
 	check_approx(
 		SuspensionSolver.anti_roll_force(K, 0.10, 0.04, SuspensionSolver.ANTI_ROLL_RATIO),
 		K * SuspensionSolver.ANTI_ROLL_RATIO * 0.06,
 		"0.22 of the spring rate across a 0.06 m difference"
+	)
+	check_true(
+		SuspensionSolver.anti_roll_force(K, 0.10, 0.04, SuspensionSolver.ANTI_ROLL_RATIO) > 0.0,
+		(
+			"and it is positive when the left is the more compressed side, which §6.5 "
+			+ "fixes as the direction the couple lifts"
+		)
 	)
 	check_approx(
 		SuspensionSolver.anti_roll_force(K, 0.07, 0.07, SuspensionSolver.ANTI_ROLL_RATIO),

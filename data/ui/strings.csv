@@ -34,6 +34,15 @@ input.mouse.motion,Mouse
 input.modifier.ctrl,Ctrl
 input.modifier.shift,Shift
 input.modifier.alt,Alt
+input.pad.dpad_up,D-Pad Up
+input.pad.dpad_down,D-Pad Down
+input.pad.dpad_left,D-Pad Left
+input.pad.dpad_right,D-Pad Right
+input.pad.stick_left_x,Left Stick X
+input.pad.stick_left_y,Left Stick Y
+input.pad.stick_right_x,Right Stick X
+input.pad.stick_right_y,Right Stick Y
+input.pad.other,Pad %d
 input.unbound,—
 menu.title,PROJECT SYNDICATE
 menu.subtitle,Build a machine. Take it out. Find out what comes back.
