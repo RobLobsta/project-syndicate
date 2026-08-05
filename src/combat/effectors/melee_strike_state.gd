@@ -50,6 +50,7 @@ func begin() -> void:
 	stage = Stage.WIND_UP
 	stage_timer_s = 0.0
 	swing_t = 0.0
+	energised = false
 	struck_this_swing.clear()
 
 
@@ -61,6 +62,7 @@ func abort_to_recovery() -> void:
 	stage = Stage.RECOVERING
 	stage_timer_s = 0.0
 	swing_t = 0.0
+	energised = false
 
 
 ## True when [param assembly_id] has already been struck by the current swing,

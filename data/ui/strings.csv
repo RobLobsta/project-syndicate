@@ -160,6 +160,7 @@ garage.part.speed_cap,Speed cap
 garage.part.mount_budget,Mount budget
 garage.part.power_capacity,Power capacity
 garage.part.mass_tolerance,Mass tolerance
+garage.part.carries,Carries
 garage.part.family,Locomotion
 garage.part.steering,Steering
 garage.part.driven,Driven
@@ -192,6 +193,8 @@ garage.value.ratio,%.2f
 garage.value.yes,Yes
 garage.value.no,No
 garage.value.fixed,Fixed
+garage.value.none,None
+garage.value.list_separator," · "
 garage.family.wheeled_steered,Wheeled — steered
 garage.family.wheeled_fixed,Wheeled — fixed
 garage.family.tracked,Tracked
@@ -199,6 +202,10 @@ garage.family.omni_roller,Omnidirectional roller
 garage.family.ambulatory,Ambulatory
 garage.family.repulsor,Repulsor pad
 garage.family.rotor,Rotor disc
+garage.chassis.wheeled,Wheeled
+garage.chassis.rotary,Rotary
+garage.chassis.ambulatory,Ambulatory
+garage.chassis.tracked,Tracked
 garage.role.heat_sink,Heat sink
 garage.role.magazine_store,Magazine store
 garage.role.integrity_field,Integrity field

@@ -22,109 +22,59 @@ refers to whichever document in `/docs/` was named just before it.
 
 ## Where this stands
 
-**It is a game with a loop, and as of this session the machine under it can be
-driven.** `godot --path .` opens on a menu. The menu opens a garage where a
-wheeled Assembly stands on the Build Lattice with fifteen parts beside it and its
-mass, power, mounts, top speed, integrity and rollover threshold on the right.
-**M** mirrors, **Ctrl+Z** takes back a misclick, a removal that would orphan
-something asks first. TEST DRIVE puts that build into a basin against one
-opponent built from the player's own blueprint, sixty metres away, carrying the
-same six hundred rounds. They fight. A card says which way it went.
+**It is a game with a loop, and the machine under it drives.** `godot --path .`
+opens on a menu. The menu opens a garage where a wheeled Assembly stands on the
+Build Lattice with fifteen parts beside it and its mass, power, mounts, top
+speed, integrity and rollover threshold on the right. **M** mirrors, **Ctrl+Z**
+takes back a misclick, a removal that would orphan something asks first. TEST
+DRIVE puts that build into a basin against one opponent built from the player's
+own blueprint, thirty metres away, carrying the same six hundred rounds. They
+fight. A card says which way it went. All of it is playable on a keyboard or on a
+controller, and a build can be made with either.
 
-**Doc 05 §6.5's anti-roll couple was applied inverted for the life of the
-project, and it is what has been putting builds on their roofs.** The bar pushed
-the loaded side further *down*, so any roll disturbance was amplified rather than
-resisted — and once the inside contact left the ground there was no spring on
-that side left to oppose it. It diverges rather than merely being soft. On the
-reference build at full lock:
+The wheeled family goes straight (zero lateral deviation over 29 m of full
+throttle), corners (32° of lock holds 0.81 rad/s within 0.018, at 1.15× the
+geometric radius), stops, parks, reverses, coasts to a halt in six seconds, and
+tops out at **22.6 m/s** against the 24 the garage publishes.
+`tests/physics/test_wheeled_drive_cycle.gd` runs that whole cycle every suite run
+and `CHANGE_LOG.md` §1 has how each of those was won.
 
-| From 3.3 m/s, full lock | before | after |
-|---|---|---|
-| Roll after 2.4 s | inverted (−119°) | **−1.3°** |
-| Grounded contacts, worst | 0 | **4 of 4** |
-| From 7.8 m/s: roll | −143°, on its roof | **−2.4°** |
-| From 7.8 m/s: speed held | 7.8 → 0.8 (it spun) | **7.8 → 6.5** |
+**This session: the energy edge became a weapon, and a part can catch fire.**
+Doc 07 §15.5 and doc 08 §7.3 landed together, because neither is worth anything
+alone.
 
-**Nothing in the suite could see it**, because nothing turned an Assembly at
-speed: `test_ground_assembly` drives straight, `test_braking_and_reverse` stops
-in a line, `test_drive_and_shoot` runs at a quarter throttle. The unit test over
-`SuspensionSolver.anti_roll_force` asserted the magnitude, and the *direction it
-is applied in* was asserted nowhere. `tests/physics/test_wheeled_drive_cycle.gd`
-is the file that closes that, and it runs the whole cycle a person performs in
-their first thirty seconds on perfectly smooth ground:
+- **A held edge cuts every tick.** A sustained module with the trigger down pins
+  its stage at the end of its arc and clears its victim set per tick rather than
+  per swing, so contact keeps resolving: measured at **93 consecutive ticks** of
+  contact, each worth exactly the authored 340 damage/s over the tick and not the
+  640 a strike delivers. It carries no impulse — §15.4's shove is per swing, and
+  sixty a second throws a hull across the arena.
+- **And then the thing it was cutting catches fire.** A thermal packet deposits
+  heat as well as damage, so 3.4 s of contact takes a Core Module past
+  `THERMAL_IGNITION_HU` and doc 08 §7.3's list burns it afterwards **with nothing
+  touching it**. §7.1 never said what makes the heat fall again; it does now, and
+  the fire cools the part it burns, so an ignited part goes out after about ten
+  seconds and forty points of integrity.
+- **Two shipped things are now readable.** A Core Module's inspector card names
+  the locomotion families it carries — doc 01 §7.1's chassis mask shipped with
+  three family chassis and no way for a player to meet them — and doc 11 §14.6's
+  control card is a **first-run** card rather than a card every match opens with.
 
-```
-top 9.26 m/s over 28.9 m, 0.0000 m lateral, 0.000 deg heading, peak yaw 0.0000 rad/s
-corner from 5.01 m/s at 32 deg lock: roll 2.45 deg, 4 contacts / 3737 N lightest,
-    yaw -0.770 +- 0.0067 rad/s, R 5.5 m against the 4.8 its geometry asks for
-brake 9.26 -> 0.000 m/s in 7.44 m, 0.000 deg of heading, 1.000 upright
-reverse -6.57 m and +79.9 deg at full lock
-parked fire 16 rounds, 0.071 m/round; braked fire 20 rounds, 0.079 m/round
-```
+**The bad news about all of that, plainly: no shipped recipe carries an edge**,
+so nothing a player can do today reaches either law. It is exercised by
+`tests/physics/test_held_weapon.gd` and by nothing else, and §3.8 is what closes
+that. **And only five shipped parts can catch fire at all** — damage and heat come
+off the same raw amount, so a part must survive ~540 points of thermal damage
+before it can ignite, and twelve of the seventeen are destroyed by the fire they
+would have caught. That is arithmetic rather than a defect, and doc 08 §7.1
+records it.
 
-**Straight-line travel is exact**, not approximate — zero lateral deviation and a
-yaw rate in the fourth decimal over twenty-nine metres of full throttle from a
-standstill. **A corner settles**: 32° of lock holds a steady 0.77 rad/s within
-0.007, at 1.15× the radius the bicycle model asks for, which is the mild
-speed-sensitive understeer a driver expects.
-
-**Holding the brake used to be worse than holding nothing.** §7.7's holding brake
-tested the raw record, and §15.5 has already released the service demand at rest
-— so a driver standing on the brake got neither. A parked build absorbing its own
-recoil travelled **10.49 m** with the key held and 1.15 m with it released. §7.7
-now reads the released demand.
-
-**A controller is a first-class input device.** Doc 11 §7.1's table published
-three collisions *inside the match* — the right trigger opened the throttle and
-pulled the trigger, the left one braked and fired the secondary, the D-pad rolled
-and toggled the view — and three more in the garage. The table is rebuilt per
-context, `tests/arch/test_input_actions.gd` enforces that no two actions live on
-one screen and one physical control, `InputPrompt` prints PlayStation, Nintendo
-and generic markings rather than the engine's forty-eight-character enumeration,
-and the garage camera orbits on the right stick.
-
-**Then the five items the review called bad news, four of them closed.**
-
-- **Doc 05 §7.8 is new** and answers two of them at once. A **driveline drag** —
-  0.35 of the mover's capacity, released by a fifth of the throttle — takes a
-  released Assembly from 0.14 m/s² of rolling resistance to **2.19 m/s²**, so it
-  stops in six seconds instead of half a minute. A **speed-cap governor** tapers
-  the drive torque over the last two metres a second, so the 24 m/s the garage
-  publishes as a projected top speed is now a speed the build reaches and holds:
-  measured at **22.56 m/s** where it used to sail through to about 25.
-- **A controller can build a machine.** Doc 11 §7.3's pad placement is one
-  substitution — `_preview_pointer()` returns a virtual cursor when a pad is in
-  use — so the stick and the mouse resolve a candidate through the identical
-  chain. Four `build_cursor_*` actions on the left stick, a crosshair where the
-  cursor is, and `tests/integration/test_pad_build.gd` places a part from the
-  stick alone with no mouse position read anywhere in it.
-- **The fight starts at four seconds instead of eleven.** The opponent spawn came
-  from 42 m to 30. It is a shorter approach and not a faster driver, and it is
-  named as such at the constant.
-- **The drive torque was re-measured and did not move, with the reason
-  corrected.** §3.1.1.
-
-**Then five more, from the review's own bad news.**
-
-- **Every document says whether it is built.** A generated BUILT / PARTIAL /
-  PLANNED banner in each of the thirteen headers, checked against a witness path
-  in `src/` so a PLANNED document that acquires an implementation fails the build.
-  Four are PLANNED — 03, 06, 10, 12 — and five are PARTIAL.
-- **A normative formula producing a vector must state its direction.** CLAUDE.md
-  §10 rule 14, which is the rule doc 05 §6.5's inverted anti-roll couple broke.
-- **The throttle is never a brake.** §7.8's drag is capped at the drive it
-  opposes, so the first sliver of throttle releases engine braking rather than
-  losing to it.
-- **Tracked has a chassis of its own and it did not fix the family.**
-  `core.tracked.hauler.t3` ships; the shipped recipe stays on the command core
-  through `CHASSIS_GROUND_TRANSITIONAL`, because migrating improves the stance
-  (4.7° → 1.6°) and makes the dynamics worse. §3.1.2.
-- **The world is 4096 m square.** Doc 09 §2.1, with the ceiling analysis at the
-  constant: 4 km is comfortable, 8 km is where paging and a double-precision build
-  stop being optional.
-
-**95 files, 7617 checks, 0 failures.** `drive_cycle_sweep.py` plants eighteen
-faults over all of it and all eighteen are caught.
+**98 files, 7686 checks, 0 failures.** `burn_and_hold_sweep.py` plants eleven
+faults over this session's work and catches nine; the two it keeps are recorded
+in `CHANGE_LOG.md` §3 with what would close them. One of the three it originally
+missed was the useful kind — the resolver and the scheduler were both enforcing
+"one entry per burning part", so the scheduler's copy was unreachable and the
+fault that deleted it was invisible. The resolver's copy is gone.
 
 ---
 
@@ -152,7 +102,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**95 files, 7617 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
+**98 files, 7686 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
 the rest suite. Three files are most of it: `integration/test_screen_flow.gd` at
 82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings; check before assuming where the cost
@@ -178,14 +128,17 @@ failing file. There is deliberately **no way to reorder or subset a run** —
 
 ```bash
 python3 tools/ci/sweeps/drive_cycle_sweep.py       # doc 05 §6.5/§7.7/§15.5, doc 11 §7
+python3 tools/ci/sweeps/burn_and_hold_sweep.py     # doc 07 §15.5, doc 08 §7.1/§7.3
 python3 tools/ci/sweeps/ai_layer_sweep.py --list   # just the fault names
 python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 ```
 
-Eight of them; `CHANGE_LOG.md` §3 says what each covers and what still survives.
+Nine of them; `CHANGE_LOG.md` §3 says what each covers and what still survives.
 A sweep's `BASELINE` is a check count and moves with the suite; update it in the
-same change as anything that moves the count. A full sweep is about two minutes
-at `-j4`.
+same change as anything that moves the count. A sweep costs about a minute a
+fault at `-j4` — a fault caught by a unit test costs seconds and one caught only
+by a physics file costs a full run, so plant against the cheap files where the
+law allows it.
 
 Workers run in throwaway copies under `/tmp`, so `-j2` and above cannot leave a
 planted fault in your checkout. `-j1` still patches in place: do not `git add -A`
@@ -203,84 +156,88 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900, 900 frames
-through `--main-scene res://scenes/match/arena_basin.tscn`. The player is not
-driven, which is the case that used to get run over.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900 through
+`--main-scene res://scenes/match/arena_basin.tscn`. The player is not driven,
+which is the case that used to get run over. **This session's capture was run
+twice on purpose** — once with `user://settings.cfg` deleted and once without —
+because the thing being checked is a rule about a player's *second* match.
 
-**The player's build finishes the capture upright, and that closes the largest
-open item in this section.** Last session's review said "the player's hull ends up
-on its side and nothing drove it there" and called it the most visible
-undiagnosed thing in the capture. It was doc 05 §6.5's inverted anti-roll couple:
-a parked hull taking fire is a hull being given roll disturbances, and every one
-of them was being amplified. At fifteen seconds the build is on all four wheels at
-35% integrity with ten of twelve parts, holding 0.0 m/s on a 1.78° grade.
+**The first-run card works and it is now the first thing a player is punished
+for reading.** Frame 120 of a fresh install is the card in the upper left, seven
+rows, every glyph resolved from the live `InputMap`; frame 120 of the next run is
+a clear screen. That is the rule working end to end. But the same capture, six
+seconds in, has the player at **63% integrity with a component gone, stationary,
+with the card still up** — the dwell is eleven seconds, the opponent arrives at
+four, and the card only stands down when the player *acts*. A first-time player
+who does what the card is for loses a third of their machine doing it.
 
-**A first-time player survives, can stop, park, reverse, and now turn.** All four
-of the questions a person asks in the first thirty seconds have answers.
+That is a new finding and it is the cheapest thing in this section to act on:
+either the opponent holds off while the card is up, or the card belongs on the
+garage screen where nothing is shooting. §3.3.
+
+**A first-time player survives, can stop, park, reverse, and turn.** All four of
+the questions a person asks in the first thirty seconds have answers, and the
+build finishes the capture upright.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The fight is two parked hulls trading fire, and closing the approach made
-   that more visible rather than less.** The opponent now arrives at about four
-   seconds — but §15.7.4 gates firing on "inside its stand-off **and stopped**",
-   so once it arrives neither machine moves again. The gate exists because firing
-   on the move yaws the hull off its own target, which is measured; making the
-   engagement dynamic means giving a driver lateral movement at its stand-off and
-   re-deriving that gate. §3.1.4.
-2. **The tracked family is broken and nothing had ever turned one.** It rides
+1. **The fight is two parked hulls trading fire.** The opponent arrives at about
+   four seconds — but §15.7.4 gates firing on "inside its stand-off **and
+   stopped**", so once it arrives neither machine moves again. The gate exists
+   because firing on the move yaws the hull off its own target, which is
+   measured; making the engagement dynamic means giving a driver lateral movement
+   at its stand-off and re-deriving that gate. §3.1.4.
+2. **The tutorial and the fight are on top of each other.** The paragraph above.
+   Cheap, and nothing else in this list is.
+3. **The tracked family is broken and nothing had ever turned one.** It rides
    8.1° nose-up with its two forward road stations carrying no load, spikes a
    single station to 35 kN as it bottoms out, inverts in a sustained turn, and
    yaws 0.03 rad/s at full lock. It is also the constraint that stops the drive
    torque going up for everyone else. §3.1.2.
-3. **The two new chassis are unreachable in practice** — unchanged, and the
-   mirror opponent makes it sharper: a player who builds a walking Assembly now
-   fights a walking Assembly. §3.4 is the cheapest half.
-4. **A walking Assembly cannot reverse and can barely stop.** Both are §13.5's
+4. **The two new chassis are still unreachable in practice.** A Core Module's
+   card now *says* what it carries, which was half of it; the other half is a
+   starter blueprint that is not a wheeled hull. §3.3.
+5. **A walking Assembly cannot reverse and can barely stop.** Both are §13.5's
    placement law having no sign in it, and so is its steering. §3.1.3.
-5. **The end card is drawn over nothing.** Unchanged. The orbit camera swings to
-   an empty field and the card floats on it. §5 has the mechanism; what is
-   missing is a decision about where the camera stands.
-6. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator
+6. **The energy edge burns and nothing a player can build reaches it.** New this
+   session, and it is the cost of landing a law without a recipe that uses it.
+   §3.8.
+7. **The end card is drawn over nothing.** Unchanged. The orbit camera swings to
+   an empty field and the card floats on it.
+8. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator
    is the answer.
-7. **Nothing rewards a good build over a heavy one.** Unchanged.
-8. **The garage still teaches nothing about composition until a placement is
-   refused.**
-9. **Nothing in `src/combat/` knows what a team is.** §3.6.
-10. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
+9. **Nothing rewards a good build over a heavy one.** Unchanged.
+10. **Nothing in `src/combat/` knows what a team is.** §3.5.
+11. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
 
-**The bad news, plainly.** Four things, and the previous four are closed.
+**The bad news, plainly.** Four things.
 
 **The engagement has no shape.** Two machines drive at each other, stop, and
 shoot until one stops existing. There is no manoeuvre in it, and the reason is a
 fire gate that is correct on its own terms — a hull firing on the move loses its
 own aim — so this is a design problem rather than a defect. Item 1.
 
-**A tracked build is a trap for a player who makes one.** Item 2. It is the only
-family whose problems are not documented as a family problem: the ambulatory
-one's are recorded in doc 05 §13.8 and asserted in three files, and this one had
-never been driven through a turn by anything.
+**This session's two laws are unreachable from the game.** Sustained contact and
+fire are real, measured, and defended by nine planted faults, and the only way to
+see either is to run `tests/physics/test_held_weapon.gd`. No shipped recipe
+carries an edge. That is a session that improved the *architecture* more than it
+improved the game, and the honest place to spend the next one is §3.8.
+
+**A tracked build is a trap for a player who makes one.** Item 3, unchanged. It
+is the only family whose problems are not documented as a family problem.
 
 **Four of thirteen documents describe software that does not exist.** `src/net/`
 holds one file against doc 12's whole authority matrix, prediction and snapshot
 format; `src/vfx/fusion/`, `src/world/volumes/` and `src/assembly/autobuild/` are
 empty against docs 03, 10 and 06. That is not drift — it is deliberate, and it is
 recorded in §4 — but it means a third of the architecture has never been tested
-against reality, and this session found two multi-year defects in the third that
-*is* implemented and heavily used.
+against reality.
 
-**The suite is 7532 checks and 539 of them are physics.** The distribution is
-3555 unit, 2105 integration, 1210 architectural, **539 physics across 23 files**.
-Everything this project claims about how a machine behaves rests on that last
-seven per cent, and two of this session's three findings were in behaviour that
-had no fixture at all rather than in behaviour a fixture got wrong. A green suite
-here means the data is well-formed and the pure functions are correct; it does
-not mean the game is right.
-
-The summary: **the machine is sound — it goes straight, corners, stops, parks,
-reverses, coasts, tops out where the garage says it will, and can be built and
-driven from a controller — and what is thin is everything above it: one arena,
-one opponent, a fight with no manoeuvre in it, and a third of the architecture
-still on paper.**
+The summary: **the machine is sound and the interface around it is getting
+honest — it drives, it says which parts fit which chassis, and it stops teaching
+a returning player their own controls — but the fight has no manoeuvre in it, the
+newest weapon cannot be taken into one, and a third of the architecture is still
+on paper.**
 
 ## 3. The work queue
 
@@ -419,11 +376,27 @@ left is navigation rather than placement:
 3. **Touch is specified and unbuilt.** `touch_placement_controller.gd` does not
    exist and the compact tier has no bottom sheet, so a phone still cannot build.
 
-### 3.3 Make the two new chassis reachable, and give the control card a first-run flag
+### 3.3 The tutorial is on top of the fight, and the chassis are still unreachable
+
+**The new one first, because it is the cheapest thing in §2 and it is this
+session's own doing.** Doc 11 §14.6's card is now raised once, on a player's
+first match — and the capture that verified it shows the player at 63% integrity
+with the card still up, because the dwell is 11 s, the opponent arrives at 4 s,
+and the card stands down only when the player acts. Three ways out, and the
+decision is a design one:
+
+1. **A grace period on the opponent** while the card is up — `MatchScreen`
+   already knows when the HUD raised it, and doc 05 §15.7.4's fire gate is the
+   natural place to hold. Cheapest, and it makes the first match read as a
+   briefing rather than an ambush.
+2. **Raise it in the garage instead**, where nothing is shooting. It is the
+   screen a player reaches first and the one they linger on.
+3. **Leave it and shorten the dwell**, which is the option that teaches least.
 
 Doc 01 §7.1's family lock shipped with the parts and no way for a player to meet
-them: the catalogue lists them, the validator enforces them, and nothing says the
-option exists. Three cheap steps in order of value:
+them. **The inspector half is done** — a Core Module's card now names the
+families it carries, so a refused limb has a reason a player can read. Two steps
+left:
 
 1. **A second and a third `StarterBlueprint`.** An `ambulatory()` and a `rotary()`
    beside `skirmisher()` would give the garage something to open on other than a
@@ -433,13 +406,6 @@ option exists. Three cheap steps in order of value:
    spawning a walking or flying opponent is one constant, and it is the only way a
    player sees a family they are not already driving. A rotary opponent is blocked
    on §3.7; an ambulatory one is not, it just walks badly (§3.1.3).
-3. **Say so in the inspector.** A Core Module's card names its mounts and its
-   speed cap and not the figure that decides what can be bolted to it.
-   `PartInspector._append_core`.
-
-**The control card's first-run flag** is unchanged: the placement and the dwell
-are done, and it is raised on every entry to a match because there is nowhere to
-store "they have seen it". That is `SyndicateSettings` work.
 
 ### 3.4 Two controls with a producer and no consumer
 
@@ -482,24 +448,25 @@ have. An `AiDriver` handed a rotary Assembly aims and fires but does not fly.
 
 ### 3.8 Fight with the edge
 
-A player can reach this now: the catalogue carries the Appendage and the edge, so
-a build with one is a build somebody will make. `CombatArena` has five recipes and
-none carries an Appendage, so the melee weapon landed in session 18 has never been
-in a fight. What it needs: a `MELEE` recipe (the wheeled layout with
-`apx.arm.manipulator.t3` and `eff.melee.beam_edge.t4` in place of the autocannon),
-a stand-off of roughly zero, and one duel against `WHEELED_LIGHT`. Expect the edge
-to **lose** and treat that as a measurement.
+**This moved up, because session 42 gave the edge two things it did not have and
+neither is reachable in a fight.** §15.5's sustained contact and doc 08 §7.3's
+fire are exercised by `tests/physics/test_held_weapon.gd` — a frozen target and a
+frozen attacker — and by nothing that drives, closes, or misses.
 
-### 3.9 §15.5's sustained contact, and `DotScheduler`
+`CombatArena` has five recipes and none carries an Appendage, so the melee weapon
+landed in session 18 has still never been in a fight. What it needs: a `MELEE`
+recipe (the wheeled layout with `apx.arm.manipulator.t3` and
+`eff.melee.beam_edge.t4` in place of the autocannon), a stand-off of roughly zero,
+and one duel against `WHEELED_LIGHT`. Expect the edge to **lose** and treat that
+as a measurement.
 
-Two small, self-contained pieces of doc 07 and doc 08. `eff.melee.beam_edge.t4`
-authors sustained contact, `MeleeSolver.sustained_channel_damage` is written and
-unit-tested, and nothing calls it — one line clears the target set per swing
-instead of per tick. `DotScheduler` (doc 08 §7.3) is about sixty lines and is the
-difference between thermal damage that resolves correctly when submitted and
-thermal damage that actually burns.
+Two things that fixture would settle that nothing else can. Whether a driver can
+**hold** contact at all — §15.5 pays per tick of contact and an AI that arrives,
+strikes and drifts off collects one strike — and whether §15.4's per-swing impulse
+is enough to knock a target out of its own reach, which is the mechanism that made
+this session's fixture read as a defect (fact 100).
 
-### 3.10 The rest of document 10
+### 3.9 The rest of document 10
 
 Comparable in size to what document 09 cost, in dependency order: the CSG bake
 (§3.1–§3.2), fragment decomposition (§3.3), support graph and collapse (§3.5, §5),
@@ -509,7 +476,7 @@ built and tested. Worth knowing first: a Voronoi cell is an intersection of
 half-spaces, so for a *convex* Section this is repeated plane slicing and needs no
 CSG at all.
 
-### 3.11 Design note — an ambulatory faction that eats wreckage
+### 3.10 Design note — an ambulatory faction that eats wreckage
 
 Recorded rather than queued, because it is a direction and not a task.
 
@@ -532,11 +499,14 @@ Before it is a task it needs: a decision in doc 06 about whether an archetype ca
 be faction-locked, a rule in doc 02 for where an absorbed part may land (the
 lattice is integer and a wreck is not aligned to it), and a cap under I-12.
 
-### 3.12 Smaller, and worth doing when passing
+### 3.11 Smaller, and worth doing when passing
 
 - **A destroyed part leaves no visible trace.** `release_part` takes its collider
   and mesh out the moment it dies, which is half of doc 08 §9.
-  `VisualDamageController` is the other half and is unwritten.
+  `VisualDamageController` is the other half and is unwritten — and it now has a
+  second thing worth drawing: §9's table gives `FLAG_OVERHEATED` a heat shimmer,
+  and as of this session that flag means a part is on fire for about ten seconds
+  rather than meaning nothing at all.
 - **Steering could be speed-sensitive.** Full lock at 9 m/s asks for a 4.8 m
   radius, which needs 1.7 g; the contacts make 0.78, so the corner washes out to
   2.5× the geometric radius. That is correct physics and it is also why fast
@@ -622,9 +592,25 @@ is enough to recognise one and not be surprised.
   ordnance, §10's AI target acquisition and §11's prediction are not written. A
   module of a kind that needs one aims correctly and declines to fire, which is
   the failure mode to prefer.
-- **No engagement has been fought at contact range.** §3.8.
-- **§15.5's sustained contact is not implemented** and **`DotScheduler` is not
-  written**. §3.9.
+- **No engagement has been fought at contact range**, and §15.5's sustained
+  contact and doc 08 §7.3's fire are now two more things that ride on that.
+  §3.8.
+- **A held edge's `energised_draw_pu` reaches nothing.** §15.5 routes its
+  consequence through `FLAG_POWER_STARVED`, which nothing in `src/` sets, so
+  wiring the draw today would move a HUD number and change no behaviour. It goes
+  in with doc 08's brownout handling.
+- **§15.5's "no impulse on an instalment" is unasserted**, and is a planted
+  fault that survives: `test_held_weapon` freezes its target for the contact
+  phase, so an impulse applied per tick moves nothing it can see. The fixture
+  that closes it is §3.8's duel.
+- **Only five shipped parts can catch fire.** Damage and heat come off the same
+  raw amount, so ignition needs ~540 points of thermal damage survived first
+  (fact 99). Arithmetic rather than a defect, and a part table that wanted a
+  burning wheel would raise that part's thermal resistance.
+- **A part below the ignition point never cools**, because doc 08 §7.1's cooling
+  rides on the fire. A part that has been warmed and left alone is closer to
+  catching next time, which is the more interesting reading and is recorded as
+  the chosen one.
 - **`VisualDamageController` is not written** and neither is doc 08 §10's repair
   path. Repair is the more interesting of the two: it must route through
   `DamageResolver` so a band transition upward fires the same signal as one

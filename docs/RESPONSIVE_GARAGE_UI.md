@@ -300,7 +300,7 @@ lines in the same order. Then come the figures the class is *for*:
 
 | Class | Rows |
 |---|---|
-| `CORE_MODULE` | speed cap, mount budget, power capacity, mass tolerance |
+| `CORE_MODULE` | **carries**, speed cap, mount budget, power capacity, mass tolerance |
 | `MOTIVE_ASSEMBLY` | locomotion family, steering lock (or "fixed"), driven, rated load, grip |
 | `PRIME_MOVER` | shaft torque |
 | `ENERGY_CELL` | discharge limit |
@@ -323,6 +323,14 @@ Four rules about the table, and each of them is a decision:
 - **The steering row reads the lock, not the family.** Two shipped wheeled rows
   differ in nothing a player can see except this, and an Assembly on which
   everything steers crabs instead of turning.
+- **A Core Module's first row is what it carries**, and it is first because it is
+  the only figure on that card which decides what the player may bolt on. Doc 01
+  §7.1's chassis mask shipped with three family chassis and no way for anybody to
+  meet them: the catalogue listed them, the validator enforced them, and a player
+  whose limb was refused could read the speed cap, the mount budget and the mass
+  tolerance without finding the reason. The row lists the localised families the
+  mask admits, joined — "Wheeled · Tracked" on `core.command.compact.t2`, and one
+  word on each of the other three, which is the point of them.
 
 **It fills on hover, not on `build_pick`.** §7.1 binds `build_pick` and
 `cam_orbit` to the same mouse button, and the garage is the one screen that
@@ -1330,12 +1338,18 @@ zoom, and mouse release are the rows a player is *least* likely to find alone, s
 pressing one is not evidence of having read the rest — the card being up is how
 they find the next one.
 
-It is still raised unconditionally rather than on a first-run flag, because there
-is nowhere yet to store "they have seen it". That half is `SyndicateSettings`
-work and is waiting on there being more than one match. With the placement and
-the stand-down above, what it costs a returning player is a corner panel that
-leaves on their first input, which is a price worth paying to never lose a new
-one.
+**First run, and once.** `SyndicateSettings.control_card_seen` is written the
+moment the card goes up — not when it comes down, because a player who quits
+during their first match has still met the controls and the alternative is a card
+that returns for anybody who closed the window early. It lives in a `seen`
+section rather than beside the display preferences: nothing in there is a
+preference, a player never sets it, and a settings screen offering it would be
+offering to un-see something.
+
+The card never becomes unreachable. `hud_toggle_stats` raises it at any time and
+its own last row says so, which is what makes "once" defensible: the cost of
+being wrong about a returning player is one keypress, and the cost of being wrong
+about a new one was the whole game.
 
 ---
 

@@ -18,6 +18,11 @@ const SECTION_DISPLAY: String = "display"
 const SECTION_QUALITY: String = "quality"
 const SECTION_INPUT: String = "input"
 const SECTION_NET: String = "net"
+## What the player has already been shown. Separate from [constant
+## SECTION_DISPLAY] because nothing in here is a preference: a player never sets
+## these, and a settings screen that offered them would be offering to un-see
+## something.
+const SECTION_SEEN: String = "seen"
 
 enum QualityTier { LOW = 0, MEDIUM = 1, HIGH = 2, ULTRA = 3 }
 
@@ -36,6 +41,13 @@ var debris_enabled: bool = true
 
 ## ===== NET =============================================================
 var show_net_diagnostics: bool = false
+
+## ===== SEEN ============================================================
+## Doc 11 §14.6. False until the player has been shown the control card once,
+## which is what makes it a first-run card rather than a card every match opens
+## with. It is deliberately a stored fact rather than a per-session one: a player
+## who has met the controls has met them, and the card is still one key away.
+var control_card_seen: bool = false
 
 ## action name -> array of serialised InputEvent
 var _rebinds: Dictionary = {}
@@ -60,6 +72,9 @@ func load_settings() -> void:
 	show_net_diagnostics = bool(
 		_config.get_value(SECTION_NET, "diagnostics", show_net_diagnostics)
 	)
+	control_card_seen = bool(
+		_config.get_value(SECTION_SEEN, "control_card", control_card_seen)
+	)
 	_rebinds = _config.get_value(SECTION_INPUT, "rebinds", {}) as Dictionary
 	apply_rebinds()
 
@@ -71,11 +86,26 @@ func save_settings() -> Error:
 	_config.set_value(SECTION_QUALITY, "fusion", int(fusion_quality))
 	_config.set_value(SECTION_QUALITY, "debris", debris_enabled)
 	_config.set_value(SECTION_NET, "diagnostics", show_net_diagnostics)
+	_config.set_value(SECTION_SEEN, "control_card", control_card_seen)
 	_config.set_value(SECTION_INPUT, "rebinds", _rebinds)
 	var err := _config.save(SETTINGS_PATH)
 	if err != OK:
 		push_error("SettingsService: could not write %s (error %d)" % [SETTINGS_PATH, err])
 	return err
+
+
+## Records that doc 11 §14.6's control card has been shown, and writes it out.
+##
+## Saved immediately rather than at some later checkpoint, because the thing
+## being recorded is "the player has seen this" and the session it was seen in is
+## exactly the one likely to end by the window being closed. Idempotent: the
+## second match of a session neither writes nor emits.
+func mark_control_card_seen() -> void:
+	if control_card_seen:
+		return
+	control_card_seen = true
+	save_settings()
+	settings_changed.emit(SECTION_SEEN, "control_card")
 
 
 ## Replaces every event bound to [param action]. Passing an empty array unbinds

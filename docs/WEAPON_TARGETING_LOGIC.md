@@ -1185,6 +1185,49 @@ cleared each tick in the sustained case rather than each swing, so the same
 target keeps taking damage. That is the one place the two paths differ and it is
 one line.
 
+`MeleeSolver.advance` takes the trigger as `hold`. At the end of the arc a
+sustained module with the trigger down pins its stage timer at the swing
+duration, sets `MeleeStrikeState.energised`, and stays in `SWINGING`; releasing
+the trigger drops it into `RECOVERING` on the next tick, so an edge is never
+stuck alight by a stage machine with nothing left to advance into. A module that
+does not author `sustained` recovers with the trigger held, which is what keeps
+the flag on the profile from being decorative.
+
+**An instalment carries no impulse and says what it covers.** §15.4's impulse is
+the momentum of a blade swung through a hull and there is one of those per swing;
+applying it on every tick of a held edge is sixty a second and throws the target
+across the arena. And the packet sets `interval_s` to the tick, because doc 08
+§7.1's heat is a rate and an instalment that did not say what it covered would
+deposit a full second of it sixty times a second.
+
+**What a held edge is actually for is the fire.** 340 damage/s at a 0.75 thermal
+share deposits 140 HU/s through doc 08 §7.1's ratio, so three and a half seconds
+on one part takes it past `THERMAL_IGNITION_HU` and doc 08 §7.3's list burns it
+afterwards with nothing touching it. That is the whole argument for an energy
+edge over the autocannon, and until §15.5 and doc 08 §7.3 landed together neither
+half of it existed.
+
+A **discrete strike** deposits heat too, and a lot of it: doc 08 §7.1 deposits
+`raw · 0.55` per packet, so one 480-raw thermal strike is worth 264 HU and **two
+swings light a Core Module** with no contact at all. That is the shipped edge
+behaving as an incendiary weapon and is not a defect; it is recorded here because
+a fixture measuring §15.5's contact has to discount it, and because it is why the
+edge sets things on fire faster than a reading of §15.5 alone would predict.
+
+`interval_s` on an instalment therefore reaches **§7.2's corrosive decay and
+nothing else**: §7.1's `maxf(interval_s, 1.0)` is 1.0 for every interval this
+game produces, and a sustained instalment's `raw_amount` already carries the
+tick. It is set anyway, because a melee mix with a `CORROSIVE` share is
+authorable and would otherwise decay a target's resistance sixty times too fast —
+and it is a planted fault that survives, for exactly the reason the ammunition
+sentinel does: no shipped part takes that branch.
+
+One thing here is **not** built: `energised_draw_pu` is authored, `MeleeSolver.draw_pu`
+computes it, and nothing adds it to the Assembly's draw. The paragraph below
+routes the consequence through `FLAG_POWER_STARVED`, which nothing in `src/` sets
+— doc 08's brownout handling is unwritten — so wiring the draw today would move a
+number on the HUD and change no behaviour. It goes in with the brownout.
+
 `energised_draw_pu` is added to the Assembly's draw while `energised`, on top of
 `power_draw_pu`. A powered edge on an Assembly that cannot afford it is not
 refused; `FLAG_POWER_STARVED` is set and §7's emission loop already skips a

@@ -96,6 +96,14 @@ const THERMAL_IGNITION_HU: float = 480.0
 ## not flicker between burning and not.
 const THERMAL_EXTINCTION_HU: float = 320.0
 const THERMAL_SELF_DAMAGE_PER_S: float = 4.0
+## Heat a burning part sheds per second, which is what makes the hysteresis band
+## above reachable rather than decorative. §7.1's amendment records why it is
+## charged to the fire rather than to every part in the match: cooling everything
+## per tick is the poll Invariant I-4 exists to forbid, and only a part that is
+## alight has anywhere for the threshold to matter. Net of the 2.2 HU/s the
+## fire's own packets deposit, an ignited part falls from 480 to 320 in about ten
+## seconds and takes forty points of integrity on the way.
+const THERMAL_COOLING_HU_S: float = 18.0
 const CORROSIVE_ARMOUR_BYPASS: float = 0.40
 const CORROSIVE_RESIST_DECAY: float = 0.035
 
@@ -110,6 +118,11 @@ var space: PhysicsDirectSpaceState3D = null
 ## Where a blast's crater goes, per doc 09 §4.1. Null on a resolver with no
 ## terrain: a blast still damages everything it reaches, it just leaves no hole.
 var ground_deform: GroundDeformSystem = null
+## Where §7.1's fires are kept. Null on a resolver with no scheduler: a part
+## still ignites and still carries [constant PartFlags.FLAG_OVERHEATED], it just
+## does not burn — which is what the resolver did before §7.3 was written and is
+## what a unit test over a single packet wants.
+var dot: DotScheduler = null
 ## Sink for a destroyed part's island work. The scheduler already listens to
 ## [signal EventBusService.part_destroyed]; this is here so a test can observe
 ## the resolver without one.
@@ -395,6 +408,17 @@ func _accumulate_heat(st: PartInstanceState, def: PartDefinition, packet: Damage
 	if def.part_class == PartEnums.PartClass.PRIME_MOVER and def.prime_mover_profile != null:
 		if st.accumulated_heat_hu >= def.prime_mover_profile.thermal_shutdown_hu:
 			st.flags |= PartFlags.FLAG_OVERHEATED
+	# §7.3's list is what turns the flag into a fire. Every packet that leaves the
+	# part alight is offered, including an instalment of the part's own fire, and
+	# [method DotScheduler.ignite] is where "one entry per burning part" lives.
+	#
+	# The transition test that used to be on this line was the same rule stated a
+	# second time, and a planted fault said so: with it here the scheduler's own
+	# de-duplication was unreachable, so the fault that removed *that* was caught
+	# by nothing. One owner, and the offer is a linear scan of a list that is
+	# empty in a match where nothing is burning.
+	if dot != null and st.has_flag(PartFlags.FLAG_OVERHEATED):
+		dot.ignite(packet.target_assembly_id, st.slot, packet.source_assembly_id)
 
 
 ## §8.4. Returns true when the transition destroyed the part.

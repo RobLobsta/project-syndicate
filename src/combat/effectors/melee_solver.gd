@@ -24,8 +24,20 @@ extends RefCounted
 ## the whole guard: an early return for it was removable without a test noticing
 ## and has been deleted rather than kept as an untested line. The timer that goes
 ## on accumulating while READY is cleared by [method MeleeStrikeState.begin].
+##
+## [param hold] is §15.5's sustained contact: true when the module authors
+## [member MeleeProfile.sustained] and the trigger is still held. The arc runs
+## exactly as it does for a discrete strike and then [b]stays where it ended[/b]
+## rather than recovering, which is what "a SWINGING stage that does not advance"
+## means and is the whole of the sustained path in this function. Releasing the
+## trigger drops the edge into recovery on the next tick, so an edge is never
+## stuck alight by a stage machine that has nothing left to advance into.
 static func advance(
-	state: MeleeStrikeState, profile: MeleeProfile, cycle_multiplier: float, dt: float
+	state: MeleeStrikeState,
+	profile: MeleeProfile,
+	cycle_multiplier: float,
+	dt: float,
+	hold: bool
 ) -> int:
 	state.stage_timer_s += dt
 	var scale := maxf(cycle_multiplier, SyndicateConstants.EPSILON_LINEAR)
@@ -46,9 +58,17 @@ static func advance(
 			# on this line was removable without a test noticing.
 			state.swing_t = state.stage_timer_s / duration
 			if state.stage_timer_s >= duration:
-				state.stage = MeleeStrikeState.Stage.RECOVERING
-				state.stage_timer_s = 0.0
 				state.swing_t = 1.0
+				if hold and profile.sustained:
+					# §15.5. The timer is pinned rather than left to accumulate,
+					# so the tick the trigger is released is a tick that leaves
+					# the swing at once whatever it had run up to.
+					state.stage_timer_s = duration
+					state.energised = true
+				else:
+					state.stage = MeleeStrikeState.Stage.RECOVERING
+					state.stage_timer_s = 0.0
+					state.energised = false
 		MeleeStrikeState.Stage.RECOVERING:
 			if state.stage_timer_s >= profile.recovery_s * scale:
 				state.stage = MeleeStrikeState.Stage.READY

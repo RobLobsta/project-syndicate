@@ -70,8 +70,7 @@ STATUS = {
     ),
     "COMPONENT_HEALTH_DAMAGE.md": (
         PARTIAL, "src/combat/damage/damage_resolver.gd",
-        "§7.3's `DotScheduler`, §9's `VisualDamageController` and §10's repair "
-        "path are unwritten",
+        "§9's `VisualDamageController` and §10's repair path are unwritten",
     ),
     "TERRAIN_CRATER_DEFORMER.md": (BUILT, "src/world/ground/ground_deform_system.gd", ""),
     "PROCEDURAL_STRUCTURE_SLICING.md": (
