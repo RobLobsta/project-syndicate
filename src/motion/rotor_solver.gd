@@ -22,6 +22,12 @@ const ROTOR_W_PER_PU: float = 4500.0
 ## settle onto a landing site is never punished.
 const VORTEX_RING_ONSET_MPS: float = 1.0
 
+## Horizontal speed, in m/s, at which §12.8's arrest demand saturates. Above it
+## a full brake demand is the whole swashplate cone; below it the demand tapers
+## with the speed, so the disc stops tilting as the hull stops moving rather than
+## standing the Assembly on its nose over the last metre a second.
+const ARREST_REFERENCE_MPS: float = 6.0
+
 
 ## Angular rate after one tick of spooling toward [param command_rad_s].
 ##
@@ -199,6 +205,36 @@ static func step_collective(
 		command_deg, profile.collective_limit_deg.x, profile.collective_limit_deg.y
 	)
 	return move_toward(current_deg, target, profile.collective_rate_deg_s * dt)
+
+
+## Cyclic demand, in the §15.4 convention, that arrests [param velocity_local] —
+## the hull's horizontal velocity in its own frame — at [param demand] strength.
+##
+## §12.8, and the [b]whole[/b] of what a brake means to a family that touches
+## nothing. `input.brake` reaches doc 05 §7's contact solve and no further, so a
+## rotary Assembly had no deceleration control of any kind: the only way to stop
+## one was to guess the opposite cyclic by hand and take it off again at the right
+## moment.
+##
+## The two inversions are §15.4's and they are the reason this lives here rather
+## than being written out at the call site. §12.3 rotates the disc axis about `+X`
+## by `cyclic.x` and about `+Z` by `cyclic.y`, so a positive `cyclic.x` carries
+## the thrust vector toward `+Z` — backwards — and a positive `cyclic.y` carries
+## it toward `-X`, which is left. So arresting forward flight, which runs toward
+## `-Z`, is a [b]positive[/b] x demand, and arresting rightward drift, which runs
+## toward `+X`, is a positive y demand: `(-v.z, +v.x)`, normalised.
+##
+## [b]It is a brake and deliberately not an autopilot.[/b] It answers a demand
+## the driver made, it stops the moment the demand does, and it is bounded to the
+## same swashplate cone [method step_cyclic] bounds every other demand to. Holding
+## a hover is three closed loops nobody asked for and is `HANDOFF.md` §3.7's.
+static func arrest_cyclic(
+	velocity_local: Vector3, demand: float, reference_mps: float
+) -> Vector2:
+	if reference_mps <= 0.0:
+		return Vector2.ZERO
+	var flat := Vector2(velocity_local.x, velocity_local.z) / reference_mps
+	return Vector2(-flat.y, flat.x).limit_length(1.0) * clampf(demand, 0.0, 1.0)
 
 
 ## Cyclic deflection after one tick of rate-limited travel toward

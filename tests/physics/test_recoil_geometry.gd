@@ -72,10 +72,24 @@ const LIVE_BORE_TOLERANCE_M: float = 0.06
 ## bound nothing can reach.
 const NOSE_YAW_CEILING_RAD_S: float = 0.06
 
-## And the floor the traversed shot must exceed. Measured at 0.124 rad/s — 7°/s
-## from a single round. The assertion is that traversing makes it [b]worse by a
-## multiple[/b], not that it is any particular number.
-const TRAVERSED_YAW_FLOOR_RAD_S: float = 0.08
+## And the ceiling on what the traversed shot may now do to a [b]parked[/b] hull.
+##
+## [b]This was a floor of 0.08 and it has inverted.[/b] The traversed shot used to
+## yaw the reference build at 0.124 rad/s — 7°/s from a single round — and this
+## file recorded that as a defect rule 27 could not reach, because the lever is
+## the mount's position rather than the bore's offset within it. The lever is
+## still there and is still asserted, two checks up. What changed is the hull
+## underneath it: doc 05 §7.4's contact integration was 142 times outside its own
+## stability limit, which cost a contact most of its lateral grip, and §7.7's
+## holding brake did not exist. With both closed, a stationary Assembly stands on
+## real friction with its brakes on and a single round moves it 0.0035 rad/s.
+##
+## [b]It has not stopped mattering; it has moved to the case that matters.[/b] The
+## hull absorbs recoil when it is [i]stopped[/i], which is exactly when doc 05
+## §15.7.4 now lets an [AiDriver] fire. A hull that is driving is spending its
+## friction budget longitudinally and has far less to spare, which is
+## `tests/physics/test_drive_and_shoot.gd`'s measurement and not this file's.
+const TRAVERSED_YAW_CEILING_RAD_S: float = 0.02
 
 ## Traverse the second measurement is taken at, in degrees. Square across the
 ## hull, which is the worst case and is also roughly where a driver's mount sits
@@ -200,19 +214,11 @@ func test_a_traversed_round_yaws_the_hull_by_a_multiple() -> void:
 		)
 	)
 	check_true(
-		absf(_traversed.yaw_rate_rad_s) > TRAVERSED_YAW_FLOOR_RAD_S,
+		absf(_traversed.yaw_rate_rad_s) < TRAVERSED_YAW_CEILING_RAD_S,
 		(
-			"the traversed round yawed the hull hard: %.4f rad/s"
-			% _traversed.yaw_rate_rad_s
-		)
-	)
-	check_true(
-		absf(_traversed.yaw_rate_rad_s) > absf(_nose.yaw_rate_rad_s) * 3.0,
-		(
-			"which is %.1f times the same round fired dead ahead — the lever is the "
-			% (absf(_traversed.yaw_rate_rad_s) / maxf(absf(_nose.yaw_rate_rad_s), 0.0001))
-			+ "mount's position, not the bore's offset within it"
-		)
+			"and the parked hull absorbed it: %.4f rad/s, against 0.124 before doc 05 "
+			+ "§7.4's contact integration was repaired and §7.7's holding brake existed"
+		) % _traversed.yaw_rate_rad_s
 	)
 
 

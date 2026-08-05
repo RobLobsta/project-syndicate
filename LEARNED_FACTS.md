@@ -648,6 +648,8 @@ different fact. Read a citation with its subject, which is always named.
     readers a handful of sample lookups per contact per tick — serialising two
     readers costs less than a GDScript-level reader-writer lock would.
 
+
+
 ---
 
 62. **The suite's file order is an input to every measurement in
@@ -1025,6 +1027,104 @@ different fact. Read a citation with its subject, which is always named.
     path at all. A session that goes looking for a handling defect in the *aid*
     is looking one layer too high — the aid rides on top of §7.4's integrator and
     inherits everything it does.
+
+    **Closed in session 38, and the last paragraph turned out to be the important
+    one.** With the integrator repaired the lateral grip came back in full, and
+    the aid it "cannot be involved" with immediately became a *net negative*: the
+    contacts alone now trim three quarters of an imposed spin, and §7.6's yaw loop
+    leaves more than no aid at all. Fact 86 has it. The arithmetic above is kept
+    because it is the derivation of why a friction circle behaves this way, and
+    because the same crowding is what makes a *driving* contact corner worse than
+    a coasting one — which is correct behaviour and is now reachable.
+
+83. **Three ways an explicit contact solve injects energy, all found in one
+    session, all with the same signature.** Fact 72 named the first and facts 73
+    and 74 recorded the repair; landing it turned up two more of the same shape,
+    and the shape is worth more than any of the three.
+
+    **The signature is a per-tick sign alternation.** Not a divergence — a
+    saturating model bounds it — so it presents as noise, as a hull that shivers,
+    as a build that never quite stops. Anywhere a quantity flips sign on every
+    single tick, something is being stepped explicitly past its stability limit.
+
+    - **Fact 72's:** the contact's rate against §7.2's friction. Closed by
+      stepping the slip velocity implicitly with a chord factor.
+    - **A deadbeat stick cap, one axis out and one layer up.** "The force that
+      lands the slip exactly on zero" is exact only if the mass resisting that
+      slip is exact, and for a contact a metre below the centre of mass it is
+      not: part of what the force moves is the hull's **rotation**, and a share
+      mass taken from the normal load accounts only for its translation.
+      Measured on the reference build standing still, the roll rate alternated
+      between −0.22 and +0.21 rad/s on every tick and the hull crept at
+      0.05 m/s. **Under-relax any deadbeat correction whose effective mass you
+      cannot compute exactly** — half tolerates a 2× overestimate and converges
+      geometrically instead of ringing.
+    - **A feed-forward that is wrong.** Reconstructing `ω` against the hull's
+      *predicted* end-of-tick speed makes the held case exact and makes the free
+      case a positive feedback loop: each tick credits the hull with an
+      acceleration it did not have, the slip is over-read, the force grows. A
+      parked build wound its contacts to 13 rad/s and drove itself backwards at
+      4 m/s with the throttle at zero. **A prediction inside a force loop is an
+      energy source unless it is exact.** The case it was written for — a contact
+      the brake is holding — has an exact answer that needs no prediction at all:
+      it does not rotate.
+
+84. **A contact frame borrowed from the chassis basis is indistinguishable from a
+    correct one until the hull is not level, and then it is a positive feedback
+    loop.** Doc 05 §7.1 specifies an orthonormal frame *in the contact plane*;
+    the implementation took `-basis.z` and `basis.x` unprojected for the life of
+    the project. A hull pitched nose-down has a `-Z` that points into the ground,
+    so the "longitudinal" friction retarding it acquires a large downward
+    component, which pitches it further, which tilts the frame further.
+
+    It survived every measurement in the suite because fact 72's unstable step
+    never produced enough force for the loop to close. The tick the brake started
+    working, a tracked build braking from 4.8 m/s pitched past ninety degrees and
+    finished balanced on its nose.
+
+    The general shape: **a repair that makes a force real will find every place
+    that force was being applied in the wrong direction.** Three of this session's
+    four regressions were pre-existing defects that had been invisible for want of
+    a force large enough to expose them.
+
+85. **A part with several contacts must divide its rotating inertia among them,
+    and getting that wrong is invisible until the figure is used for something
+    else.** A tracked bogie has four road stations and one run of track;
+    `MotiveSystem` credited each station with the whole part's `mass_kg`, counting
+    it four times. That was harmless while the figure only scaled `ω̇` — every
+    station was equally wrong and the flanks still balanced — and stopped being
+    harmless the moment the same figure sized a mobility term. Over-stated inertia
+    is under-stated mobility is a stick cap that throttles a tracked patch to a
+    few hundred newtons: measured, the shipped bogie could not reach 2 m/s under
+    full throttle, and 2.5× the drive torque hid it.
+
+86. **An electronic aid tuned against a broken physics becomes a defect when the
+    physics is fixed, and it will not announce itself.** Doc 05 §7.6's yaw loop
+    modulates one flank's brakes. `MAX_BRAKE_FRACTION = 0.55` of the shipped
+    Motive Assembly's authored brake is 4565 N·m against the 4672 N·m that locks
+    its patch — so the aid was locking the flank it was biasing, which was
+    survivable while a locked patch had no lateral grip to lose and is not now
+    that it has. With §7.4 closed the **contacts alone** take three quarters of an
+    imposed 1 rad/s off in six ticks, and the aid leaves more spin than no aid at
+    all.
+
+    Two things to carry. **A brake bias that locks the patch has stopped being a
+    bias**, which is a rule and not a number. And when a foundational solver is
+    repaired, **every gain tuned above it is now untuned** — the aids, the AI's
+    stand-offs, the authored torques — and the ones that read as "still fine" are
+    the ones nobody measured.
+
+87. **The cap on drive torque is the hull's own stability, not the integrator.**
+    `HANDOFF.md` carried "`drive_torque_nm` is a third of what the contacts could
+    hold, and the cap is §7.4's instability" for two sessions. §7.4 is closed and
+    the figure still cannot move far: at 16000 N·m the reference build takes off
+    under sustained full throttle, and at 9600 it progressively unloads two
+    contacts over five hundred ticks in a sustained turn and finishes on its back.
+    Its static stability factor is 0.97 g and its contacts can make 1.05, so it
+    can trip itself over — which also means retuning the contacts *down* is a real
+    lever and was measured to work (0.78 stops it tipping and costs nothing else).
+    Neither change is landed; both are recorded with their numbers in
+    `CHANGE_LOG.md` §1.
 
 ---
 

@@ -413,7 +413,7 @@ suspension_damping_ns_m = 11200.0
 max_steer_angle_deg = 0.0
 steer_rate_deg_s = 0.0
 rated_load_kg = 1200.0
-traction_coefficient = 1.09
+traction_coefficient = 0.8
 brake_torque_nm = 8300.0
 
 [resource]

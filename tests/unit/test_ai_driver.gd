@@ -17,7 +17,7 @@ const STEER_SATURATION_RAD: float = 0.35
 const AMBULATORY_TURN_SATURATION_RAD: float = 0.60
 const AMBULATORY_YAW_DAMPING: float = 0.55
 const AMBULATORY_STEER_AUTHORITY: float = 0.5
-const GROUND_STAND_OFF_M: float = 14.0
+const GROUND_STAND_OFF_M: float = 20.0
 const AMBULATORY_STAND_OFF_M: float = 20.0
 const ROTARY_STAND_OFF_M: float = 22.0
 const ARRIVAL_DECEL_MPS2: float = 6.0
@@ -205,7 +205,7 @@ func test_each_family_fights_at_its_documented_stand_off() -> void:
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.GROUND),
 		GROUND_STAND_OFF_M,
-		"wheeled closes to fourteen metres"
+		"wheeled closes to twenty metres"
 	)
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.TRACKED),

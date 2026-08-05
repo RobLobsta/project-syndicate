@@ -1375,7 +1375,13 @@ Three things the garage consumes that nothing did before: `cam_orbit` and `cam_z
 
 It is the only class permitted to hold both an `AssemblyRuntime` and a HUD, and that is precisely why §14.1's rule can be enforced everywhere else: there is one place where the two worlds meet, and it is a class whose entire job is to be that place.
 
-The opponent is spawned from the shipped starter rather than from the player's build. A test run against a copy of whatever the player just made is a different game every time and is not a measurement of anything; doc 06's generator is what eventually varies it.
+**The opponent is built from the player's own blueprint.** It was the shipped starter whatever the player brought, and this section used to defend that: a test run against a copy of whatever the player just made is "a different game every time and is not a measurement of anything".
+
+That was an argument about a **fixture**, and this is not one — it is the thing a person plays. A player who builds a walking Assembly and is handed a wheeled opponent learns nothing about the build they made, and a player who builds something terrible and beats the shipped starter learns something false. Tank against tank, car against car: the only asymmetry left is who is driving. `tests/physics/` keeps the fixed recipes, which is where a measurement belongs, and doc 06's generator is still what eventually gives a match something other than a mirror.
+
+**The opponent spawns at forty-two metres, and it was thirty-four.** At thirty-four a driver planning doc 05 §15.7.1's stand-off had twenty metres of run-in and arrived still carrying most of its approach speed, so a duel opened at contact range and the first thing a player saw was a hull filling the screen.
+
+Sixty was tried first and the capture rejected it: a ground driver averages about two metres a second across the arena's fifteen metres of relief, so forty-six metres of approach is twenty-three seconds of nothing happening, and at fifteen seconds the fight had not started. Forty-two is set by what the driver can actually cross rather than by what looks right in a still. **The constraint is the driver's cross-country speed and not this constant**, and when that moves this should move with it.
 
 **There is one opponent, and it is a duel.** It was three, spread across an arc at 34 to 46 m, and that composition was never argued for — it was what the scene happened to be built with while nothing in it could kill anybody. Once `src/ai/` landed it meant three Assemblies built from the same blueprint as the player's, each firing seven rounds a second, against one hull that has to choose which of them to point at; the capture recorded 100% integrity at three seconds, 46% at seven, and the Core Module gone before ten.
 

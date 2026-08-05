@@ -95,6 +95,20 @@ var _steer_deg: PackedFloat32Array = PackedFloat32Array()
 ## Assemblies, so it is derived on registration and never per tick.
 var _wheelbase_m: float = 0.0
 
+## This tick's service brake demand after §15.5's release, in [code][0, 1][/code],
+## and whether §7.7's holding brake is engaged. Both are properties of the
+## Assembly rather than of a contact — the release is taken against the hull's own
+## forward speed and the holding decision against the record as a whole — so they
+## are resolved once in [method step] and read by every family.
+var _brake_demand: float = 0.0
+var _holding_brake: bool = false
+## §7.7's proportioning ceiling on one contact's brake torque this tick, in N·m,
+## or [code]INF[/code] when there is no contact base to derive one from.
+var _brake_ceiling_nm: float = INF
+## True when this Assembly carries a family that turns on the spot from a steer
+## demand alone. Rebuilt on registration, never per tick; §7.7 reads it.
+var _steer_moves_hull: bool = false
+
 var _kappa_accum: float = 0.0
 var _prev_velocity: Vector3 = Vector3.ZERO
 
@@ -290,6 +304,7 @@ func step(dt: float) -> void:
 	_gather_contacts()
 
 	var speed := runtime.body.linear_velocity.length()
+	_resolve_brake_state(speed)
 	_gait_clock = GaitSolver.advance_clock(_gait_clock, _assembly_cadence_hz(), dt)
 
 	for slot: int in _motive_slots:
@@ -494,8 +509,27 @@ func _solve_rotary(slot: int, dt: float) -> void:
 	disc.collective_deg = RotorSolver.step_collective(
 		rotor, disc.collective_deg, _collective_command_deg(rotor), dt
 	)
+	# §12.8. The driver's own cyclic plus the arrest demand a brake asks for, both
+	# in the same normalised convention, and the sum bounded to the cone by
+	# [method RotorSolver.step_cyclic] exactly as a bare demand is. A driver
+	# holding both is asking for a braking turn and gets one.
+	#
+	# The raw demand rather than §15.5's released one, and no holding brake at all.
+	# Both of those are rules about a contact — the release exists so that one key
+	# can be a brake and a reverse gear, and §7.7 holds an Assembly that has come to
+	# rest on the ground. A disc touches nothing and has neither problem: it stops
+	# when it is asked to and drifts when it is not, which is what flying is.
+	var cyclic_demand := input.cyclic
+	var brake := clampf(input.brake, 0.0, 1.0)
+	if brake > 0.0:
+		var basis := runtime.body.global_transform.basis
+		cyclic_demand += RotorSolver.arrest_cyclic(
+			basis.inverse() * runtime.body.linear_velocity,
+			brake,
+			RotorSolver.ARREST_REFERENCE_MPS
+		)
 	disc.cyclic_deg = RotorSolver.step_cyclic(
-		rotor, disc.cyclic_deg, input.cyclic * rotor.cyclic_limit_deg, dt
+		rotor, disc.cyclic_deg, cyclic_demand.limit_length(1.0) * rotor.cyclic_limit_deg, dt
 	)
 
 	var st: PartInstanceState = runtime.states[slot]
@@ -542,7 +576,19 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	var basis := runtime.body.global_transform.basis
 	# The gait's own ceiling, not the chassis's. See [method GaitSolver.top_speed_mps].
 	var gait_cap := _ambulatory_speed_cap_mps(limb_profile)
-	var cadence := GaitSolver.cadence_hz(limb_profile, absf(input.throttle) * gait_cap)
+	# §13.9. A brake demand overrides the travel demand and puts the gait into
+	# §13.4's standing state, which is how a walking Assembly stops.
+	#
+	# It is a real deceleration and not a gesture. A planted foot is a fixed world
+	# anchor, so as the hull carries on past it the hip-to-foot line tilts and
+	# §13.6's axial spring acquires a horizontal component opposing the travel —
+	# through the same friction cone every other stance force goes through, so it
+	# fades on a slick surface exactly as it should. Standing is therefore the
+	# strongest retarding state the family has, and until now nothing could ask for
+	# it: `input.brake` reached `_apply_traction` and nothing else, so the two
+	# families that do not have contacts to brake had no deceleration control of
+	# any kind.
+	var cadence := GaitSolver.cadence_hz(limb_profile, _gait_travel_demand(limb_profile))
 	var was_planted := limb.planted
 	limb.phase = GaitSolver.phase_of(_gait_clock, limb.phase_offset)
 
@@ -745,6 +791,133 @@ func _mean_droop_m(slot: int, profile: MotiveAssemblyProfile) -> float:
 ## ===== SHARED ==========================================================
 
 
+## Resolves this tick's brake state from the record and the hull's own motion.
+##
+## Two decisions, both of which need a speed and neither of which a contact can
+## make for itself.
+##
+## [b]§15.5's release.[/b] `veh_brake` is one key meaning "slow down" and "back
+## out", and while §7.4's step was unstable that arrangement worked by accident:
+## the brake torque's sign reversed on most ticks so it never really held
+## anything. A brake that does hold also holds against the reverse drive torque
+## coming off the same key, so the demand is released as the hull comes to a stop
+## going forwards. Signed rather than absolute, so a hull already rolling
+## backwards is never braked by the key that is reversing it.
+##
+## [b]§7.7's holding brake.[/b] A driver who is demanding neither drive nor brake
+## and is already at a crawl has parked, and an Assembly that answers that by
+## rolling away is the oldest complaint in the review. It engages on the record
+## rather than on a key, so it covers a player who has let go, an [AiDriver]
+## holding station at its stand-off, and a network record that arrived empty —
+## and `veh_handbrake` forces it at any speed, which is the consumer that action
+## has been waiting for since it was bound.
+func _resolve_brake_state(chassis_speed: float) -> void:
+	var forward_speed := runtime.body.linear_velocity.dot(-runtime.body.global_transform.basis.z)
+	_brake_demand = (
+		clampf(input.brake, 0.0, 1.0) * TractionSolver.brake_release_scale(forward_speed)
+	)
+	# A steer demand is not a drive demand on a wheeled Assembly — the contacts turn
+	# and nothing moves — but it is one on a tracked build, which steers *by* making
+	# its flanks disagree (§14.2), and on a walking one, which turns by where it
+	# puts its feet (§13.5). Those two families can be asked to pivot on the spot
+	# with no throttle at all, and a holding brake that answered that demand with
+	# the brakes would have taken their steering away.
+	var coasting := input.is_coasting() and not (
+		_steer_moves_hull and not is_zero_approx(input.steer)
+	)
+	_holding_brake = (
+		input.handbrake
+		or (coasting and chassis_speed < TractionSolver.HOLDING_BRAKE_SPEED_MPS)
+	)
+	_resolve_brake_ceiling()
+
+
+## §7.7's proportioning ceiling for this tick, as a brake torque per grounded
+## contact.
+##
+## Measured in [b]world space, against the direction of travel[/b], and both of
+## those matter.
+##
+## The lever that resists pitching over is the horizontal distance from the centre
+## of mass to the leading contact — leading in the direction the Assembly is
+## actually moving, so the same expression covers braking in reverse without a
+## second case. Taking it in world space rather than in the body frame is what
+## makes it self-correcting: as a hull pitches forward its centre of mass moves
+## out over its front contacts, the lever shrinks, and the ceiling comes down with
+## it. A body-frame measurement would report the same lever at ninety degrees of
+## pitch as at zero, which is how a build ends up balanced on its nose with the
+## brakes still on.
+##
+## Measured off the contacts the Assembly is standing on rather than off the
+## build, for the same reason: a hull that has lifted its rear contacts over a
+## crest has a shorter base than its blueprint describes, and that is exactly when
+## standing on the brakes would put it over.
+##
+## Answers infinity when there is nothing to measure, so an Assembly in the air is
+## not braked by a ceiling derived from a base it does not have.
+func _resolve_brake_ceiling() -> void:
+	_brake_ceiling_nm = INF
+	var xform := runtime.body.global_transform
+	var com := xform * runtime.body.center_of_mass
+	var velocity := runtime.body.linear_velocity
+	var travel := Vector3(velocity.x, 0.0, velocity.z)
+	if travel.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+		travel = Vector3(-xform.basis.z.x, 0.0, -xform.basis.z.z)
+	if travel.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+		return
+	travel = travel.normalized()
+
+	var lever := -INF
+	var height_total := 0.0
+	var count := 0
+	for slot: int in _motive_slots:
+		for c: MotiveContact in _contacts.get(slot, []):
+			if not c.grounded:
+				continue
+			var offset := c.point_world - com
+			lever = maxf(lever, Vector3(offset.x, 0.0, offset.z).dot(travel))
+			height_total += -offset.y
+			count += 1
+	if count == 0:
+		return
+	var decel := TractionSolver.pitch_limited_decel_mps2(
+		lever, height_total / float(count)
+	)
+	_brake_ceiling_nm = (
+		runtime.body.mass * decel * _mean_contact_radius_m() / float(count)
+	)
+
+
+## Mean authored contact radius across the grounded families, in metres. The
+## proportioning ceiling is a force and a contact spends it as a torque, so the
+## conversion needs one radius and an Assembly may carry parts with two.
+func _mean_contact_radius_m() -> float:
+	var total := 0.0
+	var count := 0
+	for slot: int in _motive_slots:
+		var def := _definition(slot)
+		if def == null or def.motive_profile == null:
+			continue
+		if _family[slot] == PartEnums.LocomotionMode.ROTARY:
+			continue
+		total += def.motive_profile.contact_radius_m
+		count += 1
+	if count == 0:
+		return SyndicateConstants.EPSILON_LINEAR
+	return total / float(count)
+
+
+## True when §7.7's holding brake is engaged this tick. Diagnostics and tests.
+func holding_brake_engaged() -> bool:
+	return _holding_brake
+
+
+## The service brake demand that survived §15.5's release this tick. Diagnostics
+## and tests.
+func service_brake_demand() -> float:
+	return _brake_demand
+
+
 ## §7.1. Advances [param slot]'s steer angle toward the commanded one and turns
 ## the contact frame to match.
 ##
@@ -824,7 +997,13 @@ func _commanded_steer_deg() -> float:
 func _rebuild_wheelbase() -> void:
 	var lo := INF
 	var hi := -INF
+	_steer_moves_hull = false
 	for slot: int in _motive_slots:
+		if (
+			_family[slot] == PartEnums.LocomotionMode.TRACKED
+			or _family[slot] == PartEnums.LocomotionMode.AMBULATORY
+		):
+			_steer_moves_hull = true
 		if _family[slot] != PartEnums.LocomotionMode.GROUND:
 			continue
 		for c: MotiveContact in _contacts.get(slot, []):
@@ -845,6 +1024,13 @@ func steer_angle_deg(slot: int) -> float:
 	return _steer_deg[slot]
 
 
+## §7.2's friction solve and §7.4's slip step for one contact.
+##
+## [b]The two halves see the same force.[/b] The friction that reaches the body
+## and the friction that retards the patch are one number, computed once and
+## stick-limited once — a caller that limited one and not the other would have the
+## hull and the contact disagreeing about what passed between them, which is the
+## same class of defect as the explicit step this replaced.
 func _apply_traction(
 	slot: int,
 	profile: MotiveAssemblyProfile,
@@ -858,9 +1044,10 @@ func _apply_traction(
 		return
 	var st: PartInstanceState = runtime.states[slot]
 	var band := 0 if st == null else int(st.integrity_band)
+	var radius := profile.contact_radius_m
 	var v_long := c.velocity_world.dot(c.forward)
 	var v_lat := c.velocity_world.dot(c.lateral)
-	var kappa := TractionSolver.slip_ratio(c.contact_omega, profile.contact_radius_m, v_long)
+	var kappa := TractionSolver.slip_ratio(c.contact_omega, radius, v_long)
 	var tan_alpha := TractionSolver.slip_angle_tan(v_lat, v_long)
 	var mu := TractionSolver.effective_mu(
 		profile, c.normal_force_n, band, _surface_multiplier(c)
@@ -868,17 +1055,71 @@ func _apply_traction(
 	var forces := TractionSolver.combined_forces(
 		kappa, tan_alpha, mu, c.normal_force_n, lateral_ratio
 	)
+
+	# Summed before the sign is taken, so that neither term is ever applied in the
+	# direction the other resists. §7.4's amendment; rolling resistance was
+	# implemented, authored per part, and called by nothing until the step under it
+	# was worth putting a small correct term inside.
+	# §7.7's proportioning bounds the service brake and the holding brake alike,
+	# and deliberately not §7.6's corrective term: that one is a bias between two
+	# flanks rather than a retardation, and it is already bounded by
+	# [constant TractionControl.MAX_BRAKE_FRACTION].
+	var demand := _brake_demand
+	if _holding_brake:
+		demand = maxf(demand, TractionSolver.HOLDING_BRAKE_FRACTION)
+	var service := minf(profile.brake_torque_nm * demand, _brake_ceiling_nm)
+	var resist := (
+		service
+		+ extra_brake_nm
+		+ TractionSolver.rolling_resistance_n(profile, c.normal_force_n, band) * radius
+	)
+
+	# §7.4 part 3, on both axes. Neither cap can raise a force, so neither can
+	# inject energy; what they do is stop a reaction reversing the slide it is
+	# reacting to, which is the whole of why a parked build used to shiver.
+	#
+	# The longitudinal cap is sized against a held contact's mobility when the
+	# resistance is holding one — see [method TractionSolver.is_contact_held]. Both
+	# caps are per contact and both divide by that contact's own share of the hull,
+	# so the sum over an Assembly's contacts is exactly the force that lands the
+	# whole hull on zero rather than four independent guesses at it.
+	var share := TractionSolver.share_mass_kg(c.normal_force_n)
+	# The part's rotating mass divided by the contacts that carry it. A tracked
+	# bogie has four road stations and one run of track, so crediting each station
+	# with the whole part's inertia counts it four times — which was harmless while
+	# §7.4's step used the figure for `omega` alone, and is not now that the same
+	# figure sizes §7.4 part 3's stick cap. Over-stated inertia is under-stated
+	# mobility is a cap that throttles a tracked patch to a few hundred newtons:
+	# measured, the shipped bogie could not reach 2 m/s under full throttle.
+	var stations := maxi((_contacts.get(slot, []) as Array).size(), 1)
+	var inertia := TractionSolver.contact_inertia(
+		_definition(slot).mass_kg / float(stations), radius
+	)
+	var held := TractionSolver.is_contact_held(
+		c.contact_omega, drive_nm, resist, forces.x, radius
+	)
+	forces.x = TractionSolver.stick_limited_force_n(
+		forces.x,
+		c.contact_omega * radius - v_long,
+		(
+			1.0 / share
+			if held
+			else TractionSolver.slip_mobility(inertia, radius, share)
+		),
+		dt
+	)
+	forces.y = TractionSolver.stick_limited_force_n(forces.y, v_lat, 1.0 / share, dt)
 	_apply_at(c.point_world, c.forward * forces.x + c.lateral * forces.y)
 
-	var drive := drive_nm
-	var brake := profile.brake_torque_nm * clampf(input.brake, 0.0, 1.0) + extra_brake_nm
 	c.contact_omega = TractionSolver.integrate_contact(
 		c.contact_omega,
-		TractionSolver.contact_inertia(_definition(slot).mass_kg, profile.contact_radius_m),
-		drive,
-		brake,
+		v_long,
+		inertia,
+		share,
+		drive_nm,
+		resist,
 		forces.x,
-		profile.contact_radius_m,
+		radius,
 		dt
 	)
 
@@ -1038,8 +1279,7 @@ func _gather_contacts() -> void:
 			c.point_world = probe.get_collision_point(0)
 			c.normal_world = probe.get_collision_normal(0)
 			c.distance_m = probe.global_position.distance_to(c.point_world)
-			c.forward = -xform.basis.z
-			c.lateral = xform.basis.x
+			_set_contact_frame(c, -xform.basis.z)
 			c.velocity_world = _point_velocity(c.point_world)
 			# Doc 09 §7.3. The classification is a property of the ground, so it
 			# is read where the contact is resolved rather than derived later
@@ -1068,6 +1308,40 @@ func _deposit_ruts() -> void:
 			# same sample would suppress each other's deposits.
 			var key := (runtime.assembly_id * 256 + slot) * 16 + c.station_index
 			ground_deform.accumulate_rut(c.point_world, c.normal_force_n, c.surface_id, key)
+
+
+## Builds [param c]'s contact frame from the chassis heading and the surface it is
+## standing on. §7.1: x̂ is the rolling direction, ŷ the contact normal, ẑ the
+## lateral — [b]an orthonormal frame in the contact plane[/b], not three axes
+## borrowed from the chassis basis.
+##
+## [b]This is what a somersaulting tracked build turned out to be.[/b] The frame
+## used to be the chassis's `-Z` and `+X` unprojected, which is indistinguishable
+## from the correct answer while the hull is level and is a positive feedback loop
+## the moment it is not: a hull pitched nose-down has a `-Z` that points into the
+## ground, so the "longitudinal" friction retarding it acquires a large downward
+## component, which pitches it further. It survived every measurement in the suite
+## because §7.4's unstable step never produced enough force for the loop to close.
+## With the step repaired, a tracked build braking from 4.5 m/s pitched past
+## vertical and ended on its back.
+##
+## The lateral axis is derived rather than projected, which is what guarantees the
+## three are orthonormal however oblique the surface: `x̂ × ŷ` carries `-Z × +Y`
+## onto `+X`, which is the sign every steer and slip convention in §7 is written
+## against.
+func _set_contact_frame(c: MotiveContact, heading_world: Vector3) -> void:
+	var n := c.normal_world
+	var forward := heading_world - n * heading_world.dot(n)
+	if forward.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+		# The chassis heading is along the surface normal — a hull standing on a
+		# wall, or nose-first in a crater. There is no rolling direction to be had
+		# from it, so the frame is rebuilt off the chassis's own lateral axis,
+		# which cannot be parallel to the normal at the same time.
+		forward = runtime.body.global_transform.basis.x.cross(n)
+		if forward.length_squared() < SyndicateConstants.EPSILON_LINEAR:
+			return
+	c.forward = forward.normalized()
+	c.lateral = c.forward.cross(n).normalized()
 
 
 func _point_velocity(point_world: Vector3) -> Vector3:
@@ -1241,6 +1515,12 @@ func _driven_count() -> int:
 	return count
 
 
+## The shared gait clock's rate this tick, across every registered limb.
+##
+## §13.9's brake reaches it as well as [method _solve_ambulatory], and the two
+## must agree: a clock still advancing under limbs that have decided they are
+## standing would freeze each of them at a different phase and leave the Assembly
+## on whichever feet happened to be down.
 func _assembly_cadence_hz() -> float:
 	var best := 0.0
 	for slot: int in _motive_slots:
@@ -1249,14 +1529,40 @@ func _assembly_cadence_hz() -> float:
 		var def := _definition(slot)
 		if def == null or def.motive_profile.limb_profile == null:
 			continue
-		var limb_profile := def.motive_profile.limb_profile
 		best = maxf(
 			best,
 			GaitSolver.cadence_hz(
-				limb_profile, absf(input.throttle) * _ambulatory_speed_cap_mps(limb_profile)
+				def.motive_profile.limb_profile,
+				_gait_travel_demand(def.motive_profile.limb_profile)
 			)
 		)
 	return best
+
+
+## §13.9. The speed the gait is asked to carry this tick, in m/s, after the brake
+## has taken its share out of it.
+##
+## [b]The brake and the travel demand come out of one number so that the two
+## cannot fight[/b] — the same arrangement §15.7.1 makes on the ground side, and
+## for the same reason. At full brake the gait freezes into §13.4's standing state
+## and every foot is planted, which is the strongest retarding state this family
+## has: a planted foot is a fixed world anchor, so the hull carrying on past it
+## tilts the hip-to-foot line and §13.6's axial spring picks up a horizontal
+## component opposing the travel, through the friction cone every stance force
+## goes through.
+##
+## The demand it subtracts is §15.5's [i]released[/i] one, which is what lets one
+## key be a brake and a reverse gear here as well: a walking Assembly asked for
+## full brake and full reverse stands until it has stopped going forwards, at
+## which point the release hands the whole demand back and it walks backwards.
+func _gait_travel_demand(profile: LimbProfile) -> float:
+	if _holding_brake:
+		return 0.0
+	return (
+		absf(input.throttle)
+		* _ambulatory_speed_cap_mps(profile)
+		* (1.0 - clampf(_brake_demand, 0.0, 1.0))
+	)
 
 
 ## The speed an ambulatory demand is measured against: the lesser of the Core

@@ -762,6 +762,35 @@ func _drive(c: Combatant, aim: Vector3) -> void:
 ##
 ## Three loops, all through [ControlInput] and none of them applying a force:
 ## collective on altitude, cyclic on horizontal velocity, pedal on heading.
+## Flies [param c] toward [param aim] with the autopilot below, for a test that
+## needs a rotary build moving and does not want the whole command loop.
+##
+## Public because a rotary Assembly cannot hold a hover on its own — doc 05
+## §15.7.3's augmentation layer does not exist — so any fixture that wants one in
+## the air has to borrow this, and two copies of a three-loop autopilot is two
+## things to keep true.
+func fly_toward(c: Combatant, aim: Vector3) -> void:
+	_fly(c, aim)
+
+
+## Holds [param c]'s altitude and [b]nothing else[/b]: throttle and collective,
+## with the cyclic and the pedals left alone.
+##
+## The one loop a fixture measuring doc 05 §12.8's arrest must keep, and the two
+## it must not. §12.8 adds into `input.cyclic`, so an autopilot writing that field
+## would be measuring itself; the collective is orthogonal to it and without it the
+## Assembly is a brick.
+func hold_altitude(c: Combatant) -> void:
+	var body := c.runtime.body
+	c.motion.input.throttle = 1.0
+	c.motion.input.collective = clampf(
+		(HOVER_HEIGHT_M - body.global_position.y) * HOVER_HEIGHT_GAIN
+		- body.linear_velocity.y * HOVER_CLIMB_GAIN,
+		-1.0,
+		1.0
+	)
+
+
 func _fly(c: Combatant, aim: Vector3) -> void:
 	var body := c.runtime.body
 	var input := c.motion.input

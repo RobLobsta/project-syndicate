@@ -15,7 +15,7 @@ const DOC_LAUNCH_REFERENCE_MPS: float = 5.0
 const DOC_SLIP_GAIN: float = 1.2
 const DOC_YAW_GAIN_NM_PER_RAD_S: float = 2600.0
 const DOC_YAW_DEADBAND_RAD_S: float = 0.10
-const DOC_MAX_BRAKE_FRACTION: float = 0.55
+const DOC_MAX_BRAKE_FRACTION: float = 0.25
 const DOC_MIN_YAW_CONTROL_SPEED_MPS: float = 1.5
 const DOC_GRIP_YAW_MARGIN: float = 0.95
 
@@ -246,15 +246,17 @@ func test_the_brake_demand_is_proportional_to_the_error() -> void:
 
 
 func test_the_brake_is_capped_at_a_fraction_of_the_parts_own() -> void:
-	# The cap is what makes this an aid rather than an override: at 0.55 it may
+	# The cap is what makes this an aid rather than an override: at a quarter it may
 	# bias an Assembly's yaw and may not stop it, so a driver who wants to stop
-	# still has to use the brake. Uncapped, a large error locks the flank
-	# outright and the Assembly spins on the wheel the aid just stopped.
+	# still has to use the brake. Uncapped, a large error locks the patch
+	# outright — and a locked patch spends its whole friction circle
+	# longitudinally and has none left to resist the spin the aid is correcting,
+	# which is why the fraction came down from 0.55 to 0.25 this session.
 	var part_brake := 1800.0
 	check_approx(
 		TractionControl.yaw_brake_nm(50.0, part_brake, 1.0),
 		part_brake * DOC_MAX_BRAKE_FRACTION,
-		"an absurd error still only ever gets 0.55 of the part's brake"
+		"an absurd error still only ever gets a quarter of the part's brake"
 	)
 	check_true(
 		TractionControl.yaw_brake_nm(50.0, part_brake, 1.0) < part_brake,

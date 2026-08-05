@@ -35,58 +35,58 @@ thirteen documents in `/docs/`, named just before it.
 ## Where this stands
 
 **It is a game with a loop, the loop forgives a mistake, the garage builds the
-way a player expects it to, the machine drives on the ground rather than over it,
-and the fight is a duel you can survive rather than an ambush you cannot.**
-`godot --path .` opens on a menu. The menu opens a garage, where a wheeled
-Assembly is standing on the Build Lattice with a catalogue of fifteen parts
-beside it and its mass, power, mounts, top speed, integrity and rollover
-threshold on the right. The part under the pointer lights up and the inspector
-says what it is. **M** mirrors placements onto the other flank, so a symmetric
-build is half the clicks; **Ctrl+Z** takes back a misclick, including both halves
-of a mirrored pair at once. A removal that would orphan something asks first, and
-RESET asks before it throws the build away. TEST DRIVE puts that build into a
-basin with 15 m of relief against **one** opponent built from the same blueprint,
-carrying the same six hundred rounds. They fight. A card says which way it went
-and names the two keys that fight again or go back to the garage.
+way a player expects it to, and — as of this session — the machine underneath it
+obeys the controls.** `godot --path .` opens on a menu. The menu opens a garage,
+where a wheeled Assembly stands on the Build Lattice with a catalogue of fifteen
+parts beside it and its mass, power, mounts, top speed, integrity and rollover
+threshold on the right. **M** mirrors placements, **Ctrl+Z** takes back a
+misclick, a removal that would orphan something asks first. TEST DRIVE puts that
+build into a basin with 15 m of relief against **one opponent built from the
+player's own blueprint**, sixty metres away, carrying the same six hundred
+rounds. They fight. A card says which way it went.
 
-**And a limb and a rotor disc each have a chassis of their own now.** Doc 01
-§7.1: a Core Module declares which locomotion families it carries and the
-validator refuses the rest, so `core.command.compact.t2` no longer has to be the
-hull a walking Assembly is rooted on. `core.ambulatory.strider.t3` is 1350 kg on
-a nine-cell body with thirty-four mounts — enough for the Energy Cell four limbs
-used to leave no room for — and `core.rotary.lifter.t3` is 900 kg and the softest
-chassis in the registry, because everything held up by thrust is lift the discs
-owe.
+**Doc 05 §7.4 is closed, and it was the cap on everything below it.** The
+contact's angular state is stepped through the *slip velocity* with a chord
+implicit factor and an under-relaxed stick cap, and rolling resistance is finally
+in the balance. On the reference build, one Assembly on a slab:
 
-**And you can now drive and shoot at the same time**, which is the oldest thing
-that was ever wrong with it. The shipped starter carries
-`eff.ballistic.repeater_12.t2` — a light, fast module at 26 N·s a round where the
-autocannon is 1450 — and the autocannon is still in the catalogue for a build
-that means to stand still and punch through hulls.
+| | before | after |
+|---|---|---|
+| Contact rate reversals in 12 ticks standing still | 7 of 11 | **0** |
+| Peak contact rate standing still | 5.9 rad/s | **under 0.001** |
+| Speed six seconds after the settle, no input | 0.196 m/s | **0.000** |
+| Distance wandered over the same window | 1.307 m | **0.000** |
+| Stopping distance from 6.3 m/s under full brake | never stopped | **4.31 m** |
 
-**And the opponents stop in front of you instead of on top of you.** They used to
-close to a six-metre stand-off between two hulls that touch at 4.8 m, arrive at
-18 m/s, and drive a stationary player onto its roof at five seconds. Doc 05
-§15.7.1 has an arrival brake and a stand-off measured against the colliders, and
-the same capture now shows the player upright at ten seconds, at 41% integrity,
-trading fire with something that has stopped and is shooting back.
+**And with it, four things a player asks for in the first thirty seconds.** A
+service brake that works (§7.4's limit cycle had been reversing its sign on eight
+ticks in twelve). A **parking brake** — §7.7, engaged on a record demanding
+neither drive nor brake, and `veh_handbrake` finally has the consumer it has been
+waiting for since it was bound. **Reverse**, on §15.5's released brake demand.
+And deceleration for the two families that had none at all: §13.9 stops a walking
+Assembly by freezing its gait with every foot planted, §12.8 arrests a rotary one
+by tilting the disc against its own velocity.
 
-**And it looks like a vehicle now.** The Crossout-scale rebuild landed: the
-reference build is **3630 kg at 132 kg/m³ on a 3.00 m wheelbase, standing on all
-four of its contacts at a 48/52 split**, where it used to be 1107 kg at 46 kg/m³
-— a fifth of balsa — on a 1.50 m wheelbase standing on two. The Effector Module
-is a third of the hull's length rather than half of it, and it sits on the roof
-instead of hanging a metre past the front axle.
+**The opponent is a mirror of what you built, it stops, and only then does it
+shoot.** §15.7.4's fire gate was "inside its stand-off"; it is now "inside its
+stand-off **and stopped**", which could not be written while the brake did not
+work. `MatchScreen` spawns the player's own blueprint at sixty metres instead of
+the shipped starter at thirty-four.
 
-**What it lacks now is depth rather than shape** — one arena, one opponent
-recipe, and nothing yet that rewards a good build over a heavy one — **and the
-ground physics under it is less sound than a green suite suggests, and is now the
-cap on four other things.** Doc 05 §7.4's contact integration is 142 times
-outside its own stability limit; it holds down the drive torque, the service
-brake, §7.6's traction control and the machine's ability to stand still. §2 and
-§3.1 have it.
+**Three pre-existing defects fell out of making the forces real**, and that is the
+session's most useful lesson (`LEARNED_FACTS.md` fact 84): a repair that makes a
+force real finds every place that force was being applied wrongly. The contact
+frame was never projected into the contact plane, so a nose-down hull's
+"longitudinal" friction pitched it further — a tracked build somersaulted the
+first time its brake worked. A tracked bogie credited each of its four road
+stations with the whole part's inertia. And §7.6's yaw loop was locking the flank
+it was biasing.
 
-**91 files, 6934 checks, 0 failures.**
+**What it lacks now is depth rather than shape** — one arena, one opponent recipe
+beyond the mirror, and nothing yet that rewards a good build over a heavy one —
+**and the constraint that has replaced §7.4 is the hull's own stability.** §3.1.1.
+
+**92 files, 6975 checks, 0 failures.**
 
 ---
 
@@ -119,15 +119,15 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### Current suite status
 
-**91 files, 6934 checks, 0 failures.**
+**92 files, 6975 checks, 0 failures.**
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
 nothing in `src/` may `push_error` on a state a test deliberately exercises — a
 blueprint naming an unknown part warns instead.
 
-**A full run is about 215 seconds** — 14 s of reimport and the rest suite. Three
-files are most of it: `integration/test_screen_flow.gd` at 91 s,
+**A full run is about 220 seconds** — 14 s of reimport and the rest suite. Three
+files are most of it: `integration/test_screen_flow.gd` at 82 s,
 `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings, so check before assuming where the
 cost is.
@@ -180,251 +180,196 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900, 600 frames
-through `--main-scene res://scenes/match/arena_basin.tscn` — the cheap way to
-look at a fight without driving the menu and the garage first, since
-`MatchScreen` falls back to the shipped starter when no blueprint arrives. The
-player is not driven, which is the exact case that used to get run over.
+Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900, 900 frames
+through `--main-scene res://scenes/match/arena_basin.tscn`. The player is not
+driven, which is the exact case that used to get run over.
 
-**A first-time player now survives the opening engagement.** This session's, and
-it is the one that moved most. On the identical route the previous capture had
-the player at 100% integrity at three seconds, 46% at seven and the Core Module
-gone before ten. The same route against **one** opponent instead of three: 100%
-at one second, 92% at five, **54% at ten and 49% at eleven**, with ten of twelve
-parts still on. Nobody is driving it — this is a stationary hull being shot at —
-and it is still alive when the capture ends.
+**The machine sits still now, and that is this session's whole headline.** The
+readout reads **0.1 m/s at one second and 0.1 m/s at fifteen**, with the hull in
+the identical position in both frames. The previous capture read 0.9 climbing to
+2.6 with nobody touching a key, and three sessions in a row wrote that down as a
+defect they could not close. It is closed: §7.4's contact integration plus §7.7's
+holding brake, measured at 0.000 m/s and 0.000 m of wander over six seconds on
+flat ground.
 
-That is what three-on-one was worth, and nothing else changed to get it.
+**A first-time player survives, and can now stop, park and reverse.** The other
+three questions a person asks in the first thirty seconds all have answers where
+none of them did: `S` sheds 6.3 m/s in 4.3 m, letting go parks it, and holding
+`S` at rest backs it out.
 
-**It looks like a vehicle.** Session 36's, and it is the whole point of the
-rebuild. The frame at one second is a four-wheeled machine with a cabin and a
-small module on its roof, on a wheelbase that reaches the ends of its hull —
-where the same frame used to be a gun with a car attached, at a fifth of balsa's
-density, standing on two of its four wheels. Nothing in the repository could see
-that and one frame answers it (`LEARNED_FACTS.md` §1 fact 75).
-
-**You can see the fight now.** Session 33's, and the capture holds: the controls
-card is in the upper left, the centre of the screen is clear, and the opponent is
-visible dead ahead at one second and closed to contact by ten.
-
-**And a destroyed part is gone, legibly.** At seven seconds the readout is
-`PARTS 11/12`, the tail of the hull is visibly missing, and `POWER` drops from
-`26 / 410` to `26 / 150` because what left was the Energy Cell. A player can read
-what they lost off the panel without being told.
+**It looks like a vehicle** (session 36's rebuild) and **you can see the fight**
+(session 33's card placement); both hold in this capture.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The machine never sits still — but most of what the HUD shows is gravity,
-   and the sessions that read it as a defect were reading it wrong.** The
-   capture's speed readout climbs from 0.9 to 2.6 m/s over the first four and a
-   half seconds with nobody touching a key **and integrity still at 100%**, so it
-   is neither a hit nor recoil. Isolated on the match's own basin at the player's
-   own spawn, with no opponent and no input, the same build rolls out to 9.4 m at
-   2.7 m/s, stops, and rolls **back** to within 2.7 m of where it started. It is
-   a vehicle in neutral in a bowl.
-   The genuine defects underneath it are two, and both are smaller and sharper
-   than "it drifts at 2.4 m/s": there is **no parking brake** — `veh_handbrake`
-   is bound to Space and read by nothing (§3.3) — and the round trip loses almost
-   no energy, because rolling resistance is inside §7.4's unstable integrator.
-   On flat ground, where gravity contributes nothing, the pure chatter drift is
-   **0.196 m/s and 1.307 m over six seconds** (`test_rest_stability`). That is
-   the number to quote, and it is an order of magnitude below what the HUD reads
-   in the basin.
-2. **The two new chassis are unreachable in practice.** A player can build one —
-   RESET the garage, place `core.ambulatory.strider.t3`, and the catalogue and
-   the validator do the rest — but nothing tells them the option exists, no
-   shipped blueprint uses one, and the opponent is always the wheeled starter.
-   The parts landed; the *experience* of them did not. §3.2 is the cheapest half
-   of it.
-3. **You cannot ask the machine to slow down, and the brake is being cancelled
-   underneath.** `S` is one key meaning both "brake" and "reverse", the handbrake
-   is bound to Space and read by nothing — and §7.4's limit cycle reverses the
-   brake torque's sign on most ticks, so even the AI's planned stop arrives at
-   hull contact. **§3.3**, and its second half is §3.1's.
-4. **The end card is drawn over nothing.** At nine seconds the shot is good: the
-   wreck in the middle of the frame with the opponent standing over it. A second
-   later the orbit camera has swung to an empty field and the card is floating on
-   it. §4 has the mechanism; what is missing is a decision about where the camera
-   stands.
-5. **One arena and one opponent recipe.** Every test drive is the same build at
-   the same spawn on the same basin — and now there is only one of it, so the
-   sameness is more visible rather than less. Doc 06's generator is the intended
-   answer, and the two new chassis give it two more shapes to generate.
-6. **Nothing rewards a good build over a heavy one** — except which Effector
-   Module you fit, and which chassis family you commit to, which is new and is
-   not yet a trade a player can feel because nothing they can build with a limb
-   is competitive with the wheeled starter.
-7. **The garage teaches nothing about *composition* until a placement is
-   refused.** The inspector names figures; nothing says a rotor disc needs a mast
-   under it and a second disc opposite it, or that supply goes on before draw.
-   The chassis refusal is a small step the *other* way — "this chassis does not
-   carry that kind of Motive Assembly" at least names the rule it is enforcing.
-8. **The opponent no longer has anyone to shoot but the player**, which quietly
-   removed the visible half of §3.4 without deciding anything. Nothing in
-   `src/combat/` still knows what a team is.
-9. **A walking build turns 18° on the spot while standing still** — down from
-   51° on the borrowed chassis, and it leans 8.5° while doing it where the
-   heavier hull leaned under 3. §3.1.2.
+**The opponent stops in front of you and shoots from there.** The final capture:
+the opponent is a speck on the horizon at one second, closes across the basin,
+**stops at its stand-off around eleven seconds**, and opens fire from there. At
+fifteen seconds it is still standing off — plainly separated from the player in
+the frame — and the player is at 52% integrity with eleven of twelve parts. Two
+things had to be right for that: §15.7.4's second gate, and a stand-off widened
+from fourteen metres to twenty because fourteen was derived on a flat slab and
+the arena is a basin. Both intermediate attempts are recorded at their constants.
 
-**The bad news, plainly.** Three things.
+Ranked by what would most improve a first-time player's experience:
 
-**The ground physics is still wrong and nothing this session touched it.** Doc 05 §7.4 integrates the contact's spin explicitly against
-a friction reaction of about 2.9e5 N per rad/s — stable below 117 microseconds
-against a 16.7 ms tick. It does not diverge, because the Pacejka curve saturates;
-it limit-cycles, measured on the rebuilt build at 8 reversals in 12 ticks peaking
-at 5.9 rad/s against a free-rolling 1.2. **No aggregate any fixture recorded
-moved**, which is how it survived thirty-two sessions of a green suite. What
-session 36 added is the bill: it holds `drive_torque_nm` down to a third of what
-the contacts could take, it leaves doc 05 §7.6's traction control with no
-reachable fixture on the shipped part set, it cancels the service brake by
-reversing its sign every other tick, it costs a cornering contact about four
-fifths of its lateral grip, and it is why a parked machine on flat ground still
-reads 0.196 m/s. §3.1.
+1. **The player's hull ends up on its side, and nothing drove it there.** The
+   capture's last four seconds show the build rolled over, stationary, being shot
+   at. It is not being driven — this is a parked hull taking fire — so what put it
+   there is either the opponent's approach making contact before the stand-off
+   widened, or the incoming rounds. **It is the most visible unexplained thing in
+   the capture and it is not diagnosed.** Instrument it the way fact 77 says
+   before theorising: attitude and per-contact normal force, every fifteen ticks,
+   on the basin.
+2. **The opponent takes eleven seconds to arrive.** A ground driver averages about
+   **two metres a second** across the arena's fifteen metres of relief, against a
+   build that does 6.3 on the flat. Sixty metres was tried for the spawn and the
+   capture rejected it outright — no shots at all by fifteen seconds — so the spawn
+   is at forty-two, which hides the problem rather than fixing it. §3.1.4.
+3. **The two new chassis are unreachable in practice** — unchanged from last
+   session, and the mirror opponent makes it *sharper*: a player who builds a
+   walking Assembly now fights a walking Assembly, so the family finally has a
+   fight of its own the moment anybody knows it exists. §3.2 is the cheapest half.
+4. **A walking Assembly cannot reverse and can barely stop.** §13.9 gave it the
+   strongest brake the family's model can produce and it sheds only half its speed
+   in five seconds; a negative throttle moves it 0.01 m against a wheeled build's
+   7.67. Both are §13.5's placement law having no sign in it. §3.1.2.
+5. **The end card is drawn over nothing.** Unchanged. At the conclusion the orbit
+   camera swings to an empty field and the card floats on it. §4 has the
+   mechanism; what is missing is a decision about where the camera stands.
+6. **One arena, and now one opponent *recipe* rather than one opponent build.**
+   The mirror is a real improvement and it is not variety: every test drive is
+   still the same basin and the same spawn. Doc 06's generator is the answer.
+7. **Nothing rewards a good build over a heavy one.** Unchanged — except that
+   with a mirror opponent the comparison is at last honest, because both sides
+   carry the same handicap.
+8. **The garage teaches nothing about *composition* until a placement is
+   refused.** Unchanged.
+9. **Nothing in `src/combat/` still knows what a team is.** §3.4.
+10. **A rotary Assembly has a brake now and still no way to hold a hover**, so
+   §12.8 is a control a player can use and cannot yet use *well*. §3.7.
 
-**The ambulatory steering demand turns out not to be a steering demand.** The
-strider chassis made an old measurement sharp: with the demand held hard over one
-way the hull ends at +24.6° and hard over the other at **+19.9°**, from an
-uncommanded −92.2°. So a steering input moves the heading by a hundred and twelve
-degrees and its *sign* accounts for under five of them. That is a disturbance
-with a direction attached, not a control, and it is worse news than the drift
-figure it replaces — the drift got smaller and the thing underneath it got
-clearer. Doc 05 §13.8 now records the measurement; §3.1.2 has what closing it
-needs.
+**The bad news, plainly.** Five things.
 
-**The two new chassis are parts, not yet an experience.** They validate, they
-fly and walk in the fixtures, and a player who knows they exist can build on
-them. Nothing in the shipped game mentions them, no blueprint uses one, and no
-opponent is built from one — so the honest reading of this session's headline
-feature is that half of it shipped. §3.2.
+**The player's build finishes the capture on its side and nothing explains it.**
+Item 1 above. It is a parked hull under fire and it should not end up there; it is
+undiagnosed and it is the first thing to instrument next session.
 
-The summary: **the fight is survivable now and the families have hulls of their
-own, and the physics under all of it is the same physics it always was.** One
-defect, diagnosed twice, is still holding down the drive, the brake, the aids and
-the stillness of a parked hull.
+**The fight starts late.** Eleven seconds of watching a speck approach, on a
+driver that crosses terrain at two metres a second against a build that does six
+on the flat. Moving the spawn in only hides it. §3.1.4.
+
+**`drive_torque_nm` did not come back, and the reason changed.** Two sessions of
+`HANDOFF.md` said the 6400 N·m figure was capped by §7.4's instability. §7.4 is
+closed and the figure still cannot move far: at 16000 the reference build takes
+off under sustained full throttle and at 9600 it unloads two contacts over five
+hundred ticks in a sustained turn and finishes on its back. **The cap is now the
+hull's own stability** — a 0.97 g rollover threshold against contacts that make
+1.05 — and that is a build and balance problem rather than a solver one. §3.1.1.
+
+**§7.6's traction control got worse rather than better, and it is measured.**
+With real lateral grip the contacts trim three quarters of an imposed spin on
+their own, and the aid's brake bias leaves *more* spin than no aid at all —
+0.35 rad/s against 0.26. Halving its ceiling moved that by a thousandth. Every
+gain tuned above §7.4 is now untuned, and this is the one that was measured.
+§3.1.3.
+
+**An ambulatory Assembly still cannot be driven properly.** It cannot reverse, it
+brakes at half strength, and doc 05 §13.8's measurement stands: a steering demand
+moves its heading by a hundred and twelve degrees and its *sign* accounts for
+under five of them. Three separate defects, one cause, and it is the family a
+player is most likely to build next now that it has a chassis. §3.1.2.
+
+The summary: **the ground under the game is sound for the first time — it stops,
+it parks, it reverses, it corners — and what that exposed is that everything
+tuned on top of it was tuned against a defect.**
 
 ## 3. The work queue
 
 Ordered by what is worth doing next, not by dependency. Anything not listed here
 is either done or is in section 4.
 
-### 3.1 Close §7.4's contact integration — it is now the cap on four other things
+### 3.1 What closing §7.4 left behind
 
-**Read doc 05 §7.4's open-defect block before acting. The diagnosis, the
-arithmetic, the working scheme, and the measured cost of landing it are in it,
-and re-deriving them costs a session — it has now cost two.**
+**Doc 05 §7.4 is closed.** The section carries the scheme, the two wrong turns,
+the two extra energy sources found landing it, and the before/after table.
+`LEARNED_FACTS.md` facts 83–87 carry the general shapes. Nothing below is that
+work; all of it is work the repair *revealed*.
 
-The short version. The contact's angular rate is integrated explicitly against a
-friction reaction of about 2.9e5 N per rad/s, which is stable below 117 µs
-against a 16.7 ms tick — a factor of 142. It saturates rather than diverging, so
-it presents as a limit cycle: measured on the rebuilt build at 8 reversals in 12
-ticks, peaking at 5.9 rad/s against a free-rolling 1.2.
-`tests/physics/test_rest_stability.gd` measures it and is **asserted as it
-fails**, so closing this turns that file red and the fix there is to re-measure
-and re-assert, never to loosen.
+#### 3.1.1 The drive torque, and the hull that cannot take it
 
-**Session 32 built the repair twice and reverted it twice.** The scheme that
-works is in §7.4: step the **slip velocity** rather than the rate, take it
-implicitly, reconstruct `ω = (v_long + u) / r` afterwards, and cap any friction
-force that would reverse the slip it opposes. Both traps are paid for and written
-down in §7.4 and in `LEARNED_FACTS.md` facts 73 and 74 — damping `ω` rather than
-the slip is worse than the defect, and the implicit factor must use the chord
-rather than the tangent at zero.
+`pmv.combustion.standard.t2` still authors **6400 N·m** — 0.36 g against contacts
+that hold 1.05 — and the cap is no longer the integrator.
 
-**What changed in session 36 is that §7.4 stopped being one item and became the
-cap on four.** The rebuild put all four contacts on the ground, which was the
-thing blocking the repair; what it revealed is how much else this defect is
-holding down:
+Measured this session and reverted, both with the numbers in `CHANGE_LOG.md` §1:
 
-- **`drive_torque_nm` is capped at 6400 N·m by the instability, not by grip.** At
-  10 200 the chatter is energised by the drive and pumps the suspension until the
-  Assembly leaves the ground under sustained full throttle — measured, and it is
-  what made the AI look like it was refusing to fight. The contacts would hold
-  1.05 g; the authored figure is 0.36.
-- **Doc 05 §7.6's traction control has no reachable fixture**, because at 6400
-  N·m the Prime Mover no longer out-torques the contacts. `test_ground_assembly`
-  supplies its own over-torqued mover through the Assembly's `PowerSystem` and
-  says so; that is a fixture standing in for a shipped build that cannot exist
-  yet.
-- **The service brake is being defeated by it.** §7.2's brake torque opposes the
-  contact's spin through `-signf(contact_omega)`, and that sign reverses on most
-  ticks. `tests/physics/test_ram_attitude.gd` measures the consequence: a driver
-  plans a 6 m/s² stop and arrives at hull contact anyway.
-- **A parked Assembly on flat ground drifts at 0.196 m/s and wanders 1.307 m in
-  six seconds** with no throttle and no brake (`test_rest_stability`). **Not**
-  the 2.4 m/s the HUD shows in the shipped match — that is a vehicle in neutral
-  rolling in a bowl and is mostly correct physics; see §2 item 1, which corrects
-  three sessions of reading one number as the other.
-- **And it is most of why nothing corners.** The lateral force in
-  `TractionSolver.combined_forces` is `f_max · sy/s`, so a large longitudinal
-  slip crowds the lateral component out of the friction circle. At the measured
-  chatter peak of 6.242 rad/s a contact in a 6 m/s corner with 1 m/s of lateral
-  slip keeps **0.26 of the lateral share it would have with a clean rolling
-  contact** — a 3.8× loss — and at rest it keeps 0.013 against a free-rolling
-  0.348, a 26× loss. **This is not traction control.** §7.6's slip limiter
-  scales *drive torque*, so with no throttle it has nothing to scale, and its yaw
-  loop is inert below `MIN_YAW_CONTROL_SPEED_MPS` = 1.5 m/s. The aid cannot cause
-  the wander and cannot cure it; the integrator underneath it is both.
+- **16000 N·m**: sustained full throttle unloads the front pair and the Assembly
+  leaves the ground. Fact 77's take-off, arriving from a different direction.
+- **9600 N·m**: the reference build progressively unloads two contacts over five
+  hundred ticks in a sustained turn and finishes on its back.
+- **Retuning the contacts from μ 1.05 → 0.78** (and `fixed_rear` 1.09 → 0.80,
+  the tracked bogie 1.34 → 0.95) is **landed**, under the rule *a contact may not
+  out-grip the hull's own rollover threshold*. It stops a build tipping itself over
+  on the spawn drop and costs nothing measurable. Doc 01 §10.3 carries it; every
+  unshipped row in that table is still on the old basis.
 
-Closing it should let the drive torque go back up, give §7.6 a shipped fixture,
-make the brake work, and stop the machine shivering. **It is the highest-value
-item in the project and it is no longer blocked by anything.**
+The static stability factor of the reference build is **0.97 g**. Anything that
+raises the drive torque has to be paired with either lower contacts or a lower
+centre of mass, and the Prime Mover and the Effector Module sharing a deck four
+cells above the belly is where that height comes from.
 
-#### 3.1.1 What the rebuild left behind
+#### 3.1.2 The ambulatory family needs a sign in its placement law
 
-The Crossout-scale rebuild is **landed and green**. The reference build:
+**Three defects, one cause, and the family now has a chassis and a mirror
+opponent, so a player will meet all three.**
 
-| | before | after |
-|---|---|---|
-| Mass | 1107 kg | **3630 kg** |
-| Density | 46 kg/m³ | **132 kg/m³** (a passenger car is 115) |
-| Wheelbase | 1.50 m — 35% of hull | **3.00 m — 75%** |
-| Contacts loaded | **2 of 4** | **4 of 4** |
-| Static split | **100% front** | **48% front** |
+- **A steering demand does not steer it.** Doc 05 §13.8: uncommanded −92.2°, full
+  left +24.6°, full right +19.9°. A demand moves the heading a hundred and twelve
+  degrees and its direction accounts for under five.
+- **It cannot reverse.** New this session, and asserted as it stands in
+  `tests/physics/test_braking_and_reverse.gd`: a negative throttle moves it 0.01 m
+  over three seconds against a wheeled build's 7.67.
+- **It brakes at half strength.** §13.9 freezes the gait with every foot planted,
+  which is the strongest state the model has, and it sheds 1.45 m/s to 0.65 in
+  five seconds.
 
-Three consequences are still open and none of them is large:
+All three are `turn_command` and the travel demand reaching only the *correction*
+term of §13.5's placement law. The repair is a term that carries the sign of the
+demand into the cadence and the swing, which is new architecture in doc 05 §13
+rather than a solver fix.
 
-- **The rollover threshold is 0.97 g**, a laden truck rather than a car, because
-  the Prime Mover and the Effector Module share a deck four cells above the
-  belly. `test_the_starter_is_stable_and_a_tall_build_is_not` asserts it above
-  0.90 and says why. A player meets it in a hard turn.
-- **Doc 01 §10's unshipped rows are on the old scale.** Fourteen parts were
-  rescaled; every other row in that document was not, and authoring one means
-  rescaling it rather than transcribing it. §10's opening now says so.
-- **The ambulatory family got worse and the rotary family had to be re-laid.**
-  §3.1.2.
+#### 3.1.3 §7.6's aids are untuned, and the yaw loop is a net negative
 
-#### 3.1.2 The ambulatory family needs a heading term, and the measurement is now unambiguous
+Measured: the contacts alone take three quarters of an imposed 1 rad/s off in six
+ticks, and the aid leaves 0.35 rad/s where no aid leaves 0.26.
+`MAX_BRAKE_FRACTION` came down from 0.55 to 0.25 this session — 0.55 was locking
+the patch the aid was biasing — and it moved the measurement by a thousandth, so
+the mechanism is the friction circle rather than the ceiling.
 
-**A steering demand does not steer a walking Assembly.** Measured on
-`core.ambulatory.strider.t3` over three hundred ticks: uncommanded −92.2°, full
-left **+24.6°**, full right **+19.9°**. A demand moves the outcome by a hundred
-and twelve degrees and which way it points accounts for under five of them. Doc
-05 §13.8 carries the measurement and names the repair — a yaw-rate term in the
-placement law, which is new architecture and belongs in §13 rather than in a
-solver.
+`tests/physics/test_ground_assembly.gd` asserts the measurement with the reasoning
+at the constant. What it needs is a re-derivation of `YAW_GAIN_NM_PER_RAD_S` and
+of whether a brake bias is the right actuator at all now that a braked patch has
+real lateral grip to lose. The slip limiter is untouched by any of this and is
+still doing its job.
 
-Three things are known about it and all are worth having before starting:
+#### 3.1.4 A ground driver crosses terrain at two metres a second
 
-- **`turn_command` rotates the plant offset and nothing else.** So what it
-  produces scales with how big that offset already is, not with how far the
-  heading is from where it was asked to be. That is why the two signs converge.
-- **A cell of layout was a lot of the drift, and is fixed.** The limbs used to
-  hang one cell forward of the stations they mate to; squaring them up took the
-  standing drift from 152° to 51°.
-- **A lighter chassis helps the heading and hurts the attitude.**
-  `core.ambulatory.strider.t3` took the standing drift from 51.2° to 18.1° and
-  the standing lean from 0.999 to 0.9892 of upright — eight and a half degrees.
-  Smaller inertia under an unchanged gait disturbance, which is
-  `LEARNED_FACTS.md` fact 78 read backwards.
+**The most player-visible thing left.** On flat ground the reference build does
+6.3 m/s inside four seconds; across the arena's fifteen metres of relief an
+`AiDriver` averages about two, which is why the spawn distance had to come back
+from sixty metres to forty-two.
 
-The rotary family is in better shape than it was. The Prime Mover goes **under
-the belly** and the Energy Cell on the aft deck, which is the reverse of every
-other recipe — in the tail the 620 kg mover put the centre of mass 0.31 m behind
-the disc line, asking for 23° of a 14° swashplate cone. `core.rotary.lifter.t3`
-helps from both sides: nine cells rather than thirteen shortens the lever, and
-900 kg rather than 1800 takes the whole recipe from 5166 kg to 4266 against a
-pair of discs rated 8300 kg each. `CombatArena.ROTARY_POWER` carries the
-arithmetic.
+Three things are known and none of them has been measured against the others:
+
+- §15.7.1's `APPROACH_MIN_THROTTLE` taper deliberately does not drive hard on
+  slopes, and the section records that raising it broke the match.
+- §7.6's corrective brake now genuinely retards a flank, and a driver holding a
+  steering demand across a slope is holding a yaw error the whole way. §3.1.3.
+- `drive_torque_nm` is 0.36 g. §3.1.1.
+
+Instrument it the way fact 77 says: throttle, brake, steer, speed, **grounded
+contact count and the four normal forces**, every fifteen ticks, on the basin
+rather than on a slab.
 
 ### 3.2 Make the two new chassis reachable, and give the control card a first-run flag
 
@@ -457,59 +402,27 @@ What is left is that it is raised unconditionally on every entry to a match,
 because there is nowhere to store "they have seen it". That is
 `SyndicateSettings` work.
 
-### 3.3 A player cannot brake — the mechanism exists and no input reaches it
+### 3.3 What is left of braking, and it is small
 
-**Read the first line before acting on this one: the brakes are not missing.**
-The chain is complete and correct for the wheeled and tracked families, and
-session 31's arrival brake is proof it works — it is the only thing that stopped
-a driver arriving at 18 m/s. `veh_brake` → `ControlInput.brake` →
-`brake_torque_nm × demand` in `MotiveSystem._apply_traction` → opposed to the
-contact's spin in `TractionSolver.integrate_contact` → the contact slips and
-doc 05 §7.2's longitudinal force retards the hull. There is even a zero-crossing
-guard whose docstring names the symptom it prevents: "a vehicle that will not
-quite come to rest."
+**This item was "a player cannot brake" for two sessions and the chain is now
+complete.** `veh_brake` → `ControlInput.brake` → §15.5's release → the contact's
+resisting torque; `veh_handbrake` → §7.7's holding brake, which is also engaged
+automatically on a record demanding neither drive nor brake; §13.9 for the
+walking family and §12.8 for the rotary one. `tests/physics/test_braking_and_reverse.gd`
+measures all of it.
 
-**What is missing is any way for a person to ask for it.** Three things, and the
-third is the one that is simply absent rather than conflated.
+Three residuals, all small and all recorded at their constants:
 
-1. **`S` is one key meaning two opposite things.** `ControlSystem.sample` builds
-   `drive := axis(ACTION_BRAKE, ACTION_THROTTLE)` and writes it to
-   `input.throttle`, *and separately* writes
-   `input.brake = get_action_strength(ACTION_BRAKE)`. So one press of `S`
-   demands full braking and full **reverse drive torque** in the same tick. A
-   player who wants to shed thirty metres a second and hold position has no
-   input that says so; they have one that says "stop, then go backwards".
-2. **A stop is a moment, not a state — and it is worse than that.**
-   `brake_sign := -signf(contact_omega)`, and `signf(0.0)` is `0.0`, so at
-   exactly rest the brake torque vanishes and the reverse drive torque from the
-   same key is all that is left. Whether *that* matters is a design question
-   about a combined brake/reverse axis, which is a real convention and not
-   obviously wrong.
-
-   **What is not a design question is that the sign reverses on most ticks.**
-   §7.4's limit cycle flips `contact_omega` eight times in twelve, so the brake
-   torque flips with it and the Assembly decelerates at a fraction of what it is
-   being asked for. Measured through the AI, which is the only thing in the
-   project that plans a stop: `AiDriver` plans 6 m/s² from a 14 m stand-off, and
-   `tests/physics/test_ram_attitude.gd` records it arriving at hull contact
-   anyway. **So the brake is not merely unreachable from the keyboard; it is
-   being cancelled underneath.** That half is §3.1's.
-3. **`veh_handbrake` is bound to Space, sampled into `ControlInput.handbrake`,
-   and read by nothing** — the natural answer to (2), already listed in §4 and
-   still unwritten. Doc 05 does not define what a handbrake does to a contact,
-   which is the actual blocker.
-
-**And there is no braking at all for two of the four families.** `input.brake` is
-read in exactly one place, `_apply_traction`, which only `GROUND` and `TRACKED`
-reach. An ambulatory build and a rotary one have no deceleration control of any
-kind — not conflated, not weak: absent. The rotary case is partly §3.7's, since
-nothing flies one anyway; the ambulatory case is not, because a player can build
-and drive one today.
-
-The cheapest honest first step is a decision rather than code: doc 05 §15.1 owns
-the input→`ControlInput` mapping and §7 owns what a contact does with it, and
-neither says whether "decelerate" is a demand distinct from "reverse". Nothing
-here should be invented in `ControlSystem` without that section saying so.
+1. **A walking Assembly brakes at about half strength and cannot reverse.**
+   §3.1.2, and it is the same defect as its steering.
+2. **`veh_boost` still has a producer and no consumer.** The only field on
+   `ControlInput` left in that state now that `handbrake` has one. Doc 05 does not
+   define what a boost does, which is the blocker and is a smaller decision than
+   the handbrake was.
+3. **The aid authority has no control.** `ControlSystem.aid_authority` defaults to
+   full and the settings screen that should write it is doc 11 work — and §3.1.3
+   makes that more interesting than it was, because the aid is currently a net
+   negative and a player who could switch it off would be faster.
 
 ### 3.4 Decide whether friendly fire exists
 
@@ -672,10 +585,10 @@ fixing. None of these is a surprise waiting to be found.
 - **An ambulatory Assembly still cannot be asked to turn and travel
   independently** (§4.16). One number doing two jobs, and the above is what that
   costs.
-- **`handbrake` and `boost` have producers and no consumers**, and
-  `ControlInput.brake` reaches only `_apply_traction`, so two of the four
-  families have no deceleration control at all. §3.3 has the whole of this,
-  including why inventing a handbrake here would be worse than the gap.
+- **`boost` has a producer and no consumer.** `handbrake` gained one this
+  session — doc 05 §7.7's holding brake — and `ControlInput.brake` now reaches all
+  four families through §7.7, §12.8 and §13.9. Doc 05 does not define what a boost
+  does, which is the blocker. §3.3.
 - **Nothing consumes `AeroSolver`, and no `ctl.*` part is authored**, so drag,
   downforce, and Control Surfaces have never acted on a moving Assembly. It is
   complete and matches doc 05 §8; what it needs is a per-part pressure-centre
@@ -690,22 +603,28 @@ fixing. None of these is a surprise waiting to be found.
   distance, so the mean and the first station are one number and the fault sweep
   says so: `tracked-mean-is-its-first-station` is a knowing survivor. It closes
   with a bogie straddling a slope, which no fixture has.
+- **A tracked build pitches to about 20° under a full-strength stop**, recovers,
+  and stays on its tracks. §7.7's proportioning is what makes that true; without it
+  it went past vertical. Whether 20° is the right amount of dive is a feel question
+  and wants a scene to answer it.
 - **A tracked pivot drifts a couple of metres** rather than turning about a
   point. The flanks counter-rotate correctly but their forces do not cancel
   exactly, because the two bogies sit at slightly different offsets. Whether that
   is worth correcting is a feel question and wants a scene to answer it.
 - **The wheeled build wanders under full throttle with the aid off.** Deep
   wheelspin is unstable by construction — past the friction peak, more slip means
-  less force — so once one flank hooks up before the other the Assembly yaws.
-  That is what a burnout does, and it is why traction control exists. How much of
-  the measured wander is this and how much is §3.1's limit cycle is not known.
-- **`drive_torque_nm` is a third of what the contacts could hold**, and the cap
-  is doc 05 §7.4's instability rather than grip: at 10 200 N·m sustained full
-  throttle pumps the suspension until the Assembly leaves the ground. §3.1.
+  less force — so once one flank hooks up before the other the Assembly yaws. That
+  is what a burnout does. §7.4's limit cycle is no longer part of the answer, so
+  what is left is the real thing.
+- **`drive_torque_nm` is a third of what the contacts could hold, and the cap is
+  no longer §7.4.** It is the hull's own 0.97 g rollover threshold against contacts
+  that make 1.05: measured this session, 16000 N·m takes the build off the ground
+  under sustained throttle and 9600 rolls it over in a sustained turn. §3.1.1.
 - **Doc 05 §7.6's traction control has no reachable fixture on the shipped part
-  set**, for the same reason. `test_ground_assembly` supplies its own
-  over-torqued Prime Mover through the Assembly's `PowerSystem` and asserts that
-  it crossed the bound before asserting anything about the aid.
+  set**, for the same reason — the shipped Prime Mover cannot out-torque the
+  contacts. `test_ground_assembly` supplies its own over-torqued mover through the
+  Assembly's `PowerSystem` and says so. Its **yaw loop** is a separate and worse
+  problem: it is now a net negative and §3.1.3 owns it.
 - **Every yaw and roll authority in the project fell by about six** when the
   reference build was rescaled, because an inertia grows as the square of the
   extents and a mass does not (`LEARNED_FACTS.md` fact 78). §7.6's corrective
@@ -905,17 +824,27 @@ fixing. None of these is a surprise waiting to be found.
   zero and pinning it permanently on both leave the suite green, because no
   shipped recipe mounts a module whose muzzle overhangs its own hull. It is
   carried, not tested.
-- **Four files assert a defect as it stands, and every one of them says so at the
-  constant.** `tests/physics/test_rest_stability.gd` asserts §7.4's limit cycle;
-  `tests/physics/test_ambulatory_drift.gd` asserts the walking family's yaw
-  drift, the standing one, and — since session 37 — that the two opposite
-  steering demands land within five degrees of each other; `tests/physics/test_ram_attitude.gd`
-  asserts that a driver arrives at bare contact rather than with clear air; and
+- **Five files assert a defect as it stands, and every one of them says so at the
+  constant.** `tests/physics/test_ambulatory_drift.gd` asserts the walking
+  family's yaw drift, the standing one, and that the two opposite steering demands
+  land within five degrees of each other; `tests/physics/test_braking_and_reverse.gd`
+  asserts that the same family cannot reverse at all and brakes at half strength;
+  `tests/physics/test_ground_assembly.gd` asserts that §7.6's yaw loop leaves more
+  spin than no aid at all; `tests/physics/test_ram_attitude.gd` asserts that a
+  driver arrives at bare contact rather than with clear air; and
   `test_team_engagement`'s five-a-side asserts that it runs to the timeout. Each
   goes red when the thing it records is repaired, and the fix in every case is to
   re-measure and re-assert, never to loosen.
 
-  Two came back the other way this session and are worth knowing as precedent.
+  **`test_rest_stability` came off that list in session 38 and is the precedent
+  worth having.** It was written asserted-as-it-failed against §7.4's limit cycle,
+  with the section it came from saying that closing the defect would turn the file
+  red and that the fix was to re-measure. That is exactly what happened, and the
+  file now carries the before/after table rather than the complaint.
+  `test_recoil_geometry`'s traversed-yaw claim **inverted** in the same session —
+  a parked hull absorbs the round now — and was re-framed rather than deleted.
+
+  Two came back the other way in session 36 and are worth knowing as precedent.
   `test_build_proportions` was written with two of its three assertions asserted
   as failures and the rebuild closed both, so it now asserts the correct state and
   keeps only the two proportions that are still off. `test_drive_and_shoot`'s two
