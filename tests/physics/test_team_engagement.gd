@@ -160,7 +160,11 @@ func test_every_recipe_reached_the_five_a_side_in_working_order() -> void:
 	# settle, or the ambulatory ones had come down on their hulls, would satisfy
 	# every assertion above it and would be a four-a-side.
 	await _run_all()
-	check_eq(_combined.upright_at_start, _combined.spawned, "all ten were upright")
+	check_eq(
+		_combined.upright_at_start,
+		_combined.spawned,
+		"all ten were upright: %s" % _combined.attitudes_at_start
+	)
 	check_eq(
 		_combined.airborne_at_start,
 		2,
@@ -314,7 +318,9 @@ func _engage(name: String, roster: Array[int]) -> Engagement:
 	var ids := {}
 	for c: CombatArena.Combatant in arena.combatants:
 		ids[c.assembly_id()] = true
-		if c.runtime.body.global_transform.basis.y.dot(Vector3.UP) > UPRIGHT_DOT:
+		var up := c.runtime.body.global_transform.basis.y.dot(Vector3.UP)
+		e.attitudes_at_start += " %s/%d:%.3f" % [c.callsign, c.recipe, up]
+		if up > UPRIGHT_DOT:
 			e.upright_at_start += 1
 		if c.recipe == CombatArena.Recipe.ROTARY and c.runtime.body.global_position.y > 3.0:
 			e.airborne_at_start += 1
@@ -371,6 +377,9 @@ class Engagement:
 	var spawned: int = 0
 	var distinct_ids: int = 0
 	var upright_at_start: int = 0
+	## Callsign, recipe and `up · UP` for every combatant at the open, so a failure
+	## names which recipe was lying down rather than only how many.
+	var attitudes_at_start: String = ""
 	var airborne_at_start: int = 0
 	var rounds_fired: int = 0
 	var shooters: int = 0

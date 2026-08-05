@@ -58,11 +58,65 @@ they found are in `LEARNED_FACTS.md`.
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
+| 36 | **The rebuild lands, and the AI regression was never the AI.** The part table, both layouts and all four locomotion recipes transcribed; the reference build is **3630 kg at 132 kg/m³ on a 3.00 m wheelbase, standing on all four contacts at a 48/52 split**. One instrumented run of `AiDriver` found it: throttle 1.00 and a target held the whole time, while the hull climbed off the ground contact by contact under sustained full throttle. Doc 05 §7.4's unstable contact integration, energised by drive torque — so `drive_torque_nm` is capped at 6400 N·m until §7.4 is closed. Also: an inertia grows as the square of the extents, so every yaw and roll authority in the project fell by a factor of six. |
 | 35 | **The rebuild, 89% landed.** Fixture fallout taken from **448 failing assertions across 28 files to 50 across 11**: the part table, both layouts, all four locomotion recipes, and the published-value assertions are all solved and written down. Reverted one regression short — the AI turns to face its target and then declines to close. |
 | 34 | **The Crossout-scale rebuild, executed and measured, then reverted.** The reference build goes from 1107 kg at 46 kg/m³ standing on two of its four wheels to **3630 kg at 141 kg/m³ standing on all four**, with the wheelbase from 35% to 73% of the hull and the static split from 100% front to 41%. The registry validates and the proportions instrument confirms it. Reverted because the fixture fallout is 396 assertions across 28 files; `HANDOFF.md` §3.1.2 carries every number that produced the measurement. |
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 36, in more detail
+
+**The transcription was arithmetic, exactly as §3.1.2 promised.** 379 failing
+assertions across 28 files on the first full run, down to zero over twelve runs,
+and the three rules covered what they said they would.
+
+**The blocker was not the AI, and one instrumented run said so in twenty lines.**
+`CombatArena.engage` printed `input.throttle`, the target id, the closure term,
+the hull height, the grounded contact count and the four normal forces every
+fifteen ticks. The driver was faultless throughout — throttle 1.00, brake 0.00,
+target held, bearing 0.4° — and the *hull* was the thing failing: body height
+climbing 0.93 → 1.63 m, contacts unloading one at a time to zero, then a 32 kN
+landing and a dead stop with no probe touching anything. It was not declining to
+fight; it had taken off. **A driver that has a target, is pointed at it, and is
+demanding full throttle is not a tactics problem — read the contacts, not the
+law.**
+
+The cause is doc 05 §7.4's known 142×-unstable contact integration, energised by
+drive torque: at 10 200 N·m sustained full throttle pumps the suspension until
+the Assembly leaves the ground. Measured three ways — 10 200 breaks it, 6400 does
+not, 3200 is too slow to drive — so `drive_torque_nm` is **6400 N·m**, which is a
+cap set by an integration defect rather than by grip and goes up when §3.1 is
+closed. It costs §7.6's traction control its only reachable fixture: the shipped
+Prime Mover no longer out-torques the shipped contacts, so the two aid tests
+supply their own over-torqued mover through the Assembly's `PowerSystem` and
+assert that they crossed the bound before asserting anything about the aid.
+
+**Three findings the rebuild produced that nobody was looking for.**
+
+*An inertia grows as the square of the extents, and every authority is a torque
+over an inertia.* `core.command.compact.t2`'s box tensor went from 81 to
+1922 kg·m² about `Y` — 24× against a mass factor of 4.7 — so yaw and roll
+authority fell by about six. Three fixtures measured the same collapse from
+different directions: §7.6's corrective brake takes 2% off an imposed spin where
+it took 60%, the rotary autopilot could not hold a hover and tumbled during the
+settle, and `eff.ballistic.autocannon_30.t3` **stopped being able to spin its own
+hull** — `test_drive_and_shoot`'s two defect assertions inverted, from 99° and
+two rounds of seventeen to under ten degrees and fifteen.
+
+*A stand-off is a stopping distance plus a clearance, and both terms belong to
+the build.* At three times the mass the driver arrived at its ten-metre mark
+still carrying enough speed to run through it into hull contact.
+`ARRIVAL_DECEL_MPS2` 4.0 → 6.0 and `GROUND_STAND_OFF_M` 10.0 → 14.0, both
+re-derived rather than nudged.
+
+*Two recipes were one cell out and it presented as a physics defect.* The
+ambulatory limbs hung one cell forward of their stations, putting the four feet
+about a mean of `z` 23 under a hull centred at 24 — a standing walker yawed 152°
+in five seconds. Squaring them cut it to 51. And the rotary recipe put its
+620 kg Prime Mover in the tail, 0.31 m behind the disc line, which asks for 23°
+of a 14° swashplate cone; the Assembly went over during the settle. Prime Mover
+under the belly, Energy Cell on the aft deck, and it hovers and fights.
 
 ### Session 35, in more detail
 

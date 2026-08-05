@@ -17,10 +17,10 @@ const STEER_SATURATION_RAD: float = 0.35
 const AMBULATORY_TURN_SATURATION_RAD: float = 0.60
 const AMBULATORY_YAW_DAMPING: float = 0.55
 const AMBULATORY_STEER_AUTHORITY: float = 0.5
-const GROUND_STAND_OFF_M: float = 10.0
+const GROUND_STAND_OFF_M: float = 14.0
 const AMBULATORY_STAND_OFF_M: float = 20.0
 const ROTARY_STAND_OFF_M: float = 22.0
-const ARRIVAL_DECEL_MPS2: float = 4.0
+const ARRIVAL_DECEL_MPS2: float = 6.0
 const ARRIVAL_CLOSURE_DEADBAND_MPS: float = 0.5
 
 ## An Assembly at the origin facing doc 07 §7.2's forward, which is [code]-Z[/code].
@@ -205,7 +205,7 @@ func test_each_family_fights_at_its_documented_stand_off() -> void:
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.GROUND),
 		GROUND_STAND_OFF_M,
-		"wheeled closes to ten metres"
+		"wheeled closes to fourteen metres"
 	)
 	check_approx(
 		AiDriver.default_stand_off_m(PartEnums.LocomotionMode.TRACKED),
@@ -265,21 +265,21 @@ func test_a_driver_inside_its_stand_off_and_still_closing_brakes_fully() -> void
 ## Both ends are asserted, because a law that saturated immediately and one that
 ## never saturated would each pass a single reading taken in the middle.
 func test_the_demand_spans_one_planned_deceleration_to_two() -> void:
-	# 4 m/s into 2 m of slack needs 16 / 4 = 4.0 m/s², exactly the plan.
+	# 6 m/s into 3 m of slack needs 36 / 6 = 6.0 m/s², exactly the plan.
 	check_approx(
-		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 2.0, GROUND_STAND_OFF_M, 4.0),
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 3.0, GROUND_STAND_OFF_M, 6.0),
 		0.0,
 		"at the planned deceleration the driver is still coasting"
 	)
-	# 4 m/s into 1 m needs 16 / 2 = 8.0 m/s², twice the plan.
+	# 6 m/s into 1.5 m needs 36 / 3 = 12.0 m/s², twice the plan.
 	check_approx(
-		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.0, GROUND_STAND_OFF_M, 4.0),
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.5, GROUND_STAND_OFF_M, 6.0),
 		1.0,
 		"at twice it, everything the build has"
 	)
-	# 16 / 3 = 5.333 m/s², a third of the way from one plan to two.
+	# 36 / 4.5 = 8.0 m/s², a third of the way from one plan to two.
 	check_approx(
-		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 1.5, GROUND_STAND_OFF_M, 4.0),
+		AiDriver.arrival_brake(GROUND_STAND_OFF_M + 2.25, GROUND_STAND_OFF_M, 6.0),
 		1.0 / 3.0,
 		"and a third of the way across the band is a third of the demand",
 		1e-4

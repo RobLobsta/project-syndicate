@@ -40,13 +40,19 @@ func _initialize() -> void:
 	quit()
 
 
-## §10.6: [code]apx.arm.manipulator.t3[/code], 3x6x3, 128 kg, 460 integrity.
+## §10.6: [code]apx.arm.manipulator.t3[/code], 3x6x3, 410 kg, 460 integrity.
 ##
 ## Six cells of reach at 0.25 m the cell is 1.5 m of arm, and
 ## [member AppendageProfile.reach_m] is authored to match: the hand is where the
 ## occupancy ends, so what the player sees is where the sword goes. A grip rating
-## of 9000 N holds a 96 kg edge with room to spare and refuses the 196 kg
-## autocannon, which is the trade §7.8 wants a builder to meet.
+## of 28 800 N holds a 307 kg edge with room to spare, which is the trade §7.8
+## wants a builder to meet.
+##
+## [b]The mass, the load capacity and the grip rating all scale with the edge they
+## carry.[/b] Doc 01 §10.5's melee row went up by 3.2 when the reference build
+## did; an arm left at 128 kg and a 260 kg capacity could not hold the sword it
+## exists to hold, and the one build the Appendage class has would stop being a
+## legal build.
 func _author_arm() -> String:
 	var def := PartDefinition.new()
 	def.part_key = &"apx.arm.manipulator.t3"
@@ -77,17 +83,17 @@ func _author_arm() -> String:
 		nodes.push_back(node)
 	def.attachment_nodes = nodes
 
-	def.mass_kg = 128.0
+	def.mass_kg = 410.0
 	def.com_offset_m = PartAuthoring.box_centre_m(ARM_LO, ARM_HI)
 	def.integrity_max = 460.0
 	def.resistance = PackedFloat32Array([0.22, 0.16, 0.30, 0.12, 0.08])
 	def.armour_rating = 15.0
-	def.load_capacity_kg = 260.0
+	def.load_capacity_kg = 830.0
 	def.power_draw_pu = 12.0
 	def.heat_generation_hu_s = 0.0
 
 	var arm := AppendageProfile.new()
-	arm.grip_rating_n = 9000.0
+	arm.grip_rating_n = 28800.0
 	# Five cells from the shoulder pivot to the palm, at the 0.25 m lattice.
 	arm.reach_m = 1.25
 	arm.degrades_held_effector = true

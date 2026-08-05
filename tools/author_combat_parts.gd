@@ -44,7 +44,7 @@ func _run() -> bool:
 
 
 ## §10.5's `eff.ballistic.autocannon_30.t3` row, in full: `BALLISTIC_DIRECT`,
-## 4x4x9 cells, 196 kg, 480 integrity, 68 PU, 0.14 s cycle, 940 m/s muzzle,
+## 4x3x7 cells, 420 kg, 480 integrity, 68 PU, 0.14 s cycle, 940 m/s muzzle,
 ## 1450 N·s recoil, 7.5 HU per shot. §11's `eff.ballistic.*` resistance row.
 ##
 ## The fields §10.5 leaves open — armour, load capacity, magazine, spread — are
@@ -52,7 +52,7 @@ func _run() -> bool:
 ## light armour by design: it is the part a build puts forward, and it should be
 ## the part a build loses.
 func _author_autocannon_30() -> String:
-	# Nine cells along -Z, which is the barrel. §7.2 fixes -Z as the direction a
+	# Seven cells along -Z, which is the barrel. §7.2 fixes -Z as the direction a
 	# round leaves along and `eff.melee.beam_edge` already puts its blade there,
 	# so an edge and a barrel agree on which way forward is.
 	#
@@ -65,8 +65,8 @@ func _author_autocannon_30() -> String:
 	# entire steering authority, and the reason no Assembly could drive and shoot
 	# at the same time. The other three `BALLISTIC_DIRECT` rows of §10.5 were
 	# even-width already; this one was the outlier.
-	var lo := Vector3i(-2, 0, -8)
-	var hi := Vector3i(1, 3, 0)
+	var lo := Vector3i(-2, 0, -6)
+	var hi := Vector3i(1, 2, 0)
 	var def := _base(&"eff.ballistic.autocannon_30.t3", PartEnums.PartClass.EFFECTOR_MODULE)
 	def.tier = PartEnums.TierGrade.REFINED
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
@@ -76,7 +76,7 @@ func _author_autocannon_30() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.FACE_MALE}
 	)
-	def.mass_kg = 196.0
+	def.mass_kg = 420.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 480.0
 	# §11's `eff.ballistic.*` row: kinetic, blast, impact, thermal, corrosive.
@@ -98,7 +98,7 @@ func _author_autocannon_30() -> String:
 	effector.pitch_limit_deg = Vector2(-8.0, 34.0)
 	effector.yaw_rate_deg_s = 65.0
 	effector.pitch_rate_deg_s = 48.0
-	# One barrel, at the muzzle end of the nine-cell occupancy. Half a cell past
+	# One barrel, at the muzzle end of the seven-cell occupancy. Half a cell past
 	# the last occupied cell, so a round is born outside the part's own collider
 	# and §12.3's self-immunity window is belt and braces rather than the only
 	# thing keeping a build from shooting itself.
@@ -141,8 +141,8 @@ func _author_autocannon_30() -> String:
 	return PartAuthoring.save_part(def, "eff", collider, &"barrel_std")
 
 
-## §10.5's `eff.ballistic.repeater_12.t2` row: `BALLISTIC_DIRECT`, 4x3x6 cells,
-## 78 kg, 260 integrity, 26 PU, 0.075 s cycle, 860 m/s muzzle, 26 N·s recoil,
+## §10.5's `eff.ballistic.repeater_12.t2` row: `BALLISTIC_DIRECT`, 4x2x5 cells,
+## 150 kg, 260 integrity, 26 PU, 0.075 s cycle, 860 m/s muzzle, 26 N·s recoil,
 ## 1.9 HU per shot. §11's `eff.ballistic.*` resistance row, same as the
 ## autocannon.
 ##
@@ -157,21 +157,21 @@ func _author_autocannon_30() -> String:
 ##
 ## The trade is penetration, not a uniform taper. See `_author_projectiles`.
 func _author_repeater_12() -> String:
-	# Six cells along -Z rather than the autocannon's nine: a shorter barrel, and
+	# Five cells along -Z rather than the autocannon's seven: a shorter barrel, and
 	# a mount that reaches half a metre less past the hull it is bolted to. Four
 	# wide for §14 rule 27's parity, which is not a styling choice — an odd-width
 	# BALLISTIC_DIRECT module cannot be centred on an even-width Core Module at
 	# any placement, and its bore's half-cell offset is a moment arm on every
 	# round.
-	var lo := Vector3i(-2, 0, -5)
-	var hi := Vector3i(1, 2, 0)
+	var lo := Vector3i(-2, 0, -4)
+	var hi := Vector3i(1, 1, 0)
 	var def := _base(&"eff.ballistic.repeater_12.t2", PartEnums.PartClass.EFFECTOR_MODULE)
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.FACE_MALE}
 	)
-	def.mass_kg = 78.0
+	def.mass_kg = 150.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 260.0
 	def.resistance = PackedFloat32Array([0.12, 0.10, 0.18, 0.14, 0.06])

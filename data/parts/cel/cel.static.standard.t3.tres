@@ -7,550 +7,770 @@
 [ext_resource type="Script" path="res://src/core/data/part_definition.gd" id="5_ucttc"]
 [ext_resource type="Resource" path="res://data/parts/cel/cel.static.standard.t3.visual.tres" id="6_xtaq1"]
 
-[sub_resource type="Resource" id="Resource_cu7ep"]
+[sub_resource type="Resource" id="Resource_qb0as"]
 script = ExtResource("1_qb0as")
 node_name = &"xp_00"
 cell = Vector3i(1, 0, -2)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_2d5tb"]
+[sub_resource type="Resource" id="Resource_tqhu2"]
 script = ExtResource("1_qb0as")
 node_name = &"xp_01"
 cell = Vector3i(1, 1, -2)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_fjc75"]
+[sub_resource type="Resource" id="Resource_puj28"]
 script = ExtResource("1_qb0as")
 node_name = &"xp_02"
 cell = Vector3i(1, 2, -2)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_4a7lo"]
+[sub_resource type="Resource" id="Resource_cotv3"]
 script = ExtResource("1_qb0as")
 node_name = &"xp_03"
+cell = Vector3i(1, 3, -2)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ucttc"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_04"
 cell = Vector3i(1, 0, -1)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_xtaq1"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_05"
+cell = Vector3i(1, 1, -1)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_cu7ep"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_06"
+cell = Vector3i(1, 2, -1)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_2d5tb"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_07"
+cell = Vector3i(1, 3, -1)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_fjc75"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_08"
+cell = Vector3i(1, 0, 0)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_4a7lo"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_09"
+cell = Vector3i(1, 1, 0)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_8t2ky"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_04"
-cell = Vector3i(1, 1, -1)
+node_name = &"xp_10"
+cell = Vector3i(1, 2, 0)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_k1old"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_05"
-cell = Vector3i(1, 2, -1)
+node_name = &"xp_11"
+cell = Vector3i(1, 3, 0)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_747p7"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_06"
-cell = Vector3i(1, 0, 0)
+node_name = &"xp_12"
+cell = Vector3i(1, 0, 1)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_altgr"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_07"
-cell = Vector3i(1, 1, 0)
+node_name = &"xp_13"
+cell = Vector3i(1, 1, 1)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_xrq5k"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_08"
-cell = Vector3i(1, 2, 0)
+node_name = &"xp_14"
+cell = Vector3i(1, 2, 1)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_oq4f6"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_09"
-cell = Vector3i(1, 0, 1)
+node_name = &"xp_15"
+cell = Vector3i(1, 3, 1)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_eakdl"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_10"
-cell = Vector3i(1, 1, 1)
+node_name = &"xp_16"
+cell = Vector3i(1, 0, 2)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_naw3i"]
 script = ExtResource("1_qb0as")
-node_name = &"xp_11"
-cell = Vector3i(1, 2, 1)
+node_name = &"xp_17"
+cell = Vector3i(1, 1, 2)
 face_normal = Vector3i(1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_q8hrg"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_18"
+cell = Vector3i(1, 2, 2)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ep30x"]
+script = ExtResource("1_qb0as")
+node_name = &"xp_19"
+cell = Vector3i(1, 3, 2)
+face_normal = Vector3i(1, 0, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_2t48a"]
 script = ExtResource("1_qb0as")
 node_name = &"xn_00"
 cell = Vector3i(-2, 0, -2)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_ep30x"]
+[sub_resource type="Resource" id="Resource_6mgyg"]
 script = ExtResource("1_qb0as")
 node_name = &"xn_01"
 cell = Vector3i(-2, 1, -2)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_2t48a"]
+[sub_resource type="Resource" id="Resource_ejxye"]
 script = ExtResource("1_qb0as")
 node_name = &"xn_02"
 cell = Vector3i(-2, 2, -2)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_6mgyg"]
-script = ExtResource("1_qb0as")
-node_name = &"xn_03"
-cell = Vector3i(-2, 0, -1)
-face_normal = Vector3i(-1, 0, 0)
-accepts_classes = PackedInt32Array()
-
-[sub_resource type="Resource" id="Resource_ejxye"]
-script = ExtResource("1_qb0as")
-node_name = &"xn_04"
-cell = Vector3i(-2, 1, -1)
-face_normal = Vector3i(-1, 0, 0)
-accepts_classes = PackedInt32Array()
-
 [sub_resource type="Resource" id="Resource_sgre6"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_05"
-cell = Vector3i(-2, 2, -1)
+node_name = &"xn_03"
+cell = Vector3i(-2, 3, -2)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_8nt6f"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_06"
-cell = Vector3i(-2, 0, 0)
+node_name = &"xn_04"
+cell = Vector3i(-2, 0, -1)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_quw6v"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_07"
-cell = Vector3i(-2, 1, 0)
+node_name = &"xn_05"
+cell = Vector3i(-2, 1, -1)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_gk26h"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_08"
-cell = Vector3i(-2, 2, 0)
+node_name = &"xn_06"
+cell = Vector3i(-2, 2, -1)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_yklxx"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_09"
-cell = Vector3i(-2, 0, 1)
+node_name = &"xn_07"
+cell = Vector3i(-2, 3, -1)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_7iv6g"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_10"
-cell = Vector3i(-2, 1, 1)
+node_name = &"xn_08"
+cell = Vector3i(-2, 0, 0)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_swbmx"]
 script = ExtResource("1_qb0as")
-node_name = &"xn_11"
-cell = Vector3i(-2, 2, 1)
+node_name = &"xn_09"
+cell = Vector3i(-2, 1, 0)
 face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_au8qi"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_00"
-cell = Vector3i(-2, 2, -2)
+node_name = &"xn_10"
+cell = Vector3i(-2, 2, 0)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_l6yty"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_01"
-cell = Vector3i(-1, 2, -2)
+node_name = &"xn_11"
+cell = Vector3i(-2, 3, 0)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_gi3v5"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_02"
-cell = Vector3i(0, 2, -2)
+node_name = &"xn_12"
+cell = Vector3i(-2, 0, 1)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_4cr6i"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_03"
-cell = Vector3i(1, 2, -2)
+node_name = &"xn_13"
+cell = Vector3i(-2, 1, 1)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_0vlis"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_04"
-cell = Vector3i(-2, 2, -1)
+node_name = &"xn_14"
+cell = Vector3i(-2, 2, 1)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_utrgj"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_05"
-cell = Vector3i(-1, 2, -1)
+node_name = &"xn_15"
+cell = Vector3i(-2, 3, 1)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_65hl3"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_06"
-cell = Vector3i(0, 2, -1)
+node_name = &"xn_16"
+cell = Vector3i(-2, 0, 2)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_q4uxv"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_07"
-cell = Vector3i(1, 2, -1)
+node_name = &"xn_17"
+cell = Vector3i(-2, 1, 2)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_smw2g"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_08"
-cell = Vector3i(-2, 2, 0)
+node_name = &"xn_18"
+cell = Vector3i(-2, 2, 2)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_42syh"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_09"
-cell = Vector3i(-1, 2, 0)
+node_name = &"xn_19"
+cell = Vector3i(-2, 3, 2)
+face_normal = Vector3i(-1, 0, 0)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_m5s7s"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_10"
-cell = Vector3i(0, 2, 0)
+node_name = &"yp_00"
+cell = Vector3i(-2, 3, -2)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_k1kvx"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_11"
-cell = Vector3i(1, 2, 0)
+node_name = &"yp_01"
+cell = Vector3i(-1, 3, -2)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_wfodh"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_12"
-cell = Vector3i(-2, 2, 1)
+node_name = &"yp_02"
+cell = Vector3i(0, 3, -2)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_y6kbn"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_13"
-cell = Vector3i(-1, 2, 1)
+node_name = &"yp_03"
+cell = Vector3i(1, 3, -2)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_f1bfi"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_14"
-cell = Vector3i(0, 2, 1)
+node_name = &"yp_04"
+cell = Vector3i(-2, 3, -1)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_7f6kg"]
 script = ExtResource("1_qb0as")
-node_name = &"yp_15"
-cell = Vector3i(1, 2, 1)
+node_name = &"yp_05"
+cell = Vector3i(-1, 3, -1)
 accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_0rk68"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_06"
+cell = Vector3i(0, 3, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_t6vyr"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_07"
+cell = Vector3i(1, 3, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_q2ds8"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_08"
+cell = Vector3i(-2, 3, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_x23gb"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_09"
+cell = Vector3i(-1, 3, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_cnl8p"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_10"
+cell = Vector3i(0, 3, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_a17nv"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_11"
+cell = Vector3i(1, 3, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ay1mb"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_12"
+cell = Vector3i(-2, 3, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_f17t4"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_13"
+cell = Vector3i(-1, 3, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_x0nvu"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_14"
+cell = Vector3i(0, 3, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ocg5f"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_15"
+cell = Vector3i(1, 3, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_f0a6d"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_16"
+cell = Vector3i(-2, 3, 2)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_lt1o3"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_17"
+cell = Vector3i(-1, 3, 2)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_nljo2"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_18"
+cell = Vector3i(0, 3, 2)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_o6kpd"]
+script = ExtResource("1_qb0as")
+node_name = &"yp_19"
+cell = Vector3i(1, 3, 2)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_fklh1"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_00"
 cell = Vector3i(-2, 0, -2)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_t6vyr"]
+[sub_resource type="Resource" id="Resource_ini45"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_01"
 cell = Vector3i(-1, 0, -2)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_q2ds8"]
+[sub_resource type="Resource" id="Resource_e0qvc"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_02"
 cell = Vector3i(0, 0, -2)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_x23gb"]
+[sub_resource type="Resource" id="Resource_2ohhf"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_03"
 cell = Vector3i(1, 0, -2)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_cnl8p"]
+[sub_resource type="Resource" id="Resource_8ooqp"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_04"
 cell = Vector3i(-2, 0, -1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_a17nv"]
+[sub_resource type="Resource" id="Resource_41u5p"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_05"
 cell = Vector3i(-1, 0, -1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_ay1mb"]
+[sub_resource type="Resource" id="Resource_51sie"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_06"
 cell = Vector3i(0, 0, -1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_f17t4"]
+[sub_resource type="Resource" id="Resource_7peqw"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_07"
 cell = Vector3i(1, 0, -1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_x0nvu"]
+[sub_resource type="Resource" id="Resource_c3rn3"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_08"
 cell = Vector3i(-2, 0, 0)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_ocg5f"]
+[sub_resource type="Resource" id="Resource_2b8j8"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_09"
 cell = Vector3i(-1, 0, 0)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_f0a6d"]
+[sub_resource type="Resource" id="Resource_r086h"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_10"
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_lt1o3"]
+[sub_resource type="Resource" id="Resource_wb4md"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_11"
 cell = Vector3i(1, 0, 0)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_nljo2"]
+[sub_resource type="Resource" id="Resource_8kypr"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_12"
 cell = Vector3i(-2, 0, 1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_o6kpd"]
+[sub_resource type="Resource" id="Resource_uk3gy"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_13"
 cell = Vector3i(-1, 0, 1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_fklh1"]
+[sub_resource type="Resource" id="Resource_04exb"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_14"
 cell = Vector3i(0, 0, 1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_ini45"]
+[sub_resource type="Resource" id="Resource_l2vbp"]
 script = ExtResource("1_qb0as")
 node_name = &"yn_15"
 cell = Vector3i(1, 0, 1)
 face_normal = Vector3i(0, -1, 0)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_e0qvc"]
+[sub_resource type="Resource" id="Resource_lomd2"]
+script = ExtResource("1_qb0as")
+node_name = &"yn_16"
+cell = Vector3i(-2, 0, 2)
+face_normal = Vector3i(0, -1, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_4ksl8"]
+script = ExtResource("1_qb0as")
+node_name = &"yn_17"
+cell = Vector3i(-1, 0, 2)
+face_normal = Vector3i(0, -1, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_mirts"]
+script = ExtResource("1_qb0as")
+node_name = &"yn_18"
+cell = Vector3i(0, 0, 2)
+face_normal = Vector3i(0, -1, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_a85vx"]
+script = ExtResource("1_qb0as")
+node_name = &"yn_19"
+cell = Vector3i(1, 0, 2)
+face_normal = Vector3i(0, -1, 0)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_3sjkd"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_00"
-cell = Vector3i(-2, 0, 1)
+cell = Vector3i(-2, 0, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_2ohhf"]
+[sub_resource type="Resource" id="Resource_6cva6"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_01"
-cell = Vector3i(-1, 0, 1)
+cell = Vector3i(-1, 0, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_8ooqp"]
+[sub_resource type="Resource" id="Resource_wsr8m"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_02"
-cell = Vector3i(0, 0, 1)
+cell = Vector3i(0, 0, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_41u5p"]
+[sub_resource type="Resource" id="Resource_ic0b6"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_03"
-cell = Vector3i(1, 0, 1)
+cell = Vector3i(1, 0, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_51sie"]
+[sub_resource type="Resource" id="Resource_qixvf"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_04"
-cell = Vector3i(-2, 1, 1)
+cell = Vector3i(-2, 1, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_7peqw"]
+[sub_resource type="Resource" id="Resource_lwt5w"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_05"
-cell = Vector3i(-1, 1, 1)
+cell = Vector3i(-1, 1, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_c3rn3"]
+[sub_resource type="Resource" id="Resource_5ui23"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_06"
-cell = Vector3i(0, 1, 1)
+cell = Vector3i(0, 1, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_2b8j8"]
+[sub_resource type="Resource" id="Resource_x6egn"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_07"
-cell = Vector3i(1, 1, 1)
+cell = Vector3i(1, 1, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_r086h"]
+[sub_resource type="Resource" id="Resource_mkvnj"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_08"
-cell = Vector3i(-2, 2, 1)
+cell = Vector3i(-2, 2, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_wb4md"]
+[sub_resource type="Resource" id="Resource_tdd0o"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_09"
-cell = Vector3i(-1, 2, 1)
+cell = Vector3i(-1, 2, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_8kypr"]
+[sub_resource type="Resource" id="Resource_av144"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_10"
-cell = Vector3i(0, 2, 1)
+cell = Vector3i(0, 2, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_uk3gy"]
+[sub_resource type="Resource" id="Resource_x6cpf"]
 script = ExtResource("1_qb0as")
 node_name = &"zp_11"
-cell = Vector3i(1, 2, 1)
+cell = Vector3i(1, 2, 2)
 face_normal = Vector3i(0, 0, 1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_04exb"]
+[sub_resource type="Resource" id="Resource_8x815"]
+script = ExtResource("1_qb0as")
+node_name = &"zp_12"
+cell = Vector3i(-2, 3, 2)
+face_normal = Vector3i(0, 0, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ubtdr"]
+script = ExtResource("1_qb0as")
+node_name = &"zp_13"
+cell = Vector3i(-1, 3, 2)
+face_normal = Vector3i(0, 0, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_y7spy"]
+script = ExtResource("1_qb0as")
+node_name = &"zp_14"
+cell = Vector3i(0, 3, 2)
+face_normal = Vector3i(0, 0, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_8fuqh"]
+script = ExtResource("1_qb0as")
+node_name = &"zp_15"
+cell = Vector3i(1, 3, 2)
+face_normal = Vector3i(0, 0, 1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_2riv1"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_00"
 cell = Vector3i(-2, 0, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_l2vbp"]
+[sub_resource type="Resource" id="Resource_l4oma"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_01"
 cell = Vector3i(-1, 0, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_lomd2"]
+[sub_resource type="Resource" id="Resource_1hdof"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_02"
 cell = Vector3i(0, 0, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_4ksl8"]
+[sub_resource type="Resource" id="Resource_1oebj"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_03"
 cell = Vector3i(1, 0, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_mirts"]
+[sub_resource type="Resource" id="Resource_3weol"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_04"
 cell = Vector3i(-2, 1, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_a85vx"]
+[sub_resource type="Resource" id="Resource_22mml"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_05"
 cell = Vector3i(-1, 1, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_3sjkd"]
+[sub_resource type="Resource" id="Resource_h46mp"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_06"
 cell = Vector3i(0, 1, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_6cva6"]
+[sub_resource type="Resource" id="Resource_hf0jk"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_07"
 cell = Vector3i(1, 1, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_wsr8m"]
+[sub_resource type="Resource" id="Resource_1iom3"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_08"
 cell = Vector3i(-2, 2, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_ic0b6"]
+[sub_resource type="Resource" id="Resource_qpogn"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_09"
 cell = Vector3i(-1, 2, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_qixvf"]
+[sub_resource type="Resource" id="Resource_oa410"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_10"
 cell = Vector3i(0, 2, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_lwt5w"]
+[sub_resource type="Resource" id="Resource_tp2sj"]
 script = ExtResource("1_qb0as")
 node_name = &"zn_11"
 cell = Vector3i(1, 2, -2)
 face_normal = Vector3i(0, 0, -1)
 accepts_classes = PackedInt32Array()
 
-[sub_resource type="Resource" id="Resource_5ui23"]
+[sub_resource type="Resource" id="Resource_27txu"]
+script = ExtResource("1_qb0as")
+node_name = &"zn_12"
+cell = Vector3i(-2, 3, -2)
+face_normal = Vector3i(0, 0, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_ar0iu"]
+script = ExtResource("1_qb0as")
+node_name = &"zn_13"
+cell = Vector3i(-1, 3, -2)
+face_normal = Vector3i(0, 0, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_gdyu5"]
+script = ExtResource("1_qb0as")
+node_name = &"zn_14"
+cell = Vector3i(0, 3, -2)
+face_normal = Vector3i(0, 0, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_5rbvd"]
+script = ExtResource("1_qb0as")
+node_name = &"zn_15"
+cell = Vector3i(1, 3, -2)
+face_normal = Vector3i(0, 0, -1)
+accepts_classes = PackedInt32Array()
+
+[sub_resource type="Resource" id="Resource_k07xk"]
 script = ExtResource("3_puj28")
 
 [resource]
@@ -560,17 +780,17 @@ display_name_key = &"part.cel.static.standard.t3.name"
 description_key = &"part.cel.static.standard.t3.desc"
 part_class = 7
 tier = 3
-occupancy_cells = PackedVector3Array(-2, 0, -2, -1, 0, -2, 0, 0, -2, 1, 0, -2, -2, 1, -2, -1, 1, -2, 0, 1, -2, 1, 1, -2, -2, 2, -2, -1, 2, -2, 0, 2, -2, 1, 2, -2, -2, 0, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -2, 1, -1, -1, 1, -1, 0, 1, -1, 1, 1, -1, -2, 2, -1, -1, 2, -1, 0, 2, -1, 1, 2, -1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -2, 1, 0, -1, 1, 0, 0, 1, 0, 1, 1, 0, -2, 2, 0, -1, 2, 0, 0, 2, 0, 1, 2, 0, -2, 0, 1, -1, 0, 1, 0, 0, 1, 1, 0, 1, -2, 1, 1, -1, 1, 1, 0, 1, 1, 1, 1, 1, -2, 2, 1, -1, 2, 1, 0, 2, 1, 1, 2, 1)
-attachment_nodes = Array[ExtResource("1_qb0as")]([SubResource("Resource_cu7ep"), SubResource("Resource_2d5tb"), SubResource("Resource_fjc75"), SubResource("Resource_4a7lo"), SubResource("Resource_8t2ky"), SubResource("Resource_k1old"), SubResource("Resource_747p7"), SubResource("Resource_altgr"), SubResource("Resource_xrq5k"), SubResource("Resource_oq4f6"), SubResource("Resource_eakdl"), SubResource("Resource_naw3i"), SubResource("Resource_q8hrg"), SubResource("Resource_ep30x"), SubResource("Resource_2t48a"), SubResource("Resource_6mgyg"), SubResource("Resource_ejxye"), SubResource("Resource_sgre6"), SubResource("Resource_8nt6f"), SubResource("Resource_quw6v"), SubResource("Resource_gk26h"), SubResource("Resource_yklxx"), SubResource("Resource_7iv6g"), SubResource("Resource_swbmx"), SubResource("Resource_au8qi"), SubResource("Resource_l6yty"), SubResource("Resource_gi3v5"), SubResource("Resource_4cr6i"), SubResource("Resource_0vlis"), SubResource("Resource_utrgj"), SubResource("Resource_65hl3"), SubResource("Resource_q4uxv"), SubResource("Resource_smw2g"), SubResource("Resource_42syh"), SubResource("Resource_m5s7s"), SubResource("Resource_k1kvx"), SubResource("Resource_wfodh"), SubResource("Resource_y6kbn"), SubResource("Resource_f1bfi"), SubResource("Resource_7f6kg"), SubResource("Resource_0rk68"), SubResource("Resource_t6vyr"), SubResource("Resource_q2ds8"), SubResource("Resource_x23gb"), SubResource("Resource_cnl8p"), SubResource("Resource_a17nv"), SubResource("Resource_ay1mb"), SubResource("Resource_f17t4"), SubResource("Resource_x0nvu"), SubResource("Resource_ocg5f"), SubResource("Resource_f0a6d"), SubResource("Resource_lt1o3"), SubResource("Resource_nljo2"), SubResource("Resource_o6kpd"), SubResource("Resource_fklh1"), SubResource("Resource_ini45"), SubResource("Resource_e0qvc"), SubResource("Resource_2ohhf"), SubResource("Resource_8ooqp"), SubResource("Resource_41u5p"), SubResource("Resource_51sie"), SubResource("Resource_7peqw"), SubResource("Resource_c3rn3"), SubResource("Resource_2b8j8"), SubResource("Resource_r086h"), SubResource("Resource_wb4md"), SubResource("Resource_8kypr"), SubResource("Resource_uk3gy"), SubResource("Resource_04exb"), SubResource("Resource_l2vbp"), SubResource("Resource_lomd2"), SubResource("Resource_4ksl8"), SubResource("Resource_mirts"), SubResource("Resource_a85vx"), SubResource("Resource_3sjkd"), SubResource("Resource_6cva6"), SubResource("Resource_wsr8m"), SubResource("Resource_ic0b6"), SubResource("Resource_qixvf"), SubResource("Resource_lwt5w")])
-mass_kg = 175.0
-com_offset_m = Vector3(-0.125, 0.25, -0.125)
+occupancy_cells = PackedVector3Array(-2, 0, -2, -1, 0, -2, 0, 0, -2, 1, 0, -2, -2, 1, -2, -1, 1, -2, 0, 1, -2, 1, 1, -2, -2, 2, -2, -1, 2, -2, 0, 2, -2, 1, 2, -2, -2, 3, -2, -1, 3, -2, 0, 3, -2, 1, 3, -2, -2, 0, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -2, 1, -1, -1, 1, -1, 0, 1, -1, 1, 1, -1, -2, 2, -1, -1, 2, -1, 0, 2, -1, 1, 2, -1, -2, 3, -1, -1, 3, -1, 0, 3, -1, 1, 3, -1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -2, 1, 0, -1, 1, 0, 0, 1, 0, 1, 1, 0, -2, 2, 0, -1, 2, 0, 0, 2, 0, 1, 2, 0, -2, 3, 0, -1, 3, 0, 0, 3, 0, 1, 3, 0, -2, 0, 1, -1, 0, 1, 0, 0, 1, 1, 0, 1, -2, 1, 1, -1, 1, 1, 0, 1, 1, 1, 1, 1, -2, 2, 1, -1, 2, 1, 0, 2, 1, 1, 2, 1, -2, 3, 1, -1, 3, 1, 0, 3, 1, 1, 3, 1, -2, 0, 2, -1, 0, 2, 0, 0, 2, 1, 0, 2, -2, 1, 2, -1, 1, 2, 0, 1, 2, 1, 1, 2, -2, 2, 2, -1, 2, 2, 0, 2, 2, 1, 2, 2, -2, 3, 2, -1, 3, 2, 0, 3, 2, 1, 3, 2)
+attachment_nodes = Array[ExtResource("1_qb0as")]([SubResource("Resource_qb0as"), SubResource("Resource_tqhu2"), SubResource("Resource_puj28"), SubResource("Resource_cotv3"), SubResource("Resource_ucttc"), SubResource("Resource_xtaq1"), SubResource("Resource_cu7ep"), SubResource("Resource_2d5tb"), SubResource("Resource_fjc75"), SubResource("Resource_4a7lo"), SubResource("Resource_8t2ky"), SubResource("Resource_k1old"), SubResource("Resource_747p7"), SubResource("Resource_altgr"), SubResource("Resource_xrq5k"), SubResource("Resource_oq4f6"), SubResource("Resource_eakdl"), SubResource("Resource_naw3i"), SubResource("Resource_q8hrg"), SubResource("Resource_ep30x"), SubResource("Resource_2t48a"), SubResource("Resource_6mgyg"), SubResource("Resource_ejxye"), SubResource("Resource_sgre6"), SubResource("Resource_8nt6f"), SubResource("Resource_quw6v"), SubResource("Resource_gk26h"), SubResource("Resource_yklxx"), SubResource("Resource_7iv6g"), SubResource("Resource_swbmx"), SubResource("Resource_au8qi"), SubResource("Resource_l6yty"), SubResource("Resource_gi3v5"), SubResource("Resource_4cr6i"), SubResource("Resource_0vlis"), SubResource("Resource_utrgj"), SubResource("Resource_65hl3"), SubResource("Resource_q4uxv"), SubResource("Resource_smw2g"), SubResource("Resource_42syh"), SubResource("Resource_m5s7s"), SubResource("Resource_k1kvx"), SubResource("Resource_wfodh"), SubResource("Resource_y6kbn"), SubResource("Resource_f1bfi"), SubResource("Resource_7f6kg"), SubResource("Resource_0rk68"), SubResource("Resource_t6vyr"), SubResource("Resource_q2ds8"), SubResource("Resource_x23gb"), SubResource("Resource_cnl8p"), SubResource("Resource_a17nv"), SubResource("Resource_ay1mb"), SubResource("Resource_f17t4"), SubResource("Resource_x0nvu"), SubResource("Resource_ocg5f"), SubResource("Resource_f0a6d"), SubResource("Resource_lt1o3"), SubResource("Resource_nljo2"), SubResource("Resource_o6kpd"), SubResource("Resource_fklh1"), SubResource("Resource_ini45"), SubResource("Resource_e0qvc"), SubResource("Resource_2ohhf"), SubResource("Resource_8ooqp"), SubResource("Resource_41u5p"), SubResource("Resource_51sie"), SubResource("Resource_7peqw"), SubResource("Resource_c3rn3"), SubResource("Resource_2b8j8"), SubResource("Resource_r086h"), SubResource("Resource_wb4md"), SubResource("Resource_8kypr"), SubResource("Resource_uk3gy"), SubResource("Resource_04exb"), SubResource("Resource_l2vbp"), SubResource("Resource_lomd2"), SubResource("Resource_4ksl8"), SubResource("Resource_mirts"), SubResource("Resource_a85vx"), SubResource("Resource_3sjkd"), SubResource("Resource_6cva6"), SubResource("Resource_wsr8m"), SubResource("Resource_ic0b6"), SubResource("Resource_qixvf"), SubResource("Resource_lwt5w"), SubResource("Resource_5ui23"), SubResource("Resource_x6egn"), SubResource("Resource_mkvnj"), SubResource("Resource_tdd0o"), SubResource("Resource_av144"), SubResource("Resource_x6cpf"), SubResource("Resource_8x815"), SubResource("Resource_ubtdr"), SubResource("Resource_y7spy"), SubResource("Resource_8fuqh"), SubResource("Resource_2riv1"), SubResource("Resource_l4oma"), SubResource("Resource_1hdof"), SubResource("Resource_1oebj"), SubResource("Resource_3weol"), SubResource("Resource_22mml"), SubResource("Resource_h46mp"), SubResource("Resource_hf0jk"), SubResource("Resource_1iom3"), SubResource("Resource_qpogn"), SubResource("Resource_oa410"), SubResource("Resource_tp2sj"), SubResource("Resource_27txu"), SubResource("Resource_ar0iu"), SubResource("Resource_gdyu5"), SubResource("Resource_5rbvd")])
+mass_kg = 450.0
+com_offset_m = Vector3(-0.125, 0.375, 0)
 integrity_max = 540.0
 resistance = PackedFloat32Array(0.22, 0.14, 0.06, 0.08, 0.1)
 armour_rating = 16.0
 load_capacity_kg = 800.0
 power_supply_pu = 260.0
 heat_generation_hu_s = 1.1
-energy_cell_profile = SubResource("Resource_5ui23")
+energy_cell_profile = SubResource("Resource_k07xk")
 visual_profile = ExtResource("6_xtaq1")
 collider_profile = ExtResource("2_tqhu2")
 fusion_profile = ExtResource("4_cotv3")

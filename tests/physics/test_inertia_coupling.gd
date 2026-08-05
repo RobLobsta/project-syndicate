@@ -42,8 +42,8 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Mass hung off the Core Module's centreline on two axes at once, which is what
 ## puts products of inertia into the tensor. A symmetric build has none and this
 ## whole section would be a no-op on it.
-const POWER_ORIGIN := Vector3i(21, 1, 20)
-const ROTOR_ORIGIN := Vector3i(20, 4, 21)
+const POWER_ORIGIN := Vector3i(21, 0, 20)
+const ROTOR_ORIGIN := Vector3i(19, 4, 21)
 
 ## Spin rate for the tumble tests, in rad/s — about one revolution per second.
 const SPIN_RAD_S: float = 6.0

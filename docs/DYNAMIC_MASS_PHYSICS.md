@@ -1841,10 +1841,19 @@ the throttle entirely. A demand that accelerated and braked at once would be
 asking the same contacts for both.
 
 `ARRIVAL_DECEL_MPS2` is well inside what the reference build can make: four
-contacts at §7.4's 2600 N·m over a 0.5 m radius is 20.8 kN against 1107 kg, and
-the surface takes that to about one g — so the plan is under half the authority.
+contacts at §7.4's 8300 N·m over a 0.5 m radius is 66 kN against 3630 kg, which
+the tyres cut to about one g — so the plan is under two thirds of the authority.
 That margin is deliberate and is what lets the same number hold on a slope
 without the terrain problem the throttle floor had.
+
+**It was 4.0 and it was authored against an 1107 kg build.** The reference build
+is now 3630 kg with the braking authority to match, and at 4.0 the driver arrived
+at its ten-metre stand-off still carrying enough speed to run through it into
+contact: `tests/physics/test_ram_attitude.gd` measured the nearest approach at a
+centimetre of hull overlap where it used to leave over a metre of clear air. The
+law is a stopping-distance plan rather than a gain, so the figure it plans on has
+to be a deceleration the build can actually make, and 6.0 m/s² is 0.61 g against
+the 1.05 g four loaded contacts hold.
 
 #### `closing` stays a line, and a band was tried
 
@@ -1883,9 +1892,19 @@ of them therefore touch at **4.8 m** of origin separation.
 So a six-metre stand-off was never a stand-off. It was nose-to-nose parking with
 1.2 m of air, against an arrival overshoot of about the same, and the measurement
 says exactly that: the nearest driver finished 4.8 m out with an **eight
-centimetre** gap. `GROUND_STAND_OFF_M` is now 10.0 — the touching range plus a
+centimetre** gap. `GROUND_STAND_OFF_M` went to 10.0 — the touching range plus a
 full hull length of clear air, which is the smallest range at which an approach
 that overshoots is still an approach.
+
+**And ten was authored against an 1107 kg build, so it moved again when the
+reference build did.** A stand-off has to exceed the machine's own stopping
+distance. The rebuilt build is 3630 kg, reaches its mark at about 9.7 m/s and
+plans on 6.0 m/s², so it needs 7.8 m to stop; from ten metres it arrived at 4.1 m
+against a hull that now touches at 4.0. `GROUND_STAND_OFF_M` is **14.0**: the
+touching range, plus the stopping distance, plus a hull length of clear air. The
+general rule is worth more than the number — *a stand-off is a stopping distance
+plus a clearance, and both of its terms are properties of the build rather than
+of the tactic.*
 
 | Measured, three drivers converging on a stationary build | Before | After |
 |---|---|---|
@@ -1906,9 +1925,9 @@ it down.
 | `APPROACH_MIN_THROTTLE` | 0.35 | Throttle floor while the target is off the nose |
 | `APPROACH_BREAKAWAY_SPEED_MPS` | 3.0 | Speed below which the taper is overridden to break away from a standstill |
 | `APPROACH_BREAKAWAY_THROTTLE` | 0.80 | The demand it is overridden to |
-| `ARRIVAL_DECEL_MPS2` | 4.0 | Deceleration a ground driver plans its arrival on |
+| `ARRIVAL_DECEL_MPS2` | 6.0 | Deceleration a ground driver plans its arrival on |
 | `ARRIVAL_CLOSURE_DEADBAND_MPS` | 0.5 | Closing speed under which no arrival brake is demanded |
-| `GROUND_STAND_OFF_M` | 10.0 | Range a wheeled or tracked driver stops closing at — measured against a 4.8 m hull-to-hull contact range |
+| `GROUND_STAND_OFF_M` | 14.0 | Range a wheeled or tracked driver stops closing at — the 4.0 m hull-to-hull contact range plus a 7.8 m stopping distance plus clearance |
 | `AMBULATORY_TURN_SATURATION_RAD` | 0.60 | The same as the first row, for a family that turns far more slowly |
 | `AMBULATORY_YAW_DAMPING` | 0.55 | Steering demand per radian per second of hull yaw, opposing it |
 | `AMBULATORY_STEER_AUTHORITY` | 0.5 | Ceiling on an ambulatory steering demand |

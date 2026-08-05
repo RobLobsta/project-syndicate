@@ -9,6 +9,7 @@
 
 [sub_resource type="Resource" id="Resource_0cnon"]
 script = ExtResource("1_6ptq4")
+grip_rating_n = 28800.0
 reach_m = 1.25
 
 [sub_resource type="Resource" id="Resource_e5o7m"]
@@ -81,12 +82,12 @@ part_class = 8
 tier = 3
 occupancy_cells = PackedVector3Array(-1, -5, -1, 0, -5, -1, 1, -5, -1, -1, -4, -1, 0, -4, -1, 1, -4, -1, -1, -3, -1, 0, -3, -1, 1, -3, -1, -1, -2, -1, 0, -2, -1, 1, -2, -1, -1, -1, -1, 0, -1, -1, 1, -1, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -1, -5, 0, 0, -5, 0, 1, -5, 0, -1, -4, 0, 0, -4, 0, 1, -4, 0, -1, -3, 0, 0, -3, 0, 1, -3, 0, -1, -2, 0, 0, -2, 0, 1, -2, 0, -1, -1, 0, 0, -1, 0, 1, -1, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -1, -5, 1, 0, -5, 1, 1, -5, 1, -1, -4, 1, 0, -4, 1, 1, -4, 1, -1, -3, 1, 0, -3, 1, 1, -3, 1, -1, -2, 1, 0, -2, 1, 1, -2, 1, -1, -1, 1, 0, -1, 1, 1, -1, 1, -1, 0, 1, 0, 0, 1, 1, 0, 1)
 attachment_nodes = Array[ExtResource("2_2j0uc")]([SubResource("Resource_e5o7m"), SubResource("Resource_yeqkh"), SubResource("Resource_1vrup"), SubResource("Resource_v7y3q"), SubResource("Resource_u14aw"), SubResource("Resource_x2a5o"), SubResource("Resource_8yjqj"), SubResource("Resource_s7yu5"), SubResource("Resource_jdkxb"), SubResource("Resource_skdr4")])
-mass_kg = 128.0
+mass_kg = 410.0
 com_offset_m = Vector3(0, -0.625, 0)
 integrity_max = 460.0
 resistance = PackedFloat32Array(0.22, 0.16, 0.3, 0.12, 0.08)
 armour_rating = 15.0
-load_capacity_kg = 260.0
+load_capacity_kg = 830.0
 power_draw_pu = 12.0
 appendage_profile = SubResource("Resource_0cnon")
 visual_profile = ExtResource("6_gks2a")

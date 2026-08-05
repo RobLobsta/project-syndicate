@@ -31,9 +31,9 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Three Structural Components stacked on the deck, so destroying the lowest
 ## severs the two above it as one island — the same shape as the integration
 ## fixture, for the same reason.
-const DECK_ORIGIN := Vector3i(24, 7, 24)
-const MID_ORIGIN := Vector3i(24, 8, 24)
-const TOP_ORIGIN := Vector3i(24, 9, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
+const MID_ORIGIN := Vector3i(24, 9, 24)
+const TOP_ORIGIN := Vector3i(24, 10, 24)
 
 const ASSEMBLY := 41
 

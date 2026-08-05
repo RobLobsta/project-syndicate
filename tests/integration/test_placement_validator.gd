@@ -19,20 +19,27 @@ extends TestCase
 const CORE_KEY := &"core.command.compact.t2"
 const PANEL_KEY := &"str.panel.medium.t2"
 
-## The Core Module seated at the lattice origin. Occupies x 22..25, y 4..6,
-## z 22..26; its whole top face at y = 6 is DECK polarity.
+## The Core Module seated at the lattice origin. Occupies x 21..26, y 4..7,
+## z 18..30; its whole top face at y = 7 is DECK polarity.
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Directly on the Core Module's deck. The panel occupies x 22..25, z 22..25.
-const DECK_ORIGIN := Vector3i(24, 7, 24)
-## One cell out from the Core Module's +X face, with clear air below it.
-const BESIDE_ORIGIN := Vector3i(26, 5, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
+## One cell out from the Core Module's +X face, with clear air below it. The
+## flank is at x = 26 now, not 25, so this is a cell further out than it was.
+const BESIDE_ORIGIN := Vector3i(27, 5, 24)
+## Beside the stack of [method _stacked_context] and clear of the Core Module
+## entirely. The hull spans x 21..26 and reaches y = 7, so a panel one cell out
+## from the stack at deck height would rest on the roof and take the Core Module
+## as its parent — which is a different joint from the one §7.8 is being asked
+## about here. One cell higher, it can only mate with the stack.
+const LATERAL_ORIGIN := Vector3i(28, 9, 24)
 
 ## Published in doc 01 §10.2 and re-asserted here so a data change that breaks
 ## the arithmetic below names itself rather than failing as a wrong reject code.
-const PANEL_MASS := 34.0
-const PANEL_LOAD_CAPACITY := 520.0
+const PANEL_MASS := 100.0
+const PANEL_LOAD_CAPACITY := 1560.0
 const CORE_MOUNT_BUDGET := 28
-const CORE_POWER_CAPACITY := 240.0
+const CORE_POWER_CAPACITY := 520.0
 
 var _core: PartDefinition = null
 var _panel: PartDefinition = null
@@ -163,10 +170,10 @@ func test_class_restriction_is_distinguished_from_polarity() -> void:
 
 func test_second_core_module_is_rejected() -> void:
 	var ctx := _context_with_core()
-	var cand := PlacementCandidate.create(_core, Vector3i(24, 10, 24), 0)
+	var cand := PlacementCandidate.create(_core, Vector3i(24, 14, 24), 0)
 	# Seated so its own cells clear the committed core but its lower face still
 	# mates, isolating DUPLICATE_CORE from CELL_OCCUPIED.
-	cand.origin_cell = Vector3i(24, 7, 24)
+	cand.origin_cell = Vector3i(24, 8, 24)
 	cand.resolve()
 	check_eq(
 		_validate(ctx, cand), PlacementValidator.Reject.DUPLICATE_CORE,
@@ -427,35 +434,36 @@ func test_headless_context_skips_the_physics_query() -> void:
 
 
 func test_load_capacity_boundary_under_hard_limits() -> void:
-	# Fourteen panels hang off the first one: 14 x 34 kg = 476 kg, and one more
-	# panel brings the joint to 510 kg against the panel's 520 kg capacity.
-	var ctx := _stacked_context(14)
+	# The lateral panel mates with slot 2, so the joint under test carries the
+	# fourteen panels above slot 2 plus the candidate: 14 x 100 kg = 1400 kg, and
+	# the candidate brings it to 1500 against the panel's 1560 kg capacity.
+	var ctx := _stacked_context(15)
 	ctx.enforce_hard_limits = true
 	check_approx(
-		ctx.graph.subtree_mass[1], 14.0 * PANEL_MASS, "fixture: the stack masses what it should"
+		ctx.graph.subtree_mass[2], 14.0 * PANEL_MASS, "fixture: the stack masses what it should"
 	)
-	var under := PlacementCandidate.create(_panel, Vector3i(28, 7, 24), 0)
+	var under := PlacementCandidate.create(_panel, LATERAL_ORIGIN, 0)
 	check_eq(
 		_validate(ctx, under), PlacementValidator.Reject.NONE,
-		"510 kg on a 520 kg joint is within capacity"
+		"1500 kg on a 1560 kg joint is within capacity"
 	)
 
 
 func test_load_capacity_exceeded_under_hard_limits() -> void:
-	var ctx := _stacked_context(15)
+	var ctx := _stacked_context(16)
 	ctx.enforce_hard_limits = true
-	check_approx(ctx.graph.subtree_mass[1], 15.0 * PANEL_MASS, "fixture: 510 kg already hanging")
-	var over := PlacementCandidate.create(_panel, Vector3i(28, 7, 24), 0)
+	check_approx(ctx.graph.subtree_mass[2], 15.0 * PANEL_MASS, "fixture: 1500 kg already hanging")
+	var over := PlacementCandidate.create(_panel, LATERAL_ORIGIN, 0)
 	check_eq(
 		_validate(ctx, over), PlacementValidator.Reject.LOAD_CAPACITY_EXCEEDED,
-		"544 kg on a 520 kg joint is refused in Ranked mode"
+		"1600 kg on a 1560 kg joint is refused in Ranked mode"
 	)
 
 
 func test_load_capacity_is_soft_in_sandbox() -> void:
-	var ctx := _stacked_context(15)
+	var ctx := _stacked_context(16)
 	ctx.enforce_hard_limits = false
-	var over := PlacementCandidate.create(_panel, Vector3i(28, 7, 24), 0)
+	var over := PlacementCandidate.create(_panel, LATERAL_ORIGIN, 0)
 	check_eq(
 		_validate(ctx, over), PlacementValidator.Reject.NONE,
 		"Sandbox admits the over-capacity placement"
@@ -711,7 +719,7 @@ func test_a_candidate_is_cleared_when_the_lattice_moves_under_it() -> void:
 	var panel := PlacementValidator.commit(
 		ctx, PlacementCandidate.create(_panel, DECK_ORIGIN, 0)
 	)
-	var cand := PlacementCandidate.create(_panel, Vector3i(24, 8, 24), 0)
+	var cand := PlacementCandidate.create(_panel, Vector3i(24, 9, 24), 0)
 	check_eq(_validate(ctx, cand), PlacementValidator.Reject.NONE, "legal on top of the panel")
 	check_eq(cand.parent_slot, panel, "with the panel as parent")
 
@@ -754,7 +762,7 @@ func _headless_context_with_core() -> BuildContext:
 func _stacked_context(count: int) -> BuildContext:
 	var ctx := _context_with_core()
 	for i in count:
-		var cand := PlacementCandidate.create(_panel, Vector3i(24, 7 + i, 24), 0)
+		var cand := PlacementCandidate.create(_panel, Vector3i(24, 8 + i, 24), 0)
 		var r := PlacementValidator.validate(ctx, cand)
 		if r != PlacementValidator.Reject.NONE:
 			fail("fixture: stacking panel %d rejected with code %d" % [i, r])
@@ -773,10 +781,10 @@ func _stacked_context(count: int) -> BuildContext:
 func _reparent_fixture() -> BuildContext:
 	var ctx := _context_with_core()
 	var origins: Array[Vector3i] = [
-		Vector3i(24, 7, 24),  # 1: on the deck
-		Vector3i(24, 8, 24),  # 2: above it
-		Vector3i(24, 8, 28),  # 3: beside 2, touching nothing else yet
-		Vector3i(24, 7, 28),  # 4: below 3, bridging to the core and to 1
+		Vector3i(24, 8, 24),  # 1: on the deck
+		Vector3i(24, 9, 24),  # 2: above it
+		Vector3i(24, 9, 28),  # 3: beside 2, touching nothing else yet
+		Vector3i(24, 8, 28),  # 4: below 3, bridging to the core and to 1
 	]
 	for origin: Vector3i in origins:
 		var cand := PlacementCandidate.create(_panel, origin, 0)

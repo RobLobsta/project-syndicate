@@ -15,34 +15,48 @@ extends TestCase
 ## of its length is weapon, and — the one that has been wrong since the project
 ## started — whether all of its contacts are on the ground.
 ##
-## [b]Two of the assertions are asserted as they fail.[/b] `HANDOFF.md` §3.1.1
-## records the finding: the reference build is nose-heavy enough to stand on its
-## front axle, so the rear pair carries nothing. They are written the way they are
-## measured today and are [i]supposed[/i] to break the day the build is re-laid or
-## re-scaled — at which point the fix is to re-measure and re-assert, exactly as
-## `test_family_duels` was re-measured when `release_part` closed the grind. The
-## printed report below is the before-and-after instrument for that work.
+## [b]It was written with two of its assertions asserted as they failed, and the
+## rebuild closed both.[/b] The build it was written against was 1107 kg at
+## 46 kg/m³ — a fifth of balsa — on a 1.50 m wheelbase under a 4.25 m hull, and
+## it stood on two of its four contacts with the front axle carrying every newton.
+## It is now 3630 kg at 141 kg/m³ on a 2.75 m wheelbase, standing on all four.
+##
+## Two findings survive and are asserted the way they are measured, which is this
+## file's convention rather than a lapse: the static split is 38% front, so the
+## build is rear-biased where a road vehicle is nose-biased, and the wheelbase is
+## 73% of the hull where a road vehicle is 55–65%. Both follow from a chassis
+## whose axle stations sit on its two ends. Re-measure them when the layout moves;
+## do not loosen them.
 ##
 ## One Assembly on a slab, which reproduces exactly (LEARNED_FACTS.md §1 fact 44).
 
 ## Ticks the build is given to fall onto its contacts and settle.
 const SETTLE_TICKS: int = 180
 
-## Contacts the reference build actually puts weight on, of the four it carries.
-##
-## [b]The defect, and the number is exact rather than a bound.[/b] The centre of
-## mass sits aft of the front axle by a quarter of a very short wheelbase, so the
-## rear suspension cannot reach the ground and the hull rocks on the front pair.
-## A build laid out to stand on all four would make this four and this file red.
-const LOADED_CONTACTS: int = 2
+## Contacts the reference build carries, and it stands on every one of them.
+const CONTACT_COUNT: int = 4
 
-## Share of the static weight the front axle carries. Measured at 73%; a road
-## vehicle is 50–60% and anything past about two thirds cannot keep its rear
-## suspension in contact.
-const FRONT_BIAS_FLOOR: float = 0.65
+## Share of the static weight the front axle carries, measured at 38%. The band
+## is asserted in both directions: below the floor the build is standing on its
+## rear pair the way it used to stand on its front, and above the ceiling it has
+## been rebalanced and this constant is the thing to re-measure.
+const FRONT_BIAS_FLOOR: float = 0.30
+const FRONT_BIAS_CEILING: float = 0.50
+
+## Mass per cubic metre of the bounding box, measured at 141. A passenger car is
+## about 115 and the build this file was written against was 46 — the ratio
+## LEARNED_FACTS.md §1 fact 75 is about, and the one number that says whether the
+## part table is the right shape rather than merely self-consistent.
+const DENSITY_FLOOR_KG_M3: float = 100.0
+const DENSITY_CEILING_KG_M3: float = 200.0
+
+## Wheelbase as a fraction of hull length, measured at 0.73. A road vehicle is
+## 0.55–0.65; this hull carries its axle stations on its two ends, so it runs
+## long. Asserted above the road floor and recorded as being past the band.
+const WHEELBASE_FRACTION_FLOOR: float = 0.55
 
 ## Newtons under which a contact counts as carrying nothing. Well below any real
-## share of a 1282 kg build, and above the float noise on a settled spring.
+## share of a 3630 kg build, and above the float noise on a settled spring.
 const UNLOADED_N: float = 1.0
 
 var _ran: bool = false
@@ -54,6 +68,7 @@ var _width_m: float = 0.0
 var _height_m: float = 0.0
 var _wheelbase_m: float = 0.0
 var _loaded: int = 0
+var _contacts: int = 0
 var _front_n: float = 0.0
 var _rear_n: float = 0.0
 
@@ -62,43 +77,68 @@ func after_all() -> void:
 	_teardown()
 
 
-## The finding. Half the running gear is along for the ride.
-func test_the_build_stands_on_only_half_its_contacts() -> void:
+## The whole of the running gear is on the ground, which it was not for the first
+## thirty-three sessions of this project.
+func test_the_build_stands_on_every_contact_it_carries() -> void:
 	await _run()
+	check_eq(_contacts, CONTACT_COUNT, "the reference build carries four contacts")
 	check_eq(
 		_loaded,
-		LOADED_CONTACTS,
+		_contacts,
 		(
-			"%d of %d contacts carry load. If this has risen, the build has been re-laid "
-			+ "and this file is now the wrong way round — re-measure it, do not loosen it"
-		) % [_loaded, _contact_count()]
+			"%d of %d contacts carry load. If this has fallen, the build has been re-laid "
+			+ "and the stance has gone with it — re-measure it, do not loosen it"
+		) % [_loaded, _contacts]
 	)
 
 
-func test_the_static_weight_is_almost_all_on_the_front_axle() -> void:
+## The split, in both directions. A single-sided bound here is satisfied by a
+## build standing on one axle, which is the state this file was written to record.
+func test_the_static_weight_is_shared_between_the_axles() -> void:
 	await _run()
 	var total := _front_n + _rear_n
 	var bias := 0.0 if total <= 0.0 else _front_n / total
 	check_true(
 		bias > FRONT_BIAS_FLOOR,
 		(
-			"the front axle carries %.0f%% of what the springs are holding. A build that "
-			+ "had been balanced would put this near half and fail here"
+			"the front axle carries %.0f%% of what the springs are holding, which is a "
+			+ "share rather than nothing"
+		) % (bias * 100.0)
+	)
+	check_true(
+		bias < FRONT_BIAS_CEILING,
+		(
+			"and the build is still rear-biased at %.0f%% front, because its Prime Mover "
+			+ "is on the aft half of the deck. Re-measure if the layout moves"
 		) % (bias * 100.0)
 	)
 
 
-## Not asserted as a defect — recorded so the rebuild has a datum. The wheelbase
-## is a third of the hull length where a road vehicle is well over half, and it is
-## the cheapest of the three levers §3.1.1 lists.
-func test_the_wheelbase_is_short_for_the_hull() -> void:
+## The one number that says whether the part table is the right [i]shape[/i].
+func test_the_build_is_as_dense_as_a_vehicle_rather_than_as_balsa() -> void:
 	await _run()
+	var density := _mass_kg / maxf(_length_m * _width_m * _height_m, 0.01)
 	check_true(
-		_wheelbase_m < _length_m * 0.5,
+		density > DENSITY_FLOOR_KG_M3,
+		"%.0f kg/m3 of bounding box, against a passenger car's 115" % density
+	)
+	check_true(
+		density < DENSITY_CEILING_KG_M3,
+		"and it is a vehicle rather than a solid billet: %.0f kg/m3" % density
+	)
+
+
+## The remaining proportion finding, recorded rather than repaired: the axle
+## stations sit on the hull's two ends, so the wheelbase runs long.
+func test_the_wheelbase_spans_the_hull() -> void:
+	await _run()
+	var fraction := _wheelbase_m / maxf(_length_m, 0.01)
+	check_true(
+		fraction > WHEELBASE_FRACTION_FLOOR,
 		(
-			"wheelbase %.2f m under a %.2f m hull is %.0f%%; a road vehicle is 55-65%%"
-			% [_wheelbase_m, _length_m, 100.0 * _wheelbase_m / maxf(_length_m, 0.01)]
-		)
+			"wheelbase %.2f m under a %.2f m hull is %.0f%%, which is a road vehicle's "
+			+ "proportion rather than the 35%% it was"
+		) % [_wheelbase_m, _length_m, 100.0 * fraction]
 	)
 
 
@@ -115,6 +155,7 @@ func _run() -> void:
 	await _arena.settle(SETTLE_TICKS)
 
 	_mass_kg = c.runtime.body.mass
+	_contacts = _contact_count()
 	_measure_extent(c)
 	_measure_contacts(c)
 
@@ -126,7 +167,7 @@ func _run() -> void:
 		) % [
 			_mass_kg, _length_m, _width_m, _height_m, _mass_kg / maxf(volume, 0.01),
 			_wheelbase_m, 100.0 * _wheelbase_m / maxf(_length_m, 0.01),
-			_loaded, _contact_count(),
+			_loaded, _contacts,
 			100.0 * _front_n / maxf(_front_n + _rear_n, 0.01)
 		]
 	)

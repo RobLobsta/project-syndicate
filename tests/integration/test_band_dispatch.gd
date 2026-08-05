@@ -24,10 +24,10 @@ const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 7, 24)
-const GUN_ORIGIN := Vector3i(24, 10, 26)
-const HUB_ORIGIN := Vector3i(22, 2, 23)
-const WHEEL_ORIGIN := Vector3i(19, 3, 22)
+const POWER_ORIGIN := Vector3i(24, 8, 28)
+const GUN_ORIGIN := Vector3i(24, 8, 24)
+const HUB_ORIGIN := Vector3i(22, 2, 19)
+const WHEEL_ORIGIN := Vector3i(19, 3, 18)
 
 ## §8.2's IMPAIRED row for a Motive Assembly, quoted rather than imported. The
 ## mandated behaviour: below 50% integrity a drive unit loses 40% of its grip.

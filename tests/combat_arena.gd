@@ -114,8 +114,11 @@ const CALLSIGNS: Array[String] = [
 ## I-6); the only floats in this file are world poses and the pilot's arithmetic.
 
 const GROUND_CORE := Vector3i(24, 4, 24)
-const GROUND_POWER := Vector3i(24, 7, 24)
-const GROUND_CELL := Vector3i(24, 4, 29)
+## The Core Module spans `x` 21–26, `y` 4–7 and `z` 18–30, so its deck is `y = 8`
+## and its two ends are `z` 18 and 30. Every cell in this section is placed
+## against those three ranges.
+const GROUND_POWER := Vector3i(24, 8, 28)
+const GROUND_CELL := Vector3i(24, 4, 33)
 
 ## The Effector Module goes on the [b]nose[/b], at the Core Module's own height,
 ## and that is the one deliberate departure from [code]test_duel.gd[/code]'s
@@ -130,13 +133,23 @@ const GROUND_CELL := Vector3i(24, 4, 29)
 ## one, so the same round is a rock rather than a backflip and the fight lasts
 ## long enough to be a fight. The rearward push is untouched and is meant to be:
 ## it is what the recoil actually does to a vehicle this size.
-const GROUND_GUN := Vector3i(24, 6, 21)
+##
+## "The nose" is now the [b]front of the roof[/b] rather than a bracket hung off
+## the front face, because the cabin is thirteen cells long and there is roof to
+## put it on. The height above the centre of mass is what the paragraph above is
+## about and is unchanged; what has gone is the 1.12 m of cantilever forward of
+## the front axle that made a braked hull settle onto its own barrel.
+const GROUND_GUN := Vector3i(24, 8, 24)
 
 const WHEEL_HUBS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
+	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
 ]
+## The right flank sits one cell forward of the left, which is doc 02 §10's
+## mirror being right about a disc whose pivot is off-centre rather than an
+## off-by-one. `test_the_shipped_starter_is_its_own_mirror` fails on squared-up
+## cells, not on these.
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
+	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
@@ -148,16 +161,27 @@ const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)
 ## The ambulatory build sits high in the lattice because a limb hangs below its
 ## station and the lattice floor is at y = 0.
 const AMBULATORY_CORE := Vector3i(24, 14, 24)
-const AMBULATORY_POWER := Vector3i(24, 17, 24)
-const AMBULATORY_GUN := Vector3i(24, 14, 21)
+const AMBULATORY_POWER := Vector3i(24, 18, 28)
+const AMBULATORY_GUN := Vector3i(24, 18, 24)
 ## Station, then the limb hanging off it, four times. A station at orientation 8
 ## puts its AXLE faces on ±Y, so it bolts to the Core Module's flank through a
 ## neutral face and offers a downward drive station.
+## A station at orientation 8 spans `x[px..px+1]`, `y[py..py+1]`, `z[pz-1..pz]`,
+## which is what makes these exact rather than guessed: the Core Module's flanks
+## are at `x` 21 and 26, so a station outboard of the left one starts at 19 and
+## one outboard of the right starts at 27.
+##
+## [b]The limbs are on the same `z` as the stations they hang from, and that is
+## load-bearing.[/b] Hung one cell forward, as the first pass of the rebuild had
+## them, the four feet come down about a mean of `z` 23 under a hull whose centre
+## of mass is at 24 — a quarter of a metre of permanent pitch bias on a machine
+## that stands 2.4 m tall, which reads as a walker leaning and drifting rather
+## than as a layout error.
 const AMBULATORY_LEGS: Array[Vector3i] = [
-	Vector3i(20, 14, 23), Vector3i(20, 13, 22),
-	Vector3i(26, 14, 23), Vector3i(27, 13, 22),
-	Vector3i(20, 14, 26), Vector3i(20, 13, 26),
-	Vector3i(26, 14, 26), Vector3i(27, 13, 26),
+	Vector3i(19, 14, 21), Vector3i(20, 13, 21),
+	Vector3i(27, 14, 21), Vector3i(27, 13, 21),
+	Vector3i(19, 14, 27), Vector3i(20, 13, 27),
+	Vector3i(27, 14, 27), Vector3i(27, 13, 27),
 ]
 const HUB_AXLE_DOWN_ORIENTATION: int = 8
 
@@ -175,18 +199,26 @@ const HUB_AXLE_DOWN_ORIENTATION: int = 8
 ## single disc there rolls the Assembly over. The pair is symmetric, doubles the
 ## lift, and costs a second 150 PU draw — which is what the Energy Cell is for.
 const ROTARY_CORE := Vector3i(24, 4, 24)
-const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(20, 5, 24), Vector3i(26, 5, 24)]
-const ROTARY_DISCS: Array[Vector3i] = [Vector3i(21, 7, 24), Vector3i(27, 7, 24)]
-const ROTARY_POWER := Vector3i(24, 4, 29)
-## Slung under the belly rather than in the tail, and that is arithmetic rather
-## than taste. The Effector Module puts 196 kg two metres ahead of the Core
-## Module; a 175 kg Energy Cell behind it drags the centre of mass a third of a
-## metre [i]aft of the disc[/i], and trimming that offset out costs 15° of
-## swashplate against a 14° cone — so the Assembly would hover with no cyclic
-## authority left to fly with. Underneath, it balances the nose in the vertical
-## and contributes nothing fore or aft.
-const ROTARY_CELL := Vector3i(24, 1, 24)
-const ROTARY_GUN := Vector3i(24, 6, 21)
+const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(19, 5, 24), Vector3i(27, 5, 24)]
+const ROTARY_DISCS: Array[Vector3i] = [Vector3i(19, 7, 24), Vector3i(29, 7, 24)]
+## [b]The Prime Mover goes under the belly and the Energy Cell on the deck, which
+## is the reverse of every other recipe here and is arithmetic rather than
+## taste.[/b] [constant ROTARY_CELL] has carried the warning since session 15: a
+## mass hung in the tail drags the solved centre of mass aft of the disc line, and
+## trimming that offset out costs swashplate the Assembly then has none of left to
+## fly with. The rebuild made the warning bite from the other side — the Prime
+## Mover is now 620 kg against the Energy Cell's 450 and it was the part in the
+## tail, which put the centre of mass 0.31 m behind the discs and asked for 23° of
+## a 14° cone. The Assembly went over during the settle.
+##
+## Under the belly the 620 kg contributes nothing fore or aft and lowers the
+## centre of mass; the lighter Energy Cell on the aft deck leaves 0.10 m of
+## residual offset, which is 8° of trim and inside the cone with room to fly.
+const ROTARY_POWER := Vector3i(24, 0, 24)
+## On the aft half of the deck, where the Prime Mover sits on every other recipe.
+## See [constant ROTARY_POWER] for why the two are the other way round here.
+const ROTARY_CELL := Vector3i(24, 8, 28)
+const ROTARY_GUN := Vector3i(24, 8, 24)
 
 ## ===== FIXTURE =========================================================
 

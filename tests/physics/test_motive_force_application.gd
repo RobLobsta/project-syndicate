@@ -32,11 +32,11 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## centre of mass would apply pure lift and
 ## [method test_the_thrust_is_applied_at_the_disc_rather_than_the_origin] would
 ## have nothing to see — the offset is the assertion.
-const POWER_ORIGIN := Vector3i(21, 1, 20)
-const ROTOR_ORIGIN := Vector3i(20, 4, 21)
+const POWER_ORIGIN := Vector3i(21, 0, 20)
+const ROTOR_ORIGIN := Vector3i(19, 4, 21)
 
-## 380 kg Core Module, 355 kg Prime Mover, 65 kg disc.
-const EXPECTED_MASS_KG: float = 800.0
+## 1800 kg Core Module, 620 kg Prime Mover, 848 kg disc.
+const EXPECTED_MASS_KG: float = 3268.0
 
 var _ctx: BuildContext = null
 var _runtime: AssemblyRuntime = null

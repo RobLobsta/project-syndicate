@@ -19,13 +19,13 @@ const PANEL_KEY: StringName = &"str.panel.medium.t2"
 
 const CORE_CELL := Vector3i(24, 4, 24)
 ## Slot 1: on the Core Module's deck.
-const DECK_CELL := Vector3i(24, 7, 24)
+const DECK_CELL := Vector3i(24, 8, 24)
 ## Slot 2: directly above it, resting on it and on nothing else.
-const ABOVE_DECK_CELL := Vector3i(24, 8, 24)
+const ABOVE_DECK_CELL := Vector3i(24, 9, 24)
 ## Slot 3: aft of slot 2 and touching only it at the moment it is placed.
-const BRIDGE_CELL := Vector3i(24, 8, 28)
+const BRIDGE_CELL := Vector3i(24, 9, 28)
 ## Slot 4: below slot 3, bridging to the Core Module's aft edge.
-const BESIDE_CELL := Vector3i(24, 7, 28)
+const BESIDE_CELL := Vector3i(24, 8, 28)
 
 var _contexts: Array[BuildContext] = []
 

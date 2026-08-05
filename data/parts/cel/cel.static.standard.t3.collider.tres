@@ -3,11 +3,11 @@
 [ext_resource type="Script" path="res://src/core/data/collider_primitive_def.gd" id="1_cjtkw"]
 [ext_resource type="Script" path="res://src/core/data/collider_profile.gd" id="2_vn7q3"]
 
-[sub_resource type="Resource" id="Resource_n0eye"]
+[sub_resource type="Resource" id="Resource_cjtkw"]
 script = ExtResource("1_cjtkw")
-half_extents_m = Vector3(0.5, 0.375, 0.5)
-local_offset_m = Vector3(-0.125, 0.25, -0.125)
+half_extents_m = Vector3(0.5, 0.5, 0.625)
+local_offset_m = Vector3(-0.125, 0.375, 0)
 
 [resource]
 script = ExtResource("2_vn7q3")
-primitives = Array[ExtResource("1_cjtkw")]([SubResource("Resource_n0eye")])
+primitives = Array[ExtResource("1_cjtkw")]([SubResource("Resource_cjtkw")])

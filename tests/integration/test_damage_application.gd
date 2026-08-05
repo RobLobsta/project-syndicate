@@ -33,8 +33,8 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Two Structural Components on the deck. The upper one is battered and later
 ## killed; the lower one is left fresh. Killing the upper one severs nothing, so
 ## no detachment chain is needed to keep the fixture honest.
-const FRESH_ORIGIN := Vector3i(24, 7, 24)
-const BATTERED_ORIGIN := Vector3i(24, 8, 24)
+const FRESH_ORIGIN := Vector3i(24, 8, 24)
+const BATTERED_ORIGIN := Vector3i(24, 9, 24)
 
 const ASSEMBLY := 7
 const FRESH_SLOT := 1
