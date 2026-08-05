@@ -92,6 +92,20 @@ file has ever been able to make, and §13.8 now records the measurement. The
 file's assertion was re-framed rather than loosened: it asserted that the demand
 could not null the drift, which stopped being true.
 
+**A correction, verified rather than inherited.** `HANDOFF.md` had carried "a
+parked Assembly drifts at 2.4 m/s" since session 32, sourced from a HUD readout
+in a capture. Checked three ways this session: a twenty-one frame contact sheet
+shows the speed climbing 0.9 → 2.6 m/s over four and a half seconds *at 100%
+integrity*, so it is not an impact; the basin's grade at the player spawn is
+1.78°; and the shipped build put on that terrain with no opponent and no input
+rolls 9.4 m out and back to within 2.7 m of where it started. It is a vehicle in
+neutral in a bowl with no parking brake. The real rest defect is
+`test_rest_stability`'s flat-slab **0.196 m/s and 1.307 m over 360 ticks**.
+`LEARNED_FACTS.md` facts 81 and 82 carry it, along with the arithmetic showing
+that the same chatter costs a cornering contact 3.8× of its lateral grip — and
+that doc 05 §7.6's traction control is neither the cause nor the cure, since its
+limiter scales drive torque and its yaw loop is off below 1.5 m/s.
+
 **The three-on-one test drive was never argued for.** It was what the scene
 happened to be built with while nothing in it could kill anybody, and once
 `src/ai/` landed it meant three copies of the player's own blueprint firing seven

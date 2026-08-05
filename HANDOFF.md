@@ -214,10 +214,22 @@ what they lost off the panel without being told.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The machine never sits still.** The capture's own speed readout reads
-   **2.4 m/s at five seconds with nobody touching a key**. §3.1 has the cause,
-   the repair, and the three other things it is holding down. Unchanged, and now
-   the top of the list on its own.
+1. **The machine never sits still — but most of what the HUD shows is gravity,
+   and the sessions that read it as a defect were reading it wrong.** The
+   capture's speed readout climbs from 0.9 to 2.6 m/s over the first four and a
+   half seconds with nobody touching a key **and integrity still at 100%**, so it
+   is neither a hit nor recoil. Isolated on the match's own basin at the player's
+   own spawn, with no opponent and no input, the same build rolls out to 9.4 m at
+   2.7 m/s, stops, and rolls **back** to within 2.7 m of where it started. It is
+   a vehicle in neutral in a bowl.
+   The genuine defects underneath it are two, and both are smaller and sharper
+   than "it drifts at 2.4 m/s": there is **no parking brake** — `veh_handbrake`
+   is bound to Space and read by nothing (§3.3) — and the round trip loses almost
+   no energy, because rolling resistance is inside §7.4's unstable integrator.
+   On flat ground, where gravity contributes nothing, the pure chatter drift is
+   **0.196 m/s and 1.307 m over six seconds** (`test_rest_stability`). That is
+   the number to quote, and it is an order of magnitude below what the HUD reads
+   in the basin.
 2. **The two new chassis are unreachable in practice.** A player can build one —
    RESET the garage, place `core.ambulatory.strider.t3`, and the catalogue and
    the validator do the rest — but nothing tells them the option exists, no
@@ -265,8 +277,9 @@ moved**, which is how it survived thirty-two sessions of a green suite. What
 session 36 added is the bill: it holds `drive_torque_nm` down to a third of what
 the contacts could take, it leaves doc 05 §7.6's traction control with no
 reachable fixture on the shipped part set, it cancels the service brake by
-reversing its sign every other tick, and it is why a parked machine drifts at
-2.4 m/s. §3.1.
+reversing its sign every other tick, it costs a cornering contact about four
+fifths of its lateral grip, and it is why a parked machine on flat ground still
+reads 0.196 m/s. §3.1.
 
 **The ambulatory steering demand turns out not to be a steering demand.** The
 strider chassis made an old measurement sharp: with the demand held hard over one
@@ -336,8 +349,21 @@ holding down:
   contact's spin through `-signf(contact_omega)`, and that sign reverses on most
   ticks. `tests/physics/test_ram_attitude.gd` measures the consequence: a driver
   plans a 6 m/s² stop and arrives at hull contact anyway.
-- **A parked Assembly drifts at 2.4 m/s in the shipped match**, which is three
-  times what it was, because the chatter scales with the load.
+- **A parked Assembly on flat ground drifts at 0.196 m/s and wanders 1.307 m in
+  six seconds** with no throttle and no brake (`test_rest_stability`). **Not**
+  the 2.4 m/s the HUD shows in the shipped match — that is a vehicle in neutral
+  rolling in a bowl and is mostly correct physics; see §2 item 1, which corrects
+  three sessions of reading one number as the other.
+- **And it is most of why nothing corners.** The lateral force in
+  `TractionSolver.combined_forces` is `f_max · sy/s`, so a large longitudinal
+  slip crowds the lateral component out of the friction circle. At the measured
+  chatter peak of 6.242 rad/s a contact in a 6 m/s corner with 1 m/s of lateral
+  slip keeps **0.26 of the lateral share it would have with a clean rolling
+  contact** — a 3.8× loss — and at rest it keeps 0.013 against a free-rolling
+  0.348, a 26× loss. **This is not traction control.** §7.6's slip limiter
+  scales *drive torque*, so with no throttle it has nothing to scale, and its yaw
+  loop is inert below `MIN_YAW_CONTROL_SPEED_MPS` = 1.5 m/s. The aid cannot cause
+  the wander and cannot cure it; the integrator underneath it is both.
 
 Closing it should let the drive torque go back up, give §7.6 a shipped fixture,
 make the brake work, and stop the machine shivering. **It is the highest-value

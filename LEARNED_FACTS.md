@@ -981,6 +981,51 @@ different fact. Read a citation with its subject, which is always named.
     regression can be reasoned about rather than shrugged at. If it does not, the
     assertion was always wrong and fact 54 tells you what to write instead.
 
+81. **A speed readout in the shipped match is not a measurement of anything, and
+    three sessions read one as a physics defect.** `HANDOFF.md` carried "a parked
+    Assembly drifts at 2.4 m/s" from session 32 to session 37, sourced from the
+    HUD in a capture. It is wrong, and the way it is wrong is worth carrying.
+
+    The arena is a **basin**. The player spawn sits on a 1.78° grade — measured
+    off `GroundSource.basin(20260803, 15.0)` — and the shipped build has no
+    parking brake, because `veh_handbrake` is bound to Space and read by nothing.
+    Put that build on that terrain with no opponent, no fire and no input and it
+    rolls 9.4 m out at 2.7 m/s, stops, and rolls **back** to within 2.7 m of
+    where it started. A vehicle in neutral on a slope. Mostly correct physics.
+
+    On a **flat slab**, where gravity contributes nothing,
+    `tests/physics/test_rest_stability.gd` measures the real defect at
+    **0.196 m/s and 1.307 m over 360 ticks** — an order of magnitude smaller.
+
+    Three things to carry. **Measure a rest defect on flat ground**; a bowl adds
+    a term an order of magnitude larger than the one being looked for. **A HUD
+    number in a capture has a scene behind it** — the same frame that read
+    2.4 m/s also read 100% integrity, which is what ruled out an impact, and
+    checking that took one contact sheet of twenty-one frames. And **a number
+    quoted from a still frame propagates**: it was restated in four places
+    before anybody put the build on the terrain alone.
+
+82. **The chatter is why nothing corners, and traction control is neither the
+    cause nor the cure.** `TractionSolver.combined_forces` puts both slips on one
+    friction circle — `sx = kappa/KAPPA_PEAK`, `sy = tan_alpha/ALPHA_PEAK_TAN`,
+    `s = hypot(sx, sy)` — and returns the lateral component as `f_max · sy/s`.
+    So a large *longitudinal* slip crowds the lateral force out of the budget,
+    whatever the lateral slip is.
+
+    Against the measured chatter peak of 6.242 rad/s (fact 72's mechanism,
+    `test_rest_stability`'s number): a contact in a 6 m/s corner with 1 m/s of
+    lateral slip keeps **0.264** of the lateral share a clean rolling contact
+    would have — a 3.8× loss — and a parked contact keeps 0.013 against a
+    free-rolling 0.348, a 26× loss.
+
+    **Doc 05 §7.6's traction control cannot be involved in either direction.**
+    Its slip limiter scales `τ_drive`, so with no throttle there is nothing to
+    scale; its yaw loop is gated at `MIN_YAW_CONTROL_SPEED_MPS` = 1.5 m/s and off
+    below it; and §7.6 is `GROUND`-only, so it is not in the ambulatory or rotary
+    path at all. A session that goes looking for a handling defect in the *aid*
+    is looking one layer too high — the aid rides on top of §7.4's integrator and
+    inherits everything it does.
+
 ---
 
 ## 2. What fault injection taught
