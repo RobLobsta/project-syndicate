@@ -51,7 +51,7 @@ func test_a_ready_module_stays_ready_until_it_begins() -> void:
 	var s := _fresh_state()
 	check_true(s.can_start(), "a fresh module is ready")
 	check_eq(
-		MeleeSolver.advance(s, _melee, 1.0, 1.0),
+		MeleeSolver.advance(s, _melee, 1.0, 1.0, false),
 		MeleeStrikeState.Stage.READY,
 		"and does not advance on its own, however much time passes"
 	)
@@ -63,22 +63,22 @@ func test_the_cycle_runs_wind_up_then_swing_then_recovery() -> void:
 	check_eq(s.stage, MeleeStrikeState.Stage.WIND_UP, "begin enters the wind-up")
 
 	check_eq(
-		MeleeSolver.advance(s, _melee, 1.0, WIND_UP * 0.5),
+		MeleeSolver.advance(s, _melee, 1.0, WIND_UP * 0.5, false),
 		MeleeStrikeState.Stage.WIND_UP,
 		"half the wind-up is still wind-up"
 	)
 	check_eq(
-		MeleeSolver.advance(s, _melee, 1.0, WIND_UP * 0.6),
+		MeleeSolver.advance(s, _melee, 1.0, WIND_UP * 0.6, false),
 		MeleeStrikeState.Stage.SWINGING,
 		"past it, the swing commits"
 	)
 	check_eq(
-		MeleeSolver.advance(s, _melee, 1.0, SWING),
+		MeleeSolver.advance(s, _melee, 1.0, SWING, false),
 		MeleeStrikeState.Stage.RECOVERING,
 		"a full swing duration lands the strike and recovers"
 	)
 	check_eq(
-		MeleeSolver.advance(s, _melee, 1.0, RECOVERY),
+		MeleeSolver.advance(s, _melee, 1.0, RECOVERY, false),
 		MeleeStrikeState.Stage.READY,
 		"and the recovery returns it to ready"
 	)
@@ -87,11 +87,11 @@ func test_the_cycle_runs_wind_up_then_swing_then_recovery() -> void:
 func test_swing_progress_runs_from_zero_to_one() -> void:
 	var s := _fresh_state()
 	s.begin()
-	MeleeSolver.advance(s, _melee, 1.0, WIND_UP)
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, false)
 	check_approx(s.swing_t, 0.0, "the swing starts at its first sample")
-	MeleeSolver.advance(s, _melee, 1.0, SWING * 0.5)
+	MeleeSolver.advance(s, _melee, 1.0, SWING * 0.5, false)
 	check_approx(s.swing_t, 0.5, "and tracks elapsed time through the arc")
-	MeleeSolver.advance(s, _melee, 1.0, SWING)
+	MeleeSolver.advance(s, _melee, 1.0, SWING, false)
 	check_approx(s.swing_t, 1.0, "ending exactly at one, never past it")
 
 
@@ -101,8 +101,8 @@ func test_swing_progress_runs_from_zero_to_one() -> void:
 func test_an_overshooting_tick_does_not_push_progress_past_one() -> void:
 	var s := _fresh_state()
 	s.begin()
-	MeleeSolver.advance(s, _melee, 1.0, WIND_UP)
-	MeleeSolver.advance(s, _melee, 1.0, SWING * 4.0)
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, false)
+	MeleeSolver.advance(s, _melee, 1.0, SWING * 4.0, false)
 	check_approx(s.swing_t, 1.0, "a long frame lands at the end of the arc, not beyond it")
 
 
@@ -113,12 +113,12 @@ func test_the_cycle_multiplier_slows_every_stage() -> void:
 	var s := _fresh_state()
 	s.begin()
 	check_eq(
-		MeleeSolver.advance(s, _melee, critical, WIND_UP * 1.01),
+		MeleeSolver.advance(s, _melee, critical, WIND_UP * 1.01, false),
 		MeleeStrikeState.Stage.WIND_UP,
 		"a CRITICAL module is still winding up where a NOMINAL one would have swung"
 	)
 	check_eq(
-		MeleeSolver.advance(s, _melee, critical, WIND_UP * critical),
+		MeleeSolver.advance(s, _melee, critical, WIND_UP * critical, false),
 		MeleeStrikeState.Stage.SWINGING,
 		"and commits only after the scaled wind-up"
 	)
@@ -129,11 +129,67 @@ func test_the_cycle_multiplier_slows_every_stage() -> void:
 func test_a_jam_aborts_a_committed_swing_into_recovery() -> void:
 	var s := _fresh_state()
 	s.begin()
-	MeleeSolver.advance(s, _melee, 1.0, WIND_UP)
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, false)
 	s.struck_this_swing.push_back(7)
 	s.abort_to_recovery()
 	check_eq(s.stage, MeleeStrikeState.Stage.RECOVERING, "the swing is dropped, not resolved")
 	check_approx(s.swing_t, 0.0, "and its progress is discarded")
+
+
+## ===== SUSTAINED CONTACT (§15.5) =======================================
+
+
+## The stage that does not advance. A held trigger on a sustained module leaves
+## the edge at the end of its arc instead of recovering, which is what makes the
+## sweep run again on the next tick and is the whole of §15.5's stage rule.
+func test_a_held_trigger_holds_a_sustained_edge_in_the_swing() -> void:
+	var s := _fresh_state()
+	s.begin()
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, true)
+	check_eq(
+		MeleeSolver.advance(s, _melee, 1.0, SWING, true),
+		MeleeStrikeState.Stage.SWINGING,
+		"the arc has run and the edge stays in contact"
+	)
+	check_true(s.energised, "and it is drawing power while it does")
+	check_approx(s.swing_t, 1.0, "held at the end of the arc rather than part way through it")
+	check_eq(
+		MeleeSolver.advance(s, _melee, 1.0, SWING, true),
+		MeleeStrikeState.Stage.SWINGING,
+		"and stays there for as long as the trigger is held"
+	)
+
+
+## The other direction, and the one a fixture that only ever held the trigger
+## could not make: releasing it drops the edge into recovery on the next tick.
+func test_releasing_the_trigger_drops_a_sustained_edge_into_recovery() -> void:
+	var s := _fresh_state()
+	s.begin()
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, true)
+	MeleeSolver.advance(s, _melee, 1.0, SWING, true)
+	check_eq(
+		MeleeSolver.advance(s, _melee, 1.0, 0.0, false),
+		MeleeStrikeState.Stage.RECOVERING,
+		"the tick after the release recovers, however long the edge was held"
+	)
+	check_false(s.energised, "and the draw goes with it")
+
+
+## A module that does not author sustained contact cannot be held, whatever the
+## trigger is doing. Without this the flag on the profile would be decorative and
+## every melee module in the game would be a beam.
+func test_a_trigger_held_on_an_unsustained_module_still_recovers() -> void:
+	_melee.sustained = false
+	var s := _fresh_state()
+	s.begin()
+	MeleeSolver.advance(s, _melee, 1.0, WIND_UP, true)
+	check_eq(
+		MeleeSolver.advance(s, _melee, 1.0, SWING, true),
+		MeleeStrikeState.Stage.RECOVERING,
+		"a discrete strike is a discrete strike with the trigger down"
+	)
+	check_false(s.energised, "and nothing was energised")
+	_melee.sustained = true
 
 
 func test_beginning_a_swing_clears_the_previous_target_set() -> void:

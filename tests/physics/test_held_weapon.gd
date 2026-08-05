@@ -51,9 +51,41 @@ const DOC_KINETIC_SHARE: float = 0.10
 ## for the mount to slew onto the target first.
 const SWING_TICKS := 90
 
+## ===== SUSTAINED CONTACT (§15.5) =======================================
+
+## Doc 01 §10.5's authored sustained rate for the shipped edge, and doc 01
+## §10.1's thermal figures for the chassis it is held against. Quoted, never
+## imported.
+const DOC_SUSTAINED_DAMAGE_S: float = 340.0
+const DOC_CORE_THERMAL_RESISTANCE: float = 0.10
+const DOC_CORE_ARMOUR: float = 18.0
+const DOC_ARMOUR_HALF: float = 40.0
+## (1 − 0.10) · (1 − 18/(18 + 40)) = 0.6206897 of a thermal point reaches this
+## chassis. Doc 08 §4.5's absorption curve and §7's resistance row, multiplied
+## out once here so that every expectation below is arithmetic rather than a
+## second call into the code under test.
+const CORE_THERMAL_FRACTION: float = 0.6206897
+## One tick of contact: 340 damage/s at a 0.75 thermal share over 1/60 s, through
+## the fraction above. 340 · 0.75 / 60 = 4.25 raw, and 4.25 · 0.6206897 = 2.6379.
+const EXPECTED_SUSTAINED_THERMAL_PER_TICK: float = 2.6379
+
+## Ceiling on the held phase. Contact deposits 140 HU/s of heat (§7.1's ratio on
+## the same raw amount), so 480 HU arrives about three and a half seconds in and
+## this is roughly twice that — a budget, not a duration.
+const SUSTAIN_TICK_BUDGET: int = 420
+## Ticks the trigger is off at the end, to watch the fire burn without contact.
+## Seven tenths of a second is seven of §7.3's instalments.
+const BURN_TICKS: int = 42
+## The floor those seven instalments have to clear. 7 · 4.0 · 0.1 · 0.6206897 =
+## 1.74, and the assertion is written at 1.0 so that a scheduler which lost an
+## instalment to the tick it ignited on is still a pass and one running at zero
+## is not.
+const MIN_BURN_DAMAGE: float = 1.0
+
 var _contexts: Array[BuildContext] = []
 var _runtimes: Array[AssemblyRuntime] = []
 var _resolver: DamageResolver = null
+var _dot: DotScheduler = null
 var _guns: EffectorSystem = null
 var _registry: AssemblyRegistry = null
 
@@ -86,6 +118,29 @@ var _strike_point: Vector3 = Vector3.ZERO
 ## only sampled between them.
 var _struck_keys: PackedInt32Array = PackedInt32Array()
 
+## True while the discrete-strike half of the fixture is running. Everything the
+## swing counters hold is a property of [i]one swing[/i], and a held edge submits
+## a packet every tick; without the switch the sustained phase would be counted
+## as several hundred strikes and §15.3's per-swing deduplication would look
+## broken.
+var _recording_swing: bool = true
+## THERMAL damage the target took during the sustained phase alone.
+var _sustained_thermal: float = 0.0
+## Where the target was planted, so the sustained phase can put it back after
+## §15.4's impulse has moved it.
+var _target_pose: Vector3 = Vector3.ZERO
+
+## §15.5's record: the ticks a held edge resolved on, the first instalment it
+## delivered, and what the heat it deposited did to the target afterwards.
+var _sustain_contact_ticks: int = 0
+var _first_sustained_thermal: float = -1.0
+var _energised_ticks: int = 0
+var _ignited: bool = false
+var _burning_at_release: bool = false
+var _integrity_at_release: float = -1.0
+var _integrity_after_burn: float = -1.0
+var _contact_after_release: bool = false
+
 
 func before_all() -> void:
 	_damage_by_channel.resize(PartEnums.DAMAGE_CHANNEL_COUNT)
@@ -96,6 +151,8 @@ func after_all() -> void:
 	EventBus.part_damaged.disconnect(_on_part_damaged)
 	if _guns != null:
 		_guns.free()
+	if _dot != null:
+		_dot.free()
 	if _resolver != null:
 		_resolver.free()
 	for runtime in _runtimes:
@@ -283,6 +340,77 @@ func test_the_arc_samples_overlap_over_most_of_the_blade() -> void:
 	)
 
 
+## ===== SUSTAINED CONTACT (§15.5) =======================================
+
+
+## The stage that does not advance, seen from the far end: an edge held against a
+## hull goes on cutting it instead of recovering.
+##
+## The load-bearing number is the [b]tick count[/b], not the damage. §15.3
+## deduplicates a target for the whole swing, so an implementation that held the
+## stage and forgot §15.5's one line — clearing the victim set per tick rather
+## than per swing — delivers exactly one packet and then nothing at all for as
+## long as the trigger is down, which no assertion about damage arriving can
+## separate from a correct one.
+func test_a_held_edge_cuts_every_tick_rather_than_once() -> void:
+	await _measure()
+	if not check_true(_energised_ticks > 0, "the edge stayed in contact past its arc"):
+		return
+	check_eq(
+		_sustain_contact_ticks, _energised_ticks,
+		"and resolved on every one of the %d ticks it was held, not on the first"
+			% _energised_ticks
+	)
+	check_true(
+		_sustain_contact_ticks > 60,
+		"over %d ticks of contact, which is long enough for a per-swing "
+			% _sustain_contact_ticks + "immunity to show as a gap"
+	)
+
+
+## The rate, against the authored figure rather than against itself. One tick of
+## contact is [member MeleeProfile.sustained_damage_s] over the tick, split by
+## the same [member MeleeProfile.channel_mix] a strike uses — which is what makes
+## a held edge worth 340 a second and not 640 a tick.
+func test_one_tick_of_contact_is_worth_the_authored_rate() -> void:
+	await _measure()
+	if not check_true(_first_sustained_thermal > 0.0, "an instalment was delivered"):
+		return
+	check_approx(
+		_first_sustained_thermal, EXPECTED_SUSTAINED_THERMAL_PER_TICK,
+		"340 damage/s at a 0.75 thermal share over 1/60 s, through this chassis's armour",
+		1e-3
+	)
+
+
+## Doc 08 §7.1, reached the way a match reaches it. A thermal packet deposits
+## heat as well as damage, so an edge held on one part for three and a half
+## seconds sets it alight — which is the first time anything in this project has
+## produced a burning part from a weapon.
+func test_holding_the_edge_on_a_part_sets_it_on_fire() -> void:
+	await _measure()
+	check_true(
+		_ignited,
+		"the target's Core Module crossed the ignition threshold after %d ticks of contact"
+			% _sustain_contact_ticks
+	)
+	check_true(_burning_at_release, "and was in §7.3's list when the trigger came off")
+
+
+## And the fire is a fire: it goes on taking integrity with nothing touching the
+## part. Without §7.3 the flag is set, nothing reads it, and this reads zero.
+func test_the_fire_burns_on_after_the_edge_is_taken_away() -> void:
+	await _measure()
+	check_false(_contact_after_release, "the edge recovered when the trigger came off")
+	if not check_true(_integrity_at_release > 0.0, "the target survived the contact"):
+		return
+	check_true(
+		_integrity_at_release - _integrity_after_burn > MIN_BURN_DAMAGE,
+		"and burned for %.2f more integrity over half a second of nothing"
+			% [_integrity_at_release - _integrity_after_burn]
+	)
+
+
 ## ===== FIXTURE =========================================================
 
 
@@ -309,6 +437,14 @@ func _measure() -> void:
 	_resolver.registry = _registry
 	EventBus.get_tree().root.add_child(_resolver)
 
+	# Doc 08 §7.3, in the tree so that it runs itself: the burn phase below is
+	# about what happens with nothing driving anything, and a scheduler this file
+	# stepped by hand would be a fixture asserting its own loop.
+	_dot = DotScheduler.new()
+	_dot.resolver = _resolver
+	_resolver.dot = _dot
+	EventBus.get_tree().root.add_child(_dot)
+
 	_guns = EffectorSystem.new()
 	_guns.runtime = attacker
 	_guns.resolver = _resolver
@@ -333,6 +469,14 @@ func _measure() -> void:
 		var state := _guns.strike_state(_sword_slot)
 		if state.stage == MeleeStrikeState.Stage.WIND_UP and previous != state.stage:
 			_swings_started += 1
+			# Released the moment the strike commits, and the discrete half of
+			# this file is what that buys. §15.5 holds a sustained edge in the
+			# swing for as long as the trigger is down, so a trigger left on
+			# would run one swing and then cut continuously — and every
+			# per-swing assertion above would be measuring a beam. A committed
+			# swing runs to completion whatever the trigger does (§15.2), so
+			# nothing about the strike itself changes.
+			_guns.set_trigger(0, false)
 		if state.stage == MeleeStrikeState.Stage.SWINGING:
 			_swept_samples += MeleeSolver.sample_progress(
 				attacker.definition_at(_sword_slot).effector_profile.melee_profile
@@ -342,6 +486,76 @@ func _measure() -> void:
 			_strike_point = state.last_strike_point_world
 		previous = state.stage
 
+	await _sustain(target)
+
+
+
+## §15.5's half: the trigger goes back down, the edge holds where the arc ended,
+## and the target takes an instalment a tick until it catches fire. Then the
+## trigger comes off and doc 08 §7.3's list is left to burn on its own.
+##
+## The target is put back where it was planted first. §15.4's impulse moved it —
+## which is the measurement immediately above — and a sustained phase measuring
+## an edge that is no longer touching anything would report zero and read as
+## §15.5 being unimplemented. That is not a hypothetical: it is what the first
+## run of this phase did, and the reading was "the edge cut once and stopped".
+func _sustain(target: AssemblyRuntime) -> void:
+	_recording_swing = false
+	target.body.linear_velocity = Vector3.ZERO
+	target.body.angular_velocity = Vector3.ZERO
+	target.body.global_position = _target_pose
+	# Frozen for this phase, and it takes nothing out of the measurement: §15.5
+	# delivers no impulse, so the only thing that could move this hull is the
+	# discrete strike that precedes the hold — and a target knocked half a metre
+	# down the blade mid-phase measures the drift rather than the contact. A
+	# frozen body is still found by the sweep and still resolves damage (fact 41).
+	target.body.freeze = true
+
+	var core: PartInstanceState = target.states[SyndicateConstants.CORE_SLOT]
+	# The heat the first swing deposited is discarded, so that the ignition below
+	# is a property of this phase alone. Doc 08 §7.1 treats a packet with no
+	# interval as a full second's deposit, so one 480-raw thermal strike is worth
+	# 264 HU and two of them light this chassis without any contact at all —
+	# which is real, is how a beam edge behaves in a fight, and is not what §15.5
+	# is being measured for here.
+	core.accumulated_heat_hu = 0.0
+	_guns.set_trigger(0, true)
+	for i: int in SUSTAIN_TICK_BUDGET:
+		var before := _sustained_thermal
+		await physics_frames(1)
+		var state := _guns.strike_state(_sword_slot)
+		if not state.energised:
+			continue
+		_energised_ticks += 1
+		var delta := _sustained_thermal - before
+		if delta > 0.0:
+			_sustain_contact_ticks += 1
+			if _first_sustained_thermal < 0.0:
+				# The first instalment only. Once the target is alight §7.3's own
+				# packets arrive on the same channel and the delta stops being
+				# one tick of contact.
+				_first_sustained_thermal = delta
+		if _dot.is_burning(TARGET, SyndicateConstants.CORE_SLOT):
+			_ignited = true
+			break
+
+	_burning_at_release = _dot.is_burning(TARGET, SyndicateConstants.CORE_SLOT)
+	_integrity_at_release = core.integrity
+	_guns.set_trigger(0, false)
+	for i: int in BURN_TICKS:
+		await physics_frames(1)
+	_integrity_after_burn = core.integrity
+	_contact_after_release = _guns.strike_state(_sword_slot).energised
+	print(
+		(
+			"  held edge: %d ticks of contact at %.3f thermal a tick, "
+			% [_sustain_contact_ticks, _first_sustained_thermal]
+		)
+		+ (
+			"ignited: %s; burned %.2f more integrity over %d ticks with nothing touching it"
+			% [_ignited, _integrity_at_release - _integrity_after_burn, BURN_TICKS]
+		)
+	)
 
 
 func _build_attacker() -> AssemblyRuntime:
@@ -436,6 +650,7 @@ func _build_target(at: Vector3) -> AssemblyRuntime:
 	# this fixture came to measure a miss and report it as a §15 defect.
 	runtime.body.global_transform = Transform3D(Basis(), Vector3.ZERO)
 	runtime.body.global_position = at - runtime.part_world_position(0)
+	_target_pose = runtime.body.global_position
 	_registry.register(runtime)
 	return runtime
 
@@ -493,6 +708,10 @@ func _sword_definition() -> PartDefinition:
 
 func _on_part_damaged(assembly_id: int, slot: int, amount: float, channel: int) -> void:
 	if assembly_id != TARGET:
+		return
+	if not _recording_swing:
+		if channel == PartEnums.DamageChannel.THERMAL:
+			_sustained_thermal += amount
 		return
 	_victims.append(assembly_id)
 	_damage_by_channel[channel] += amount

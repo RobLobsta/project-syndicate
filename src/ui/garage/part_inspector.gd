@@ -58,6 +58,7 @@ const KEY_SPEED_CAP: StringName = &"garage.part.speed_cap"
 const KEY_MOUNT_BUDGET: StringName = &"garage.part.mount_budget"
 const KEY_POWER_CAPACITY: StringName = &"garage.part.power_capacity"
 const KEY_MASS_TOLERANCE: StringName = &"garage.part.mass_tolerance"
+const KEY_CARRIES: StringName = &"garage.part.carries"
 
 const KEY_FAMILY: StringName = &"garage.part.family"
 const KEY_STEERING: StringName = &"garage.part.steering"
@@ -99,6 +100,22 @@ const FMT_RATIO: StringName = &"garage.value.ratio"
 const KEY_YES: StringName = &"garage.value.yes"
 const KEY_NO: StringName = &"garage.value.no"
 const KEY_FIXED: StringName = &"garage.value.fixed"
+const KEY_NONE: StringName = &"garage.value.none"
+## What a list of families is joined with. A separator is punctuation and
+## punctuation is a translation.
+const KEY_LIST_SEPARATOR: StringName = &"garage.value.list_separator"
+
+## Localisation key per [enum PartEnums.LocomotionMode], for doc 01 §7.1's
+## chassis mask. Indexed by the enum and frozen alongside it, exactly as
+## [constant MOTIVE_KIND_KEYS] is — and separate from that list because a chassis
+## admits a [i]family[/i] where a Motive Assembly declares a [i]kind[/i], and
+## three kinds share one family.
+const CHASSIS_MODE_KEYS: Array[StringName] = [
+	&"garage.chassis.wheeled",
+	&"garage.chassis.rotary",
+	&"garage.chassis.ambulatory",
+	&"garage.chassis.tracked",
+]
 
 ## Localisation key per [enum SupportModuleProfile.SupportRole]. A raw enum
 ## ordinal in front of a player is worse than no row at all.
@@ -242,13 +259,40 @@ static func rows_for(def: PartDefinition) -> Array[Row]:
 	return rows
 
 
+## The first row is doc 01 §7.1's chassis mask, and it is first because it is the
+## only figure on this card that decides what the player may bolt on.
+##
+## A Core Module publishes its mounts, its speed cap and its mass tolerance, and
+## a player who reads all three still cannot tell why the limb they armed is
+## being refused: the mask is what the validator rejects on and nothing said the
+## option existed. The two family chassis shipped with the parts and no way for
+## anybody to meet them.
 static func _append_core(rows: Array[Row], p: CoreModuleProfile) -> void:
 	if p == null:
 		return
+	rows.append(Row.new(KEY_CARRIES, chassis_families(p.locomotion_mask)))
 	rows.append(Row.new(KEY_SPEED_CAP, _fmt(FMT_MPS, p.speed_cap_mps)))
 	rows.append(Row.new(KEY_MOUNT_BUDGET, _fmt_int(float(p.mount_budget))))
 	rows.append(Row.new(KEY_POWER_CAPACITY, _fmt(FMT_PU, p.power_capacity_pu)))
 	rows.append(Row.new(KEY_MASS_TOLERANCE, _fmt(FMT_KG, p.mass_tolerance_kg)))
+
+
+## The localised families [param mask] admits, joined. Public because it is the
+## whole of the row above and a test that could only reach it through a built
+## card would be asserting the layout as well.
+##
+## A chassis admitting nothing is not authorable — the validator would refuse
+## every Motive Assembly ever offered to it — but it is what an unset mask reads
+## as, and a card showing an empty value beside a caption reads as a bug in the
+## card rather than as a fault in the data.
+static func chassis_families(mask: int) -> String:
+	var names := PackedStringArray()
+	for mode: int in PartEnums.LOCOMOTION_MODE_COUNT:
+		if PartEnums.chassis_carries(mask, mode):
+			names.append(InputPrompt.tr_key(CHASSIS_MODE_KEYS[mode]))
+	if names.is_empty():
+		return InputPrompt.tr_key(KEY_NONE)
+	return InputPrompt.tr_key(KEY_LIST_SEPARATOR).join(names)
 
 
 ## The steering row is the one that answers a real question, and it is why this

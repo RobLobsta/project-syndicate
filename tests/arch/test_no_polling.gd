@@ -34,6 +34,14 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		+ "timers run down, and spread decays every tick. It reads cached band "
 		+ "multipliers and never integrity"
 	),
+	"res://src/combat/damage/dot_scheduler.gd":
+	(
+		"doc 08 §7.3: a burn is a rate and there is no event to react to — the "
+		+ "part is already on fire. It returns on an empty list before it "
+		+ "touches its accumulator, so a match with nothing burning pays one "
+		+ "array size check, and it reads a flag and a heat figure rather than "
+		+ "integrity or connectivity"
+	),
 	"res://src/combat/projectiles/projectile_system.gd":
 	(
 		"doc 07 §12.2: integrates flight and sweeps for hits every tick. A "

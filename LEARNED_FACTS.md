@@ -1349,6 +1349,64 @@ there is only one section here.)
     index, so every fixture standing on a particular patch of terrain stands on a
     different one afterwards.
 
+99. **Thermal damage and thermal heat come off the same `raw_amount`, so
+    catching fire has an integrity floor — and most of the part table is under
+    it.** Doc 08 §7.1 deals `raw · (1 − resist) · (1 − absorption)` and deposits
+    `raw · 0.55`, so a part cannot reach `THERMAL_IGNITION_HU` unless it can
+    survive
+
+    ```
+    480 / 0.55 · (1 − resist_THERMAL) · (1 − armour_absorption)
+    ```
+
+    points of thermal damage first. That is 542 on `core.command.compact.t2` and
+    614 on `str.panel.medium.t2`, whose whole integrity is 380. **Five of the
+    seventeen shipped parts can ignite** — the four Core Modules and the tracked
+    bogie, with the limb and the rotor disc inside 10% — and the other twelve are
+    destroyed by the fire they would have caught.
+
+    The second half of the same arithmetic is the one that surprises: **heat is
+    `raw · 0.55` per packet and the interval does not scale it.** §7.1's
+    `maxf(interval_s, 1.0)` is 1.0 for every interval this game produces, and a
+    per-tick instalment's `raw_amount` already carries the tick — so the rate is
+    right, and a single 480-raw thermal strike is worth **264 HU**, which means
+    two swings of the shipped edge light a Core Module with no sustained contact
+    at all. A fixture measuring sustained contact has to discount the strikes
+    that got it there.
+
+    The consequence for anything reading `DamagePacket.interval_s`: it reaches
+    §7.2's corrosive decay and nothing else. Setting it is still correct — a melee
+    mix with a `CORROSIVE` share is authorable — and it is a planted fault that
+    survives, because no shipped part takes that branch.
+
+100. **When a new per-tick law reports exactly one event, suspect the geometry
+    before the law.** Session 42's sustained-contact fixture reported "the edge
+    resolved on 1 of the 1 ticks it was held", which is precisely what a missing
+    per-tick clear of the victim set looks like — and the law was correct. §15.4's
+    strike impulse had shoved the target off the blade on the first tick, so every
+    tick after it swept clear air.
+
+    The tell was that the one packet it did see was the wrong *size*: 0.29 where
+    the contact rate asks for 2.64, which is a doc 08 §7.3 burn instalment and not
+    a melee packet at all. **Check the magnitude of the event you did get before
+    concluding anything about the ones you did not** — a fixture that had only
+    counted events would have been reported as a defect in the code under test.
+
+    The repair is the standard one and it is in §3's conventions now: freeze the
+    target for a phase whose subject is not motion.
+
+101. **A `Node` constructed inside an assertion expression is never freed, and
+    the leak report names nothing.** `check_false(SettingsService.new().flag, …)`
+    reads perfectly and costs four leaked `ObjectDB` instances and one resource
+    still in use at exit — the service, its `ConfigFile`, and what they hold.
+    Godot prints the counts at shutdown with no class, no file and no line, and
+    `run_all_checks.sh` fails the run on it (fact 34) after every check has
+    passed, so the summary line says `0 failures` and the run is red.
+
+    There is no bisecting it from the message. The answer is always the same
+    question: **which file did this session add, and what does it build that it
+    does not free?**
+
 ---
 
 ## 2. What fault injection taught
@@ -1719,6 +1777,17 @@ saved a mass floor by finding the one state that reaches it. Reaching for
 - **Measure from rest wherever an equality is wanted.** Damping is proportional
   to the current velocity, so from zero it contributes nothing and `Δv = F·dt/m`
   is exact rather than approximate (§3.38).
+- **Freeze a body whose motion is not the subject of the phase.** A fixture that
+  measures a hundred ticks of anything against a target needs the target to still
+  be there on tick a hundred, and an impulse delivered on tick one is enough to
+  take it out of reach. `test_held_weapon` measures §15.4's impulse on a live
+  target and then freezes it for §15.5's contact phase; fact 100 is what the
+  unfrozen version reported, and it read as a defect in the law rather than in
+  the fixture.
+- **Free everything a test builds, including what it builds inside an
+  assertion.** A `Node` constructed as an argument — `check_false(Thing.new().x,
+  …)` — is leaked, and the engine's report at exit names no class and no file
+  (fact 101). Build it into a local, assert, free it.
 - **Set state directly instead of waiting for it.** `RotorDiscState.omega_rad_s`
   assigned is deterministic and instant; spooling to it is neither. The same goes
   for an imposed spin (§3.29): a yaw provoked by wheelspin is real but is not

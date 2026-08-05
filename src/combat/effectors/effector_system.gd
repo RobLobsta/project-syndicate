@@ -600,13 +600,21 @@ func _step_melee(
 		EventBus.effector_fired.emit(runtime.assembly_id, slot, MatchClock.tick)
 
 	var before := state.stage
-	var stage := MeleeSolver.advance(state, melee, effective_cycle_multiplier(slot), dt)
+	var stage := MeleeSolver.advance(
+		state, melee, effective_cycle_multiplier(slot), dt, trigger_held
+	)
 	if stage != MeleeStrikeState.Stage.SWINGING:
 		return
 	if before != MeleeStrikeState.Stage.SWINGING:
 		# Entering the swing: the previous swing's victims stop being immune.
 		state.struck_this_swing = PackedInt32Array()
-	_sweep_edge(hp, st, def, slot, melee, state)
+	elif state.energised:
+		# §15.5, and it is the one line the two paths differ by: an edge held
+		# against a target clears its victim set every tick rather than every
+		# swing, so the same target keeps taking damage for as long as it is in
+		# contact instead of being immune from the moment the arc first cut it.
+		state.struck_this_swing = PackedInt32Array()
+	_sweep_edge(hp, st, def, slot, melee, state, dt)
 
 
 ## §15.3's swept capsule, sampled across the arc, resolving one packet per
@@ -635,7 +643,8 @@ func _sweep_edge(
 	def: PartDefinition,
 	slot: int,
 	melee: MeleeProfile,
-	state: MeleeStrikeState
+	state: MeleeStrikeState,
+	dt: float
 ) -> void:
 	if space == null or resolver == null:
 		return
@@ -661,7 +670,7 @@ func _sweep_edge(
 			travel = runtime.body.linear_velocity
 		params.transform = edge * EDGE_TO_CAPSULE
 		for hit: Dictionary in space.intersect_shape(params, MeleeSolver.MAX_TARGETS_PER_SWING):
-			_resolve_melee_hit(hit, edge, travel, slot, melee, state)
+			_resolve_melee_hit(hit, edge, travel, slot, melee, state, dt)
 		previous = edge
 
 
@@ -693,7 +702,8 @@ func _resolve_melee_hit(
 	travel: Vector3,
 	slot: int,
 	melee: MeleeProfile,
-	state: MeleeStrikeState
+	state: MeleeStrikeState,
+	dt: float
 ) -> void:
 	var body := instance_from_id(hit.get("collider_id", 0)) as ChassisBodyRef
 	if body == null:
@@ -718,24 +728,47 @@ func _resolve_melee_hit(
 	# §15.4: an edge delivers its damage split across channels by the authored
 	# mix, which is what makes an energy edge a thermal weapon and a kinetic one
 	# a penetrator without either needing a separate code path.
+	#
+	# §15.5's instalment is the same packet with a different amount: a strike
+	# delivers [member MeleeProfile.strike_damage] once, a held edge delivers
+	# [member MeleeProfile.sustained_damage_s] scaled by the tick, so a beam that
+	# is held costs the same per second whatever the tick rate is.
 	var direction := travel.normalized()
 	for channel: int in PartEnums.DAMAGE_CHANNEL_COUNT:
-		var share := melee.channel_mix[channel]
-		if share <= 0.0:
+		var amount := MeleeSolver.channel_damage(melee, channel)
+		if state.energised:
+			amount = MeleeSolver.sustained_channel_damage(melee, channel, dt)
+		if amount <= 0.0:
 			continue
 		var packet := DamagePacket.new()
 		packet.target_assembly_id = victim.assembly_id
 		packet.target_slot = target_slot
 		packet.channel = channel as PartEnums.DamageChannel
-		packet.raw_amount = melee.strike_damage * share
-		packet.penetration = melee.strike_damage * share
+		packet.raw_amount = amount
+		packet.penetration = amount
 		packet.impact_point_world = edge.origin
 		packet.impact_normal_world = -direction
 		packet.incoming_direction = direction
 		packet.source_assembly_id = runtime.assembly_id
 		packet.source_slot = slot
 		packet.source_tick = MatchClock.tick
+		# What an instalment covers, for the one consumer that scales by it: doc
+		# 08 §7.2's corrosive decay is per second of exposure, and a mix with a
+		# CORROSIVE share would otherwise decay a target's resistance sixty times
+		# too fast. §7.1's heat does [b]not[/b] scale by it — its
+		# `maxf(interval_s, 1.0)` is 1.0 for any interval under a second — which
+		# is why a planted fault removing this line survives on the shipped part
+		# set, where no melee mix authors a corrosive share.
+		if state.energised:
+			packet.interval_s = dt
 		resolver.apply(packet)
+
+	if state.energised:
+		# §15.5 delivers no impulse. §15.4's is the momentum of a blade swung
+		# through a hull and there is one of those per swing; applying it on every
+		# tick of a held edge is sixty of them a second, which throws the target
+		# across the arena and is not what holding a beam on something does.
+		return
 
 	# §15.4's impulse on the target, at the contact rather than at its centre, so
 	# a blade landing on a flank spins the Assembly as well as shifting it.

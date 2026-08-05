@@ -180,6 +180,8 @@ var ammo: AmmoLedger = null
 var projectile_registry: ProjectileRegistry = null
 var projectiles: ProjectileSystem = null
 var resolver: DamageResolver = null
+## Doc 08 §7.3's fires. Built beside the resolver and pointed at it.
+var dot: DotScheduler = null
 var camera: ChaseCamera = null
 var hud: MatchHud = null
 ## Doc 11 §16. Counts the teams out and says once that the match is over.
@@ -427,6 +429,15 @@ func _build_systems() -> void:
 	# or not it found anything to damage.
 	resolver.ground_deform = ground_deform
 	add_child(resolver)
+
+	# Doc 08 §7.3. A part that catches fire burns until it cools, and without this
+	# it carries the flag and nothing else. The list is empty in a match where
+	# nothing has been set alight, which is what the section's early return buys.
+	dot = DotScheduler.new()
+	dot.name = "DotScheduler"
+	dot.resolver = resolver
+	resolver.dot = dot
+	add_child(dot)
 
 	projectiles = ProjectileSystem.new()
 	projectiles.registry = projectile_registry

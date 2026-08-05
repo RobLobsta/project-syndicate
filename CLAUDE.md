@@ -454,6 +454,7 @@ Every system that can be triggered repeatedly has an explicit bound:
 | System | Bound |
 |---|---|
 | Damage chain reactions | depth 3 |
+| Damage-over-time entries | 128 |
 | Projectile penetrations | 4 per round |
 | Projectile sweep segments | 8 per round per tick |
 | Terminal debris components | 8 per Assembly |

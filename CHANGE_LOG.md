@@ -57,6 +57,7 @@ they found are in `LEARNED_FACTS.md`.
 | 28 | **Half the clicks, and you can see what you built.** Doc 02 §10's mirror: one gesture places both flanks, as one undoable command. The shipped starter is twelve placements and comes out of eight. Found that §10's own sketch mirrors the pivot cell, which is one cell wrong on every part whose pivot is off-centre. The garage also got a fill light, a bounce and a hover wash — before them the build rendered as one dark silhouette and doc 13's class tints carried nothing. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
+| 42 | **The edge burns.** Doc 07 §15.5's sustained contact and doc 08 §7.3's `DotScheduler` land together: a held edge cuts on **93 consecutive ticks** at the authored 340 damage/s, deposits heat as it goes, and 3.4 s of it takes a Core Module past `THERMAL_IGNITION_HU` — after which §7.3's list burns it with nothing touching it. §7.1 gains the cooling term that makes its own hysteresis band reachable (`THERMAL_COOLING_HU_S = 18.0`, charged to the burning part). Also: a Core Module's card now names the families its chassis carries (doc 11 §4.3), and §14.6's control card is a **first-run** card. Two findings on the way: catching fire has an integrity floor that twelve of seventeen shipped parts are under, and a discrete thermal packet is worth a full second of heat, so two swings ignite a hull on their own. |
 | 41 | **Documents say whether they are built; the throttle stops braking; tracked gets a chassis that does not fix it.** Every one of the thirteen carries a generated **BUILT / PARTIAL / PLANNED** banner checked against a witness path in `src/`, so a reader can tell doc 09 from doc 10 without opening `src/`. §7.8's driveline drag is capped at the drive it opposes, so **no positive throttle ever retards** — the first sliver releases engine braking instead. CLAUDE.md gains rule 14: a normative formula producing a vector must state its direction, which is the rule §6.5's inverted anti-roll couple broke for the life of the project. `CHASSIS_GROUND` splits into `CHASSIS_WHEELED` and `CHASSIS_TRACKED` and `core.tracked.hauler.t3` ships — and the shipped recipe stays on the command core, because migrating it takes the rest pitch from 4.7° to 1.6° and *loses* the ability to brake without going over. The Ground Array doubles to **4096 m**. |
 | 40 | **The bad news, closed.** Doc 05 gains **§7.8**: a driveline drag that takes a released Assembly from 0.14 m/s² of rolling resistance to **2.19**, and a speed-cap governor that makes `speed_cap_mps` a speed the build reaches and holds (**22.56 m/s** against a published 24, where it used to sail through to 25). Doc 11 §7.3's **pad placement** lands as one substitution — `_preview_pointer()` returns a virtual cursor when a pad is in use — so a controller builds through the identical chain a mouse does; `test_pad_build.gd` places a part from the stick alone. The opponent spawn came in to 30 m, so the fight starts at four seconds rather than eleven. And `drive_torque_nm` was **re-measured and left alone**: the wheeled build tolerates 16 000 N·m, and the binding constraint turned out to be the tracked recipe, which rides 8.1° nose-up on two of its eight road stations, spikes one to 35 kN, inverts in a turn, and barely steers. |
 | 39 | **The machine handles.** Doc 05 §6.5's anti-roll couple had been applied inverted for the life of the project — a roll *amplifier*, so any disturbance diverged and the reference build went from −1.1° to inverted in a second and a half at full lock from **3.3 m/s**. Corrected, the same manoeuvre settles at −1.3° with all four contacts loaded, and it is what has been putting parked hulls on their sides in every capture since session 31. `tests/physics/test_wheeled_drive_cycle.gd` runs the whole cycle a person performs on a smooth slab and is the first fixture in the project to turn an Assembly at speed. Also: §7.7's holding brake read the raw record while §15.5 had already released the demand, so holding the brake was **strictly worse than holding nothing** (10.49 m of recoil travel against 1.15). And doc 11 §7.1's binding table published three gamepad collisions inside the match; it is rebuilt per context, enforced by `test_input_actions`, given PlayStation/Nintendo/generic glyphs, and the garage camera now orbits on the right stick. |
@@ -69,6 +70,64 @@ they found are in `LEARNED_FACTS.md`.
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 42, in more detail
+
+**Neither half of the energy edge was worth anything alone.** `eff.melee.beam_edge.t4`
+has authored `sustained = true` and `sustained_damage_s = 340` since session 18;
+`MeleeSolver.sustained_channel_damage` was written and unit-tested with no caller,
+and `FLAG_OVERHEATED` was set by the resolver and read by nobody. So the edge was a
+short-ranged autocannon with a thermal mix, and thermal damage was a resistance row.
+The two shipped together: contact deposits heat, heat ignites, and §7.3's list is
+what makes ignition mean anything.
+
+**§15.5's rule is one line and it is not the stage machine.** Holding the stage at
+the end of the arc is the visible half; the half that decides whether anything
+happens is clearing `struck_this_swing` per tick rather than per swing, because
+§15.3 deduplicates a target for the whole swing. Get the stage right and the
+clearing wrong and the edge resolves exactly once and then nothing — which is
+indistinguishable from a correct implementation to any assertion about damage
+*arriving*. `test_held_weapon` counts the ticks that resolved for that reason.
+
+**The instalment says what it covers.** `interval_s` on a sustained packet is the
+tick, so doc 08 §7.1's heat is a rate rather than sixty full-second deposits a
+second. And a held edge delivers **no impulse**: §15.4's is the momentum of a
+blade swung through a hull, once per swing.
+
+**§7.1's hysteresis band had no way to be reached.** The section ends a fire when
+heat drops under 320 and never said what makes it drop. Cooling every part in the
+match on a timer is the poll I-4 exists to forbid, so the cooling rides on the
+burning part's own entry: a part that is alight sheds heat, a part that is merely
+warm does not, and the band is reachable exactly where it is observable. Net of
+the 2.2 HU/s the fire's own packets deposit, an ignited part burns for about ten
+seconds and forty points of integrity.
+
+**Two findings, both arithmetic and both recorded in doc 08 §7.1.** Damage and
+heat come off the same `raw_amount`, so a part must survive ~540 points of thermal
+damage before it can ignite at all — five of seventeen shipped parts clear that
+bar. And a packet with no interval is read as a full second's deposit, so **two
+strikes of the shipped edge ignite a Core Module** with no contact at all. Fact 99.
+
+**The fixture reported the law as broken and was wrong.** The sustained phase read
+"resolved on 1 of the 1 ticks it was held", which is exactly what a missing
+per-tick clear looks like; §15.4's impulse had shoved the target off the blade on
+the first tick. The tell was the *size* of the one packet it did see — 0.29 where
+contact asks for 2.64, which is a burn instalment and not a melee packet. Fact 100.
+
+**The sweep found a third owner of a rule and deleted it.** `fire-ignites-every-packet`
+survived its first run because the resolver tested "is this the transition" and
+the scheduler tested "is this part already in the list" — two owners of one
+invariant, so the scheduler's own de-duplication was unreachable and the fault
+that removed it was caught by nothing, including the test written to assert it.
+The resolver now offers **every** packet that leaves a part alight and
+`DotScheduler.ignite` is the one owner. Eight of eleven faults caught; the two
+kept survivors are in §3.
+
+**And two one-line interface rules that a later change could delete unnoticed.**
+A Core Module's card names what it carries, because doc 01 §7.1's family lock
+shipped with the parts and no way for a player to meet it. §14.6's control card is
+raised on a first run only, recorded in a `seen` section that is deliberately not
+a preference. Both are planted as faults in `burn_and_hold_sweep.py`.
 
 ### Session 41, in more detail
 
@@ -480,6 +539,7 @@ what matters is which test defends which behaviour.
 | `test_part_registry_data` | manifest order swapped; four attachment nodes dropped from a `.tres`; a part missing from a class bucket; a locomotion family with no shipped part; *(session 37)* a chassis authored with the wrong `locomotion_mask`, asserted as the full four-family set rather than against the constant the data uses |
 | `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent; *(session 27)* **a cascade announcing only the part the player named**, and the mirror of it; *(session 37)* a chassis family check that refuses too much or too little, asserted as the whole three-by-three matrix, plus the check being ordered after the budgets where it would be unreachable |
 | `test_rest_stability` | *(session 32, re-asserted 38)* written asserted-as-it-failed and turned round when §7.4 closed. It now defends the repair from both sides: zero contact-rate sign reversals in twelve ticks, a peak under a hundredth of a rad/s, and a build that comes to a **complete** stop with no input. The sign history is still the instrument — a hull that is stationary on average moves no speed assertion at all |
+| `test_part_inspector` | *(session 42)* doc 11 §4.3's chassis row dropped from a Core Module's card, so the one figure that decides what a player may bolt on is unreadable again |
 | `test_control_card` | *(session 33)* the card moved back to the centre of the screen; the stand-down removed, so the dwell runs its full eleven seconds through the opening engagement; an action added to or dropped from the stand-down list |
 | `test_build_history` | *(session 27)* an attach that undoes to nothing; a restored part left under whatever now mates; §9.2's re-parenting never recorded; a cascade restored child-first; a redo branch surviving an edit; the 128 depth removed; an undone command that cannot be redone — and, by hand, **a command keyed on a slot rather than on a cell** |
 | `test_chassis_graph` | mass propagation stops at the immediate parent; orphaning children forgets to shed their mass; connectivity walks the tree rather than support edges; duplicate support edges kept; *(session 27)* **`children` appended rather than filed in ascending order**, which it has claimed since it was written |
@@ -526,7 +586,9 @@ restarted every tick |
 | `test_debris_body_query` | *(session 17)* a pooled debris body that never joins `LAYER_DEBRIS`, so §5.3's blast query cannot see the wreck. **Not** the transform-before-shapes fault it was written for — that one survives it, and §8 item 14 records why |
 | `test_aim_solver` | the yaw sign; the pitch sign; `direction_for` flipped; slew band multiplier ignored; yaw convergence not wrapped; pitch convergence wrapped; the spread cone uniform in angle; the cone basis degenerate; **the full-traverse escape hatch removed, once a mount authored `(0, 360)` existed to see it** |
 | `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
-| `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel** |
+| `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel**; *(session 42)* §15.5's stage hold removed; **the per-tick clear of the victim set removed**, which is the fault no assertion about damage arriving can see; a held edge charging strike damage per tick; the instalment not declaring its interval; and, through the fire it starts, §7.3's list never told a part ignited |
+| `test_dot_scheduler` | *(session 42)* doc 08 §7.1's ignition never announced to §7.3; one entry per packet instead of one per burning part; the 10 Hz cadence gate removed; the cooling term zeroed, so the hysteresis band is unreachable and a part that catches fire burns to nothing |
+| `test_first_run_card` | *(session 42)* doc 11 §14.6's first-run flag consulted by nobody — the card back to being raised over every match a player ever plays |
 | `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
 | `test_part_mesh_pose` | *(session 29)* the §16.1 droop lifting the part instead of lowering it; the droop composed in the part's own frame rather than the chassis's — **which nothing in `tests/physics/` can see, because a Motive Assembly is only ever mounted upright there**; a limb never turned toward its foot; a limb turned about its mesh origin instead of about its hip |
 | `test_part_visuals` | *(session 20; no sweep run against it yet — see below)* doc 13 §2.1's collider mirroring by extent, §9's spawn, I-1 over a **populated** `VisualRoot`, the mesh cache's sharing, and the `part_visual` tag suppressing every mesh while touching no collider |
@@ -558,7 +620,7 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Eight committed sweeps, 136 faults between them, all driven by
+Nine committed sweeps, 147 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
@@ -572,6 +634,7 @@ is a couple of minutes.
 | `contact_visual_sweep.py` | doc 05 §16: the droop, the frame it is applied in, the limb's pivot, the swing arc | 12 |
 | `effector_choice_sweep.py` | doc 01 §10.5's second direct-fire row: the starter's module, the comparison fixture, the second round type's wiring | 6 |
 | `drive_cycle_sweep.py` | doc 05 §6.5's anti-roll sign, §7.7's holding brake and proportioning, §7.8's driveline drag and governor, §15.5's release, §7.1's steering, and doc 11 §7's binding table, glyphs and pad cursor | 18 |
+| `burn_and_hold_sweep.py` | doc 07 §15.5's sustained contact — the stage hold, the per-tick clear, the rate, the interval, the impulse — doc 08 §7.1's ignition and cooling and §7.3's cadence, plus doc 11 §4.3's chassis row and §14.6's first-run flag | 11 |
 
 ### What still survives, and why
 
@@ -585,6 +648,8 @@ is a couple of minutes.
 | `tracked-mean-is-its-first-station` | contact visual | Doc 05 §16.1 draws a tracked patch at the mean of its road stations, and on a flat slab every station reports the same distance — so the mean and the first are one number. Planted knowingly, in the same change as the code. Closes with a bogie straddling a slope, which no fixture in `tests/physics/` has. |
 | `aim-point-read-from-scan` | ai | Doc 07 §10 runs selection at 2.9 Hz and aim solving every tick; collapsing them aims at where the target was up to 350 ms ago. Marginal rather than firmly untested — CAUGHT on one run and SURVIVED on the next, either side of an unrelated change. What closes it properly is an engagement in which the AI's target is *driving*. |
 
+| `sustained-no-interval` | burn and hold | *(session 42)* `DamagePacket.interval_s` on a §15.5 instalment reaches doc 08 §7.2's corrosive decay and nothing else — §7.1's heat is `raw · 0.55` per packet and its `maxf(interval_s, 1.0)` is 1.0 for every interval this game produces. The line is right and no shipped melee mix authors a corrosive share, which is the ammunition sentinel's shape exactly. Closes with a corrosive edge, or with a resolver test that submits one. |
+| `sustained-delivers-impulse` | burn and hold | *(session 42)* §15.4's per-swing impulse applied on every tick of contact. `test_held_weapon` **freezes** its target for the contact phase — it has to, or the first strike carries the target off the blade and the phase measures nothing (fact 100) — so a frozen body absorbs the fault. Closes with §3.8's melee duel, where both hulls are live. |
 | `breakaway-never-releases` | ai | §15.7.1's standing-start demand applied at every speed, so it becomes the sustained heavy throttle that stopped the opponents ever reaching the player on real terrain. **A survivor, then briefly caught, then a survivor again** — and the round trip is the finding, not the verdict. Session 30 recorded it as caught because with no arrival brake a sustained throttle made the driver orbit its stand-off, which `test_ai_engagement`'s rounds floor is sensitive to. Session 31's arrival brake stops a driver orbiting *whatever* its throttle is doing, so the symptom the fixture was reading is gone and the rule underneath it is uncovered again. Nothing about the rule changed; a correct, unrelated change desensitised the one fixture that happened to see it, which is `LEARNED_FACTS.md` §2.1 word for word. Closes only with terrain in a fixture, or with a capture. |
 
 The `breakaway-never-releases` row is worth reading twice by anyone about to

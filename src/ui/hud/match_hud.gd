@@ -78,11 +78,18 @@ var _feed_ages: Array[float] = []
 func _ready() -> void:
 	layer = HUD_LAYER
 	_build()
-	# §14.6. Raised on entry rather than on a first-run flag: this is the only
-	# screen in the project and there is nowhere yet to store "they have seen it".
-	# A card that goes away by itself in eleven seconds costs a returning player
-	# nothing, and a card nobody ever sees costs a new one the whole game.
-	_control_card.raise()
+	# §14.6's first-run rule. The card is raised on a player's first match and not
+	# on their second, which is the half that was missing while there was nowhere
+	# to store "they have seen it". The flag is written the moment it goes up
+	# rather than when it comes down: a player who quits during their first match
+	# has still met the controls, and the alternative is a card that returns for
+	# anybody who closed the window early.
+	#
+	# It never becomes unreachable — `hud_toggle_stats` raises it at any time, and
+	# the card's own last row says so.
+	if not SyndicateSettings.control_card_seen:
+		_control_card.raise()
+		SyndicateSettings.mark_control_card_seen()
 	EventBus.part_damaged.connect(_on_part_damaged)
 	EventBus.part_destroyed.connect(_on_part_destroyed)
 	EventBus.assembly_terminated.connect(_on_assembly_terminated)

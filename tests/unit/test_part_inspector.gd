@@ -142,6 +142,57 @@ func test_a_core_module_names_the_budgets_it_sets() -> void:
 	check_true(_has(core, PartInspector.KEY_MASS_TOLERANCE), "and the mass tolerance")
 
 
+## Doc 11 §4.3's first row on a chassis, and the only figure on the card that
+## decides what may be bolted on.
+##
+## Asserted as a [i]difference[/i] between the four shipped chassis rather than
+## against a string: the claim is that a player can tell them apart by reading
+## the card, which a row printing one constant for every mask would satisfy on
+## any single part.
+func test_a_core_module_says_which_families_it_carries() -> void:
+	var command := _value_for(_rows(CORE_KEY), PartInspector.KEY_CARRIES)
+	var strider := _value_for(_rows(&"core.ambulatory.strider.t3"), PartInspector.KEY_CARRIES)
+	var lifter := _value_for(_rows(&"core.rotary.lifter.t3"), PartInspector.KEY_CARRIES)
+	var hauler := _value_for(_rows(&"core.tracked.hauler.t3"), PartInspector.KEY_CARRIES)
+	check_true(command.length() > 0, "the command core names what it takes: '%s'" % command)
+	check_ne(strider, lifter, "a limb chassis and a disc chassis do not read the same")
+	check_ne(strider, hauler, "nor a limb chassis and a tracked one")
+	check_ne(command, hauler, "nor the transitional ground mask and a tracked-only one")
+	# The transitional mask is the one that carries two families, so it is the one
+	# that proves the row is a list rather than a single name.
+	check_true(
+		command.length() > hauler.length(),
+		"the two-family mask reads longer than a one-family mask: '%s' against '%s'"
+			% [command, hauler]
+	)
+
+
+## Both directions of the join, on masks rather than on parts, because no shipped
+## chassis authors an empty one and the row a player would read off it is the
+## half a test can still make.
+func test_the_family_list_names_every_bit_and_says_so_when_there_are_none() -> void:
+	var wheeled := PartInspector.chassis_families(PartEnums.CHASSIS_WHEELED)
+	var tracked := PartInspector.chassis_families(PartEnums.CHASSIS_TRACKED)
+	var both := PartInspector.chassis_families(PartEnums.CHASSIS_GROUND_TRANSITIONAL)
+	check_true(both.contains(wheeled), "the pair contains the wheeled name")
+	check_true(both.contains(tracked), "and the tracked one")
+	check_ne(
+		PartInspector.chassis_families(0), "", "a chassis admitting nothing still reads as something"
+	)
+
+
+## Every caption and every family name has to exist in the string table, or the
+## player reads a key. Through [method TranslationServer.translate], because the
+## table the game loads is the compiled one.
+func test_every_chassis_family_name_is_translated() -> void:
+	for key: StringName in PartInspector.CHASSIS_MODE_KEYS:
+		check_ne(InputPrompt.tr_key(key), String(key), "'%s' is in the string table" % key)
+	for key: StringName in [
+		PartInspector.KEY_CARRIES, PartInspector.KEY_NONE, PartInspector.KEY_LIST_SEPARATOR
+	] as Array[StringName]:
+		check_ne(InputPrompt.tr_key(key), String(key), "'%s' is in the string table" % key)
+
+
 ## The table is indexed by [enum PartEnums.MotiveKind] and has to stay in step
 ## with it. One entry out of order names every part after it wrongly, and it
 ## reads as a data error in the parts rather than as a transposition here.
