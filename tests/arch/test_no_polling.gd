@@ -46,6 +46,14 @@ const PER_FRAME_ALLOWLIST: Dictionary = {
 		+ "render frame. It reads a transform and never integrity, connectivity, "
 		+ "or attachment, so I-4's subject is untouched"
 	),
+	"res://src/ui/garage/garage_preview.gd":
+	(
+		"doc 11 §7.1: the garage camera orbits on the right stick, and a stick "
+		+ "held at deflection emits no further input events — an event-driven "
+		+ "orbit sits still for a player who is holding it over. It reads two "
+		+ "action strengths and writes a camera pose; nothing structural is "
+		+ "polled, and a centred stick returns immediately"
+	),
 	"res://src/ui/hud/reticle.gd":
 	(
 		"doc 11 §14.3: the brackets draw in and out over real time, which is a "

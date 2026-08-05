@@ -571,6 +571,7 @@ These parse the source tree and fail the build on violation. They are the automa
 | `test_autoload_set.gd` | Autoload list matches Section 4 exactly |
 | `test_input_actions.gd` | `project.godot` action set matches Section 7.2 exactly |
 | `test_no_forbidden_patterns.gd` | The Section 3.3 forbidden list |
+| `test_doc_indexes.gd` | Every document in `/docs/` carries a current index of its own top-level sections |
 
 ### 9.3 Coverage Expectations
 
@@ -675,6 +676,12 @@ godot --headless --path . --script tools/validate_part_visuals.gd
 
 # Static Volume bake
 godot --headless --path . --script tools/bake_static_volumes.gd
+
+# Regenerate the section index at the top of each of the thirteen documents.
+# Run it after adding or renaming a top-level section; tests/arch/test_doc_indexes.gd
+# fails the build when one is stale, because a hand-maintained list of contents
+# rots in the direction of looking complete.
+python3 tools/ci/doc_index.py
 ```
 
 Key `project.godot` settings that must not be changed without an architecture review:

@@ -56,19 +56,14 @@ func desired_velocity(forward: Vector3, right: Vector3, speed_cap_mps: float) ->
 	return v * speed_cap_mps
 
 
-## True when the record asks a ground contact for neither drive nor braking.
-##
-## Doc 05 §7.7's engagement test for the holding brake. Deliberately [i]not[/i]
-## [method is_neutral]: a steering demand is not a request to move, and an
-## [AiDriver] holding station at its stand-off keeps its nose on its target while
-## demanding no throttle at all. Counting that as motion would leave the one thing
-## in the project that plans a stop unable to complete one.
-func is_coasting() -> bool:
-	return is_zero_approx(throttle) and is_zero_approx(brake)
-
-
 ## True when the input asks for no motion at all, which is the state the gait
 ## freezes in and the suspension settles in.
+##
+## There used to be an `is_coasting()` beside this for doc 05 §7.7's holding
+## brake, and it is gone rather than kept: §7.7 now reads the brake half off
+## §15.5's [i]released[/i] demand, which is a quantity only [MotiveSystem] holds,
+## so a predicate over the raw record could no longer answer the question it was
+## named for.
 func is_neutral() -> bool:
 	return (
 		is_zero_approx(throttle)

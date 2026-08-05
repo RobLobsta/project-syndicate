@@ -30,6 +30,26 @@ const ZOOM_STEP_M: float = 0.8
 ## Radians of orbit per pixel of mouse travel while [code]cam_orbit[/code] is
 ## held.
 const ORBIT_RATE_RAD_PX: float = 0.006
+## Degrees of orbit per second at full stick deflection, for the four analogue
+## [code]cam_look_*[/code] actions.
+##
+## The same figure [ChaseCamera] turns at, deliberately: a player who learns how
+## fast the right stick swings the camera in a match should not have to relearn it
+## in the garage. It is published there — doc 11 §13.6's `STICK_DEG_PER_SECOND` —
+## and read from there, because two copies of a feel constant is how the two
+## screens end up feeling different.
+const ORBIT_STICK_DEG_S: float = ChaseCamera.STICK_DEG_PER_SECOND
+
+## ===== LOOK INPUT ======================================================
+## Doc 11 §7.1's analogue camera actions. They carry no keyboard binding — a mouse
+## produces motion and Godot's [InputMap] cannot bind a motion event to an action
+## — so on a keyboard these four are always zero and this costs four strength
+## lookups a frame.
+
+const ACTION_LOOK_LEFT: StringName = &"cam_look_left"
+const ACTION_LOOK_RIGHT: StringName = &"cam_look_right"
+const ACTION_LOOK_UP: StringName = &"cam_look_up"
+const ACTION_LOOK_DOWN: StringName = &"cam_look_down"
 ## Pitch stops. Not ±90°: a camera looking straight down at a build has no
 ## silhouette to read, and one looking straight up is under the floor.
 const MIN_PITCH_RAD: float = -0.15
@@ -164,6 +184,37 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	EventBus.part_attached.disconnect(_on_part_attached)
 	EventBus.part_removed.disconnect(_on_part_removed)
+
+
+## Orbits the camera on the right stick.
+##
+## [b]A poll rather than an event handler, and it is the only way a stick can
+## drive this.[/b] [method handle_camera_input] orbits on
+## [InputEventMouseMotion], which arrives only while the pointer moves; a stick
+## held at deflection produces no further events at all, so an event-driven orbit
+## sits still for a player who is holding it over. That left the garage with no
+## camera control on a controller whatsoever — doc 11 §7.1 published "Right Stick"
+## against `cam_orbit` and `cam_orbit` is a single action that cannot express two
+## axes, which is why §13.6 added these four for the match camera.
+##
+## This is presentation and Architectural Invariant I-4 is untouched: the frame
+## callback reads two input axes and writes a camera pose. Nothing structural is
+## polled, and a frame in which the stick is centred does no work beyond four
+## strength lookups.
+func _process(dt: float) -> void:
+	var stick := Vector2(
+		ControlSystem.axis(ACTION_LOOK_LEFT, ACTION_LOOK_RIGHT),
+		ControlSystem.axis(ACTION_LOOK_UP, ACTION_LOOK_DOWN)
+	)
+	if stick.is_zero_approx():
+		return
+	# The same signs the drag path above uses, so the stick and the mouse orbit the
+	# build the same way round rather than the player learning two conventions on
+	# one screen.
+	var step := deg_to_rad(ORBIT_STICK_DEG_S) * dt
+	_yaw_rad -= stick.x * step
+	_pitch_rad = clampf(_pitch_rad + stick.y * step, MIN_PITCH_RAD, MAX_PITCH_RAD)
+	_place_camera()
 
 
 ## ===== POINTER =========================================================

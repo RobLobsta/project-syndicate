@@ -57,6 +57,43 @@ const DOMAIN_PREFIXES: Array[String] = [
 	"veh_", "effector_", "build_", "cam_", "catalogue_", "hud_", "net_"
 ]
 
+## ===== CONTEXTS ========================================================
+## Doc 11 §7.1: the action set spans two screens and a binding may appear in both.
+## What it may not do is appear twice in one — a gamepad has one Right Trigger,
+## and an action set in which that trigger both opens the throttle and pulls the
+## trigger is a controller that cannot be driven.
+##
+## [b]This is the check that was missing, and the table was wrong.[/b] §7.1
+## published Right Trigger against `veh_throttle` and `effector_fire_primary`,
+## Left Trigger against `veh_brake` and `effector_fire_secondary`, and D-Pad Right
+## against `veh_roll_right` and `cam_toggle_view` — three collisions inside the
+## match, in a document whose own prose says bindings collide only across
+## contexts. Nothing could see it, because nothing had ever compared two rows.
+
+## Actions live while an Assembly is being driven.
+const MATCH_CONTEXT: Array[String] = [
+	"veh_throttle", "veh_brake", "veh_steer_left", "veh_steer_right",
+	"veh_handbrake", "veh_boost", "veh_pitch_forward", "veh_pitch_back",
+	"veh_roll_left", "veh_roll_right",
+	"effector_fire_primary", "effector_fire_secondary", "effector_fire_tertiary",
+	"effector_cycle_group",
+	"cam_look_left", "cam_look_right", "cam_look_up", "cam_look_down",
+	"cam_zoom_in", "cam_zoom_out", "cam_toggle_view",
+	"hud_toggle_stats", "hud_ping", "hud_scoreboard",
+	"net_diagnostics_toggle",
+]
+
+## Actions live while a build is being assembled.
+const GARAGE_CONTEXT: Array[String] = [
+	"build_place", "build_remove", "build_pick",
+	"build_rotate_yaw", "build_rotate_pitch", "build_rotate_roll",
+	"build_mirror_toggle", "build_undo", "build_redo", "build_cancel",
+	"cam_orbit", "cam_pan", "cam_zoom_in", "cam_zoom_out",
+	"cam_focus_selection", "cam_toggle_view",
+	"cam_look_left", "cam_look_right", "cam_look_up", "cam_look_down",
+	"catalogue_search", "catalogue_next_class", "catalogue_prev_class",
+]
+
 
 func test_project_action_set_matches_the_canonical_list() -> void:
 	var declared := _project_actions()
@@ -117,6 +154,79 @@ func test_bindings_match_events_from_any_device() -> void:
 		InputMap.event_is_action(pad, &"veh_handbrake"),
 		"a synthesised gamepad A press must match veh_handbrake"
 	)
+
+
+func test_every_action_in_a_context_is_in_the_canonical_list() -> void:
+	# The two context lists above are hand-maintained, so an action added to
+	# CLAUDE.md §7.2 and to neither of them would be exempt from the collision
+	# check below without anybody noticing. Both directions, because a stale name
+	# left in a context list silently stops guarding anything.
+	var named: Array[String] = []
+	named.append_array(MATCH_CONTEXT)
+	named.append_array(GARAGE_CONTEXT)
+	for name: String in named:
+		check_true(CANONICAL.has(name), "context list names '%s', which is not an action" % name)
+	for name: String in CANONICAL:
+		check_true(
+			MATCH_CONTEXT.has(name) or GARAGE_CONTEXT.has(name),
+			(
+				"action '%s' is in no context, so nothing checks it for a binding "
+				+ "collision (doc 11 §7.1)"
+			) % name
+		)
+
+
+func test_no_two_actions_in_one_context_share_a_gamepad_binding() -> void:
+	var contexts: Array[Array] = [MATCH_CONTEXT, GARAGE_CONTEXT]
+	for context: Array in contexts:
+		var claimed := {}
+		for name: String in context:
+			if not InputMap.has_action(name):
+				continue
+			for event: InputEvent in InputMap.action_get_events(name):
+				var slot := _gamepad_slot(event)
+				if slot.is_empty():
+					continue
+				check_false(
+					claimed.has(slot),
+					(
+						"'%s' and '%s' are both bound to %s and are live on the same "
+						+ "screen; a pad has one of it"
+					) % [claimed.get(slot, ""), name, slot]
+				)
+				if not claimed.has(slot):
+					claimed[slot] = name
+
+
+func test_every_action_a_player_uses_in_a_match_has_a_gamepad_binding() -> void:
+	# Doc 11 §7.2's claim that the game is playable on a controller, made
+	# checkable. `net_diagnostics_toggle` is exempt and is the only exemption:
+	# it is a developer overlay, not a control.
+	for name: String in MATCH_CONTEXT:
+		if name == "net_diagnostics_toggle":
+			continue
+		var found := false
+		for event: InputEvent in InputMap.action_get_events(name):
+			if not _gamepad_slot(event).is_empty():
+				found = true
+				break
+		check_true(found, "match action '%s' cannot be reached from a controller" % name)
+
+
+## A stable name for the physical control [param event] occupies, or "" when the
+## event is not a gamepad one.
+##
+## An axis is keyed by its axis number and the sign of its value, so the two ends
+## of one stick are two slots and `veh_steer_left` does not collide with
+## `veh_steer_right`.
+static func _gamepad_slot(event: InputEvent) -> String:
+	var button := event as InputEventJoypadButton
+	if button != null:
+		return "button %d" % button.button_index
+	var motion := event as InputEventJoypadMotion
+	if motion != null:
+		return "axis %d %s" % [motion.axis, "+" if motion.axis_value > 0.0 else "-"]
+	return ""
 
 
 func test_builtin_ui_actions_are_left_alone() -> void:

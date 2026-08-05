@@ -822,8 +822,19 @@ func _resolve_brake_state(chassis_speed: float) -> void:
 	# puts its feet (§13.5). Those two families can be asked to pivot on the spot
 	# with no throttle at all, and a holding brake that answered that demand with
 	# the brakes would have taken their steering away.
-	var coasting := input.is_coasting() and not (
-		_steer_moves_hull and not is_zero_approx(input.steer)
+	#
+	# The brake half is read off the demand §15.5 has already released rather than
+	# off the raw record, and that is not a refinement — reading the record made
+	# holding the brake strictly worse than holding nothing. §15.5 takes the demand
+	# to zero as the hull stops going forwards, so a driver standing on the brake at
+	# rest had no service brake and was refused the holding brake as well: measured,
+	# a parked build absorbing twenty rounds of its own recoil travelled 1.15 m with
+	# the key released and 10.49 m with it held. A reverse throttle is still drive,
+	# so §15.5's own reverse is untouched.
+	var coasting := (
+		is_zero_approx(input.throttle)
+		and _brake_demand <= 0.0
+		and not (_steer_moves_hull and not is_zero_approx(input.steer))
 	)
 	_holding_brake = (
 		input.handbrake
@@ -1150,10 +1161,18 @@ func _apply_anti_roll() -> void:
 		)
 		if is_zero_approx(f):
 			continue
+		# Up on the more compressed side, down on the other. §6.5's sign, and it was
+		# inverted here for the life of the project — which is a roll amplifier
+		# rather than a soft bar, because once the inside contact leaves the ground
+		# there is no spring on that side left to oppose it. At full lock from
+		# 3.3 m/s the reference build went from −1.1° of roll to inverted in a second
+		# and a half; corrected, the same manoeuvre settles at −2.4° with all four
+		# contacts loaded.
+		#
 		# Along each contact's own normal rather than a shared one, so a pair
 		# straddling a camber transfers load along the surface it is standing on.
-		_apply_at(left.probe.global_position, left.normal_world * -f)
-		_apply_at(right.probe.global_position, right.normal_world * f)
+		_apply_at(left.probe.global_position, left.normal_world * f)
+		_apply_at(right.probe.global_position, right.normal_world * -f)
 
 
 ## §3.4. Supplies the gyroscopic term the physics server does not integrate, so
@@ -1571,10 +1590,18 @@ func _ambulatory_speed_cap_mps(profile: LimbProfile) -> float:
 	return minf(_speed_cap_mps(), GaitSolver.top_speed_mps(profile))
 
 
-func _commanded_speed_mps() -> float:
-	return absf(input.throttle) * _speed_cap_mps()
-
-
+## The Core Module's authored speed cap, in m/s.
+##
+## [b]Read by the ambulatory path and by nothing else[/b], through
+## [method _ambulatory_speed_cap_mps], where it is floored by what the gait can
+## actually deliver. A wheeled or tracked Assembly has no top speed at all: it
+## accelerates until rolling resistance balances the drive torque, which on the
+## reference build is about 25 m/s after twenty-five seconds. There used to be a
+## `_commanded_speed_mps()` here that applied it to the throttle and had no
+## caller; it is gone rather than kept, because a dead function is what a reader
+## mistakes for the cap being enforced. `HANDOFF.md` §3.1.5 owns the decision, and
+## it is a real one — [AssemblyStatSolver] publishes this same figure to the
+## garage as `projected_top_speed_mps`.
 func _speed_cap_mps() -> float:
 	var core: PartInstanceState = runtime.states[SyndicateConstants.CORE_SLOT]
 	if core == null:

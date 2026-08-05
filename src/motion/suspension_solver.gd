@@ -133,9 +133,19 @@ static func retune(profile: MotiveAssemblyProfile, static_normal_n: float) -> Ve
 
 ## Equal-and-opposite anti-roll force for a probe pair, in newtons.
 ##
-## Positive means push down on the left and up on the right. Returned as one
-## scalar because the pair is equal and opposite by construction, and returning
-## two would let a caller apply them asymmetrically.
+## [b]Positive means push [i]up[/i] on the left and down on the right[/b], the
+## left being the negative-x end of the pair. A positive result therefore says
+## the left is the more compressed side — the chassis is low on the left — and
+## the couple lifts it, which is the roll an anti-roll bar exists to resist.
+##
+## Applied the other way round this term is a roll [i]amplifier[/i], and it was
+## for the life of the project: it pushes the loaded side further down, and once
+## the inside contact leaves the ground there is no spring on that side left to
+## oppose it. Doc 05 §6.5 carries the divergence it produced and the measurement
+## either side of the repair.
+##
+## Returned as one scalar because the pair is equal and opposite by construction,
+## and returning two would let a caller apply them asymmetrically.
 static func anti_roll_force(
 	stiffness_n_m: float, compression_left_m: float, compression_right_m: float, ratio: float
 ) -> float:

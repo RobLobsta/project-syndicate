@@ -55,11 +55,13 @@ thirteen documents in `/docs/`, named just before it.
 All verified against 4.7.1 in this repo, not recalled. They are numbered for
 cross-reference and the numbers are stable; nothing here is in priority order.
 
-**Two numbers are used twice** — 62 and 63 each name a fact in this half and
-another after the rule below it. That is a defect and it is deliberately not
-being repaired: `src/`, `tests/` and `tools/` cite these numbers in comments, and
-renumbering to tidy the list would silently point every one of them at a
-different fact. Read a citation with its subject, which is always named.
+**Two numbers are used twice** — there are two facts 62 and two 63, adjacent in
+each case. That is a defect and it is deliberately not being repaired: `src/`,
+`tests/` and `tools/` cite these numbers in comments, and renumbering to tidy the
+list would silently point every one of them at a different fact. Read a citation
+with its subject, which is always named. (The horizontal rule that used to split
+the section between the two pairs is gone — it read as a section boundary and
+there is only one section here.)
 
 1. **`--import` does not catch parse errors.** It registers `class_name` globals
    by scanning source without compiling it, so a broken script imports cleanly
@@ -648,10 +650,6 @@ different fact. Read a citation with its subject, which is always named.
     readers a handful of sample lookups per contact per tick — serialising two
     readers costs less than a GDScript-level reader-writer lock would.
 
-
-
----
-
 62. **The suite's file order is an input to every measurement in
     `tests/physics/`.** Not the tick counts alone — fact 54 already says that —
     but the measured *quantities*. Hoisting one physics file to the front of the
@@ -1125,6 +1123,105 @@ different fact. Read a citation with its subject, which is always named.
     lever and was measured to work (0.78 stops it tipping and costs nothing else).
     Neither change is landed; both are recorded with their numbers in
     `CHANGE_LOG.md` §1.
+
+    **Amended in session 39: the 9600 N·m half of this is void.** It was a roll
+    failure, and it was measured with fact 88's anti-roll amplifier in place. The
+    16000 N·m figure is a pitch failure and is unaffected. Anything else in this
+    file or in `HANDOFF.md` that concludes something from a *roll* measured before
+    session 39 is on the same footing.
+
+88. **A restoring term applied in the wrong direction is not a weak spring, it is
+    a divergence — and a unit test over its magnitude cannot see which way round
+    it went.** Doc 05 §6.5's anti-roll couple was applied inverted for the life of
+    the project: the loaded side was pushed further down rather than lifted.
+
+    It survived thirty-eight sessions because of what it needs to show itself.
+    On a level slab both sides compress equally, the term is exactly zero, and
+    every straight-line, braking and standing measurement in the suite is
+    untouched. It only bites under a roll disturbance, and then it bites
+    catastrophically: once the inside contact leaves the ground there is no spring
+    on that side left to oppose the couple, so the roll grows geometrically.
+    Measured on the reference build at full lock from **3.3 m/s** — a walking
+    pace — successive samples read `−1.1°, −2.9°, −4.6°, −7.3°, −11.5°, −18.3°,
+    −28.3°, −41.9°, −57.3°, −72.6°` and it finished inverted. Corrected, the same
+    manoeuvre settles at −1.3° with all four contacts loaded.
+
+    Three things to carry.
+
+    **A magnitude test is half a test for anything that is applied as a vector.**
+    `tests/unit/test_suspension_solver.gd` asserted `k · r · (x_left − x_right)`
+    exactly and correctly, and the direction the caller applies it in was asserted
+    nowhere. §3's "assert the sign, in every direction it can point" already said
+    this; what was missing was noticing that the sign in question lived one layer
+    up from the function that was tested.
+
+    **A suite can be comprehensive along every axis it happens to exercise.**
+    Four physics files drive an Assembly and not one of them turned it at speed —
+    straight-line, braking-in-a-line, and a quarter throttle. The defect was in
+    the one manoeuvre nobody had written a fixture for, which is the general
+    reason `test_wheeled_drive_cycle` runs a *sequence* rather than a question.
+
+    **It explains a player-visible symptom three reviews called undiagnosed.** The
+    capture kept ending with the player's parked hull on its side under fire, and
+    "a parked hull taking fire" is exactly "a hull being given roll disturbances".
+
+89. **Two controls that mean the same thing to the driver can cancel each other in
+    the code, and the loser is whichever is read from the raw record.** Doc 05
+    §15.5 releases the service brake demand as the hull stops going forwards, so
+    one key can be a brake and a reverse gear. §7.7's holding brake engaged on a
+    record demanding "neither drive nor brake" — read off `input.brake` directly.
+
+    Put those together and a driver *holding the brake* at rest has an effective
+    service demand of zero (§15.5 released it) and is refused the holding brake
+    (§7.7 sees the key held). Holding the brake was strictly worse than holding
+    nothing: a parked build absorbing twenty rounds of its own recoil travelled
+    **10.49 m** with the key held against 1.15 m with it released.
+
+    The rule that falls out: **a gate on an input should test the demand that
+    actually reaches the physics, not the record it came from**, wherever
+    something upstream is allowed to modify that demand.
+
+90. **A binding table is data and needs a conformance test like any other.** Doc
+    11 §7.1 published the right trigger against `veh_throttle` *and*
+    `effector_fire_primary`, the left against `veh_brake` and
+    `effector_fire_secondary`, and D-pad right against `veh_roll_right` and
+    `cam_toggle_view` — three collisions inside one screen, in a table whose own
+    prose says bindings collide only across contexts. `test_input_actions.gd`
+    checked that every action existed, was prefixed, was bound, and matched any
+    device. It never compared two rows.
+
+    The check is eight lines: key each gamepad event by the physical control it
+    occupies — button index, or axis plus the sign of its value so the two ends of
+    a stick are two slots — and assert no two actions in one context claim the
+    same key. The context lists are hand-maintained, so they need their own check
+    against the canonical action list in both directions, or an action added to
+    neither is silently exempt.
+
+91. **`InputEvent.as_text()` is unusable on a control card, and the three gamepad
+    families print different things on the same button.** Godot answers
+    `"Joypad Button 0 (Bottom Action, Sony Cross, Xbox A, Nintendo B)"` — correct,
+    exhaustive, and forty-eight characters wrong for a row that has to read `A`.
+    And the enumeration is not academic: a Switch pad's bottom button is printed
+    **B** and an Xbox pad's is printed **A**, so one naming tells half of the
+    players to press the wrong one.
+
+    Godot's controller database already resolves a DualShock, a Switch Pro and an
+    8BitDo to the same logical button indices, so **one binding set is genuinely
+    correct for all of them** and only the glyph varies. Match on
+    `Input.get_joy_name` rather than on a vendor id: an 8BitDo reports as an Xbox
+    pad in X-input mode and as a Nintendo one in Switch mode, with correct indices
+    either way, so the name is the thing that already knows.
+
+92. **An event-driven input handler cannot read a stick.** A stick held at
+    deflection emits no further `InputEvent`s, so a handler that orbits on
+    `InputEventMouseMotion` sits perfectly still for a player who is holding the
+    right stick over. The garage had no camera control on a controller at all for
+    this reason, while doc 11 §7.1 published "Right Stick" against `cam_orbit`.
+
+    Anything continuous and analogue has to be **polled** — `_process` plus
+    `Input.get_action_strength` — and anything discrete should stay event-driven.
+    A single action also cannot express two axes, which is why doc 11 §13.6 added
+    four analogue `cam_look_*` actions rather than reusing `cam_orbit`.
 
 ---
 
