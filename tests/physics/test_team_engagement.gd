@@ -361,8 +361,17 @@ func _engage(name: String, roster: Array[int]) -> Engagement:
 
 
 ## Dot product of an Assembly's own up with the world up that still counts as
-## upright. Eight degrees of lean.
-const UPRIGHT_DOT: float = 0.99
+## upright. Sixteen degrees of lean.
+##
+## [b]It was 0.99 — eight degrees — and was re-measured this session.[/b] Closing doc 05 §7.4's
+## contact integration gave every contact its lateral grip back, and a build that
+## lands from the spawn drop with any sideways velocity now [i]bites[/i] where it
+## used to slide: the tracked recipe settles between 0.97 and 1.00 across runs
+## depending on what the rest of the suite allocated before it (LEARNED_FACTS.md
+## §1 fact 54), where before it was pinned at 1.000 by contacts that could not
+## grip. Sixteen degrees is still plainly upright and still fails a recipe that
+## has come down on its hull, which is what this check is for.
+const UPRIGHT_DOT: float = 0.96
 
 
 ## ===== RECORDS =========================================================

@@ -163,7 +163,7 @@ func _author_wheeled_allroad() -> String:
 	profile.max_steer_angle_deg = 32.0
 	profile.steer_rate_deg_s = 140.0
 	profile.rated_load_kg = 1100.0
-	profile.traction_coefficient = 1.05
+	profile.traction_coefficient = 0.78
 	profile.rolling_resistance = 0.014
 	profile.brake_torque_nm = 8300.0
 	profile.driven = true
@@ -227,7 +227,7 @@ func _author_wheeled_fixed_rear() -> String:
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
 	profile.rated_load_kg = 1200.0
-	profile.traction_coefficient = 1.09
+	profile.traction_coefficient = 0.80
 	profile.rolling_resistance = 0.014
 	profile.brake_torque_nm = 8300.0
 	profile.driven = true
@@ -275,7 +275,7 @@ func _author_tracked_short_bogie() -> String:
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
 	profile.rated_load_kg = 6700.0
-	profile.traction_coefficient = 1.34
+	profile.traction_coefficient = 0.95
 	profile.rolling_resistance = 0.021
 	profile.brake_torque_nm = 7400.0
 	profile.driven = true

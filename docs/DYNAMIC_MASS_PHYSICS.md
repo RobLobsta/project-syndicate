@@ -734,62 +734,73 @@ Band lookups are array indexes, not branches, and `band` is a cached field on `P
 Each driven Motive Assembly integrates its own contact spin, which is what allows slip ratio to be meaningful:
 
 ```
-I_c · ω̇ = τ_drive − τ_brake − F_long · r
-I_c = ½ · m_contact · r²
+I_c · ω̇ = τ − F_long · r
+I_c = ½ · m_contact · r²          τ = τ_drive − τ_resist
 ```
 
-```gdscript
-func _integrate_contact(slot: int, drive_nm: float, brake_nm: float,
-                        f_long: float, dt: float) -> void:
-    var def := PartRegistry.definition(_states[slot].part_def_id)
-    var mp := def.motive_profile
-    var r := mp.contact_radius_m
-    var i_c := 0.5 * def.mass_kg * r * r
-    var brake_sign := -signf(_omega[slot])
-    var tau := drive_nm + brake_sign * brake_nm - f_long * r
-    _omega[slot] += (tau / maxf(i_c, 0.001)) * dt
-    # Brake must not reverse the contact through zero within one tick.
-    if brake_nm > 0.0 and signf(_omega[slot]) != signf(_omega[slot] - (tau/i_c)*dt):
-        _omega[slot] = 0.0
+**The balance was always right. The step that integrated it was 142 times outside its own stability limit, and closing that is what this section is now about.**
+
+`F_long` is a very stiff function of `ω` near the rolling condition. Differentiating §7.2 through §7.1's two divisions:
+
+```
+dF_long/dω = μ·N · f'(0) / κ_peak · r / max(|v_long|, V_REF)
+f'(0) = C·B / sin(C·atan(B)) = 12.415
 ```
 
-The zero-crossing guard on braking is what prevents the contact from oscillating around zero and injecting energy — another classic stutter source.
+At the shipped `mot.wheeled.allroad.t2` figures — `I_c = 13.75 kg·m²`, `r = 0.5 m`, `μ = 1.05`, about 8.9 kN of load under a settled 3630 kg build — that is `2.9e5 N per rad/s`, so `dω̇/dω ≈ −1.7e4 s⁻¹` and explicit Euler is stable only below **117 µs** against this project's fixed 16.7 ms tick (§10.1). It did not diverge, because §7.2's curve saturates — it settled into a limit cycle, which is why no aggregate any fixture recorded ever moved and why it survived thirty-six sessions of a green suite.
 
-> **Open defect — the integration of this balance is unstable, and rolling resistance is not in it.** Diagnosed and measured in session 32, deliberately not repaired in it. The balance above is right; what follows is about the step that integrates it.
+#### The scheme
+
+Three parts, and each one is load-bearing.
+
+**1. Step the slip velocity, not the rate.** `u = ω·r − v_long` is the quantity the friction actually depends on, and `ω = (v_long + u) / r` is read back off it afterwards — so a contact follows an accelerating hull for free instead of having to be integrated into following it.
+
+```
+u' = u + dt · ( r·τ/I_c − F_long · A ) / ( 1 + dt · A · k )
+A  = r²/I_c + 1/m_share          # reciprocal reduced mass of the slip
+```
+
+`m_share` is the hull mass this contact answers for, taken as `N / g` rather than as a count of contacts: an Assembly with three wheels off the ground has one contact carrying all of it, and the normal force already knows that. The sum of the shares over an Assembly's contacts is its mass, which is what makes part 3's caps land the *hull* on zero rather than four contacts each guessing.
+
+**The wrong turn worth naming** is damping `ω` implicitly instead of the slip. It is unconditionally stable and kills the limit cycle exactly as intended, and the fictitious inertia that damps the residual also resists a contact genuinely spinning up with an accelerating hull. Full throttle measured **0.20 m/s**.
+
+**2. Take `k` as the chord `|F|/|u|`, never the tangent at zero.** The tangent bounds every slope and is the natural choice; it also over-damps a contact far from the rolling condition by a factor of **317**, so one knocked to a slip of −0.05 m/s takes forty ticks to recover and drags kilonewtons the whole time. An implicit factor is a statement about how fast the state may move, so an overestimate is not conservative — it is a brake nobody meant to fit.
+
+**3. Cap any friction force that would reverse the slip it opposes**, on both axes, answering instead with the force that removes an agreed share of that slip. Both caps only ever *reduce* a force, so neither can inject energy (§11 invariant 10), and both are silent under drive, so §7.6's launch and wheelspin behaviour is untouched.
+
+> **Amendment — the cap is under-relaxed, and that is the second limit cycle this project found.** The scheme above originally specified the force that lands the slip *exactly* on zero. A deadbeat cap is exact only if the mass resisting the slip is exact, and for a contact a metre below the centre of mass it is not: part of what the force moves is the hull's **rotation**, and `m_share` accounts only for its translation. Measured on the reference build standing still, the overestimate reversed what it was correcting and the reversal reversed back on the next tick — the roll rate alternated between −0.22 and +0.21 rad/s on **every single tick**, the identical signature §7.4's own defect had, one axis out and one layer up, and the hull crept at 0.05 m/s for as long as it was left alone.
 >
-> `F_long` is a very stiff function of `ω` near the rolling condition. Differentiating §7.2 through §7.1's two divisions:
->
-> ```
-> dF_long/dω = μ·N · f'(0) / κ_peak · r / max(|v_long|, V_REF)
-> f'(0) = C·B / sin(C·atan(B)) = 12.415
-> ```
->
-> At the shipped `mot.wheeled.allroad.t2` figures — `I_c = 8.5 kg·m²`, `r = 0.5 m`, `μ = 1.05`, about 5 kN of load under a settled 1107 kg build — that is `2.9e5 N per rad/s`, so `dω̇/dω ≈ −1.7e4 s⁻¹` and explicit Euler is stable only below **117 µs**. This project runs a fixed 16.7 ms tick (§10.1). **The step is a factor of 142 outside its own stability limit**, and the lateral axis is stiffer still, because §7.1 floors its denominator at `V_REF` and a hull creeping sideways at 0.05 m/s already draws most of a friction budget.
->
-> It does not diverge, because §7.2's curve saturates. It settles into a limit cycle. Measured on a build standing still on level ground with no throttle and no brake: `ω` reverses **every single tick** — +0.81, −4.29, +0.90, −4.43, +0.78, −4.44 rad/s — with the slip ratio swinging between +0.56 and −2.95 against a peak of 0.14, and two of the four contacts reading zero load throughout because the hull is rocking on the other two. That is §10's stutter arriving from the one place §10 does not look. What a player sees is the parked Assembly that shivers, wanders two to three metres over an engagement, and never comes to rest.
->
-> **The repair is known, and it is not a smaller step, a softer curve, or a damping term.** It was built twice and reverted twice, and both wrong turns are recorded because each of them looks correct on paper.
->
-> The scheme that works has three parts:
->
-> 1. **Step the slip velocity, not the rate.** `u = ω·r − v_long` is the quantity the friction actually depends on, and `ω = (v_long + u) / r` is read back off it afterwards, so the contact follows an accelerating hull for free.
->
->    ```
->    u' = u + dt · ( r·τ/I_c − F_long · A ) / ( 1 + dt · A · k )
->    A  = r²/I_c + 1/m_share          # reciprocal reduced mass of the slip
->    ```
->
-> 2. **Take `k` as the chord `|F|/|u|`, never the tangent at zero.** The tangent bounds every slope and is the natural choice; it also over-damps a contact far from the rolling condition by a factor of **317**, so one knocked to a slip of −0.05 m/s takes forty ticks to recover and drags kilonewtons the whole time. An implicit factor is a statement about how fast the state may move, so an overestimate is not conservative — it is a brake nobody meant to fit.
->
-> 3. **Cap any friction force that would reverse the slip it opposes**, on both axes, answering instead with the force that lands the slip exactly on zero — the contact has stuck. On the lateral axis the arithmetic collapses to `|v_lat| · m_share / dt`, and that axis is the one that decides whether a stationary Assembly stays put. Both caps only ever *reduce* a force, so neither can inject energy (§11 invariant 10); both are exact at the transition rather than asymptotic; and both are silent under drive, so §7.6's launch and wheelspin behaviour is untouched.
->
-> **The wrong turn worth naming**: damping `ω` implicitly instead of the slip. It is unconditionally stable and kills the limit cycle exactly as intended, and the fictitious inertia that damps the residual also resists a contact genuinely spinning up with an accelerating hull. Full throttle measured **0.20 m/s**.
->
-> In isolation the scheme measures well — full throttle 6.06 m/s², quarter throttle 3.75 m/s over 150 ticks, and a build set rolling at 0.4 m/s actually comes to rest instead of coasting for ever. **In the game it does not, and the reason is not in this section.** With the integrator corrected, the shipped build produces 0.09 m/s under full throttle and a porpoising hull, because **two of its four contacts carry no load at all** — it has been standing on two wheels for the life of the project, and §7.4's chatter was producing enough force to hide it. `HANDOFF.md` §3.1.1 owns that, and it has to be closed first: on a two-wheeled stance a correct integrator looks like a broken one.
->
-> `tests/physics/test_rest_stability.gd` measures the defect and is asserted as it fails.
->
-> **Rolling resistance goes in with the repair and not before.** It is authored per part in doc 01 §7.2, given a degradation column in §7.3 above, implemented as `TractionSolver.rolling_resistance_n`, and called by nothing, so a coasting contact has no dissipation of any kind — §7.2's friction drives the slip toward zero and produces nothing there. It belongs in `τ` as a torque opposing the spin, summed with the brake before the sign is taken so neither is applied in the direction the other resists, and covered by the same zero-crossing guard. On its own, inside an unstable step, it is a small correct term inside a large wrong one.
+> `STICK_RELAXATION = 0.5` is what turns a deadbeat step into a geometric one. It tolerates an effective mass overestimated by up to a factor of two, which is comfortably more than the rotational term can account for.
+
+#### The resisting torque, and what happens at rest
+
+`τ_resist` is the brake and the rolling resistance summed **before the sign is taken**, so neither is ever applied in the direction the other resists.
+
+At rest it becomes a **static hold**: the resisting torque absorbs as much of the net torque as its capacity allows and no more. `signf(0.0)` is `0.0`, and reading the sign off a stationary contact is what used to make the brake disappear at exactly the moment it had done its job.
+
+A contact the resistance is holding **does not rotate**, and the implementation says so outright rather than deriving it. The alternative — stepping the slip and reading the rate back off it — needs the hull's end-of-tick speed, and predicting that from this contact's own force alone is a feed-forward that *injects energy when it is wrong*: measured, a parked build wound its contacts up to thirteen rad/s and drove itself backwards at four metres a second with the throttle at zero, because each tick's reconstruction credited the hull with an acceleration it had not had.
+
+**Rolling resistance went in with the repair and not before.** It is authored per part in doc 01 §7.2, given a degradation column in §7.3 above, implemented as `TractionSolver.rolling_resistance_n`, and was called by nothing: a coasting contact had no dissipation of any kind. On its own, inside an unstable step, it is a small correct term inside a large wrong one.
+
+#### The contact frame is in the contact plane
+
+§7.1's frame is `x̂` the rolling direction, `ŷ` the contact normal, `ẑ` the lateral — **an orthonormal frame in the plane the contact is standing on**, not three axes borrowed from the chassis basis. `ẑ = x̂ × ŷ`, which carries `-Z × +Y` onto `+X` and is the sign every steer and slip convention in §7 is written against.
+
+This is worth stating because it is indistinguishable from the wrong answer while the hull is level, and is a positive feedback loop the moment it is not: a hull pitched nose-down has a `-Z` that points into the ground, so the "longitudinal" friction retarding it acquires a large downward component, which pitches it further. It survived every measurement in the suite because §7.4's unstable step never produced enough force for the loop to close. With the step repaired, a tracked build braking from 4.8 m/s pitched past vertical and finished balanced on its nose.
+
+#### What it measured
+
+On the reference build, one Assembly on a slab:
+
+| | before | after |
+|---|---|---|
+| Contact rate reversals in 12 ticks standing still | 7 of 11 | **0** |
+| Peak contact rate standing still | 5.9 rad/s | **under 0.001** |
+| Speed six seconds after the settle, no input | 0.196 m/s | **0.000 m/s** |
+| Distance wandered over the same window | 1.307 m | **0.000 m** |
+| Stopping distance from 6.3 m/s under full brake | never stopped | **4.31 m** |
+
+`tests/physics/test_rest_stability.gd` measures the first four and `tests/physics/test_braking_and_reverse.gd` the last. Both were written against the defect and both were re-measured and re-asserted when it closed.
 
 **Amendment — naming.** This section originally wrote `wheel_omega`, `m_wheel`, and `_integrate_wheel`. `CLAUDE.md` §8 prohibits *wheel* in identifiers, and §7.1's own contact frame already uses the neutral vocabulary. The conflict was invisible while nothing implemented the section; it surfaced the moment the traction solver was written, and the document was corrected rather than the code allowed to diverge from it. `MotiveContact.contact_omega` is the field name throughout. The prose retains the word where it is explaining a physical intuition, which §8 permits and which is the same latitude §10.3 of document 01 already takes with its `mot.wheeled.*` family tags.
 
@@ -831,7 +842,7 @@ error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
 | `SLIP_GAIN` | 1.2 |
 | `YAW_GAIN_NM_PER_RAD_S` | 2600.0 |
 | `YAW_DEADBAND_RAD_S` | 0.10 |
-| `MAX_BRAKE_FRACTION` | 0.55 |
+| `MAX_BRAKE_FRACTION` | 0.25 |
 | `MIN_YAW_CONTROL_SPEED_MPS` | 1.5 |
 | `GRIP_YAW_MARGIN` | 0.95 |
 
@@ -843,7 +854,59 @@ error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
 
 **GROUND only, deliberately.** A tracked Assembly steers *by* making its flanks disagree (§14.2), so a yaw controller that removed the disagreement would remove its steering. A rotary or ambulatory Assembly has no slip ratio to limit. The boundary is recorded here rather than left to be rediscovered by whoever notices a tracked build that will not pivot.
 
+> **Amendment — the yaw loop no longer earns its keep, and `MAX_BRAKE_FRACTION` came down from 0.55 to 0.25.** Both are consequences of §7.4 being closed, and both were measured rather than reasoned.
+>
+> `MAX_BRAKE_FRACTION` was tuned against a contact that could not brake: 0.55 of the shipped Motive Assembly's authored figure is 4565 N·m against the 4672 N·m that locks its patch, so the aid was **locking the flank it was supposed to be modulating**. An aid that locks the patch it is biasing has stopped being a bias and become a handbrake, and a locked patch spends its whole friction circle longitudinally and has none left to resist the spin. A quarter keeps the flank rolling, which is the condition under which a brake bias produces yaw rather than removing grip.
+>
+> That was not enough. With the lateral grip §7.4's limit cycle had been destroying — a cornering contact kept about a quarter of what it should have had — the **contacts alone** now take three quarters of an imposed 1 rad/s off in six ticks. The aid leaves 0.35 rad/s where no aid at all leaves 0.26, and halving the ceiling moved that by a thousandth, which is what says the mechanism is the friction circle rather than the ceiling.
+>
+> The loop's *authority* therefore owes a re-derivation against a contact that can brake. It is left as it stands rather than tuned blind, `tests/physics/test_ground_assembly.gd` asserts the measurement with the reasoning at the constant, and `HANDOFF.md` §3.1.3 owns it.
+
 **What it fixes.** Deep slip is unstable by construction: past the peak of the §7.2 friction curve, more slip means less force, so once one flank hooks up before the other the Assembly yaws away and keeps yawing. Holding both patches inside the allowance is what stops the pull; the yaw loop trims what is left. Measured on the four-contact fixture, full throttle wandered about 20° in two and a half seconds with the aid off and holds inside 8° with it on.
+
+### 7.7 The Holding Brake and Brake Proportioning
+
+Two rules about what a brake torque may and must do beyond the authored figure. Neither is a force of its own: both act through §7.2's friction solve, exactly as §7.6's aid does.
+
+#### The holding brake
+
+A driver demanding **neither drive nor brake**, below a crawl, has parked. The Assembly answers by applying its own brake torque until something asks it to move.
+
+| Constant | Value |
+|---|---|
+| `HOLDING_BRAKE_FRACTION` | 1.00 |
+| `HOLDING_BRAKE_SPEED_MPS` | 1.50 |
+
+The whole of the authored brake, because the holding brake only ever engages at a crawl: what it has to do is hold rather than decelerate, and a fraction of the service brake would only be a slower way to arrive at the same place. What actually holds the Assembly is §7.4's static hold plus part 3's stick cap — the contacts stop turning and friction takes the hull's remaining velocity to nothing.
+
+It engages on the **record** rather than on a key, so it covers a player who has let go, an `AiDriver` holding station at its stand-off, and a network record that arrived empty. `veh_handbrake` forces it at any speed, which is the consumer that action has been waiting for since it was bound.
+
+**A steer demand is not a drive demand on a wheeled Assembly** — the contacts turn and nothing moves — **but it is one on a tracked build**, which steers *by* making its flanks disagree (§14.2), and on a walking one, which turns by where it puts its feet (§13.5). Those two families can be asked to pivot on the spot with no throttle at all, and a holding brake that answered that demand with the brakes would take their steering away.
+
+#### Brake proportioning
+
+An Assembly standing on a contact base with its centre of mass above it tips forward when it decelerates harder than the base can support. That is not a modelling artefact — it is what a short, tall vehicle does — and it stayed invisible while §7.4's step could not produce a real retarding force in the first place.
+
+```
+a_max = PITCH_LIMIT_MARGIN · g · lever / h
+lever = the horizontal distance from the centre of mass to the leading contact,
+        leading in the direction of travel
+h     = the mean height of the centre of mass above the loaded contacts
+τ_ceiling = m · a_max · r̄ / n_grounded
+```
+
+| Constant | Value |
+|---|---|
+| `PITCH_LIMIT_MARGIN` | 0.80 |
+| `MIN_PITCH_HEIGHT_M` | 0.20 |
+
+**Measured in world space, against the direction of travel, and both of those matter.** Taking the lever in world space is what makes the rule self-correcting: as a hull pitches forward its centre of mass moves out over its front contacts, the lever shrinks, and the ceiling comes down with it. A body-frame measurement would report the same lever at ninety degrees of pitch as at zero, which is how a build ends up balanced on its nose with the brakes still on. Taking it against the direction of travel covers braking in reverse without a second case.
+
+It is measured off the contacts the Assembly is **standing on** rather than off the build, because a hull that has lifted its rear contacts over a crest has a shorter base than its blueprint describes, and that is exactly when standing on the brakes would put it over.
+
+It costs the reference wheeled build nothing: three metres of base under a centre of mass a metre up allows 11.8 m/s², which is above the 10.3 its contacts can make anyway. It bites only on the builds that need it — the shipped tracked bogie stands on 1.42 m and went past vertical without it.
+
+It bounds the service brake and the holding brake alike, and deliberately **not** §7.6's corrective term: that one is a bias between two flanks rather than a retardation, and it is already bounded by `MAX_BRAKE_FRACTION`.
 
 ---
 
@@ -1215,6 +1278,29 @@ mechanically driven and genuinely does move at a constant rate.
 rotor with no power keeps turning, which is what makes an unpowered descent
 survivable rather than a stone drop.
 
+### 12.8 Arresting a Rotary Assembly
+
+`input.brake` reaches §7's contact solve and no further, so a rotary Assembly had **no deceleration control of any kind**. The only way to stop one was to guess the opposite cyclic by hand and take it off again at the right moment.
+
+A brake demand adds a cyclic demand that opposes the hull's own horizontal velocity, in the §15.4 convention, before §12.3's cone bound:
+
+```
+arrest = (−v_local.z, +v_local.x) / ARREST_REFERENCE_MPS, clamped to unit length
+cyclic = (cyclic_demand + arrest · brake), clamped to unit length
+```
+
+| Constant | Value |
+|---|---|
+| `ARREST_REFERENCE_MPS` | 6.0 |
+
+The two signs are §15.4's and they are the reason this is a solver function rather than four lines at the call site. §12.3 rotates the disc axis about `+X` by `cyclic.x` and about `+Z` by `cyclic.y`, so a positive `cyclic.x` carries the thrust toward `+Z` — backwards — and a positive `cyclic.y` carries it toward `−X`, which is left. Arresting forward flight, which runs toward `−Z`, is therefore a **positive** x demand; arresting rightward drift, which runs toward `+X`, is a positive y demand.
+
+Below the reference speed the demand tapers with the speed, so the disc stops tilting as the hull stops moving rather than standing the Assembly on its nose over the last metre a second.
+
+**It is a brake and deliberately not an autopilot.** It answers a demand the driver made, it stops the moment the demand does, and it is bounded to the same swashplate cone every other demand is bounded to. It takes the raw demand rather than §15.5's released one and it ignores §7.7's holding brake entirely: both of those are rules about a contact, and a disc has neither problem — it stops when it is asked to and drifts when it is not, which is what flying is. Holding a hover is three closed loops nobody asked for and is `HANDOFF.md` §3.7's.
+
+Measured on the arena's rotary recipe: 6.58 m/s of horizontal flight down to 1.48 in eighty ticks.
+
 ### 12.7 Cost
 
 | Stage | Per disc per tick |
@@ -1453,6 +1539,23 @@ Stated explicitly so a future session does not assume otherwise:
 
 ---
 
+### 13.9 Stopping
+
+A brake demand takes its share out of the gait's travel demand, and at full demand freezes it into §13.4's standing state with every foot planted.
+
+```
+travel = |throttle| · gait_cap · (1 − brake_released)
+       = 0 while §7.7's holding brake is engaged
+```
+
+**The brake and the travel demand come out of one number so that the two cannot fight** — the same arrangement §15.7.1 makes on the ground side, and for the same reason.
+
+Standing is the strongest retarding state this family has, and it is a real deceleration rather than a gesture. A planted foot is a fixed world anchor, so as the hull carries on past it the hip-to-foot line tilts and §13.6's axial spring acquires a horizontal component opposing the travel — through the same friction cone every other stance force goes through, so it fades on a slick surface exactly as it should.
+
+The demand it subtracts is §15.5's **released** one, which is what lets one key be a brake and a reverse gear here as well.
+
+**What it does not do, and it is measured rather than asserted.** A walking Assembly sheds about half its speed over five seconds — 1.45 m/s down to 0.65 — where a wheeled one stops dead in 4.3 m. Closing the rest needs a stance *shear* term rather than a purely axial force, which is new architecture in this section rather than a solver change. And **the family cannot reverse at all**: a negative throttle reaches §13.5's placement law as a negative desired velocity, the law plants the foot ahead of neutral exactly as it should, and the Assembly moves 0.01 m over three seconds. That is §13.8's defect seen along the other axis — the demand reaches only the correction term of the placement law, and reversing needs the whole stride to run the other way. `tests/physics/test_braking_and_reverse.gd` asserts both as they stand.
+
 ## 14. Tracked Locomotion
 
 A `TRACKED_SEGMENT` Motive Assembly is a ground contact that has been smeared
@@ -1671,6 +1774,23 @@ The alternative was a reverse *state* entered when the Assembly is stopped and
 the brake is held, which needs the input layer to know the Assembly's speed and
 produces the familiar failure where a build rolling backwards down a slope
 refuses to brake. One subtraction is cheaper and has no state to get wrong.
+
+**Amendment — the brake demand is released as the hull comes to a stop going forwards, and that is what makes the arrangement above actually work.** It read correctly for four sessions and worked by accident: §7.4's step was 142 times outside its own stability limit, so `brake_sign := -signf(contact_omega)` reversed on eight ticks in twelve and the brake torque never really held anything. §7.4 is closed, and a brake that holds a contact at rest also holds it against the reverse drive torque coming off the same key — measured, the Assembly never backs out at all.
+
+So the demand is scaled by a release taken against the hull's velocity **along its own nose**:
+
+```
+scale = clamp((v_forward − BRAKE_RELEASE_SPEED_MPS) / BRAKE_RELEASE_BAND_MPS, 0, 1)
+```
+
+| Constant | Value |
+|---|---|
+| `BRAKE_RELEASE_SPEED_MPS` | 0.40 |
+| `BRAKE_RELEASE_BAND_MPS` | 0.60 |
+
+**Signed rather than absolute, and the sign is the whole point.** A hull already travelling backwards is below the band and is never braked by the key that is reversing it, which is precisely the "familiar failure" a reverse *state* would have introduced — so the reverse stays stateless and the failure stays avoided. A band rather than a step, because a step would put a discontinuity in the retarding force exactly where a player is trying to come to a stop.
+
+The release lives in the motion layer rather than here, because that is where the speed is and §15.6 keeps this one from knowing which Assembly it drives. §13.9 reads the same released demand, which is what lets one key be a brake and a reverse gear for a walking Assembly too — up to the limits that section measures.
 
 ### 15.6 What It Does Not Do
 
@@ -1912,11 +2032,20 @@ that overshoots is still an approach.
 reference build did.** A stand-off has to exceed the machine's own stopping
 distance. The rebuilt build is 3630 kg, reaches its mark at about 9.7 m/s and
 plans on 6.0 m/s², so it needs 7.8 m to stop; from ten metres it arrived at 4.1 m
-against a hull that now touches at 4.0. `GROUND_STAND_OFF_M` is **14.0**: the
-touching range, plus the stopping distance, plus a hull length of clear air. The
-general rule is worth more than the number — *a stand-off is a stopping distance
-plus a clearance, and both of its terms are properties of the build rather than
-of the tactic.*
+against a hull that now touches at 4.0. Fourteen was the touching range, plus the
+stopping distance, plus a hull length of clear air. The general rule is worth more
+than the number — *a stand-off is a stopping distance plus a clearance, and both
+of its terms are properties of the build rather than of the tactic.*
+
+**`GROUND_STAND_OFF_M` is 20.0, and the extra six metres are the terrain.** All of
+the arithmetic above is taken on the flat slab every fixture in `tests/physics/`
+runs on, and `tests/physics/test_ram_attitude.gd` confirms fourteen holds there.
+It does not hold on the shipped match's fifteen metres of relief: a driver
+arriving down a slope carries a closure the arrival law plans to arrest at
+6 m/s² and gravity is adding to, and the capture showed it crossing the last ten
+metres in a second and a half and finishing in contact with the player's hull. So
+the rule gains a third term — *plus whatever the ground can add to the closure* —
+and it is the one term that is a property of the map rather than of the build.
 
 | Measured, three drivers converging on a stationary build | Before | After |
 |---|---|---|
@@ -1939,7 +2068,7 @@ it down.
 | `APPROACH_BREAKAWAY_THROTTLE` | 0.80 | The demand it is overridden to |
 | `ARRIVAL_DECEL_MPS2` | 6.0 | Deceleration a ground driver plans its arrival on |
 | `ARRIVAL_CLOSURE_DEADBAND_MPS` | 0.5 | Closing speed under which no arrival brake is demanded |
-| `GROUND_STAND_OFF_M` | 14.0 | Range a wheeled or tracked driver stops closing at — the 4.0 m hull-to-hull contact range plus a 7.8 m stopping distance plus clearance |
+| `GROUND_STAND_OFF_M` | 20.0 | Range a wheeled or tracked driver stops closing at — the 4.0 m hull-to-hull contact range plus a 7.8 m stopping distance plus clearance plus a slope margin |
 | `AMBULATORY_TURN_SATURATION_RAD` | 0.60 | The same as the first row, for a family that turns far more slowly |
 | `AMBULATORY_YAW_DAMPING` | 0.55 | Steering demand per radian per second of hull yaw, opposing it |
 | `AMBULATORY_STEER_AUTHORITY` | 0.5 | Ceiling on an ambulatory steering demand |
@@ -1991,10 +2120,29 @@ than the gap.
 
 #### 15.7.4 Fire Discipline: An `AiDriver` Closes With Its Guns Cold
 
-The trigger is held only while the driver is **not** closing — that is, once it
-is inside its stand-off. This is not a preference about when a bot should shoot;
-it is the difference between a driver that arrives and one that spirals, and the
-number is large.
+The trigger is held only while the driver is **not** closing **and has come to a
+stop**. This is not a preference about when a bot should shoot; it is the
+difference between a driver that arrives and one that spirals, and the number is
+large.
+
+**The second gate is new and could not have been written before §7.4 was closed.**
+Being inside the stand-off used to be taken as proof of having finished closing.
+It is not: a driver that has just crossed the mark at eight metres a second is
+inside its stand-off and still travelling, and the recoil at a traversed muzzle
+turns it off its heading exactly as hard there as it does a kilometre out. The
+reason the gate could not be *stopped* rather than *nearly there* is that §7.2's
+brake torque was being cancelled by §7.4's limit cycle, so a driver that held fire
+until it had stopped would have held fire for the whole match —
+`tests/physics/test_ram_attitude.gd` measured one planning a 6 m/s² stop and
+arriving at hull contact anyway. With the contact integration repaired the stop is
+real.
+
+| Constant | Value |
+|---|---|
+| `FIRING_SPEED_MPS` | 1.2 |
+
+What a player sees is the whole point of it: the opponent crosses the basin, stops
+in front of them, and only then opens fire.
 
 `WEAPON_TARGETING_LOGIC.md` §10.5 authors 1450 N·s of recoil a round and §8
 applies it **at the muzzle**. On the reference wheeled build one round is 1.31

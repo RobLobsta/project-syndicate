@@ -410,6 +410,7 @@ suspension_rest_length_m = 0.74
 suspension_stiffness_n_m = 134000.0
 suspension_damping_ns_m = 10900.0
 rated_load_kg = 1100.0
+traction_coefficient = 0.78
 brake_torque_nm = 8300.0
 
 [resource]

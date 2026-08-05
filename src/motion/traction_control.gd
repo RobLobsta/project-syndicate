@@ -52,7 +52,20 @@ const YAW_DEADBAND_RAD_S: float = 0.10
 
 ## Ceiling on the corrective brake, as a fraction of the part's own brake torque.
 ## Well below 1.0: this may bias an Assembly's yaw and may not stop it.
-const MAX_BRAKE_FRACTION: float = 0.55
+##
+## [b]It was 0.55, and 0.55 was tuned against a contact that could not brake.[/b]
+## Doc 05 §7.4's step was 142 times outside its own stability limit, so the brake
+## torque's sign reversed on most ticks and the aid's demand arrived as a fraction
+## of itself. With the step repaired, 0.55 of the shipped Motive Assembly's brake
+## is 4565 N·m against the 4672 N·m that locks its patch — so the aid was locking
+## the flank it was supposed to be modulating, and a locked patch spends its whole
+## friction budget longitudinally and has none left to resist the spin. Measured
+## on an imposed 1 rad/s: the aid left [b]more[/b] yaw than no aid at all.
+##
+## An aid that locks the patch it is biasing has stopped being a bias and become
+## a handbrake. A quarter of the authored brake keeps the flank rolling, which is
+## the condition under which a brake bias produces yaw rather than removing grip.
+const MAX_BRAKE_FRACTION: float = 0.25
 
 ## Below this speed the yaw controller does nothing. The kinematic target divides
 ## by nothing at a standstill and a stationary Assembly has no heading error

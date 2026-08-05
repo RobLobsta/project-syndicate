@@ -1033,14 +1033,21 @@ The mount budget is the figure that changes a build rather than a number on a ca
 
 ### 10.3 Motive Assemblies
 
+> **Balance review, session 38 — the three shipped ground rows are retuned, and the rule is worth more than the numbers.** `allroad` went 1.05 → 0.78, `fixed_rear` 1.09 → 0.80, and the tracked bogie 1.34 → 0.95. Every unshipped row in this table is on the old basis and has not been re-derived.
+>
+> **A contact may not out-grip the hull's own rollover threshold.** The reference build's static stability factor is 0.97 g (doc 05 §5.1) and its contacts were authored to make 1.05, so it could trip itself over — which it never did while doc 05 §7.4's limit cycle was costing a cornering contact four fifths of its lateral force, and which it started doing on the first landing with any sideways velocity the moment §7.4 was closed. Load sensitivity can raise `μ_eff` by up to 1.15, so 0.78 puts the worst case at 0.90 g against a 0.97 g threshold.
+>
+> These are also more honest figures for the parts they describe: 1.05 is a racing slick on dry tarmac and these are all-road contacts on dirt. The retune costs nothing measurable — a wheeled build still stops from 6.3 m/s in 4.3 m — and it is what stopped a build tipping itself over on the spawn drop.
+
+
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Rated Load (kg) | Traction | Steer (°) | Susp. k (N/m) | Susp. c (Ns/m) |
 |---|---|---|---|---|---|---|---|---|---|
 | `mot.wheeled.light_road.t1` | `WHEELED_STEERED` | 3×3×2 | 42 | 210 | 380 | 1.18 | 34 | 30000 | 2400 |
-| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 4×4×2 | 110 | 340 | 1100 | 1.05 | 32 | 134000 | 10900 |
+| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 4×4×2 | 110 | 340 | 1100 | **0.78** | 32 | 134000 | 10900 |
 | `mot.wheeled.offroad_heavy.t3` | `WHEELED_STEERED` | 5×5×3 | 124 | 610 | 1180 | 0.96 | 28 | 68000 | 5200 |
-| `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 4×4×2 | 105 | 355 | 1200 | 1.09 | 0 | 140000 | 11200 |
+| `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 4×4×2 | 105 | 355 | 1200 | **0.80** | 0 | 140000 | 11200 |
 | `mot.wheeled.armoured.t4` | `WHEELED_STEERED` | 5×5×3 | 168 | 1050 | 1320 | 0.91 | 24 | 74000 | 5900 |
-| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 672 | 900 | 6700 | 1.34 | 0 | 88000 | 7600 |
+| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 672 | 900 | 6700 | **0.95** | 0 | 88000 | 7600 |
 | `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 12×4×3 | 320 | 1420 | 3400 | 1.41 | 0 | 112000 | 9800 |
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
 | `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×5×3 | 592 | 720 | 4500 | 1.22 | 45 | 307000 | 38400 |

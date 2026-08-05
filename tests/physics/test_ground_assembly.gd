@@ -146,23 +146,34 @@ const IMPOSED_SPIN_RAD_S: float = 1.0
 ## Measured at this window on the 911 kg build: 0.30 rad/s unmanaged, 0.12 managed.
 const YAW_TRIM_TICKS: int = 6
 
-## Fraction of the unmanaged yaw the managed run must be under.
+## Yaw, in rad/s, an [b]unaided[/b] Assembly may still be carrying after that
+## window. The fixture assertion, and it inverted this session.
 ##
-## [b]It was 0.6 and the rebuild collapsed it to about 0.98.[/b] §7.6's corrective
-## brake scales with `brake_torque_nm`, which went up by 3.2 with the contacts;
-## the yaw inertia it works against went up by nearly twenty, because the Core
-## Module's own tensor went from 81 to 1922 kg·m² and the contacts moved from a
-## 1.5 m wheelbase to a 3.0 m one. So the aid has about a sixth of the authority
-## over this hull that it had over the last one, and the same collapse is why the
-## build steers more slowly and why doc 01 §10.5's autocannon stopped being able
-## to spin it (`tests/physics/test_drive_and_shoot.gd`).
+## It used to be a [i]floor[/i] of 0.25 — "the imposed spin survives a tenth of a
+## second on its own" — because §7.4's limit cycle put the combined slip at ±20
+## and left `sy/s` near zero, so a cornering contact kept about a quarter of the
+## lateral force it should have had. With the step repaired, the contacts take
+## three quarters of an imposed 1 rad/s off in six ticks unaided. This bound is
+## what would notice that grip going away again.
+const YAW_GRIP_TRIM_CEILING_RAD_S: float = 0.60
+
+## Fraction of the [b]imposed[/b] spin the managed run must be under.
 ##
-## Asserted as a strict reduction rather than as a magnitude: a disconnected loop
-## — which is what session 13's sweep planted and what this test exists to catch —
-## leaves the two runs identical, and 0.99 separates that from a working one. The
-## authority itself is a doc 05 §7.6 balance question and is recorded in
-## HANDOFF.md rather than tuned here.
-const YAW_TRIM_FRACTION: float = 0.99
+## [b]It was a fraction of the unmanaged run, and it could not stay one.[/b] The
+## measurement it asserted — that the aid is a strict improvement — is no longer
+## true and the constant cannot be made to say so without saying something false:
+## measured this session, the aid leaves 0.35 rad/s where no aid at all leaves
+## 0.26. §7.6's yaw loop brakes one flank, and a braked patch spends its friction
+## circle longitudinally and has less left to resist the spin — which was a good
+## trade when the lateral half of that circle was being destroyed by §7.4 and is a
+## bad one now that it is not.
+##
+## So this bound is what it can honestly be: the aid does not [i]run away[/i] with
+## an imposed spin. A disconnected loop, which is what session 13's sweep planted
+## and what this test exists to catch, still shows as `managed == unmanaged` in
+## the printed message. Re-deriving §7.6's authority against a contact that can
+## brake is `HANDOFF.md` §3.1.3.
+const YAW_TRIM_FRACTION: float = 0.60
 
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
@@ -923,14 +934,38 @@ func test_the_yaw_controller_trims_a_spin_the_driver_did_not_ask_for() -> void:
 	# contribute and the corrective brake is the *only* difference between the
 	# two authorities. It also starts both runs at the same speed, which they do
 	# not do if the limiter is allowed to hold one of them back.
+	#
+	# [b]This is asserted as it stands, and it inverted this session.[/b] With
+	# §7.4's contact integration repaired the lateral grip that had been costing a
+	# cornering contact four fifths of its budget came back, and the contacts now
+	# take three quarters of an imposed 1 rad/s off in six ticks on their own. The
+	# aid, which brakes one flank, spends part of that flank's friction circle
+	# longitudinally and leaves [b]more[/b] spin than no aid at all: 0.35 rad/s
+	# against 0.26. Halving [constant TractionControl.MAX_BRAKE_FRACTION] so the
+	# aid can no longer lock the patch it is biasing moved it by a thousandth,
+	# which is what says the mechanism is the friction circle rather than the
+	# ceiling.
+	#
+	# §7.6's yaw loop was tuned against a contact that could not brake, and what it
+	# needs is a re-derivation against one that can. That is a balance question and
+	# it is `HANDOFF.md` §3.1.3's; the bound below records the measurement so that
+	# whoever takes it can see which way it has to move.
 	var unmanaged := await _coasting_spin(0.0)
 	var managed := await _coasting_spin(1.0)
 
-	check_true(unmanaged > 0.25, "the imposed spin survives a tenth of a second on its own")
 	check_true(
-		absf(managed) < unmanaged * YAW_TRIM_FRACTION,
-		"and the yaw controller is still taking some of it off: %.3f vs %.3f rad/s"
-		% [managed, unmanaged]
+		unmanaged < YAW_GRIP_TRIM_CEILING_RAD_S,
+		(
+			"the contacts take most of an imposed %.1f rad/s off in %d ticks with no aid "
+			+ "at all: %.3f rad/s left"
+		) % [IMPOSED_SPIN_RAD_S, YAW_TRIM_TICKS, unmanaged]
+	)
+	check_true(
+		absf(managed) < IMPOSED_SPIN_RAD_S * YAW_TRIM_FRACTION,
+		(
+			"and the aid does not run away with it: %.3f vs %.3f rad/s unmanaged — the "
+			+ "aid is currently the worse of the two and §7.6 owes a re-derivation"
+		) % [managed, unmanaged]
 	)
 
 

@@ -22,10 +22,9 @@ extends Node3D
 ## redundant and is the point: this is the path a build will take across a
 ## network, and a shortcut in it now is a hole in it then.
 ##
-## The opponents are spawned from [method StarterBlueprint.skirmisher] rather
-## than from the player's build. A test run against three copies of whatever the
-## player just made is a different game every time and is not a measurement of
-## anything; doc 06's generator is what eventually varies them.
+## [b]The opponent is built from the player's own blueprint[/b], so a test drive is
+## a mirror match: tank against tank, car against car. See [constant
+## TARGET_SPAWN_XZ] for why that replaced a fixed recipe and why the range moved.
 ##
 ## Each opponent carries an [AiDriver] — doc 05 §15.7 — on the other side of a
 ## roster this class owns and every driver shares. They close, aim through the
@@ -58,19 +57,42 @@ const GROUND_AMPLITUDE_M: float = 15.0
 const DROP_HEIGHT_M: float = 1.4
 
 const PLAYER_SPAWN_XZ := Vector2(0.0, 0.0)
-## [b]One opponent, and it is a duel.[/b] It was three, spread across an arc at
-## 34 to 46 m, and the arithmetic of that was never defensible: three Assemblies
-## built from the same blueprint as the player's, firing seven rounds a second
-## each, is three times the incoming fire against one hull that has to choose
-## which of them to point at. The capture recorded the consequence — 100%
-## integrity at three seconds, 46% at seven, Core Module gone before ten — and
-## the honest reading is that a first-time player was being asked to win a fight
-## nobody had checked was winnable.
+## [b]One opponent, built from the player's own blueprint, and it is a duel.[/b]
 ##
-## A duel is the fight the garage actually prepares somebody for: the same build
-## on both sides, so what decides it is what they made and how they drive it.
-## That is the whole point of a test drive, and three-on-one measured neither.
-const TARGET_SPAWN_XZ: Array[Vector2] = [Vector2(0.0, -34.0)]
+## It was three, spread across an arc at 34 to 46 m, and the arithmetic of that
+## was never defensible: three Assemblies firing seven rounds a second each is
+## three times the incoming fire against one hull that has to choose which of them
+## to point at. The capture recorded the consequence — 100% integrity at three
+## seconds, 46% at seven, Core Module gone before ten.
+##
+## [b]The opponent is now a mirror of whatever the player brought.[/b] It was the
+## shipped starter whatever the player built, and the note here used to defend
+## that: a test drive against three copies of the player's build is "a different
+## game every time and is not a measurement of anything". That was an argument
+## about a [i]fixture[/i], and this is not one — it is the thing a person plays.
+## A player who builds a walking Assembly and is handed a wheeled opponent learns
+## nothing about the build they made, and a player who builds something terrible
+## and beats the shipped starter learns something false. Tank against tank, car
+## against car: the only asymmetry left is who is driving.
+## `tests/physics/` keeps the fixed recipes, which is where a measurement belongs.
+##
+## [b]Forty-two metres, and it was thirty-four. Sixty was tried and the capture
+## rejected it.[/b] At thirty-four an [AiDriver] planning §15.7.1's stand-off had
+## twenty metres of run-in and arrived still carrying most of its approach speed,
+## so a duel opened at contact range and the first thing a player saw was a hull
+## filling the screen. Sixty gave both sides room to be seen and driven — and at
+## sixty [b]the fight had not started by fifteen seconds[/b], because a ground
+## driver averages about two metres a second across the arena's fifteen metres of
+## relief and forty-six metres of approach is twenty-three seconds of nothing
+## happening.
+##
+## So the range is set by what the driver can actually cross rather than by what
+## looks right in a still: twenty-eight metres of run-in is about fourteen seconds
+## and leaves the opponent visible, approaching, and arriving inside the window a
+## player will give it. [b]The real constraint is the driver's cross-country speed
+## and not this constant[/b] — `HANDOFF.md` §3.1.4 has it — and when that moves,
+## this should move with it.
+const TARGET_SPAWN_XZ: Array[Vector2] = [Vector2(0.0, -42.0)]
 
 const PLAYER_ROUNDS: int = 600
 ## The same store the player is given, because a duel between identical builds is
@@ -212,7 +234,8 @@ func _ready() -> void:
 	_player = _spawn(
 		player_blueprint, PLAYER_SPAWN_XZ, 0.0, PLAYER_ROUNDS, PLAYER_TEAM, true
 	)
-	var opponent := StarterBlueprint.skirmisher()
+	# The opponent is built from the player's own blueprint — see TARGET_SPAWN_XZ.
+	var opponent := player_blueprint
 	for xz: Vector2 in TARGET_SPAWN_XZ:
 		_spawn(
 			opponent,

@@ -195,34 +195,48 @@ func test_lateral_grip_ratio_enters_before_the_combination() -> void:
 
 
 ## ===== CONTACT INTEGRATION =============================================
+## §7.4, as repaired. Every call below goes through the slip-velocity step; the
+## explicit rate step it replaced was 142 times outside its own stability limit
+## and hid that by saturating rather than diverging.
+
+const SHARE_KG: float = 900.0
+const CONTACT_MASS_KG: float = 68.0
 
 
+func _inertia() -> float:
+	return TractionSolver.contact_inertia(CONTACT_MASS_KG, RADIUS)
+
+
+## One tick with a free contact — no ground reaction and no hull under it — is
+## still `tau / I_c * dt`, because at `F = 0` the implicit factor is exactly 1 and
+## the slip step reduces to the rate step. That equality is what says the repair
+## changed the [i]conditioning[/i] of §7.4's balance and not the balance itself.
 func test_drive_torque_spins_the_contact_up() -> void:
-	var inertia := TractionSolver.contact_inertia(68.0, RADIUS)
-	check_approx(inertia, 0.5 * 68.0 * RADIUS * RADIUS, "a uniform disc")
+	check_approx(_inertia(), 0.5 * CONTACT_MASS_KG * RADIUS * RADIUS, "a uniform disc")
 	check_approx(
 		TractionSolver.integrate_contact(
-			0.0, inertia, 100.0, 0.0, 0.0, RADIUS, SyndicateConstants.PHYSICS_DT
+			0.0, 0.0, _inertia(), SHARE_KG, 100.0, 0.0, 0.0, RADIUS,
+			SyndicateConstants.PHYSICS_DT
 		),
-		100.0 / inertia * SyndicateConstants.PHYSICS_DT,
+		100.0 / _inertia() * SyndicateConstants.PHYSICS_DT,
 		"one tick of 100 N.m against the contact's own inertia"
 	)
 
 
-## §7.4's `- F_long * r` term. A contact that is gripping — producing the forward
-## force of the test above — is retarded by that grip, which is what stops a
-## driven contact spinning up without limit. The sign here and the sign in
-## [method TractionSolver.combined_forces] have to agree, so this test uses the
-## output of that function rather than a hand-picked number.
+## §7.4's ground reaction. A contact that is gripping is retarded by that grip,
+## which is what stops a driven contact spinning up without limit. The sign here
+## and the sign in [method TractionSolver.combined_forces] have to agree, so this
+## uses the output of that function rather than a hand-picked number.
 func test_ground_reaction_opposes_the_drive() -> void:
-	var inertia := TractionSolver.contact_inertia(68.0, RADIUS)
 	var grip := TractionSolver.combined_forces(0.1, 0.0, 1.0, 4000.0, 1.0).x
 	check_true(grip > 0.0, "the contact is gripping forwards")
 	var free := TractionSolver.integrate_contact(
-		5.0, inertia, 100.0, 0.0, 0.0, RADIUS, SyndicateConstants.PHYSICS_DT
+		5.0, 2.4, _inertia(), SHARE_KG, 100.0, 0.0, 0.0, RADIUS,
+		SyndicateConstants.PHYSICS_DT
 	)
 	var loaded := TractionSolver.integrate_contact(
-		5.0, inertia, 100.0, 0.0, grip, RADIUS, SyndicateConstants.PHYSICS_DT
+		5.0, 2.4, _inertia(), SHARE_KG, 100.0, 0.0, grip, RADIUS,
+		SyndicateConstants.PHYSICS_DT
 	)
 	check_true(loaded < free, "and a gripping contact spins up more slowly than a free one")
 
@@ -230,10 +244,10 @@ func test_ground_reaction_opposes_the_drive() -> void:
 ## The zero-crossing guard is what stops a braked contact oscillating around zero
 ## and injecting energy. Without it the same inputs overshoot into reverse.
 func test_braking_stops_at_zero_rather_than_reversing() -> void:
-	var inertia := TractionSolver.contact_inertia(68.0, RADIUS)
 	check_approx(
 		TractionSolver.integrate_contact(
-			1.0, inertia, 0.0, 1000.0, 0.0, RADIUS, SyndicateConstants.PHYSICS_DT
+			1.0, 0.5, _inertia(), SHARE_KG, 0.0, 1000.0, 0.0, RADIUS,
+			SyndicateConstants.PHYSICS_DT
 		),
 		0.0,
 		"a brake big enough to reverse the contact in one tick stops it instead"
@@ -242,7 +256,8 @@ func test_braking_stops_at_zero_rather_than_reversing() -> void:
 	# allowed to reverse — or the guard is firing on the wrong condition.
 	check_true(
 		TractionSolver.integrate_contact(
-			1.0, inertia, -1000.0, 0.0, 0.0, RADIUS, SyndicateConstants.PHYSICS_DT
+			1.0, 0.5, _inertia(), SHARE_KG, -1000.0, 0.0, 0.0, RADIUS,
+			SyndicateConstants.PHYSICS_DT
 		)
 		< 0.0,
 		"negative drive torque may reverse the contact; only braking is guarded"
@@ -250,11 +265,158 @@ func test_braking_stops_at_zero_rather_than_reversing() -> void:
 
 
 func test_a_gentle_brake_does_not_snap_to_zero() -> void:
-	var inertia := TractionSolver.contact_inertia(68.0, RADIUS)
 	var next := TractionSolver.integrate_contact(
-		10.0, inertia, 0.0, 50.0, 0.0, RADIUS, SyndicateConstants.PHYSICS_DT
+		10.0, 4.9, _inertia(), SHARE_KG, 0.0, 50.0, 0.0, RADIUS,
+		SyndicateConstants.PHYSICS_DT
 	)
 	check_true(next > 0.0 and next < 10.0, "it slows without crossing zero")
+
+
+## [b]The defect this file could not see for thirty-six sessions.[/b] A contact
+## under a hull standing still, knocked a little off the rolling condition, must
+## settle rather than oscillate. The old explicit step answered a rate of the
+## opposite sign and larger magnitude on the very first tick, every tick, which is
+## the limit cycle `tests/physics/test_rest_stability.gd` measures end to end.
+func test_a_disturbed_contact_at_rest_settles_instead_of_reversing() -> void:
+	var omega := 0.05
+	var reversals := 0
+	var previous := omega
+	for _i: int in 12:
+		var kappa := TractionSolver.slip_ratio(omega, RADIUS, 0.0)
+		var f := TractionSolver.combined_forces(kappa, 0.0, 1.05, 8900.0, 1.0).x
+		f = TractionSolver.stick_limited_force_n(
+			f,
+			omega * RADIUS,
+			TractionSolver.slip_mobility(_inertia(), RADIUS, SHARE_KG),
+			SyndicateConstants.PHYSICS_DT
+		)
+		omega = TractionSolver.integrate_contact(
+			omega, 0.0, _inertia(), SHARE_KG, 0.0, 0.0, f, RADIUS,
+			SyndicateConstants.PHYSICS_DT
+		)
+		if signf(omega) != signf(previous) and not is_zero_approx(omega):
+			reversals += 1
+		previous = omega
+	check_eq(reversals, 0, "a settling contact never changes direction")
+	check_true(absf(omega) < 0.05, "and it is nearer the rolling condition than it started")
+
+
+## §7.4 part 3. A friction force may arrest a slide and may never reverse one, and
+## an explicit step is perfectly willing to. The cap answers the force that lands
+## the slip exactly on zero.
+func test_the_stick_cap_reduces_only_what_would_overshoot() -> void:
+	var dt := SyndicateConstants.PHYSICS_DT
+	check_approx(
+		TractionSolver.stick_limited_force_n(100.0, 4.0, 1.0 / 900.0, dt),
+		100.0,
+		"a force that cannot cross the slip inside a tick is untouched"
+	)
+	check_approx(
+		TractionSolver.stick_limited_force_n(-1.0e6, 0.10, 1.0 / 900.0, dt),
+		-TractionSolver.STICK_RELAXATION * 0.10 * 900.0 / dt,
+		"and one that would is answered with the force that takes the agreed share off it"
+	)
+	check_true(
+		TractionSolver.stick_limited_force_n(50.0, 0.0, 1.0 / 900.0, dt) == 0.0,
+		"a contact with no slip at all is pushed by nothing"
+	)
+
+
+## LEARNED_FACTS fact 73's second wrong turn, pinned as a property rather than as
+## a recollection. The tangent at zero is 12.415 times steeper than §7.2's average
+## slope, so an implicit factor built on it over-damps by orders of magnitude.
+func test_the_chord_is_the_stiffness_and_it_is_below_the_tangent() -> void:
+	var normal := 8900.0
+	var mu := 1.05
+	# The tangent at zero, from §7.4's derivation: mu*N*f'(0)/kappa_peak * r/V_REF.
+	var tangent := (
+		mu * normal * 12.415 / TractionSolver.KAPPA_PEAK
+		* RADIUS / TractionSolver.V_REF_MPS
+	) / RADIUS
+	var slip := 0.05
+	var kappa := TractionSolver.slip_ratio(slip / RADIUS, RADIUS, 0.0)
+	var chord := TractionSolver.chord_stiffness(
+		TractionSolver.combined_forces(kappa, 0.0, mu, normal, 1.0).x, slip
+	)
+	check_true(chord > 0.0, "a sliding contact has a stiffness")
+	check_true(chord < tangent, "and it is below the tangent at zero, never above it")
+	check_approx(
+		TractionSolver.chord_stiffness(0.0, 0.0),
+		0.0,
+		"at exactly the rolling condition there is no force to take a chord of"
+	)
+
+
+## §7.4's static hold, and the reason `signf(0.0) == 0.0` used to make a brake
+## vanish at the moment it succeeded. A resisting torque at rest absorbs the net
+## torque up to its own capacity and no further.
+func test_a_resisting_torque_holds_a_stationary_contact() -> void:
+	var dt := SyndicateConstants.PHYSICS_DT
+	# The ground dragging a locked contact forwards: F_long negative, no drive.
+	var held := TractionSolver.integrate_contact(
+		0.0, 3.0, _inertia(), SHARE_KG, 0.0, 8300.0, -500.0, RADIUS, dt
+	)
+	check_true(
+		absf(held) < 1e-4, "a brake with capacity to spare holds the contact at zero"
+	)
+	var overwhelmed := TractionSolver.integrate_contact(
+		0.0, 3.0, _inertia(), SHARE_KG, 0.0, 10.0, -500.0, RADIUS, dt
+	)
+	check_true(
+		overwhelmed > 0.0,
+		"and one without it is overwhelmed rather than winning by arithmetic"
+	)
+
+
+## §15.5's release. One key means both "slow down" and "back out", and a brake
+## that holds a contact at rest also holds it against the reverse drive coming off
+## the same key.
+func test_the_service_brake_is_released_as_the_hull_stops_going_forwards() -> void:
+	check_approx(
+		TractionSolver.brake_release_scale(8.0), 1.0, "at speed it is the full service brake"
+	)
+	check_approx(
+		TractionSolver.brake_release_scale(TractionSolver.BRAKE_RELEASE_SPEED_MPS),
+		0.0,
+		"at a crawl it is released entirely, so the same key is pure reverse drive"
+	)
+	check_approx(
+		TractionSolver.brake_release_scale(-4.0),
+		0.0,
+		"and a hull already rolling backwards is never braked by the key reversing it"
+	)
+	var mid := TractionSolver.brake_release_scale(
+		TractionSolver.BRAKE_RELEASE_SPEED_MPS + TractionSolver.BRAKE_RELEASE_BAND_MPS * 0.5
+	)
+	check_true(mid > 0.0 and mid < 1.0, "and the release is a band rather than a step")
+
+
+func test_the_share_mass_is_the_normal_load_over_gravity() -> void:
+	check_approx(
+		TractionSolver.share_mass_kg(900.0 * SyndicateConstants.GRAVITY_MPS2),
+		900.0,
+		"a contact in vertical equilibrium answers for exactly what it carries"
+	)
+	check_approx(
+		TractionSolver.share_mass_kg(0.0),
+		TractionSolver.MIN_SHARE_MASS_KG,
+		"and an unloaded one floors rather than dividing by nothing"
+	)
+
+
+## Both terms of §7.4's mobility are load-bearing: dropping either makes the slip
+## resist changing by the wrong amount, and only one of the two is obvious.
+func test_the_slip_mobility_is_the_two_masses_in_series() -> void:
+	var mobility := TractionSolver.slip_mobility(_inertia(), RADIUS, SHARE_KG)
+	check_approx(
+		mobility,
+		RADIUS * RADIUS / _inertia() + 1.0 / SHARE_KG,
+		"the contact's own rotational term plus the hull's linear one"
+	)
+	check_true(
+		TractionSolver.slip_mobility(_inertia(), RADIUS, SHARE_KG * 100.0) < mobility,
+		"a contact under more hull finds its slip harder to change"
+	)
 
 
 ## ===== TORQUE DISTRIBUTION =============================================

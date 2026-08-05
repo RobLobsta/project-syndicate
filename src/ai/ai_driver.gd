@@ -85,11 +85,23 @@ const AMBULATORY_STEER_AUTHORITY: float = 0.5
 ## hull that touches at 4.0 — and the fixture that measures it went from over a
 ## metre of clear air to grazing.
 ##
-## Fourteen is the touching range, plus that stopping distance, plus a hull length
-## of clear air. It is the smallest range at which an approach that overshoots is
-## still an approach, and it is what makes §15.7.5's ladder read as a firing line
-## rather than as three Assemblies in a heap.
-const GROUND_STAND_OFF_M: float = 14.0
+## Fourteen was the touching range, plus that stopping distance, plus a hull length
+## of clear air, and it was derived on flat ground.
+##
+## [b]Twenty, because the arena is a basin and the capture said so.[/b] Fourteen
+## holds on the slab every fixture in `tests/physics/` is measured on — that is
+## what `tests/physics/test_ram_attitude.gd` asserts. It does not hold on the
+## shipped match's fifteen metres of relief: a driver arriving down a slope carries
+## a closure §15.7.1's law plans to arrest at 6 m/s² and gravity is adding to, and
+## the capture shows it crossing the last ten metres in a second and a half and
+## finishing in contact with the player's hull.
+##
+## Twenty is that fourteen plus another hull length and a half of margin for the
+## terrain — the smallest range at which an approach that overshoots on a slope is
+## still an approach. It also gives §15.7.4's second gate something to be visible
+## for: a driver that stops six metres short of you and only then opens fire is a
+## thing a player can see happening, and one that stops on your bumper is not.
+const GROUND_STAND_OFF_M: float = 20.0
 ## The same, for the ambulatory family, and further out for a reason that is
 ## about gunnery rather than survivability — §15.7.2.
 const AMBULATORY_STAND_OFF_M: float = 20.0
@@ -171,6 +183,23 @@ const APPROACH_BREAKAWAY_THROTTLE: float = 0.80
 ## stopping distance rather than applying a gain, so the deceleration it plans on
 ## has to be one the build can actually make.
 const ARRIVAL_DECEL_MPS2: float = 6.0
+
+## Speed, in m/s, at or below which a driver counts as having stopped and is
+## allowed to open fire.
+##
+## §15.7.4's rule was "an [AiDriver] closes with its guns cold", and being inside
+## the stand-off was taken as proof it had finished closing. It is not: a driver
+## that has just crossed the mark at eight metres a second is inside its stand-off
+## and still travelling, and the recoil at a traversed muzzle turns it off its
+## heading exactly as hard there as it does a kilometre out.
+##
+## [b]It could not have been written before this session.[/b] §7.2's brake torque
+## was being cancelled by §7.4's limit cycle, so a driver that held fire until it
+## had stopped would have held fire for the whole match — `test_ram_attitude`
+## measured one planning a 6 m/s² stop and arriving at hull contact anyway. With
+## the contact integration repaired the stop is real, so the gate can be what it
+## should always have been: [i]stopped[/i] rather than [i]nearly there[/i].
+const FIRING_SPEED_MPS: float = 1.2
 
 ## Closing speed, in m/s, under which the arrival brake is not demanded at all.
 ##
@@ -337,7 +366,11 @@ func step(dt: float) -> void:
 		# harder than its steering can correct the moment the mount is traversed
 		# — which is every moment it is driving toward something. Measured; the
 		# document has the numbers.
-		guns.set_trigger(0, not _closing)
+		#
+		# And it fires from a stop rather than from inside its stand-off — see
+		# [constant FIRING_SPEED_MPS]. Both halves of the same rule: the one that
+		# says where, and the one that says when it has finished getting there.
+		guns.set_trigger(0, not _closing and has_stopped())
 
 
 ## Drops the trigger and centres the controls.
@@ -345,6 +378,17 @@ func idle() -> void:
 	if guns != null:
 		guns.set_trigger(0, false)
 	_centre_controls()
+
+
+## True when this Assembly has come to rest to within
+## [constant FIRING_SPEED_MPS]. §15.7.4's second gate; diagnostics and tests.
+##
+## A driver with no Assembly under it counts as stopped, so a fixture that drives
+## the statics without a body is not silently prevented from firing.
+func has_stopped() -> bool:
+	if runtime == null or runtime.body == null:
+		return true
+	return runtime.body.linear_velocity.length() <= FIRING_SPEED_MPS
 
 
 ## The id this driver is currently shooting at, or 0. Diagnostics and tests.
