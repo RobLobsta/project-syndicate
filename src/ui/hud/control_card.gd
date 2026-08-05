@@ -21,9 +21,9 @@ extends CenterContainer
 ##
 ## [b]It stands down when the player shows they do not need it, and it sits out of
 ## the way until then.[/b] Both halves were found by looking at a capture rather
-## than at a test: centred, it covered exactly the band of screen the three
-## opponents approach through, for the whole of the opening engagement, which is
-## decided inside its own dwell. §14.6 owns both constants.
+## than at a test: centred, it covered exactly the band of screen the opponent
+## approaches through, for the whole of the opening engagement, which is decided
+## inside its own dwell. §14.6 owns both constants.
 
 ## ===== TIMING (§14.6) ==================================================
 
@@ -49,9 +49,10 @@ const ROW_SEPARATION_PX: int = 2
 ## [b]The upper left, and this was decided by looking at a capture.[/b] Centred —
 ## which is what this was, in the upper two fifths — the card covers the middle of
 ## the screen for the whole of a dwell that the opening engagement is decided
-## inside. The three opponents close from ahead, so "the middle" is precisely
-## where a first-time player needs to be looking, and the capture that found it
-## has an opponent directly behind the panel at seven seconds.
+## inside. An opponent closes from ahead, so "the middle" is precisely where a
+## first-time player needs to be looking, and the capture that found it — taken
+## when the match spawned three of them — has one directly behind the panel at
+## seven seconds.
 ##
 ## The other three corners are taken: §14.2's status panel is bottom left, §14.3's
 ## speed readout bottom right, and §14.4's event feed top right. The upper left is

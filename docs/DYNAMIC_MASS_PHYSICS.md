@@ -1438,6 +1438,18 @@ Stated explicitly so a future session does not assume otherwise:
   probe finds beneath it; a limb does not search for a better foothold.
 - **No inverse kinematics.** §13.1's visible articulation belongs to doc 13 with
   the rest of the mesh pipeline, and the simulation is complete without it.
+- **No heading authority, and the measurement is now sharper than "the drift is
+  large".** `turn_command` rotates the plant offset and nothing else, so what it
+  produces depends on how big that offset already is rather than on how far the
+  heading is from where it was asked to be. Measured on
+  `core.ambulatory.strider.t3` over three hundred ticks: an uncommanded Assembly
+  ends at −92.2°, full left ends at +24.6°, and full right ends at **+19.9°**.
+  A demand therefore moves the outcome by a hundred and twelve degrees and its
+  *sign* accounts for under five of them. That is a disturbance with a direction
+  attached, not a control. Closing it is a yaw-rate term in the placement law,
+  which is new architecture and belongs in this section rather than in a solver;
+  `tests/physics/test_ambulatory_drift.gd` asserts the present behaviour and goes
+  red when it is closed.
 
 ---
 

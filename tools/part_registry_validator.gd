@@ -767,6 +767,19 @@ func _check_core_budgets(def: PartDefinition) -> void:
 			"power_capacity_pu is %.2f; a Core Module with no capacity powers nothing"
 			% profile.power_capacity_pu
 		)
+	# Masked to the defined bit range rather than tested against zero: a mask
+	# carrying only bits above LOCOMOTION_MODE_COUNT admits no family either, and
+	# reads as a chassis that works right up until the first Motive Assembly.
+	var families := profile.locomotion_mask & ((1 << PartEnums.LOCOMOTION_MODE_COUNT) - 1)
+	if families == 0:
+		_fail(
+			RULE_CORE_BUDGETS,
+			def.part_key,
+			(
+				"locomotion_mask is %d; a chassis admitting no locomotion family "
+				+ "cannot be moved by anything in the registry"
+			) % profile.locomotion_mask
+		)
 
 
 ## ===== RULE 16 — EFFECTOR LIMITS =======================================

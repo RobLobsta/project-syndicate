@@ -30,6 +30,7 @@ enum Reject {
 	COLLIDER_INTERPENETRATION,
 	LOAD_CAPACITY_EXCEEDED,
 	DUPLICATE_CORE,
+	MOTIVE_FAMILY_MISMATCH,
 }
 
 ## Effector arc sampling, per §7.6.
@@ -62,6 +63,7 @@ const REJECT_KEYS: Array[StringName] = [
 	&"build.reject.collider_interpenetration",
 	&"build.reject.load_capacity_exceeded",
 	&"build.reject.duplicate_core",
+	&"build.reject.motive_family_mismatch",
 ]
 
 ## Downward face in the part's own frame, rotated per candidate by §7.5.
@@ -109,6 +111,9 @@ static func validate(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
 	if r != Reject.NONE:
 		return r
 	r = _check_class_limits(ctx, cand)
+	if r != Reject.NONE:
+		return r
+	r = _check_motive_family(ctx, cand)
 	if r != Reject.NONE:
 		return r
 	r = _check_budgets(ctx, cand)
@@ -346,6 +351,35 @@ static func _check_class_limits(ctx: BuildContext, cand: PlacementCandidate) -> 
 		if ctx.budgets.count_of_class(int(cls)) >= SyndicateConstants.MAX_MOTIVE_PER_ASSEMBLY:
 			return Reject.CLASS_LIMIT_EXCEEDED
 	return Reject.NONE
+
+
+## §7.4, chassis half. A Motive Assembly's locomotion family must be one the
+## committed Core Module is built to carry.
+##
+## One bit test, and it runs before the budgets because it is the cheaper of the
+## two and because a player who has bolted a limb to a wheeled hull wants to be
+## told that rather than told the mounts ran out.
+##
+## The check is one-directional on purpose: a Core Module is always slot 0 and is
+## always placed first — [method _check_mating] refuses anything else into an
+## empty lattice and [method _check_class_limits] refuses a second Core Module —
+## so there is no order in which a chassis arrives under an existing family.
+static func _check_motive_family(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
+	var def := cand.definition
+	if def.part_class != PartEnums.PartClass.MOTIVE_ASSEMBLY:
+		return Reject.NONE
+	var mp := def.motive_profile
+	if mp == null:
+		return Reject.NONE
+	# A context with no Core Module cannot have reached here with a Motive
+	# Assembly, but a fixture that assembles a lattice by hand can; an absent
+	# chassis declares nothing and refuses nothing.
+	var core := ctx.budgets.core_profile
+	if core == null:
+		return Reject.NONE
+	if core.carries(mp.locomotion_mode()):
+		return Reject.NONE
+	return Reject.MOTIVE_FAMILY_MISMATCH
 
 
 ## §7.4, budget half. O(1) against totals the ledger maintains incrementally.

@@ -890,9 +890,11 @@ different fact. Read a citation with its subject, which is always named.
 
     The symptom is a held-weapon fixture that can bolt a sword to a Structural
     Component, which reads as a polarity bug in the validator. **The authoring
-    order is `first` → `combat` → `locomotion` → `appendage`**, and the general
-    shape is worth more than the order: a generator that reads a file another
-    generator writes is order-dependent, and nothing in `tools/` declares that.
+    order is `first` → `combat` → `locomotion` → `appendage` → `chassis`**, and
+    the general shape is worth more than the order: a generator that reads a file
+    another generator writes is order-dependent, and nothing in `tools/` declares
+    that. `author_chassis_parts.gd` reads nothing and is safe anywhere, which is
+    why it is last rather than because it has to be.
 
 77. **A driver that has a target, is pointed at it, and is demanding full
     throttle is not a tactics defect — read the contacts, not the law.** Session
@@ -937,6 +939,92 @@ different fact. Read a citation with its subject, which is always named.
     hold it up. **Anything that turns it has to be re-derived against the square
     of the size, not against the mass**, and a fixture window sized for the old
     inertia measures nothing on the new one.
+
+79. **Only two fields on a `CoreModuleProfile` are read by the simulation, and
+    the four a balance change would reach for first are not among them.**
+    `mount_budget` and `power_capacity_pu` reach `BuildBudgetLedger` and decide
+    what may be placed. `speed_cap_mps` reaches `MotiveSystem._speed_cap_mps`,
+    which for the ambulatory family is then floored by
+    `GaitSolver.top_speed_mps` — 2.42 m/s on the shipped limb — so a chassis cap
+    anywhere above that is inert. `mass_tolerance_kg` and `control_authority`
+    are read by `AssemblyStatPanel` and `PartInspector` and by nothing else at
+    all; `operator_seat_offset_m` and `respawn_integrity_fraction` are read by
+    nothing.
+
+    Worth knowing in both directions. Authoring a new chassis is cheap, because
+    most of its published figures cannot destabilise anything. And a session that
+    tries to *tune* a family through its chassis figures will change a number on
+    a card and nothing else — the levers that move an Assembly are on the Motive
+    Assembly, the Prime Mover, and doc 05's constants.
+
+    What a new Core Module *does* move, and it moves it hard, is the mass and the
+    inertia — fact 78. `core.ambulatory.strider.t3` is 450 kg lighter and four
+    cells shorter than the chassis the walking recipe used to borrow, and every
+    number in `test_ambulatory_drift` changed: uncommanded yaw drift 140° → 92°,
+    standing drift 51° → 18°, standing lean 0.999 → 0.989 of upright.
+
+80. **A physics fixture in `tests/physics/` can be byte-reproducible even with
+    four Assemblies in the space, and checking is four minutes.** Fact 44 says a
+    multi-Assembly test is not reproducible run to run, and fact 54 says a tick
+    count measures the suite. Both are true and neither means *give up on the
+    number*: `test_ambulatory_drift` spawns four Assemblies into one arena and
+    reported `neutral -92.2°, hard over +24.6°, counter +19.9°, standing -18.10°`
+    identically on two consecutive full runs.
+
+    The distinction is what varies. Those four Assemblies are built by one file,
+    in one order, with an identical allocation history in front of them, and
+    nothing else is in the space. A brawl in `test_team_engagement` is twenty
+    bodies interacting, which is where the float ordering bites.
+
+    So before deciding a surprising physics result is noise, **run the suite
+    twice and compare**. If the number repeats it is attributable, and a
+    regression can be reasoned about rather than shrugged at. If it does not, the
+    assertion was always wrong and fact 54 tells you what to write instead.
+
+81. **A speed readout in the shipped match is not a measurement of anything, and
+    three sessions read one as a physics defect.** `HANDOFF.md` carried "a parked
+    Assembly drifts at 2.4 m/s" from session 32 to session 37, sourced from the
+    HUD in a capture. It is wrong, and the way it is wrong is worth carrying.
+
+    The arena is a **basin**. The player spawn sits on a 1.78° grade — measured
+    off `GroundSource.basin(20260803, 15.0)` — and the shipped build has no
+    parking brake, because `veh_handbrake` is bound to Space and read by nothing.
+    Put that build on that terrain with no opponent, no fire and no input and it
+    rolls 9.4 m out at 2.7 m/s, stops, and rolls **back** to within 2.7 m of
+    where it started. A vehicle in neutral on a slope. Mostly correct physics.
+
+    On a **flat slab**, where gravity contributes nothing,
+    `tests/physics/test_rest_stability.gd` measures the real defect at
+    **0.196 m/s and 1.307 m over 360 ticks** — an order of magnitude smaller.
+
+    Three things to carry. **Measure a rest defect on flat ground**; a bowl adds
+    a term an order of magnitude larger than the one being looked for. **A HUD
+    number in a capture has a scene behind it** — the same frame that read
+    2.4 m/s also read 100% integrity, which is what ruled out an impact, and
+    checking that took one contact sheet of twenty-one frames. And **a number
+    quoted from a still frame propagates**: it was restated in four places
+    before anybody put the build on the terrain alone.
+
+82. **The chatter is why nothing corners, and traction control is neither the
+    cause nor the cure.** `TractionSolver.combined_forces` puts both slips on one
+    friction circle — `sx = kappa/KAPPA_PEAK`, `sy = tan_alpha/ALPHA_PEAK_TAN`,
+    `s = hypot(sx, sy)` — and returns the lateral component as `f_max · sy/s`.
+    So a large *longitudinal* slip crowds the lateral force out of the budget,
+    whatever the lateral slip is.
+
+    Against the measured chatter peak of 6.242 rad/s (fact 72's mechanism,
+    `test_rest_stability`'s number): a contact in a 6 m/s corner with 1 m/s of
+    lateral slip keeps **0.264** of the lateral share a clean rolling contact
+    would have — a 3.8× loss — and a parked contact keeps 0.013 against a
+    free-rolling 0.348, a 26× loss.
+
+    **Doc 05 §7.6's traction control cannot be involved in either direction.**
+    Its slip limiter scales `τ_drive`, so with no throttle there is nothing to
+    scale; its yaw loop is gated at `MIN_YAW_CONTROL_SPEED_MPS` = 1.5 m/s and off
+    below it; and §7.6 is `GROUND`-only, so it is not in the ambulatory or rotary
+    path at all. A session that goes looking for a handling defect in the *aid*
+    is looking one layer too high — the aid rides on top of §7.4's integrator and
+    inherits everything it does.
 
 ---
 

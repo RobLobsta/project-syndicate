@@ -104,9 +104,14 @@ build.reject.effector_arc_blocked,The Effector Module's firing arc is blocked
 build.reject.collider_interpenetration,That part would pass through another
 build.reject.load_capacity_exceeded,Too heavy for what is carrying it
 build.reject.duplicate_core,An Assembly has exactly one Core Module
+build.reject.motive_family_mismatch,This chassis does not carry that kind of Motive Assembly
 build.reject.unknown_part,That part is not in this registry
 part.core.command.compact.t2.name,Compact Command Core
 part.core.command.compact.t2.desc,The root of every Assembly. Sets the mount budget; the power capacity and the speed cap. Lose it and the Assembly is over.
+part.core.ambulatory.strider.t3.name,Strider Chassis
+"part.core.ambulatory.strider.t3.desc","A chassis built to be carried by limbs, and it takes nothing else. Slow, tall, and it has the mounts to carry supply that a ground chassis does not."
+part.core.rotary.lifter.t3.name,Lifter Chassis
+"part.core.rotary.lifter.t3.desc","A chassis built to hang under rotor discs, and it takes nothing else. Half the mass of a ground chassis and a fraction of the armour, because every kilogram is lift the discs owe."
 part.str.hub.axle_station.t2.name,Axle Station
 part.str.hub.axle_station.t2.desc,A short structural hub with a drive face on either flank. What a Motive Assembly bolts to.
 part.str.panel.medium.t2.name,Medium Panel

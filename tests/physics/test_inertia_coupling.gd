@@ -34,7 +34,10 @@ extends TestCase
 ## the thing it exists to do: an asymmetric Assembly tumbles instead of spinning
 ## like a symmetric one.
 
-const CORE_KEY := &"core.command.compact.t2"
+## A disc on a rotary chassis, per doc 01 §7.1. The tensor this file measures
+## moved when the chassis did: 900 kg in place of 1800, over a hull nine cells
+## long rather than thirteen.
+const CORE_KEY := &"core.rotary.lifter.t3"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 

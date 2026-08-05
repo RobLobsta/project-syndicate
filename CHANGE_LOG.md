@@ -57,6 +57,7 @@ they found are in `LEARNED_FACTS.md`.
 | 28 | **Half the clicks, and you can see what you built.** Doc 02 §10's mirror: one gesture places both flanks, as one undoable command. The shipped starter is twelve placements and comes out of eight. Found that §10's own sketch mirrors the pivot cell, which is one cell wrong on every part whose pivot is off-centre. The garage also got a fill light, a bounce and a hover wash — before them the build rendered as one dark silhouette and doc 13's class tints carried nothing. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
+| 37 | **A limb and a rotor disc each have a chassis, and the test drive is a duel.** Doc 01 §7.1 gives `CoreModuleProfile` a `locomotion_mask` and the validator a `MOTIVE_FAMILY_MISMATCH`; `core.ambulatory.strider.t3` and `core.rotary.lifter.t3` join §10.1. The walking recipe stops borrowing a hull whose every published figure describes a machine that stands on the ground — and gains the mounts for an Energy Cell it could not fit. `MatchScreen` spawns one opponent instead of three, with the same store the player carries. Capture: the player is alive at ten seconds at 54% where it was destroyed before nine. |
 | 29 | **The wheels touch the ground.** Doc 05 §16: a Motive Assembly's mesh is drawn where its contact is, not at the cell it was placed in — so suspension travel is visible, a wheel over a crest extends instead of hanging in the air, and a walking limb points at its foot along §13.7's swing arc. Twelve planted faults, one survived by design. The capture that verified it found the player flipped onto its back and destroyed in seven seconds while standing still. |
 | 36 | **The rebuild lands, and the AI regression was never the AI.** The part table, both layouts and all four locomotion recipes transcribed; the reference build is **3630 kg at 132 kg/m³ on a 3.00 m wheelbase, standing on all four contacts at a 48/52 split**. One instrumented run of `AiDriver` found it: throttle 1.00 and a target held the whole time, while the hull climbed off the ground contact by contact under sustained full throttle. Doc 05 §7.4's unstable contact integration, energised by drive torque — so `drive_torque_nm` is capped at 6400 N·m until §7.4 is closed. Also: an inertia grows as the square of the extents, so every yaw and roll authority in the project fell by a factor of six. |
 | 35 | **The rebuild, 89% landed.** Fixture fallout taken from **448 failing assertions across 28 files to 50 across 11**: the part table, both layouts, all four locomotion recipes, and the published-value assertions are all solved and written down. Reverted one regression short — the AI turns to face its target and then declines to close. |
@@ -64,6 +65,53 @@ they found are in `LEARNED_FACTS.md`.
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 37, in more detail
+
+**The chassis split is one bit test and a lot of consequence.** `locomotion_mask`
+carries one bit per `LocomotionMode`; `PlacementValidator._check_motive_family`
+runs between the class limits and the budgets and refuses a Motive Assembly the
+committed Core Module does not declare. It is deliberately one-directional — a
+Core Module is always slot 0 and always first, so a chassis cannot arrive under a
+family — and the mask is a mask rather than a single family because `GROUND` and
+`TRACKED` are separate solver families for the shape of their contact sets, not
+because a tracked machine is built on a different hull.
+
+Both new chassis keep the command core's 6×4 section and are shorter along `Z`
+(nine cells, not thirteen). That is what made the change affordable: every mount
+cell that hangs off a flank or sits on a deck is the same cell on all three, so
+the arena's ambulatory and rotary layouts moved by nothing at all.
+
+**Three of four ambulatory numbers improved and the fourth said something worse.**
+`test_ambulatory_drift` on the strider chassis: uncommanded drift 140.4° → 92.2°,
+countered 156.1° → 19.9°, standing 51.2° → 18.1°. But both commanded runs now
+land within 4.7° of each other, from a neutral case 112° away — so a steering
+demand moves the heading a long way and its *sign* accounts for almost none of
+it. That is a sharper statement of doc 05 §13.8's missing heading term than the
+file has ever been able to make, and §13.8 now records the measurement. The
+file's assertion was re-framed rather than loosened: it asserted that the demand
+could not null the drift, which stopped being true.
+
+**A correction, verified rather than inherited.** `HANDOFF.md` had carried "a
+parked Assembly drifts at 2.4 m/s" since session 32, sourced from a HUD readout
+in a capture. Checked three ways this session: a twenty-one frame contact sheet
+shows the speed climbing 0.9 → 2.6 m/s over four and a half seconds *at 100%
+integrity*, so it is not an impact; the basin's grade at the player spawn is
+1.78°; and the shipped build put on that terrain with no opponent and no input
+rolls 9.4 m out and back to within 2.7 m of where it started. It is a vehicle in
+neutral in a bowl with no parking brake. The real rest defect is
+`test_rest_stability`'s flat-slab **0.196 m/s and 1.307 m over 360 ticks**.
+`LEARNED_FACTS.md` facts 81 and 82 carry it, along with the arithmetic showing
+that the same chatter costs a cornering contact 3.8× of its lateral grip — and
+that doc 05 §7.6's traction control is neither the cause nor the cure, since its
+limiter scales drive torque and its yaw loop is off below 1.5 m/s.
+
+**The three-on-one test drive was never argued for.** It was what the scene
+happened to be built with while nothing in it could kill anybody, and once
+`src/ai/` landed it meant three copies of the player's own blueprint firing seven
+rounds a second at one hull. Doc 11 §15.5 carries the three arguments for a duel;
+the store asymmetry that existed to cover it went with it, so both sides now
+carry 600 rounds and the only remaining handicap is the AI's aim-point offset.
 
 ### Session 36, in more detail
 
@@ -615,8 +663,8 @@ what matters is which test defends which behaviour.
 | `test_footprint_solver` | dropped origin offset in `resolve`; `out` buffer not shrunk on reuse |
 | `test_input_actions` | an action deleted from `project.godot` |
 | `test_part_registry_validator` | definition on disk absent from the manifest (R02); duplicated manifest key (R02); collider shrunk to 60% coverage (R08); resistance above the 0.85 ceiling (R07); and every rule 17–24 check: rotor thrust vs rated load, rotor zero-fields, malformed disc geometry, inverted collective limits, melee mix sum, melee mix length, melee emission fields, melee bounds, AXLE keying, an AXLE node on a class that may not carry one, family payload missing, family payload on a kind that takes none, two payloads at once, limb suspension fields, limb gait bounds, cadence ceiling below its floor, an over-long step, track steer angle, track station bounds, malformed track parameters, the shared non-zero helper neutered, rule 23 never firing, **a torqueless Prime Mover accepted, and a supply-less Energy Cell accepted** |
-| `test_part_registry_data` | manifest order swapped; four attachment nodes dropped from a `.tres`; a part missing from a class bucket; a locomotion family with no shipped part |
-| `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent; *(session 27)* **a cascade announcing only the part the player named**, and the mirror of it |
+| `test_part_registry_data` | manifest order swapped; four attachment nodes dropped from a `.tres`; a part missing from a class bucket; a locomotion family with no shipped part; *(session 37)* a chassis authored with the wrong `locomotion_mask`, asserted as the full four-family set rather than against the constant the data uses |
+| `test_placement_validator` | occupancy never reports a cell occupied; every polarity accepted; interpenetration margin flipped positive; structural load ignores the parent's subtree; motive clearance probes one cell not the envelope; effector arc never counts a blocked sample; bounds check disabled; duplicate Core Module allowed; hard limits ignored; commit forgets `FLAG_STRAINED`; stale parent survives a rejection; Core Module charged against its own mount budget; proxy transform written before its shapes; `allocate_slot` stops allocating lowest-first; removal never finds an alternate parent; *(session 27)* **a cascade announcing only the part the player named**, and the mirror of it; *(session 37)* a chassis family check that refuses too much or too little, asserted as the whole three-by-three matrix, plus the check being ordered after the budgets where it would be unreachable |
 | `test_rest_stability` | *(session 32)* nothing yet, by construction: it is asserted as it fails, and what it defends is that §7.4's limit cycle stays visible until somebody repairs it |
 | `test_control_card` | *(session 33)* the card moved back to the centre of the screen; the stand-down removed, so the dwell runs its full eleven seconds through the opening engagement; an action added to or dropped from the stand-down list |
 | `test_build_history` | *(session 27)* an attach that undoes to nothing; a restored part left under whatever now mates; §9.2's re-parenting never recorded; a cascade restored child-first; a redo branch surviving an edit; the 128 depth removed; an undone command that cannot be redone — and, by hand, **a command keyed on a slot rather than on a cell** |

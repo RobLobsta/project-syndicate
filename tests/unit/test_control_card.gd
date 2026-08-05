@@ -4,7 +4,7 @@ extends TestCase
 ##
 ## The card is the first thing a player sees in a match and it was, for two
 ## sessions, the thing they saw *instead of* the match: centred, opaque, and up
-## for eleven seconds across the band of screen three opponents approach through.
+## for eleven seconds across the band of screen the opponent approaches through.
 ## Neither the placement nor the dwell moved a single check.
 ##
 ## Both halves are asserted here. The placement is geometry and reads as a
