@@ -15,11 +15,11 @@ const CORE_CELL := Vector3i(24, 4, 24)
 ## A cell nothing occupies and nothing is adjacent to.
 const ORPHAN_CELL := Vector3i(12, 20, 12)
 ## On the Core Module's deck.
-const DECK_CELL := Vector3i(24, 7, 24)
+const DECK_CELL := Vector3i(24, 8, 24)
 ## Beside it, bridging to the deck's aft edge and to the panel above.
-const BESIDE_DECK_CELL := Vector3i(24, 7, 28)
+const BESIDE_DECK_CELL := Vector3i(24, 8, 28)
 ## Directly on top of that one, and touching nothing else.
-const ABOVE_BESIDE_CELL := Vector3i(24, 8, 28)
+const ABOVE_BESIDE_CELL := Vector3i(24, 9, 28)
 
 ## Recoil impulse, in N·s, above which an Effector Module has no business being
 ## on the build a player is handed. Doc 01 §10.5.
@@ -233,9 +233,17 @@ func test_order_is_content_and_not_presentation() -> void:
 		1,
 		"the same three parts in the other order are refused at the contact"
 	)
+	# POLARITY_MISMATCH rather than NO_MATING_NODE, and the difference is the
+	# hull rather than the rule. The Core Module is six cells wide now, so a
+	# contact seated where its station will go is [i]touching[/i] the hull — and a
+	# Motive Assembly's one drive face is AXLE, which the Core Module's neutral
+	# flank refuses. Before the rebuild the same contact hung in clear air one
+	# cell out and had nothing to be refused by. Both codes say the station is
+	# missing; this one says which face was tried, which is the more useful of the
+	# two to put in front of a player.
 	check_eq(
 		log.key,
-		PlacementValidator.reject_key(PlacementValidator.Reject.NO_MATING_NODE),
+		PlacementValidator.reject_key(PlacementValidator.Reject.POLARITY_MISMATCH),
 		"because the station it mates through is not there yet"
 	)
 

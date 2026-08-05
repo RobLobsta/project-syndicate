@@ -556,6 +556,8 @@ accepts_classes = PackedInt32Array()
 [sub_resource type="Resource" id="Resource_1ub1v"]
 script = ExtResource("4_g2m4i")
 hip_offset_m = Vector3(0, 0, 0)
+stance_stiffness_n_m = 307000.0
+stance_damping_ns_m = 38400.0
 
 [sub_resource type="Resource" id="Resource_dksnn"]
 script = ExtResource("5_dwhws")
@@ -568,7 +570,7 @@ suspension_damping_ns_m = 0.0
 suspension_travel_limit_m = 0.0
 max_steer_angle_deg = 0.0
 steer_rate_deg_s = 0.0
-rated_load_kg = 1400.0
+rated_load_kg = 4500.0
 traction_coefficient = 1.22
 rolling_resistance = 0.0
 brake_torque_nm = 0.0
@@ -583,7 +585,7 @@ part_class = 2
 tier = 4
 occupancy_cells = PackedVector3Array(-1, -4, -1, 0, -4, -1, 1, -4, -1, -1, -3, -1, 0, -3, -1, 1, -3, -1, -1, -2, -1, 0, -2, -1, 1, -2, -1, -1, -1, -1, 0, -1, -1, 1, -1, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -1, -4, 0, 0, -4, 0, 1, -4, 0, -1, -3, 0, 0, -3, 0, 1, -3, 0, -1, -2, 0, 0, -2, 0, 1, -2, 0, -1, -1, 0, 0, -1, 0, 1, -1, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -1, -4, 1, 0, -4, 1, 1, -4, 1, -1, -3, 1, 0, -3, 1, 1, -3, 1, -1, -2, 1, 0, -2, 1, 1, -2, 1, -1, -1, 1, 0, -1, 1, 1, -1, 1, -1, 0, 1, 0, 0, 1, 1, 0, 1)
 attachment_nodes = Array[ExtResource("1_tijw4")]([SubResource("Resource_tijw4"), SubResource("Resource_3ntoo"), SubResource("Resource_ig6n0"), SubResource("Resource_g2m4i"), SubResource("Resource_dwhws"), SubResource("Resource_2pkvc"), SubResource("Resource_xyvwf"), SubResource("Resource_lfsv8"), SubResource("Resource_gqn0v"), SubResource("Resource_yjsa0"), SubResource("Resource_wms3u"), SubResource("Resource_4snq7"), SubResource("Resource_5drfp"), SubResource("Resource_lhycy"), SubResource("Resource_tmgb1"), SubResource("Resource_bqcub"), SubResource("Resource_4x52a"), SubResource("Resource_8uocv"), SubResource("Resource_0thyw"), SubResource("Resource_gkj2p"), SubResource("Resource_onx3i"), SubResource("Resource_0cxlb"), SubResource("Resource_h4lak"), SubResource("Resource_iy134"), SubResource("Resource_vd8ll"), SubResource("Resource_cyict"), SubResource("Resource_ptw1s"), SubResource("Resource_sh0kj"), SubResource("Resource_i57hu"), SubResource("Resource_q6dms"), SubResource("Resource_gblr4"), SubResource("Resource_b1c67"), SubResource("Resource_76grx"), SubResource("Resource_ba4ov"), SubResource("Resource_ysh1k"), SubResource("Resource_wqkxi"), SubResource("Resource_5jrlc"), SubResource("Resource_g2bdo"), SubResource("Resource_253cq"), SubResource("Resource_mfey6"), SubResource("Resource_p232q"), SubResource("Resource_unomb"), SubResource("Resource_yg7v2"), SubResource("Resource_ia4qw"), SubResource("Resource_ax1gd"), SubResource("Resource_77sip"), SubResource("Resource_3hor6"), SubResource("Resource_la1g6"), SubResource("Resource_xwu23"), SubResource("Resource_p10c7"), SubResource("Resource_tt6r5"), SubResource("Resource_7g0xi"), SubResource("Resource_2ydul"), SubResource("Resource_ylc46"), SubResource("Resource_b7mjc"), SubResource("Resource_p8k4e"), SubResource("Resource_dj5nu"), SubResource("Resource_tbhm3"), SubResource("Resource_j7lq5"), SubResource("Resource_5ngks"), SubResource("Resource_qdmmf"), SubResource("Resource_457nh"), SubResource("Resource_lm8u7"), SubResource("Resource_kkoqf"), SubResource("Resource_g31ca"), SubResource("Resource_3iayq"), SubResource("Resource_o53hk"), SubResource("Resource_ja8n3"), SubResource("Resource_hbnu0"), SubResource("Resource_lfty7"), SubResource("Resource_bt6mq"), SubResource("Resource_prum7"), SubResource("Resource_366o5"), SubResource("Resource_e3opx"), SubResource("Resource_557vr"), SubResource("Resource_0qrpu"), SubResource("Resource_fmb8b"), SubResource("Resource_ybpib")])
-mass_kg = 185.0
+mass_kg = 592.0
 com_offset_m = Vector3(0, -0.5, 0)
 integrity_max = 720.0
 resistance = PackedFloat32Array(0.16, 0.14, 0.26, 0.06, 0.02)

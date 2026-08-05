@@ -41,21 +41,39 @@ const CELL_KEY: StringName = &"cel.static.standard.t3"
 ## know what a mount does.
 const EFFECTOR_KEY: StringName = &"eff.ballistic.repeater_12.t2"
 
+## The Core Module spans `z` 18–30 and `x` 21–26, which is the fact every cell
+## below is placed against. It used to span five cells of `z`, and everything
+## wrong with the shipped stance followed from that: the stations had nowhere to
+## go but under the middle of it, so the wheelbase was 1.50 m on a 4.25 m machine
+## and the Effector Module hung a metre past the front axle.
 const CORE_CELL := Vector3i(24, 4, 24)
-const POWER_CELL := Vector3i(24, 7, 24)
-const CELL_CELL := Vector3i(24, 4, 29)
-## On the nose, at the Core Module's own height. What decides whether a round
-## flips the shipped chassis is not the impulse alone but the height of the
-## muzzle above the centre of mass, because the fore-aft offset is parallel to
-## the recoil and contributes no moment at all. On the roof one autocannon round
-## is 3.6 rad/s of pitch. Here it is a shove.
-const EFFECTOR_CELL := Vector3i(24, 6, 21)
+## On the deck, over the rear half of the cabin. The deck is `y = 8` now that the
+## Core Module is four cells tall.
+const POWER_CELL := Vector3i(24, 8, 28)
+## In the tail, mating to the Core Module's `+Z` face.
+const CELL_CELL := Vector3i(24, 4, 33)
+## On the roof rather than on the nose, which the thirteen-cell cabin is what
+## makes possible. What decides whether a round flips the shipped chassis is not
+## the impulse alone but the height of the muzzle above the centre of mass,
+## because the fore-aft offset is parallel to the recoil and contributes no
+## moment at all — and a mount over the front of a 3.25 m hull is barely further
+## from the centre of mass vertically than one hung off its nose was, while being
+## 1.12 m less of a cantilever fore and aft.
+const EFFECTOR_CELL := Vector3i(24, 8, 24)
 
+## The stations reach the ends of the cabin: `z` 19 and 30 against a hull that
+## spans 18 to 30. With the contacts hung off their outboard faces that is a
+## 3.00 m wheelbase under a 4.00 m machine, and a 48/52 static split.
 const HUB_CELLS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
+	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
 ]
+## The right flank's cells sit one forward of the left's, which looks like a
+## mirror off-by-one and is not: doc 02 §10's mirror is correct and the disc's
+## pivot is off-centre, so cells that are symmetric are metres that are not. See
+## `test_the_shipped_starter_is_its_own_mirror`, which fails the moment these are
+## squared up.
 const CONTACT_CELLS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
+	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md,

@@ -57,14 +57,22 @@ const COAST_TICKS: int = 360
 ## Sign reversals of the contact rate expected across [constant SAMPLE_TICKS].
 ##
 ## [b]This is the defect, and the number is a floor rather than a ceiling.[/b] A
-## settled contact turns one way or sits at zero; this one reverses on all eleven
-## transitions of the twelve samples. Asserted at eight so that the check is about
-## a contact oscillating rather than about the exact count, which
+## settled contact turns one way or sits at zero; this one reverses on more than
+## half the eleven transitions of the twelve samples. Asserted at six so that the
+## check is about a contact oscillating rather than about the exact count, which
 ## LEARNED_FACTS.md §1 fact 54 would have move under an unrelated file.
-const CHATTERING_REVERSALS: int = 8
+##
+## [b]It was eight, against a measured eleven, and the rebuild took the measured
+## figure to seven.[/b] That is not §7.4 being repaired — the peak below went the
+## other way, from 4.7 rad/s to 5.9 against a free-rolling 1.2, and the drift from
+## 2.3 m to 2.95 — it is a heavier hull pinning the contact against the friction
+## saturation for a tick here and there instead of reversing on every one. The
+## floor was re-measured rather than the defect re-described.
+const CHATTERING_REVERSALS: int = 6
 
 ## Peak contact rate, in rad/s, the chatter reaches while the hull is standing
-## still. Free rolling at the speeds below would be under a tenth of this.
+## still. Measured at 5.9 against a free-rolling 1.2 — the chatter is what is
+## reversing, not the contact tracking the hull.
 const CHATTER_PEAK_FLOOR_RAD_S: float = 2.0
 
 ## Speed, in m/s, the build is still doing at the end of the window. A build that

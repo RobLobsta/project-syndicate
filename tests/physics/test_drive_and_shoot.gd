@@ -1,6 +1,13 @@
 extends TestCase
 ## Can an Assembly drive and shoot at the same time? Doc 01 §10.5 and doc 07 §8.
 ##
+## [b]The answer changed with the rebuild, and this file is where it says so.[/b]
+## Both of its "asserted as a defect" methods inverted: the autocannon build used
+## to spin 99° in two and a half seconds and fire two rounds of seventeen, and on
+## the 3630 kg chassis it holds its heading to under ten and fires fifteen. The
+## trade doc 01 §10.5 authored `eff.ballistic.repeater_12.t2` for survives as a
+## multiple rather than as the difference between a working gun and a useless one.
+##
 ## [b]The oldest open question in the project and the first file to ask it.[/b]
 ## Every other measurement of the recoil problem has been a single round on a
 ## stationary hull — `test_recoil_geometry.gd` fires one and reports the yaw it
@@ -136,27 +143,32 @@ func test_the_repeater_fires_the_burst_its_cycle_allows() -> void:
 	)
 
 
-func test_the_autocannon_build_stops_being_able_to_shoot_at_all() -> void:
-	# The finding, and it is worse than the heading drift on its own.
-	#
-	# The recoil does not merely turn the hull — it turns the hull out from under
-	# the mount, and doc 07 §4.3.1's fire gate then correctly refuses to shoot at
-	# something the module is no longer pointed at. So the build spends the
-	# engagement spinning with its trigger held and its barrel cold: it fired two
-	# rounds of the seventeen its cycle allows. A player reads that as a gun that
-	# has stopped working.
-	#
-	# Asserted as a fraction of the module's own rated cadence, so it stays a
-	# statement about the gate closing rather than about any particular count.
+## [b]This test used to assert the opposite, and the rebuild is what inverted
+## it.[/b]
+##
+## The recoil did not merely turn the hull — it turned the hull out from under the
+## mount, and doc 07 §4.3.1's fire gate then correctly refused to shoot at
+## something the module was no longer pointed at. On the 1107 kg chassis the build
+## spent the engagement spinning with its trigger held and its barrel cold: two
+## rounds of the seventeen its cycle allows, which a player reads as a gun that
+## has stopped working.
+##
+## On the 3630 kg chassis the same module at the same mount under the same
+## throttle gets fifteen of seventeen away. Nothing about the module changed;
+## 1450 N·s met three times the yaw inertia through a shorter lever, and the gate
+## stopped closing. The trade doc 01 §10.5 authored the repeater for is still
+## real — [method test_the_difference_is_the_module_and_it_is_large] measures it —
+## but it is now a matter of degree rather than of possibility.
+func test_the_autocannon_build_now_gets_most_of_its_rounds_away() -> void:
 	await _measure()
 	var allowed := _rounds_in_window(&"eff.ballistic.autocannon_30.t3")
 	check_true(allowed > 8, "the window is long enough to matter: %d rounds allowed" % allowed)
 	check_true(
-		float(_autocannon.shots) < float(allowed) * 0.5,
+		float(_autocannon.shots) > float(allowed) * 0.5,
 		(
-			"it managed %d of the %d rounds its cycle allows, because its own recoil "
+			"it managed %d of the %d rounds its cycle allows, where the same module on "
 			% [_autocannon.shots, allowed]
-			+ "took the mount off the target it was firing at"
+			+ "the old chassis managed two"
 		)
 	)
 
@@ -173,19 +185,20 @@ func test_a_repeater_build_holds_its_heading_while_firing() -> void:
 	)
 
 
-func test_the_autocannon_build_is_steered_by_its_own_recoil() -> void:
-	# The other half, asserted as it behaves — `LEARNED_FACTS.md` §3's rule about
-	# writing down a measurement you cannot yet fix, except that this one is now
-	# fixed by choosing a different module rather than by changing this one.
-	#
-	# [b]This assertion is supposed to break.[/b] If §10.5's four legacy
-	# direct-fire rows are ever rescaled off their 3× recoil basis, this file
-	# fails, and the fix is to re-measure and re-assert rather than to loosen it.
+## The other half, and it inverted with the one above. It was 99.1° of heading
+## drift over two and a half seconds — an Assembly being steered by its own gun —
+## and it is now under ten, which is a machine a player is steering.
+##
+## [b]This assertion is supposed to break.[/b] If §10.5's four legacy direct-fire
+## rows are ever rescaled off their 3× recoil basis, or the reference build is
+## rescaled again, this file fails, and the fix is to re-measure and re-assert
+## rather than to loosen it.
+func test_the_autocannon_build_is_no_longer_steered_by_its_own_gun() -> void:
 	await _measure()
 	check_true(
-		_autocannon.heading_drift_deg > HELD_HEADING_DEG,
+		_autocannon.heading_drift_deg < HELD_HEADING_DEG,
 		(
-			"the autocannon build was turned by its own gun: %.1f deg over %d rounds"
+			"the autocannon build held its heading: %.1f deg over %d rounds"
 			% [_autocannon.heading_drift_deg, _autocannon.shots]
 		)
 	)

@@ -952,11 +952,27 @@ The rule is absolute: **no derived attribute is recomputed inside `_process` or 
 
 All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier column is given. Dimensions are in lattice cells (`0.25 m` each). These values are the source data for the `.tres` files under `data/parts/`.
 
+#### The fourteen authored rows are on a different scale from the rest of §10
+
+**Read this before authoring a part from any row below that has no `.tres`.**
+
+The tables were written at a scale nothing had measured, and the measurement, when it was finally taken, was a picture. At `LATTICE_UNIT_M = 0.25` a 4×3×5 Core Module is 1.25 m long and a 4×4×9 Effector Module is 2.25 m: the weapon was **half the reference build's length and the cabin a quarter of it**, the whole Assembly was **46 kg/m³** of its bounding box — a fifth of balsa — and the axle stations had nowhere to go but under the middle of a five-cell chassis, which produced a 1.50 m wheelbase on a 4.25 m machine standing on two of its four contacts. Every validator in `tools/` passed, because a validator checks one part against its own schema and nothing in the repository compares one part against another (`LEARNED_FACTS.md` §1 fact 75).
+
+The **fourteen rows that are authored** have been rescaled against a Crossout medium cabin: `core.command.compact.t2` is 6×4×13 at 1800 kg, and the reference build is 3630 kg at 132 kg/m³ against a passenger car's 115, on a 3.00 m wheelbase, standing on all four contacts with a 48/52 static split.
+
+**Every other row in §10 is still on the old scale.** They are a design table and not data; authoring one means rescaling it against the fourteen, not transcribing it. Three ratios are worth checking while doing it, all derivable from `occupancy_cells` and `mass_kg` with no engine at all: mass against bounding-box volume, module length against hull length, and cabin length against hull length.
+
+Three joins are load-bearing when a mass moves, and each of them broke once during the rescale:
+
+- **A force model scales with the mass it carries.** `suspension_stiffness_n_m`, `stance_stiffness_n_m` and `thrust_coefficient` are not free of the hull. §14 rule 19 catches the rotor case — a disc that cannot lift its own `rated_load_kg` is refused — and nothing catches the other two, which present as an Assembly that sags or will not leave the ground.
+- **`drive_torque_nm` is bounded by §7.4's stability, not by grip.** The reference build cannot be given the torque its mass would suggest: DYNAMIC_MASS_PHYSICS.md §7.4's contact integration is 142× outside its own stability limit, and sustained full throttle at 10 200 N·m pumps the suspension until the Assembly leaves the ground. 6400 N·m is what it holds today; the figure goes up when §7.4 is closed.
+- **An inertia grows faster than the mass that made it.** `core.command.compact.t2`'s box tensor went from 81 to 1922 kg·m² about `Y` — a factor of 24 against a mass factor of 4.7 — because the tensor goes as the square of the extents. Every yaw and roll authority in the project is a torque over that inertia, so all of them fell by about a factor of six: the build steers more slowly, §7.6's corrective brake takes 2% off an imposed spin where it took 60%, and `eff.ballistic.autocannon_30.t3` stopped being able to spin its own hull, which is the one that went the right way.
+
 ### 10.1 Core Modules
 
 | `part_key` | Cells (X×Y×Z) | Mass (kg) | Integrity | Armour | Power Cap (PU) | Mounts | Speed Cap (m/s) | Mass Tol. (kg) |
 |---|---|---|---|---|---|---|---|---|
-| `core.command.compact.t2` | 4×3×5 | 380 | 1450 | 18 | 240 | 28 | 24.0 | 3600 |
+| `core.command.compact.t2` | 6×4×13 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 |
 | `core.command.balanced.t2` | 5×4×6 | 520 | 1900 | 22 | 310 | 34 | 21.0 | 4800 |
 | `core.command.bastion.t3` | 6×5×7 | 780 | 2850 | 31 | 380 | 40 | 17.5 | 7200 |
 | `core.command.skirmish.t3` | 4×3×4 | 300 | 1150 | 15 | 260 | 24 | 28.0 | 2900 |
@@ -969,7 +985,7 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `part_key` | Cells | Mass (kg) | Integrity | Armour | Load Cap (kg) | Occlusion |
 |---|---|---|---|---|---|---|
 | `str.panel.light.t1` | 4×1×4 | 14 | 160 | 6 | 220 | `OPAQUE_SOLID` |
-| `str.panel.medium.t2` | 4×1×4 | 34 | 380 | 14 | 520 | `OPAQUE_SOLID` |
+| `str.panel.medium.t2` | 4×1×4 | 100 | 380 | 14 | 1560 | `OPAQUE_SOLID` |
 | `str.panel.heavy.t3` | 4×1×4 | 68 | 720 | 26 | 980 | `OPAQUE_SOLID` |
 | `str.panel.composite.t4` | 4×1×4 | 52 | 810 | 31 | 900 | `OPAQUE_SOLID` |
 | `str.beam.spar.t2` | 8×1×1 | 22 | 290 | 11 | 1400 | `OPAQUE_SOLID` |
@@ -984,25 +1000,25 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 | `str.riser.column.t2` | 2×4×2 | 26 | 330 | 13 | 1900 | `OPAQUE_SOLID` |
 | `str.shell.curved.t3` | 6×3×4 | 88 | 900 | 27 | 820 | `OPAQUE_SOLID` |
 | `str.aperture.port.t2` | 4×2×1 | 21 | 210 | 9 | 300 | `TRANSPARENT` |
-| `str.hub.axle_station.t2` | 2×2×2 | 29 | 340 | 16 | 2400 | `OPAQUE_SOLID` |
+| `str.hub.axle_station.t2` | 2×2×2 | 90 | 340 | 16 | 2400 | `OPAQUE_SOLID` |
 
-`str.hub.axle_station.t2` is the `AXLE` station of §4.2 and the only part in the shipping set that carries `AXLE` nodes. Its `AXLE` faces are ±X, restricted by `accepts_classes` to `MOTIVE_ASSEMBLY`; ±Y and ±Z are `FACE_NEUTRAL` so it can be built into a chassis from four sides. The load capacity is high for its mass because everything an Assembly's locomotion does to it passes through this one joint: a 1180 kg-rated Motive Assembly under a 2.4 g manoeuvre loads its station harder than any panel in the table ever sees.
+`str.hub.axle_station.t2` is the `AXLE` station of §4.2 and the only part in the shipping set that carries `AXLE` nodes. Its `AXLE` faces are ±X, restricted by `accepts_classes` to `MOTIVE_ASSEMBLY`; ±Y and ±Z are `FACE_NEUTRAL` so it can be built into a chassis from four sides. The load capacity is high for its mass because everything an Assembly's locomotion does to it passes through this one joint: a 1200 kg-rated Motive Assembly under a 2.4 g manoeuvre loads its station harder than any panel in the table ever sees.
 
 ### 10.3 Motive Assemblies
 
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Rated Load (kg) | Traction | Steer (°) | Susp. k (N/m) | Susp. c (Ns/m) |
 |---|---|---|---|---|---|---|---|---|---|
 | `mot.wheeled.light_road.t1` | `WHEELED_STEERED` | 3×3×2 | 42 | 210 | 380 | 1.18 | 34 | 30000 | 2400 |
-| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 4×4×2 | 68 | 340 | 620 | 1.05 | 32 | 42000 | 3400 |
+| `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 4×4×2 | 110 | 340 | 1100 | 1.05 | 32 | 134000 | 10900 |
 | `mot.wheeled.offroad_heavy.t3` | `WHEELED_STEERED` | 5×5×3 | 124 | 610 | 1180 | 0.96 | 28 | 68000 | 5200 |
-| `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 4×4×2 | 62 | 355 | 680 | 1.09 | 0 | 44000 | 3500 |
+| `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 4×4×2 | 105 | 355 | 1200 | 1.09 | 0 | 140000 | 11200 |
 | `mot.wheeled.armoured.t4` | `WHEELED_STEERED` | 5×5×3 | 168 | 1050 | 1320 | 0.91 | 24 | 74000 | 5900 |
-| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 210 | 900 | 2100 | 1.34 | 0 | 88000 | 7600 |
+| `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 672 | 900 | 6700 | 1.34 | 0 | 88000 | 7600 |
 | `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 12×4×3 | 320 | 1420 | 3400 | 1.41 | 0 | 112000 | 9800 |
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
-| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×5×3 | 185 | 720 | 1400 | 1.22 | 45 | 96000 | 12000 |
+| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×5×3 | 592 | 720 | 4500 | 1.22 | 45 | 307000 | 38400 |
 | `mot.repulsor.pad.t5` | `REPULSOR_PAD` | 5×2×5 | 140 | 480 | 1600 | 0.72 | 0 | 26000 | 8800 |
-| `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 265 | 690 | 2600 | 0.00 | 0 | 0 | 0 |
+| `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 848 | 690 | 8300 | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.coaxial_heavy.t4` | `ROTOR_DISC` | 5×7×5 | 410 | 1010 | 4400 | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.main_single.t3` | `ROTOR_DISC` | 4×6×4 | 210 | 620 | 2200 | 0.00 | 0 | 0 | 0 |
 | `mot.limb.strider.t3` | `AMBULATORY_LIMB` | 3×4×3 | 132 | 500 | 980 | 1.18 | 42 | 68000 | 8600 |
@@ -1011,7 +1027,7 @@ The four zero columns on the rotary rows are not omissions. A `ROTOR_DISC` has n
 
 | `part_key` | Disc R (m) | Blades | Ω (rad/s) | C_T | C_Q | Collective (°) | Cyclic (°) | Reaction | Yaw (N·m) | Draw (PU) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `mot.rotor.coaxial_mid.t3` | 2.60 | 4 | 85.0 | 0.020 | 0.0024 | −4 … 14 | 14 | 0.00 | 9600 | 150 |
+| `mot.rotor.coaxial_mid.t3` | 2.60 | 4 | 85.0 | 0.0638 | 0.0024 | −4 … 14 | 14 | 0.00 | 9600 | 150 |
 | `mot.rotor.coaxial_heavy.t4` | 3.40 | 6 | 65.0 | 0.020 | 0.0024 | −4 … 15 | 12 | 0.00 | 15400 | 196 |
 | `mot.rotor.main_single.t3` | 3.10 | 3 | 55.0 | 0.020 | 0.0024 | −5 … 15 | 18 | 1.00 | 0 | 98 |
 
@@ -1054,7 +1070,7 @@ A `duty_factor` above `0.5` means more than half the gait cycle is spent in stan
 | `part_key` | Cells | Mass (kg) | Integrity | Torque (N·m) | Peak RPM | Supply (PU) | Heat (HU/s) | Blast R (m) | Blast Dmg |
 |---|---|---|---|---|---|---|---|---|---|
 | `pmv.combustion.compact.t1` | 3×3×4 | 95 | 260 | 1900 | 4600 | 90 | 5.2 | 3.0 | 210 |
-| `pmv.combustion.standard.t2` | 4×3×5 | 155 | 420 | 3200 | 5200 | 150 | 7.4 | 4.2 | 380 |
+| `pmv.combustion.standard.t2` | 4×4×6 | 620 | 420 | 6400 | 5200 | 150 | 7.4 | 4.2 | 380 |
 | `pmv.combustion.forced.t3` | 5×4×6 | 240 | 610 | 5100 | 6100 | 215 | 11.8 | 5.4 | 620 |
 | `pmv.turbine.axial.t4` | 5×4×7 | 285 | 700 | 6800 | 8800 | 300 | 16.5 | 6.1 | 880 |
 
@@ -1062,7 +1078,7 @@ Energy Cells make no torque and have no shaft, so the torque and RPM columns are
 
 | `part_key` | Cells | Mass (kg) | Integrity | Supply (PU) | Reserve (PU·s) | Recharge (PU/s) | Heat (HU/s) | Blast R (m) | Blast Dmg |
 |---|---|---|---|---|---|---|---|---|---|
-| `cel.static.standard.t3` | 4×3×4 | 175 | 540 | 260 | 900 | 45 | 1.1 | 3.4 | 300 |
+| `cel.static.standard.t3` | 4×4×5 | 450 | 540 | 260 | 900 | 45 | 1.1 | 3.4 | 300 |
 | `cel.static.dense.t5` | 4×3×4 | 205 | 780 | 420 | 1600 | 62 | 0.7 | 4.0 | 460 |
 
 **Why these are two classes and not one with a zero column.** They were one — `PRIME_MOVER` — and the two cell rows above carried a `0` in the torque column, which is a class distinction written as a magic value. Nothing stopped a cell being authored with torque, nothing told the garage that the two parts answer different questions, and the name covered both jobs badly. §14 rule 24 now enforces the split: a Prime Mover with no torque is an Energy Cell in the wrong class, and a cell with no supply is ballast with a detonation radius.
@@ -1094,9 +1110,9 @@ change worth shipping. The finding is recorded; the decision is open.
 
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Draw (PU) | Cycle (s) | Muzzle (m/s) | Recoil (N·s) | Heat/shot |
 |---|---|---|---|---|---|---|---|---|---|
-| `eff.ballistic.repeater_12.t2` | `BALLISTIC_DIRECT` | 4×3×6 | 78 | 260 | 26 | 0.075 | 860 | 26 | 1.9 |
+| `eff.ballistic.repeater_12.t2` | `BALLISTIC_DIRECT` | 4×2×5 | 150 | 260 | 26 | 0.075 | 860 | 26 | 1.9 |
 | `eff.ballistic.autocannon_20.t2` | `BALLISTIC_DIRECT` | 4×3×7 | 118 | 340 | 42 | 0.11 | 880 | 980 | 5.4 |
-| `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 4×4×9 | 196 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
+| `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 4×3×7 | 420 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
 | `eff.ballistic.rifle_long.t3` | `BALLISTIC_DIRECT` | 4×3×12 | 165 | 400 | 55 | 1.35 | 1180 | 4200 | 14.0 |
 | `eff.ballistic.scatter_short.t2` | `BALLISTIC_DIRECT` | 4×3×5 | 88 | 300 | 30 | 0.72 | 460 | 2600 | 9.2 |
 | `eff.arced.mortar_medium.t3` | `BALLISTIC_ARCED` | 5×5×5 | 210 | 420 | 60 | 2.10 | 190 | 3100 | 12.5 |
@@ -1106,7 +1122,7 @@ change worth shipping. The finding is recorded; the decision is open.
 | `eff.melee.ram_spike.t2` | `KINETIC_MELEE` | 5×3×3 | 130 | 900 | 0 | 0.00 | 0 | 0 | 0.0 |
 | `eff.melee.rotor_blade.t4` | `KINETIC_MELEE` | 6×4×3 | 245 | 1300 | 90 | 0.00 | 0 | 0 | 4.5 |
 | `eff.melee.beam_edge.t3` | `ENERGY_MELEE` | 3×3×6 | 68 | 290 | 98 | 0.00 | 0 | 0 | 8.0 |
-| `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 3×3×8 | 96 | 420 | 145 | 0.00 | 0 | 0 | 11.0 |
+| `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 3×3×8 | 307 | 420 | 145 | 0.00 | 0 | 0 | 11.0 |
 
 **Every `BALLISTIC_DIRECT` row is even-width, and §14 rule 27 requires it.** The
 `autocannon_30` was authored at 5×4×9 and is the reason the rule exists. A Core

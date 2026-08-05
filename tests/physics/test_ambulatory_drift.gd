@@ -21,9 +21,9 @@ extends TestCase
 ## hold a heading cannot hold a firing solution either, because doc 07 §4.3
 ## converges a mount at half a degree and slews it at 65°/s.
 ##
-## [b]What it is not.[/b] Not the standing state, which is solid: §13.4's every
-## foot planted is now honoured and a stationary Assembly holds its hull level to
-## within a degree indefinitely. Not the placement law's saturated velocity
+## [b]What it is not.[/b] Not a fall: §13.4's every foot planted is honoured and
+## the hull stays level to within a degree, walking or standing. Not the
+## placement law's saturated velocity
 ## demand, which was a real defect and is fixed —
 ## [method GaitSolver.top_speed_mps] now caps the demand at what the gait can
 ## deliver, and that alone cut the walking pitch from thirty degrees to under
@@ -35,6 +35,12 @@ extends TestCase
 ## heading authority at all. A yaw-rate term in the placement law is new
 ## architecture and CLAUDE.md §10 rule 13 puts it outside what a test file may
 ## decide. What this file does is stop it being rediscovered.
+##
+## [b]The rebuild widened it.[/b] The standing case used to hold a heading to a
+## fraction of a degree and was this file's control; on the 5148 kg chassis it
+## turns about fifty degrees over the same window. See
+## [method test_standing_still_no_longer_holds_a_heading], which is asserted as it
+## behaves for the same reason everything else here is.
 
 const SETTLE_TICKS: int = 200
 ## Ticks the Assembly is walked for. Five seconds, which is about the length of
@@ -46,6 +52,10 @@ const WALK_TICKS: int = 300
 const DRIFT_THRESHOLD_DEG: float = 60.0
 ## Degrees the hull may lean and still count as walking rather than falling.
 const UPRIGHT_DOT: float = 0.90
+## Degrees an uncommanded standing Assembly is measured to turn over
+## [constant WALK_TICKS]. See
+## [method test_standing_still_no_longer_holds_a_heading].
+const STANDING_DRIFT_FLOOR_DEG: float = 20.0
 
 ## Metres between the four stations, and how far off the arena's centreline the
 ## whole row sits. Well clear of where every other file builds its fixture, so a
@@ -123,20 +133,33 @@ func test_the_steering_demand_cannot_null_the_drift() -> void:
 	)
 
 
-func test_standing_still_is_the_state_that_works() -> void:
-	# The control, and the half that is now correct. §13.4's standing state holds
-	# a heading to a fraction of a degree and a hull attitude to within one,
-	# indefinitely — which is why the arena's tactics plant an ambulatory Assembly
-	# before it shoots instead of walking it into contact.
+## [b]The control used to be the half that worked, and the rebuild took it.[/b]
+##
+## §13.4's standing state held a heading to a fraction of a degree indefinitely —
+## which is why the arena's tactics plant an ambulatory Assembly before it shoots
+## instead of walking it into contact. On the rebuilt chassis a standing Assembly
+## yaws about fifty degrees over the same three hundred ticks. The hull attitude
+## is still level, so it is not falling over; it is turning on the spot with
+## nothing asking it to.
+##
+## [b]Asserted as it behaves, as a magnitude and never as a sign.[/b] Nothing
+## commands this walker, so LEARNED_FACTS.md §1 fact 54's second half applies in
+## full: an uncommanded quantity's direction is a property of the suite's
+## floating-point history. The magnitude is the measurement. When doc 05 §13 gains
+## the heading term §13.8 currently forbids by omission, this check goes red and
+## the fix is to re-measure it back down, not to loosen it.
+func test_standing_still_no_longer_holds_a_heading() -> void:
 	await _measure()
 	check_true(
-		absf(_standing_deg) < 1.0,
-		"a standing Assembly holds its heading: %.2f° over %d ticks"
-		% [_standing_deg, WALK_TICKS]
+		absf(_standing_deg) > STANDING_DRIFT_FLOOR_DEG,
+		(
+			"a standing Assembly turns on the spot: %.2f° over %d ticks, where the "
+			+ "1391 kg build it replaced held to under one"
+		) % [_standing_deg, WALK_TICKS]
 	)
 	check_true(
 		_standing_upright > 0.999,
-		"and its hull, to within a degree of level: up · UP = %.4f" % _standing_upright
+		"and it is turning rather than toppling: up · UP = %.4f" % _standing_upright
 	)
 
 

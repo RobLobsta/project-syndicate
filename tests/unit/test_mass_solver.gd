@@ -17,34 +17,34 @@ const CORE_KEY := &"core.command.compact.t2"
 const PANEL_KEY := &"str.panel.medium.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const DECK_ORIGIN := Vector3i(24, 7, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
 
 ## Doc 01 §10. Re-asserted in [method test_fixture_parts_are_what_the_arithmetic_assumes]
 ## so that a data change names itself rather than failing as a wrong tensor.
-const CORE_MASS := 380.0
-const PANEL_MASS := 34.0
+const CORE_MASS := 1800.0
+const PANEL_MASS := 100.0
 
 ## Centre of mass of one part in assembly-local metres, from doc 05 §3.2:
 ## [code]cell_to_local(origin) + R · com_offset[/code]. At orientation 0 with the
 ## published offsets these come out round.
 ##
-## Panel at (24, 7, 24): cell centre (0.125, 0.875, 0.125) + (-0.125, 0, -0.125).
-const PANEL_COM_AT_DECK := Vector3(0.0, 0.875, 0.0)
-## Core at (24, 4, 24): cell centre (0.125, 0.125, 0.125) + (-0.125, 0.25, 0).
-const CORE_COM_AT_ORIGIN := Vector3(0.0, 0.375, 0.125)
+## Panel at (24, 8, 24): cell centre (0.125, 1.125, 0.125) + (-0.125, 0, -0.125).
+const PANEL_COM_AT_DECK := Vector3(0.0, 1.125, 0.0)
+## Core at (24, 4, 24): cell centre (0.125, 0.125, 0.125) + (-0.125, 0.375, 0).
+const CORE_COM_AT_ORIGIN := Vector3(0.0, 0.5, 0.125)
 
 ## Box tensor of one panel about its own centre, doc 05 §3.3. The panel occupies
 ## 4 x 1 x 4 cells, so its full extents are (1.0, 0.25, 1.0) m:
-##   I_xx = (34/12)(0.25² + 1.00²) = 2.833333 · 1.0625  = 3.010417
-##   I_yy = (34/12)(1.00² + 1.00²) = 2.833333 · 2.0     = 5.666667
-##   I_zz = (34/12)(1.00² + 0.25²) = 2.833333 · 1.0625  = 3.010417
-const PANEL_TENSOR := Vector3(3.010417, 5.666667, 3.010417)
+##   I_xx = (100/12)(0.25² + 1.00²) = 8.333333 · 1.0625  = 8.854167
+##   I_yy = (100/12)(1.00² + 1.00²) = 8.333333 · 2.0     = 16.666667
+##   I_zz = (100/12)(1.00² + 0.25²) = 8.333333 · 1.0625  = 8.854167
+const PANEL_TENSOR := Vector3(8.854167, 16.666667, 8.854167)
 
-## The Core Module occupies 4 x 3 x 5 cells: full extents (1.0, 0.75, 1.25) m.
-##   I_xx = (380/12)(0.75² + 1.25²) = 31.666667 · 2.1250 = 67.291667
-##   I_yy = (380/12)(1.00² + 1.25²) = 31.666667 · 2.5625 = 81.145833
-##   I_zz = (380/12)(1.00² + 0.75²) = 31.666667 · 1.5625 = 49.479167
-const CORE_TENSOR := Vector3(67.291667, 81.145833, 49.479167)
+## The Core Module occupies 6 x 4 x 13 cells: full extents (1.5, 1.0, 3.25) m.
+##   I_xx = (1800/12)(1.00² + 3.25²) = 150.0 · 11.5625 = 1734.375
+##   I_yy = (1800/12)(1.50² + 3.25²) = 150.0 · 12.8125 = 1921.875
+##   I_zz = (1800/12)(1.50² + 1.00²) = 150.0 ·  3.25   =  487.5
+const CORE_TENSOR := Vector3(1734.375, 1921.875, 487.5)
 
 ## Tensors run to two significant figures past the decimal point in the
 ## constants above; the solver's own arithmetic is exact to float precision.
@@ -67,7 +67,7 @@ func test_fixture_parts_are_what_the_arithmetic_assumes() -> void:
 	check_not_null(_panel, "the Structural Component is registered")
 	check_approx(_core.mass_kg, CORE_MASS, "core mass matches doc 01 §10.1")
 	check_approx(_panel.mass_kg, PANEL_MASS, "panel mass matches doc 01 §10.2")
-	check_eq(_core.bounds_size_cells, Vector3i(4, 3, 5), "core occupies 4 x 3 x 5 cells")
+	check_eq(_core.bounds_size_cells, Vector3i(6, 4, 13), "core occupies 6 x 4 x 13 cells")
 	check_eq(_panel.bounds_size_cells, Vector3i(4, 1, 4), "panel occupies 4 x 1 x 4 cells")
 	check_eq(
 		_panel.inertia_box_half_extents_m, Vector3.ZERO,
@@ -115,21 +115,21 @@ func test_assembly_centre_of_mass_is_the_mass_weighted_mean() -> void:
 	var mp := MassSolver.compute(f.states, f.graph)
 
 	check_eq(mp.part_count, 2, "both parts counted")
-	check_approx(mp.total_mass, CORE_MASS + PANEL_MASS, "total mass is 414 kg")
-	# (380 · (0, 0.375, 0.125) + 34 · (0, 0.875, 0)) / 414
+	check_approx(mp.total_mass, CORE_MASS + PANEL_MASS, "total mass is 1900 kg")
+	# (1800 · (0, 0.5, 0.125) + 100 · (0, 1.125, 0)) / 1900
 	var expected := (
 		CORE_COM_AT_ORIGIN * CORE_MASS + PANEL_COM_AT_DECK * PANEL_MASS
 	) / (CORE_MASS + PANEL_MASS)
 	_check_vector(mp.com_local, expected, "centre of mass of the two-part Assembly")
-	check_approx(mp.com_local.y, 0.416062, "the panel on top raises the centre of mass")
+	check_approx(mp.com_local.y, 0.532895, "the panel on top raises the centre of mass")
 
 
 func test_a_symmetric_pair_puts_the_centre_of_mass_exactly_between_them() -> void:
 	var f := _two_panels_apart()
 	var mp := MassSolver.compute(f.states, f.graph)
-	check_approx(mp.total_mass, PANEL_MASS + PANEL_MASS, "two panels weigh 68 kg")
+	check_approx(mp.total_mass, PANEL_MASS + PANEL_MASS, "two panels weigh 200 kg")
 	_check_vector(
-		mp.com_local, Vector3(0.0, 0.875, 0.5),
+		mp.com_local, Vector3(0.0, 1.125, 0.5),
 		"equal masses one metre apart in Z meet at the halfway point"
 	)
 
@@ -248,7 +248,7 @@ func test_an_authored_override_replaces_the_lattice_bounds() -> void:
 
 func test_offset_parts_carry_the_parallel_axis_term() -> void:
 	# Two panels one metre apart in Z, so each sits 0.5 m from the shared centre.
-	# Every axis perpendicular to that offset gains m·d² = 34 · 0.25 = 8.5 per
+	# Every axis perpendicular to that offset gains m·d² = 100 · 0.25 = 25 per
 	# panel; the axis along it gains nothing.
 	var f := _two_panels_apart()
 	var mp := MassSolver.compute(f.states, f.graph)
@@ -279,8 +279,8 @@ func test_a_diagonal_offset_produces_the_products_of_inertia() -> void:
 	_place(f, 1, _panel, DECK_ORIGIN + Vector3i(4, 0, 4), 0)
 	var mp := MassSolver.compute(f.states, f.graph)
 
-	_check_vector(mp.com_local, Vector3(0.5, 0.875, 0.5), "the pair meets on the diagonal")
-	# Each panel sits at d = (±0.5, 0, ±0.5), so −m·d_x·d_z = −8.5 twice over.
+	_check_vector(mp.com_local, Vector3(0.5, 1.125, 0.5), "the pair meets on the diagonal")
+	# Each panel sits at d = (±0.5, 0, ±0.5), so −m·d_x·d_z = −25 twice over.
 	check_approx(
 		mp.inertia_full.x.z, -2.0 * PANEL_MASS * 0.25,
 		"I_zx carries the product of inertia", TENSOR_TOLERANCE
@@ -354,7 +354,7 @@ func test_an_island_tensor_is_taken_about_the_island_centre_not_the_assembly() -
 	# rotational inertia of the vehicle it came off.
 	var f := _two_panels_apart()
 	var island := PackedByteArray([0, 1])
-	var about_island := InertiaSolver.island_inertia(f.states, island, Vector3(0.0, 0.875, 0.5))
+	var about_island := InertiaSolver.island_inertia(f.states, island, Vector3(0.0, 1.125, 0.5))
 	var about_origin := InertiaSolver.island_inertia(f.states, island, Vector3.ZERO)
 
 	check_approx(
@@ -400,7 +400,7 @@ func test_an_assembly_that_loses_everything_is_floored_rather_than_left_stale() 
 	# Reachable, and worth pinning: doc 04 §7.2 turns every remaining part into
 	# debris when the Core Module dies, so a solve can find nothing live while
 	# the body is still registered. Godot rejects a mass of zero outright and
-	# leaves whatever the body had — a wreck still reporting 414 kg — and reads a
+	# leaves whatever the body had — a wreck still reporting 1900 kg — and reads a
 	# zero inertia component as "derive it from the collision shapes", which is
 	# exactly the coupling Architectural Invariant I-1 forbids.
 	var loaded := _core_and_deck_panel()

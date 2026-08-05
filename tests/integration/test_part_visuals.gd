@@ -20,7 +20,7 @@ const PANEL_KEY := &"str.panel.medium.t2"
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const DECK_ORIGIN := Vector3i(24, 7, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
 
 ## Both parts here carry one authored primitive, so a mirrored proxy is one
 ## primitive too and the extent comparison below is exact rather than a union.

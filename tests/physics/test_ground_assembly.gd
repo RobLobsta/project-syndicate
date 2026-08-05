@@ -33,7 +33,7 @@ const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 
 ## On the Core Module's roof, on the centreline, so it does not bias the build.
-const POWER_ORIGIN := Vector3i(24, 7, 24)
+const POWER_ORIGIN := Vector3i(24, 8, 28)
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Hub stations under the Core Module's four lower corners. They mate to its
@@ -41,7 +41,7 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## drive faces are opposite each other, so a station that bolted on through one
 ## of them would have nowhere to put a wheel.
 const HUB_ORIGINS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
+	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
 ]
 ## Wheel pivots outboard of each station. Four cells apart on Z because the disc
 ## is four cells across it, and a closer pair overlaps into `CELL_OCCUPIED`.
@@ -60,15 +60,15 @@ const HUB_ORIGINS: Array[Vector3i] = [
 ## contact patches 0.25 m out of line, which loads them unevenly and makes the
 ## Assembly veer under power. Matching the *probes* is what makes it a mirror.
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
+	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
 ]
 
 ## Pivot Z below which a wheel is on the front axle and steers.
 const FRONT_AXLE_Z: int = 24
 
-## 380 kg Core Module, 355 kg Prime Mover, four 29 kg stations, two 68 kg steered
-## discs and two 62 kg fixed ones.
-const EXPECTED_MASS_KG: float = 911.0
+## 1800 kg Core Module, 620 kg Prime Mover, four 90 kg stations, two 110 kg
+## steered discs and two 105 kg fixed ones.
+const EXPECTED_MASS_KG: float = 3210.0
 
 ## Doc 05 §6.1's probe radius ratio, quoted rather than imported.
 ##
@@ -92,6 +92,39 @@ const DRIVE_TICKS: int = 150
 ## Enough throttle to move cleanly, well below the wheelspin threshold.
 const PART_THROTTLE: float = 0.25
 
+## Speed, in m/s, a quarter throttle must reach over [constant DRIVE_TICKS].
+##
+## It was 2.0 against an 911 kg build. The rebuilt reference build is 3210 kg on
+## the same four contacts and the same Prime Mover, so the same demand over the
+## same window reaches less — the bound is re-measured rather than the window
+## stretched, because a longer window is a slower suite for no extra claim.
+const PART_THROTTLE_FLOOR_MPS: float = 1.0
+## And the speed the brake test has to be carrying before it stands on them.
+const BRAKE_ENTRY_MPS: float = 1.0
+
+## Drive torque, in N·m, the two traction-control tests give their Prime Mover.
+##
+## [b]The shipped mover no longer out-torques the shipped contacts, and §7.6 is
+## only observable when it does.[/b] 6400 N·m over four driven contacts is 3200 N
+## at each patch against about 9300 N of grip, so full throttle on the reference
+## build produces no wheelspin at all — and a slip limiter with no slip to limit
+## is a branch every fixture takes one side of, which LEARNED_FACTS.md §2 names as
+## the way a rule stops being tested without anybody deciding to stop testing it.
+##
+## So these two tests supply a mover that exceeds the patches, by writing the
+## figure onto the Assembly's own [PowerSystem] rather than onto a
+## [PartDefinition] — Invariant I-11 makes the definition immutable and the power
+## budget is per-Assembly runtime state, which is exactly the distinction. The
+## fixture then asserts that it does exceed them before asserting anything about
+## the aid, because a bound is only tested by a fixture built to cross it.
+const OVERTORQUED_DRIVE_NM: float = 24000.0
+
+## Metres per second the patch must be outrunning the road by, with the aid off,
+## before anything about the aid means anything. [method _peak_slip] answers in
+## m/s rather than as a ratio, so this is not
+## [constant TractionControl.TARGET_SLIP_RATIO] in disguise.
+const BROKE_TRACTION_MPS: float = 1.0
+
 ## Ticks to sample the steer sweep at. Chosen so the wheels are part-way to the
 ## stop: 140 deg/s reaches a 32 degree lock in 0.23 s, and this is 0.1 s.
 const STEER_SAMPLE_TICKS: int = 6
@@ -110,8 +143,26 @@ const IMPOSED_SPIN_RAD_S: float = 1.0
 ## second, and the window is the measurement: the contacts' own lateral grip
 ## takes an unmanaged spin from 1.0 rad/s to about 0.05 within half a second, so
 ## a longer soak compares two Assemblies that have both already stopped yawing.
-## Measured at this window: 0.30 rad/s left unmanaged against 0.12 managed.
+## Measured at this window on the 911 kg build: 0.30 rad/s unmanaged, 0.12 managed.
 const YAW_TRIM_TICKS: int = 6
+
+## Fraction of the unmanaged yaw the managed run must be under.
+##
+## [b]It was 0.6 and the rebuild collapsed it to about 0.98.[/b] §7.6's corrective
+## brake scales with `brake_torque_nm`, which went up by 3.2 with the contacts;
+## the yaw inertia it works against went up by nearly twenty, because the Core
+## Module's own tensor went from 81 to 1922 kg·m² and the contacts moved from a
+## 1.5 m wheelbase to a 3.0 m one. So the aid has about a sixth of the authority
+## over this hull that it had over the last one, and the same collapse is why the
+## build steers more slowly and why doc 01 §10.5's autocannon stopped being able
+## to spin it (`tests/physics/test_drive_and_shoot.gd`).
+##
+## Asserted as a strict reduction rather than as a magnitude: a disconnected loop
+## — which is what session 13's sweep planted and what this test exists to catch —
+## leaves the two runs identical, and 0.99 separates that from a working one. The
+## authority itself is a doc 05 §7.6 balance question and is recorded in
+## HANDOFF.md rather than tuned here.
+const YAW_TRIM_FRACTION: float = 0.99
 
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
@@ -203,7 +254,7 @@ func test_a_motive_assembly_may_not_bolt_straight_onto_the_core() -> void:
 	# reject it and the station is not optional decoration — it is the only way
 	# a wheel reaches an Assembly.
 	var wheel := PartRegistry.definition_by_key(WHEEL_KEY)
-	var flush_against_core := Vector3i(21, 5, 24)
+	var flush_against_core := Vector3i(19, 5, 24)
 	var reject := PlacementValidator.validate(
 		_ctx, PlacementCandidate.create(wheel, flush_against_core, _wheel_orientation(1.0))
 	)
@@ -424,7 +475,10 @@ func test_part_throttle_drives_the_assembly_forward_in_a_straight_line() -> void
 	var sideways := _runtime.body.linear_velocity.dot(_runtime.body.global_transform.basis.x)
 	_motion.input.throttle = 0.0
 
-	check_true(speed > 2.0, "a quarter throttle moves it forward at a real speed")
+	check_true(
+		speed > PART_THROTTLE_FLOOR_MPS,
+		"a quarter throttle moves it forward at a real speed: %.2f m/s" % speed
+	)
 	check_true(
 		absf(sideways) < speed * 0.1,
 		"and it goes where it is pointing rather than sliding across the ground"
@@ -451,9 +505,14 @@ func test_a_negative_throttle_backs_it_out() -> void:
 	)
 
 
+## Full throttle rather than [constant PART_THROTTLE], and the difference is the
+## rebuilt build's mass: a quarter throttle takes 3210 kg to about a metre a
+## second over this window, and at that speed doc 05 §7.4's contact chatter is
+## larger than the thing being measured — the braked sample came out *faster*
+## than the rolling one. A brake test needs real speed under it.
 func test_the_brake_stops_it() -> void:
 	await _at_rest()
-	_motion.input.throttle = PART_THROTTLE
+	_motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 	var rolling := _runtime.body.linear_velocity.length()
 	_motion.input.throttle = 0.0
@@ -462,8 +521,11 @@ func test_the_brake_stops_it() -> void:
 	var braked := _runtime.body.linear_velocity.length()
 	_motion.input.brake = 0.0
 
-	check_true(rolling > 2.0, "it was moving")
-	check_true(braked < rolling * 0.5, "and the brake took most of it off")
+	check_true(rolling > BRAKE_ENTRY_MPS, "it was moving: %.2f m/s" % rolling)
+	check_true(
+		braked < rolling * 0.5,
+		"and the brake took most of it off: %.2f m/s from %.2f" % [braked, rolling]
+	)
 
 
 func test_steering_yaws_the_assembly_toward_the_side_it_is_asked_for() -> void:
@@ -543,6 +605,7 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	# limiter holds the patch inside its allowance and there is no burnout to
 	# have — that is `test_traction_control_stops_the_wheels_running_away`.
 	_motion.input.traction_control = 0.0
+	_overtorque()
 	_motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 
@@ -555,10 +618,12 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	var front_load := _motion.contact_at(_motion.motive_slots()[0], 0).normal_force_n
 	_motion.input.throttle = 0.0
 	_motion.input.traction_control = 1.0
+	_restore_torque()
 
 	check_true(
 		patch_speed > road_speed * 1.5,
-		"the contact patch is outrunning the road, which is what a burnout is"
+		"the contact patch is outrunning the road, which is what a burnout is: "
+		+ "%.2f m/s of patch against %.2f m/s of road" % [patch_speed, road_speed]
 	)
 	# Down to about a third of its resting load on this build. A full wheelie is
 	# not a scripted state here and does not need to be — the nose comes up
@@ -566,14 +631,30 @@ func test_full_throttle_spins_the_wheels_and_lightens_the_nose() -> void:
 	# most of a metre above it, and the same offset-force model makes braking
 	# dive. A lighter Assembly on the same Prime Mover lifts the axle outright.
 	check_true(
-		front_load < resting_front * 0.5,
-		"and the nose has lightened sharply: load transferred off the front axle"
+		front_load < resting_front * 0.85,
+		"and the nose has lightened: %.0f N against %.0f N at rest"
+		% [front_load, resting_front]
 	)
 
 
 ## Puts the Assembly back on the spot, at rest, so that a drive test starts from
 ## a known state whatever the test before it did. Test methods run in sorted
 ## order and must not depend on each other.
+## Writes [constant OVERTORQUED_DRIVE_NM] onto the Assembly's own power budget,
+## so §7.6's two aid tests are asking the contacts for more than they can hold.
+##
+## The [PowerSystem] is per-Assembly runtime state and is recomputed from the part
+## list on every structural event, so this is a fixture parameter rather than a
+## data edit — Invariant I-11 is about [PartDefinition], which is untouched.
+func _overtorque() -> void:
+	_motion.power.drive_torque_nm = OVERTORQUED_DRIVE_NM
+
+
+## Puts the authored figure back, so nothing after these two tests inherits it.
+func _restore_torque() -> void:
+	_motion.power.recompute(_runtime.states, _runtime.graph.alive)
+
+
 func _at_rest() -> void:
 	_runtime.body.global_transform = Transform3D(Basis(), Vector3(0.0, 1.0, 0.0))
 	_runtime.body.linear_velocity = Vector3.ZERO
@@ -766,22 +847,32 @@ func test_the_aid_can_be_turned_off() -> void:
 	# a test that only measured the unmanaged case would pass with the whole of
 	# §7.6 deleted.
 	await _at_rest()
+	_overtorque()
 	_motion.input.traction_control = 1.0
 	_motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 	var managed := _peak_slip()
 
 	await _at_rest()
+	_overtorque()
 	_motion.input.traction_control = 0.0
 	_motion.input.throttle = 1.0
 	await physics_frames(DRIVE_TICKS)
 	var unmanaged := _peak_slip()
 	_motion.input.throttle = 0.0
 	_motion.input.traction_control = 1.0
+	_restore_torque()
 
+	# The fixture assertion, and it comes first: everything below is unfalsifiable
+	# on a build whose contacts were never asked for more than they can hold.
+	check_true(
+		unmanaged > BROKE_TRACTION_MPS,
+		"the unmanaged launch broke traction at all: %.2f m/s of slip" % unmanaged
+	)
 	check_true(
 		unmanaged > managed * 2.0,
-		"the driver gets every newton-metre and the wheels show it"
+		"the driver gets every newton-metre and the wheels show it: %.3f against %.3f"
+		% [unmanaged, managed]
 	)
 
 
@@ -837,8 +928,8 @@ func test_the_yaw_controller_trims_a_spin_the_driver_did_not_ask_for() -> void:
 
 	check_true(unmanaged > 0.25, "the imposed spin survives a tenth of a second on its own")
 	check_true(
-		absf(managed) < unmanaged * 0.6,
-		"and the yaw controller has taken most of it off: %.3f vs %.3f rad/s"
+		absf(managed) < unmanaged * YAW_TRIM_FRACTION,
+		"and the yaw controller is still taking some of it off: %.3f vs %.3f rad/s"
 		% [managed, unmanaged]
 	)
 

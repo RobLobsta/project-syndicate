@@ -15,27 +15,27 @@ extends TestCase
 ## §10.1 and §10.2, quoted. A change to either table must be made here too, in
 ## the same commit, or this test is the thing that says so.
 const CORE_KEY: StringName = &"core.command.compact.t2"
-const CORE_CELLS: Vector3i = Vector3i(4, 3, 5)
-const CORE_MASS_KG: float = 380.0
-const CORE_INTEGRITY: float = 1450.0
+const CORE_CELLS: Vector3i = Vector3i(6, 4, 13)
+const CORE_MASS_KG: float = 1800.0
+const CORE_INTEGRITY: float = 4200.0
 const CORE_ARMOUR: float = 18.0
-const CORE_POWER_CAPACITY_PU: float = 240.0
+const CORE_POWER_CAPACITY_PU: float = 520.0
 const CORE_MOUNT_BUDGET: int = 28
 const CORE_SPEED_CAP_MPS: float = 24.0
-const CORE_MASS_TOLERANCE_KG: float = 3600.0
+const CORE_MASS_TOLERANCE_KG: float = 5300.0
 const CORE_RESISTANCE: Array[float] = [0.15, 0.20, 0.25, 0.10, 0.05]
 
 const PANEL_KEY: StringName = &"str.panel.medium.t2"
 const PANEL_CELLS: Vector3i = Vector3i(4, 1, 4)
-const PANEL_MASS_KG: float = 34.0
+const PANEL_MASS_KG: float = 100.0
 const PANEL_INTEGRITY: float = 380.0
 const PANEL_ARMOUR: float = 14.0
-const PANEL_LOAD_CAPACITY_KG: float = 520.0
+const PANEL_LOAD_CAPACITY_KG: float = 1560.0
 const PANEL_RESISTANCE: Array[float] = [0.18, 0.10, 0.20, 0.05, 0.05]
 
 ## Exposed cell faces of a solid box, which is what both parts are. The Core
-## Module's 4x3x5 gives 2*(4*3 + 3*5 + 4*5) = 94; the panel's 4x1x4 gives 48.
-const CORE_NODE_COUNT: int = 94
+## Module's 6x4x13 gives 2*(6*4 + 4*13 + 6*13) = 308; the panel's 4x1x4 gives 48.
+const CORE_NODE_COUNT: int = 308
 const PANEL_NODE_COUNT: int = 48
 
 var _validator: PartRegistryValidator = null
@@ -234,7 +234,7 @@ func test_core_module_matches_the_documented_table() -> void:
 
 	check_eq(def.part_class, PartEnums.PartClass.CORE_MODULE, "class")
 	check_eq(def.tier, PartEnums.TierGrade.STANDARD, "t2 is STANDARD")
-	check_eq(def.bounds_size_cells, CORE_CELLS, "§10.1 gives 4x3x5 cells")
+	check_eq(def.bounds_size_cells, CORE_CELLS, "§10.1 gives 6x4x13 cells")
 	check_eq(def.volume_cells, CORE_CELLS.x * CORE_CELLS.y * CORE_CELLS.z, "a solid box")
 	check_approx(def.mass_kg, CORE_MASS_KG, "mass")
 	check_approx(def.integrity_max, CORE_INTEGRITY, "integrity")

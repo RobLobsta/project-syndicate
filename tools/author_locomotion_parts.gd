@@ -74,7 +74,7 @@ func _run() -> bool:
 	return PartAuthoring.append_to_manifest(keys)
 
 
-## §10.2: `str.hub.axle_station.t2`, 2x2x2, 29 kg, 340 integrity, 16 armour,
+## §10.2: `str.hub.axle_station.t2`, 2x2x2, 90 kg, 340 integrity, 16 armour,
 ## 2400 kg load capacity. §11: the `str.hub.*` row.
 ##
 ## The AXLE station of §4.2, and the only shipping part carrying AXLE nodes. Its
@@ -97,7 +97,7 @@ func _author_hub_axle_station() -> String:
 		},
 		{FACE_XP: motive_only(), FACE_XN: motive_only()}
 	)
-	def.mass_kg = 29.0
+	def.mass_kg = 90.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 340.0
 	def.resistance = PackedFloat32Array([0.26, 0.10, 0.44, 0.10, 0.06])
@@ -114,8 +114,8 @@ func _author_hub_axle_station() -> String:
 	)
 
 
-## §10.3: `mot.wheeled.allroad.t2`, WHEELED_STEERED, 4x4x2, 68 kg, 340 integrity,
-## 620 kg rated, 1.05 traction, 32 degree steer, 42000 N/m, 3400 Ns/m.
+## §10.3: `mot.wheeled.allroad.t2`, WHEELED_STEERED, 4x4x2, 110 kg, 340 integrity,
+## 1100 kg rated, 1.05 traction, 32 degree steer, 134000 N/m, 10900 Ns/m.
 ## §11: the `mot.wheeled.*` row.
 ##
 ## Authored as a disc rather than a box. §7.1 of document 05 fixes the contact
@@ -135,7 +135,7 @@ func _author_wheeled_allroad() -> String:
 		{FACE_ZN: structural_only()},
 		cells
 	)
-	def.mass_kg = 68.0
+	def.mass_kg = 110.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 340.0
 	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
@@ -157,15 +157,15 @@ func _author_wheeled_allroad() -> String:
 	# compression; setting it to radius + travel puts full droop one travel above
 	# the ground and makes the disc's own collider the bump stop.
 	profile.suspension_rest_length_m = 0.74
-	profile.suspension_stiffness_n_m = 42000.0
-	profile.suspension_damping_ns_m = 3400.0
+	profile.suspension_stiffness_n_m = 134000.0
+	profile.suspension_damping_ns_m = 10900.0
 	profile.suspension_travel_limit_m = 0.24
 	profile.max_steer_angle_deg = 32.0
 	profile.steer_rate_deg_s = 140.0
-	profile.rated_load_kg = 620.0
+	profile.rated_load_kg = 1100.0
 	profile.traction_coefficient = 1.05
 	profile.rolling_resistance = 0.014
-	profile.brake_torque_nm = 2600.0
+	profile.brake_torque_nm = 8300.0
 	profile.driven = true
 	def.motive_profile = profile
 
@@ -176,8 +176,8 @@ func _author_wheeled_allroad() -> String:
 	)
 
 
-## §10.3: `mot.wheeled.fixed_rear.t2`, WHEELED_FIXED, 4x4x2, 62 kg, 355
-## integrity, 680 kg rated, 1.09 traction, 0 steer, 44000 N/m, 3500 Ns/m.
+## §10.3: `mot.wheeled.fixed_rear.t2`, WHEELED_FIXED, 4x4x2, 105 kg, 355
+## integrity, 1200 kg rated, 1.09 traction, 0 steer, 140000 N/m, 11200 Ns/m.
 ##
 ## The unsteered half of a steering system, and it is not an optimisation. Four
 ## wheels that all steer the same way do not turn an Assembly — they translate
@@ -206,7 +206,7 @@ func _author_wheeled_fixed_rear() -> String:
 		{FACE_ZN: structural_only()},
 		cells
 	)
-	def.mass_kg = 62.0
+	def.mass_kg = 105.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 355.0
 	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
@@ -220,16 +220,16 @@ func _author_wheeled_fixed_rear() -> String:
 	# §6.1's rule, identical to the steered row: the two share a footprint and a
 	# travel, so they share a rest length.
 	profile.suspension_rest_length_m = 0.74
-	profile.suspension_stiffness_n_m = 44000.0
-	profile.suspension_damping_ns_m = 3500.0
+	profile.suspension_stiffness_n_m = 140000.0
+	profile.suspension_damping_ns_m = 11200.0
 	profile.suspension_travel_limit_m = 0.24
 	# Zero, and load-bearing: this is the whole difference between the two rows.
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
-	profile.rated_load_kg = 680.0
+	profile.rated_load_kg = 1200.0
 	profile.traction_coefficient = 1.09
 	profile.rolling_resistance = 0.014
-	profile.brake_torque_nm = 2600.0
+	profile.brake_torque_nm = 8300.0
 	profile.driven = true
 	def.motive_profile = profile
 
@@ -240,8 +240,8 @@ func _author_wheeled_fixed_rear() -> String:
 	)
 
 
-## §10.3: `mot.tracked.short_bogie.t2`, TRACKED_SEGMENT, 8x4x3, 210 kg,
-## 900 integrity, 2100 kg rated, 1.34 traction, 0 steer, 88000 N/m, 7600 Ns/m.
+## §10.3: `mot.tracked.short_bogie.t2`, TRACKED_SEGMENT, 8x4x3, 672 kg,
+## 900 integrity, 6700 kg rated, 1.34 traction, 0 steer, 88000 N/m, 7600 Ns/m.
 ## §7.2.3 and §10.3's tracked parameter table for the rest. §11: `mot.tracked.*`.
 ##
 ## The zero steer angle is required by §14 rule 22, not incidental: a track
@@ -255,7 +255,7 @@ func _author_tracked_short_bogie() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: structural_only()}
 	)
-	def.mass_kg = 210.0
+	def.mass_kg = 672.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 900.0
 	def.resistance = PackedFloat32Array([0.24, 0.18, 0.40, 0.08, 0.04])
@@ -274,7 +274,7 @@ func _author_tracked_short_bogie() -> String:
 	profile.suspension_travel_limit_m = 0.24
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
-	profile.rated_load_kg = 2100.0
+	profile.rated_load_kg = 6700.0
 	profile.traction_coefficient = 1.34
 	profile.rolling_resistance = 0.021
 	profile.brake_torque_nm = 7400.0
@@ -304,11 +304,11 @@ func _author_tracked_short_bogie() -> String:
 	)
 
 
-## §10.3: `mot.rotor.coaxial_mid.t3`, ROTOR_DISC, 4x6x4, 265 kg, 690 integrity,
-## 2600 kg rated, 150 PU. §10.3's rotary table for the disc parameters.
+## §10.3: `mot.rotor.coaxial_mid.t3`, ROTOR_DISC, 4x6x4, 848 kg, 690 integrity,
+## 8300 kg rated, 150 PU. §10.3's rotary table for the disc parameters.
 ## §11: the `mot.rotor.*` row.
 ##
-## Thrust at full collective is 25 410 N against a rated 25 506 N — 0.37% apart,
+## Thrust at full collective is 81 083 N against a rated 81 395 N — 0.38% apart,
 ## inside the 1% §14 rule 19 requires. The coefficients are solved from that
 ## relationship, not chosen: a rotor that cannot lift its own rating presents as
 ## an Assembly that silently refuses to leave the ground.
@@ -326,7 +326,7 @@ func _author_rotor_coaxial_mid() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: structural_only()}
 	)
-	def.mass_kg = 265.0
+	def.mass_kg = 848.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 690.0
 	# The lowest resistance row in the schema, and deliberately so: a rotor is
@@ -351,7 +351,7 @@ func _author_rotor_coaxial_mid() -> String:
 	profile.suspension_travel_limit_m = 0.0
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
-	profile.rated_load_kg = 2600.0
+	profile.rated_load_kg = 8300.0
 	profile.traction_coefficient = 0.0
 	profile.rolling_resistance = 0.0
 	profile.brake_torque_nm = 0.0
@@ -364,7 +364,7 @@ func _author_rotor_coaxial_mid() -> String:
 	rotor.nominal_rad_s = 85.0
 	rotor.spool_up_tau_s = 2.40
 	rotor.spool_down_tau_s = 4.80
-	rotor.thrust_coefficient = 0.020
+	rotor.thrust_coefficient = 0.0638
 	rotor.torque_coefficient = 0.0024
 	rotor.collective_limit_deg = Vector2(-4.0, 14.0)
 	rotor.collective_rate_deg_s = 22.0
@@ -390,8 +390,8 @@ func _author_rotor_coaxial_mid() -> String:
 	)
 
 
-## §10.3: `mot.limb.strider.t4`, AMBULATORY_LIMB, 3x8x3, 185 kg, 720 integrity,
-## 1400 kg rated, 1.22 traction, 45 degree turn, 96000 N/m, 12000 Ns/m.
+## §10.3: `mot.limb.strider.t4`, AMBULATORY_LIMB, 3x8x3, 592 kg, 720 integrity,
+## 4500 kg rated, 1.22 traction, 45 degree turn, 307000 N/m, 38400 Ns/m.
 ## §10.3's gait table for the rest. §11: the `mot.limb.*` row.
 ##
 ## The suspension fields are zero because a limb's compliance is commanded, not
@@ -417,7 +417,7 @@ func _author_limb_strider() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: structural_only()}
 	)
-	def.mass_kg = 185.0
+	def.mass_kg = 592.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 720.0
 	def.resistance = PackedFloat32Array([0.16, 0.14, 0.26, 0.06, 0.02])
@@ -436,7 +436,7 @@ func _author_limb_strider() -> String:
 	profile.suspension_travel_limit_m = 0.0
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
-	profile.rated_load_kg = 1400.0
+	profile.rated_load_kg = 4500.0
 	profile.traction_coefficient = 1.22
 	profile.rolling_resistance = 0.0
 	profile.brake_torque_nm = 0.0
@@ -448,8 +448,8 @@ func _author_limb_strider() -> String:
 	limb.hip_offset_m = Vector3.ZERO
 	limb.foot_radius_m = 0.16
 	limb.stance_height_ratio = 0.86
-	limb.stance_stiffness_n_m = 96000.0
-	limb.stance_damping_ns_m = 12000.0
+	limb.stance_stiffness_n_m = 307000.0
+	limb.stance_damping_ns_m = 38400.0
 	limb.max_foot_force_n = 42000.0
 	# Above 0.5, so support is continuous and a two-limbed Assembly always has a
 	# foot down. A flight phase is expressible and is outside the shipping set.
@@ -470,8 +470,8 @@ func _author_limb_strider() -> String:
 	)
 
 
-## §10.4: `pmv.combustion.standard.t2`, 4x3x5, 155 kg, 420 integrity,
-## 3200 N.m, 5200 RPM, 150 PU, 7.4 HU/s, 4.2 m blast, 380 damage.
+## §10.4: `pmv.combustion.standard.t2`, 4x4x6, 620 kg, 420 integrity,
+## 6400 N.m, 5200 RPM, 150 PU, 7.4 HU/s, 4.2 m blast, 380 damage.
 ## §11: the `pmv.combustion.*` row.
 ##
 ## 150 PU is exactly one `mot.rotor.coaxial_mid.t3` at full collective, which is
@@ -479,13 +479,13 @@ func _author_limb_strider() -> String:
 ## Mover only barely covering a single disc, and it is the reason the Energy Cell
 ## below exists: a rotary build wants supply, not torque.
 func _author_prime_mover_combustion_standard() -> String:
-	var lo := Vector3i(-2, 0, -2)
-	var hi := Vector3i(1, 2, 2)
+	var lo := Vector3i(-2, 0, -3)
+	var hi := Vector3i(1, 3, 2)
 	var def := _base(&"pmv.combustion.standard.t2", PartEnums.PartClass.PRIME_MOVER)
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
-	def.mass_kg = 155.0
+	def.mass_kg = 620.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 420.0
 	def.resistance = PackedFloat32Array([0.10, 0.05, 0.15, 0.30, 0.02])
@@ -495,7 +495,7 @@ func _author_prime_mover_combustion_standard() -> String:
 	def.heat_generation_hu_s = 7.4
 
 	var mover := PrimeMoverProfile.new()
-	mover.drive_torque_nm = 3200.0
+	mover.drive_torque_nm = 6400.0
 	mover.peak_angular_rpm = 5200.0
 	mover.throttle_response_s = 0.18
 	mover.thermal_throttle_start_hu = 620.0
@@ -511,23 +511,23 @@ func _author_prime_mover_combustion_standard() -> String:
 	)
 
 
-## §10.4: `cel.static.standard.t3`, 4x3x4, 175 kg, 540 integrity, no torque,
+## §10.4: `cel.static.standard.t3`, 4x4x5, 450 kg, 540 integrity, no torque,
 ## 260 PU, 1.1 HU/s, 3.4 m blast, 300 damage. §11: the `cel.static.*` row.
 ##
 ## The other half of the §7.3 split, and the first part in the registry whose
 ## whole contribution is supply. It carries 260 PU against the Prime Mover's 150
-## for 20 kg more, makes no torque at all, and runs cold — 1.1 HU/s against 7.4.
+## for 170 kg less, makes no torque at all, and runs cold — 1.1 HU/s against 7.4.
 ## A rotary Assembly built on cells flies further and cannot drive; one built on
 ## movers drives and cannot spin a second disc. That trade is the reason the two
 ## are separate classes rather than one class with a zero in the torque column.
 func _author_energy_cell_static_standard() -> String:
 	var lo := Vector3i(-2, 0, -2)
-	var hi := Vector3i(1, 2, 1)
+	var hi := Vector3i(1, 3, 2)
 	var def := _base(&"cel.static.standard.t3", PartEnums.PartClass.ENERGY_CELL)
 	def.tier = PartEnums.TierGrade.REFINED
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
-	def.mass_kg = 175.0
+	def.mass_kg = 450.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 540.0
 	# Softer to thermal and to corrosive than a Prime Mover, and harder to
@@ -555,7 +555,7 @@ func _author_energy_cell_static_standard() -> String:
 	)
 
 
-## §10.5: `eff.melee.beam_edge.t4`, ENERGY_MELEE, 3x3x8, 96 kg, 420 integrity,
+## §10.5: `eff.melee.beam_edge.t4`, ENERGY_MELEE, 3x3x8, 307.2 kg, 420 integrity,
 ## 145 PU, 11.0 HU/shot. §10.5's melee table for reach, arc, timing, and mix.
 ## §11: the `eff.melee.*` row.
 ##
@@ -576,7 +576,7 @@ func _author_melee_beam_edge() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.FACE_MALE}
 	)
-	def.mass_kg = 96.0
+	def.mass_kg = 307.2
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 420.0
 	def.resistance = PackedFloat32Array([0.36, 0.20, 0.62, 0.14, 0.10])

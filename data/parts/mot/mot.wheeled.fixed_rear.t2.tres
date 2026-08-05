@@ -408,12 +408,13 @@ kind = 1
 contact_radius_m = 0.5
 contact_width_m = 0.5
 suspension_rest_length_m = 0.74
-suspension_stiffness_n_m = 44000.0
-suspension_damping_ns_m = 3500.0
+suspension_stiffness_n_m = 140000.0
+suspension_damping_ns_m = 11200.0
 max_steer_angle_deg = 0.0
 steer_rate_deg_s = 0.0
-rated_load_kg = 680.0
+rated_load_kg = 1200.0
 traction_coefficient = 1.09
+brake_torque_nm = 8300.0
 
 [resource]
 script = ExtResource("5_usnj7")
@@ -423,7 +424,7 @@ description_key = &"part.mot.wheeled.fixed_rear.t2.desc"
 part_class = 2
 occupancy_cells = PackedVector3Array(-1, -2, -1, 0, -2, -1, -2, -1, -1, -1, -1, -1, 0, -1, -1, 1, -1, -1, -2, 0, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -1, 1, -1, 0, 1, -1, -1, -2, 0, 0, -2, 0, -2, -1, 0, -1, -1, 0, 0, -1, 0, 1, -1, 0, -2, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 1, 0, 0, 1, 0)
 attachment_nodes = Array[ExtResource("1_6g0qx")]([SubResource("Resource_6g0qx"), SubResource("Resource_pql1d"), SubResource("Resource_gbqrh"), SubResource("Resource_7xya3"), SubResource("Resource_usnj7"), SubResource("Resource_h1e0p"), SubResource("Resource_ham50"), SubResource("Resource_6bvss"), SubResource("Resource_a8wpc"), SubResource("Resource_gtpk8"), SubResource("Resource_24wx7"), SubResource("Resource_k5l1l"), SubResource("Resource_7kjwx"), SubResource("Resource_q1ius"), SubResource("Resource_cn4js"), SubResource("Resource_55the"), SubResource("Resource_eex1b"), SubResource("Resource_8ib4l"), SubResource("Resource_r1vfo"), SubResource("Resource_elpmc"), SubResource("Resource_4tukl"), SubResource("Resource_qxpf8"), SubResource("Resource_kr71i"), SubResource("Resource_smv3v"), SubResource("Resource_okrbr"), SubResource("Resource_wcea1"), SubResource("Resource_e0xaq"), SubResource("Resource_w8uio"), SubResource("Resource_hjmyu"), SubResource("Resource_xgvgo"), SubResource("Resource_kqobr"), SubResource("Resource_7jess"), SubResource("Resource_cy52r"), SubResource("Resource_rhu7n"), SubResource("Resource_615en"), SubResource("Resource_a5wwo"), SubResource("Resource_jn3iq"), SubResource("Resource_ga8xv"), SubResource("Resource_57lrn"), SubResource("Resource_8qehx"), SubResource("Resource_54iir"), SubResource("Resource_saufc"), SubResource("Resource_kvo24"), SubResource("Resource_jxhn3"), SubResource("Resource_vc00f"), SubResource("Resource_8g0vn"), SubResource("Resource_g6jm2"), SubResource("Resource_pnle1"), SubResource("Resource_w606a"), SubResource("Resource_6i5cv"), SubResource("Resource_c4n34"), SubResource("Resource_av5jy"), SubResource("Resource_fwtoc"), SubResource("Resource_kur6b"), SubResource("Resource_dhncq"), SubResource("Resource_6q2jm")])
-mass_kg = 62.0
+mass_kg = 105.0
 com_offset_m = Vector3(-0.125, -0.125, -0.125)
 integrity_max = 355.0
 resistance = PackedFloat32Array(0.08, 0.12, 0.3, 0.02, 0)

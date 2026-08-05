@@ -49,9 +49,9 @@ const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 7, 24)
-## On the nose, at the Core Module's own height — and it was on the Prime Mover's
-## roof until session 16 measured what that costs.
+const POWER_ORIGIN := Vector3i(24, 8, 28)
+## On the front of the Core Module's deck — and it was on the Prime Mover's roof
+## until session 16 measured what that costs.
 ##
 ## A roof mount puts this muzzle about four metres above the Core Module of
 ## something standing on the same ground. The module authors 8° of depression
@@ -64,18 +64,18 @@ const POWER_ORIGIN := Vector3i(24, 7, 24)
 ## one exposes the geometry.
 ##
 ## Both are fixed now (§4.3.1 and §12.2.2), so the geometry has to be right. On
-## the nose the muzzle sits a quarter of a metre above this Assembly's centre of
-## mass and the solution onto a target at 26 m is under a degree — the middle of
+## the deck the muzzle sits about half a metre above this Assembly's centre of
+## mass and the solution onto a target at 26 m is a degree or so — the middle of
 ## the arc rather than two degrees off a stop, which is what a fixture whose
 ## subject is *everything downstream of the muzzle* needs it to be.
 ##
 ## The barrel runs along the Assembly's -Z, which doc 07 §7.2 fixes as forward.
-const GUN_ORIGIN := Vector3i(24, 6, 21)
+const GUN_ORIGIN := Vector3i(24, 8, 24)
 const HUB_ORIGINS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
+	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
 ]
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
+	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
 ]
 const FRONT_AXLE_Z: int = 24
 

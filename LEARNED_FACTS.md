@@ -879,6 +879,65 @@ different fact. Read a citation with its subject, which is always named.
     hull length, cabin against hull, wheel diameter against ride height, and mass
     against bounding-box volume.
 
+76. **`author_appendage_parts.gd` must be re-run after `author_locomotion_parts.gd`,
+    and the failure is silent.** The appendage script *re-authors* an existing
+    part: it loads `eff.melee.beam_edge.t4` and replaces its attachment nodes
+    with a single `GRIP` hilt on `+Z`, so the edge can be held and cannot be
+    welded to a roof. `author_locomotion_parts.gd` writes the same key from
+    scratch with a `FACE_MALE` node on `-Y`. Run the locomotion script alone and
+    the edge quietly goes back to being a deck mount — no error, no warning, and
+    the registry validates either way.
+
+    The symptom is a held-weapon fixture that can bolt a sword to a Structural
+    Component, which reads as a polarity bug in the validator. **The authoring
+    order is `first` → `combat` → `locomotion` → `appendage`**, and the general
+    shape is worth more than the order: a generator that reads a file another
+    generator writes is order-dependent, and nothing in `tools/` declares that.
+
+77. **A driver that has a target, is pointed at it, and is demanding full
+    throttle is not a tactics defect — read the contacts, not the law.** Session
+    36's largest finding, and it had been recorded as an AI regression through
+    two previous sessions.
+
+    `test_ai_engagement` showed an attacker turning to face its target perfectly
+    and then never closing: 44.2 m to 45.4 m, zero rounds. `approach_throttle`
+    returns 1.0 at that bearing, `arrival_brake` returns 0.0, and the same build
+    drives at 16 m/s elsewhere — so every reading of it was "something between
+    having a target and moving is not firing".
+
+    Twenty lines of instrumentation inside `CombatArena.engage` — throttle, brake,
+    steer, target id, closure, speed, range, bearing, **body height, grounded
+    contact count and the four normal forces**, every fifteen ticks — answered it
+    on the first run. The driver was faultless the whole way. The hull climbed
+    from 0.93 m to 1.63 m while its contacts unloaded to zero one at a time, then
+    landed on a 32 kN spike and stopped dead with no probe touching anything. It
+    had not declined to fight; it had taken off.
+
+    Two things to carry. **The three fields that answered it were the three
+    nobody prints** — height, grounded count, and per-contact normal force — and
+    every field that *was* being printed said the system was working. And the
+    cause was fact 72's contact instability being *energised by drive torque*, so
+    an unstable integrator does not only add noise: it pumps.
+
+78. **An inertia grows as the square of the extents, so scaling a part table by
+    mass is not scaling it uniformly.** `core.command.compact.t2` went from
+    4×3×5 cells at 380 kg to 6×4×13 at 1800 — mass ×4.7 — and its box tensor
+    about `Y` went from 81 to 1922 kg·m², which is **×24**.
+
+    Every rotational authority in the project is a torque over that inertia, so
+    all of them fell by about a factor of six at once, and three unrelated
+    fixtures measured the same collapse from three directions: doc 05 §7.6's
+    corrective yaw brake took 2% off an imposed spin where it took 60%, the
+    rotary autopilot could no longer hold a hover, and doc 01 §10.5's autocannon
+    stopped being able to spin its own hull — which is the one that went the
+    right way, and which inverted both of `test_drive_and_shoot`'s
+    asserted-as-a-defect methods.
+
+    So when a mass moves, the things to re-derive are not only the forces that
+    hold it up. **Anything that turns it has to be re-derived against the square
+    of the size, not against the mass**, and a fixture window sized for the old
+    inertia measures nothing on the new one.
+
 ---
 
 ## 2. What fault injection taught
@@ -1053,6 +1112,21 @@ anyway, which is what kept it alive: the listeners that were wrong are the ones
 holding per-slot state, and in a headless suite there is exactly one of those and
 it draws meshes. **Ask of every signal carrying an id: does a caller ever do this
 to more than one at a time?**
+
+**A layout that is one cell out presents as a physics defect, and the arithmetic
+that finds it is a mean.** Session 36's, and it cost two fixtures before it was
+seen. The ambulatory recipe hung its limbs one cell forward of the stations they
+mate to, so the four feet came down about a mean of `z` 23 under a hull whose
+centre of mass is at 24; a *standing* walker then yawed 152° in five seconds and
+read as doc 05 §13's known gait drift getting worse. Squaring the limbs onto their
+stations cut it to 51. The rotary recipe put its Prime Mover in the tail, 0.31 m
+behind the disc line, which asks for `atan(0.31 / 0.72)` = 23° of a 14° swashplate
+cone — the Assembly tumbled during the settle and read as the autopilot failing.
+
+Both were found by computing a **mass-weighted mean position and comparing it to
+the thing that has to be under it** — the feet, the disc line — which is five
+minutes of arithmetic against a part list and needs no engine at all. Do it before
+believing a solver is at fault, because a layout is data and a solver is not.
 
 **A fixture's ground is not the game's ground.** Session 24's, and it is the
 first lesson here that no test can enforce. Every fixture in `tests/physics/`
@@ -1306,6 +1380,17 @@ saved a mass floor by finding the one state that reaches it. Reaching for
 - **A fixture that cannot distinguish the rule from its fallback is not a test.**
 - **A fixture built by hand can be wrong in a way that hides the rule.** If a
   test passes for a reason you cannot state in one sentence, the fixture is wrong.
+
+### Instrumenting
+- **Put the measurement in the assertion message, always.** Half of session 36's
+  re-measurements needed a full suite run purely to learn what the number now
+  was, because the message said "a quarter throttle moves it forward at a real
+  speed" and not what speed. A run is three and a half minutes; a `%.2f` is free.
+- **When a system looks like it is not acting, print the state it acts on rather
+  than the command it was given.** Fact 77 is the worked example: every field
+  describing the *demand* said the system was working, and the three fields
+  nobody prints — body height, grounded contact count, per-contact normal force —
+  answered it immediately.
 
 ### After writing
 - **Plant faults against laws, not against loops.** §2.0's two survivals are both
@@ -1810,6 +1895,24 @@ garage. That is not overloading for want of a key: doc 11 §16.2 keeps the mouse
 captured at the conclusion so the orbit camera can be orbited, which means the
 exits have to be keys, and the mouse-release meaning has nothing left to do on a
 screen the player is leaving.
+
+**`drive_torque_nm` is capped by doc 05 §7.4's stability, not by grip, and that
+is a deliberate reading rather than a balance choice.** The reference build's
+contacts can hold about 1.05 g; the authored total is 6400 N·m, which is 0.36 g.
+The gap is not caution about wheelies — it is measured: at 10 200 N·m sustained
+full throttle from a standing start pumps §7.4's limit cycle until the Assembly
+leaves the ground and stops being drivable at all, and at 3200 the machine crawls.
+6400 is the largest figure that was measured to be stable.
+
+Two consequences are worth stating rather than rediscovering. The shipped Prime
+Mover **no longer out-torques the shipped contacts**, so doc 05 §7.6's traction
+control has no reachable fixture on the shipped part set and
+`test_ground_assembly` supplies its own over-torqued mover through the Assembly's
+own `PowerSystem` — which is a fixture parameter and not a data edit, because
+Invariant I-11 is about `PartDefinition` and the power budget is per-Assembly
+runtime state recomputed on every structural event. And the number goes **up**
+when §3.1 is closed; it is not a balance decision anybody made about how fast a
+vehicle should be.
 
 **`tests/physics/` builds its ground out of a `StaticBody3D` slab and says so.**
 Document 09 owns Dynamic Ground Arrays and nothing in a test may pre-empt it. The

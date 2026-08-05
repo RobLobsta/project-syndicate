@@ -25,12 +25,12 @@ const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
 const POWER_KEY := &"pmv.combustion.standard.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 7, 24)
+const POWER_ORIGIN := Vector3i(24, 8, 28)
 const HUB_ORIGINS: Array[Vector3i] = [
-	Vector3i(22, 2, 23), Vector3i(26, 2, 23), Vector3i(22, 2, 27), Vector3i(26, 2, 27)
+	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
 ]
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 22), Vector3i(19, 3, 28), Vector3i(28, 3, 21), Vector3i(28, 3, 27)
+	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
 ]
 const FRONT_AXLE_Z: int = 24
 

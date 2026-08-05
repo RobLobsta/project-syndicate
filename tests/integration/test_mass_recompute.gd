@@ -14,7 +14,7 @@ const CORE_KEY := &"core.command.compact.t2"
 const PANEL_KEY := &"str.panel.medium.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const DECK_ORIGIN := Vector3i(24, 7, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
 
 const ASSEMBLY_A := 11
 const ASSEMBLY_B := 4

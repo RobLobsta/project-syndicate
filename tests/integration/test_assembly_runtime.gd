@@ -19,7 +19,7 @@ const CORE_KEY := &"core.command.compact.t2"
 const PANEL_KEY := &"str.panel.medium.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const DECK_ORIGIN := Vector3i(24, 7, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
 
 ## Both shipped parts carry exactly one authored primitive; doc 01 §6.2 caps the
 ## count at three. Re-asserted below so a collider change names itself.

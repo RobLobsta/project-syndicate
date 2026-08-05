@@ -20,8 +20,8 @@ const PANEL_KEY: StringName = &"str.panel.medium.t2"
 
 ## Off-centre on the Core Module's deck, overhanging to starboard. Its mirror is
 ## the same panel overhanging to port, and neither overlaps the other.
-const OFF_CENTRE_CELL := Vector3i(26, 7, 24)
-const OFF_CENTRE_MIRROR_CELL := Vector3i(22, 7, 24)
+const OFF_CENTRE_CELL := Vector3i(26, 8, 24)
+const OFF_CENTRE_MIRROR_CELL := Vector3i(22, 8, 24)
 
 var _contexts: Array[BuildContext] = []
 

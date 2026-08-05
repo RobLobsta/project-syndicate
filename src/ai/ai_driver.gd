@@ -75,11 +75,21 @@ const AMBULATORY_STEER_AUTHORITY: float = 0.5
 ## finished 4.8 m out with an [b]eight-centimetre[/b] gap, which is contact, and
 ## a stationary 1107 kg Assembly ended up 5.3 m from where it settled.
 ##
-## Ten metres is that touching range plus a full hull length of clear air. It is
-## the smallest range at which an approach that overshoots is still an approach,
-## and it is what makes §15.7.5's ladder read as a firing line rather than as
-## three Assemblies in a heap.
-const GROUND_STAND_OFF_M: float = 10.0
+## Ten metres was that touching range plus a full hull length of clear air, and
+## ten metres was authored against an 1107 kg build.
+##
+## [b]A stand-off has to exceed the build's own stopping distance, and that scaled
+## with the mass.[/b] The reference build is 3630 kg and reaches its stand-off at
+## about 9.7 m/s; §15.7.1's arrival brake plans on 6.0 m/s², so it needs 7.8 m to
+## stop. From ten metres it therefore arrived at 4.1 m — five centimetres off a
+## hull that touches at 4.0 — and the fixture that measures it went from over a
+## metre of clear air to grazing.
+##
+## Fourteen is the touching range, plus that stopping distance, plus a hull length
+## of clear air. It is the smallest range at which an approach that overshoots is
+## still an approach, and it is what makes §15.7.5's ladder read as a firing line
+## rather than as three Assemblies in a heap.
+const GROUND_STAND_OFF_M: float = 14.0
 ## The same, for the ambulatory family, and further out for a reason that is
 ## about gunnery rather than survivability — §15.7.2.
 const AMBULATORY_STAND_OFF_M: float = 20.0
@@ -148,12 +158,19 @@ const APPROACH_BREAKAWAY_THROTTLE: float = 0.80
 ## crosses the field at fifteen metres a second and still arrives at a walk, and
 ## no part of it is a function of how far away the fight started.
 ##
-## 4.0 is well inside what the reference build can make. Four contacts at
-## §7.4's 2600 N·m over a 0.5 m radius is 20.8 kN against 1107 kg, and the
-## surface takes that down to about one g — so the plan is under half the
+## 6.0 is well inside what the reference build can make. Four contacts at
+## §7.4's 8300 N·m over a 0.5 m radius is 66 kN against 3630 kg, and the surface
+## takes that down to about one g — so the plan is under two thirds of the
 ## authority, which is the margin that lets the same number hold on a slope
 ## without the taper's terrain problem coming back.
-const ARRIVAL_DECEL_MPS2: float = 4.0
+##
+## [b]It was 4.0, authored against an 1107 kg build.[/b] At three times the mass
+## the same plan arrived at the ten-metre stand-off still carrying enough speed to
+## run through it: `tests/physics/test_ram_attitude.gd` measured a centimetre of
+## hull overlap where it used to leave over a metre of clear air. The law plans a
+## stopping distance rather than applying a gain, so the deceleration it plans on
+## has to be one the build can actually make.
+const ARRIVAL_DECEL_MPS2: float = 6.0
 
 ## Closing speed, in m/s, under which the arrival brake is not demanded at all.
 ##

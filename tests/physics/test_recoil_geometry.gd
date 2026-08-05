@@ -59,16 +59,23 @@ const BORE_TOLERANCE_M: float = 0.005
 const LIVE_BORE_TOLERANCE_M: float = 0.06
 
 ## Yaw rate, in rad/s, that one round fired dead ahead may impart. Measured at
-## 0.120 with the bore centred; the same shot with the bore half a cell out was
-## part of a steady torque the steering could not answer. The bound is set well
-## above the measurement and well below the traversed figure below, so it
-## separates the two cases rather than pinning either.
-const NOSE_YAW_CEILING_RAD_S: float = 0.30
+## 0.027 with the bore centred on the rebuilt hull; the same shot with the bore
+## half a cell out was part of a steady torque the steering could not answer. The
+## bound is set well above the measurement and well below the traversed figure
+## below, so it separates the two cases rather than pinning either.
+##
+## [b]Both figures fell by about a factor of seven when the reference build was
+## rescaled[/b] — 0.120 to 0.027 here and 0.845 to 0.124 below — because the hull
+## is 3.3 times the mass with the yaw inertia to match and the mount sits 1.75 m
+## across it rather than over two. That is the heavy module becoming something a
+## driver can survive firing, and it is re-measured here rather than left as a
+## bound nothing can reach.
+const NOSE_YAW_CEILING_RAD_S: float = 0.06
 
-## And the floor the traversed shot must exceed. Measured at 0.845 rad/s — 48°/s
+## And the floor the traversed shot must exceed. Measured at 0.124 rad/s — 7°/s
 ## from a single round. The assertion is that traversing makes it [b]worse by a
 ## multiple[/b], not that it is any particular number.
-const TRAVERSED_YAW_FLOOR_RAD_S: float = 0.50
+const TRAVERSED_YAW_FLOOR_RAD_S: float = 0.08
 
 ## Traverse the second measurement is taken at, in degrees. Square across the
 ## hull, which is the worst case and is also roughly where a driver's mount sits

@@ -22,17 +22,17 @@ const PANEL_KEY := &"str.panel.medium.t2"
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Three Structural Components stacked on the Core Module's deck, so that
 ## destroying the lowest severs the two above it as one island.
-const DECK_ORIGIN := Vector3i(24, 7, 24)
-const MID_ORIGIN := Vector3i(24, 8, 24)
-const TOP_ORIGIN := Vector3i(24, 9, 24)
+const DECK_ORIGIN := Vector3i(24, 8, 24)
+const MID_ORIGIN := Vector3i(24, 9, 24)
+const TOP_ORIGIN := Vector3i(24, 10, 24)
 
 const ASSEMBLY := 3
 
 ## Published in doc 01 §10 and in the shipped [code].tres[/code]. Re-asserted
 ## below, so a balance change to either names itself here rather than quietly
 ## moving every expected number in this file.
-const CORE_MASS := 380.0
-const PANEL_MASS := 34.0
+const CORE_MASS := 1800.0
+const PANEL_MASS := 100.0
 ## The panel is 4x1x4 cells at 0.25 m, so its inertia box is this.
 const PANEL_HALF := Vector3(0.5, 0.125, 0.5)
 

@@ -32,7 +32,7 @@ const TRACK_KEY := &"mot.tracked.short_bogie.t2"
 const LIMB_KEY := &"mot.limb.strider.t4"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 7, 24)
+const POWER_ORIGIN := Vector3i(24, 8, 28)
 
 ## Stations under the Core Module's flanks, and a bogie outboard of each. A track
 ## bolts on through its `-Z` drive face exactly as a wheel does; the orientation
@@ -43,15 +43,15 @@ const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)
 ## The walker is built high in the lattice because a limb hangs below its station
 ## and the lattice floor is at y = 0.
 const WALKER_CORE := Vector3i(24, 14, 24)
-const WALKER_POWER := Vector3i(24, 17, 24)
+const WALKER_POWER := Vector3i(24, 18, 28)
 ## Station origin and the limb that hangs off it. A station at orientation 8 puts
 ## its AXLE faces on ±Y, so it bolts to the Core Module's flank through a neutral
 ## face and offers a downward drive station; the limb's own AXLE face is its top.
 const WALKER_LEGS: Array[Vector3i] = [
-	Vector3i(20, 14, 23), Vector3i(20, 13, 22),
-	Vector3i(26, 14, 23), Vector3i(27, 13, 22),
-	Vector3i(20, 14, 26), Vector3i(20, 13, 26),
-	Vector3i(26, 14, 26), Vector3i(27, 13, 26),
+	Vector3i(19, 14, 21), Vector3i(20, 13, 21),
+	Vector3i(27, 14, 21), Vector3i(27, 13, 21),
+	Vector3i(19, 14, 27), Vector3i(20, 13, 27),
+	Vector3i(27, 14, 27), Vector3i(27, 13, 27),
 ]
 const HUB_AXLE_DOWN_ORIENTATION: int = 8
 
