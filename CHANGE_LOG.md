@@ -57,6 +57,7 @@ they found are in `LEARNED_FACTS.md`.
 | 28 | **Half the clicks, and you can see what you built.** Doc 02 §10's mirror: one gesture places both flanks, as one undoable command. The shipped starter is twelve placements and comes out of eight. Found that §10's own sketch mirrors the pivot cell, which is one cell wrong on every part whose pivot is off-centre. The garage also got a fill light, a bounce and a hover wash — before them the build rendered as one dark silhouette and doc 13's class tints carried nothing. |
 | 25 | **A match now ends.** Doc 11 §16: `MatchState` consumes `assembly_terminated`, an end card says which way it went, the controls come off the wreck and the camera goes to orbit. Doc 11 §14.6's control card tells a first-time player what the keys are, read live from `InputMap`. §14.3 separates "on target" from "on an enemy". Doc 05 §15.7.5 spaces converging opponents on a stand-off ladder. The capture that verified it found the wreck accelerating to 92 m/s. |
 | 30 | **You can drive and shoot.** Doc 01 §10.5 gains `eff.ballistic.repeater_12.t2` — 26 N·s against the autocannon's 1450, at twice the cadence for two thirds of the throughput and half the penetration — and the shipped starter carries it. Measured: 2.9° of heading drift against 99.1° over the same throttled, traversed, trigger-held window. The autocannon build also stops being able to fire at all, because its own recoil takes the mount off the target. |
+| 40 | **The bad news, closed.** Doc 05 gains **§7.8**: a driveline drag that takes a released Assembly from 0.14 m/s² of rolling resistance to **2.19**, and a speed-cap governor that makes `speed_cap_mps` a speed the build reaches and holds (**22.56 m/s** against a published 24, where it used to sail through to 25). Doc 11 §7.3's **pad placement** lands as one substitution — `_preview_pointer()` returns a virtual cursor when a pad is in use — so a controller builds through the identical chain a mouse does; `test_pad_build.gd` places a part from the stick alone. The opponent spawn came in to 30 m, so the fight starts at four seconds rather than eleven. And `drive_torque_nm` was **re-measured and left alone**: the wheeled build tolerates 16 000 N·m, and the binding constraint turned out to be the tracked recipe, which rides 8.1° nose-up on two of its eight road stations, spikes one to 35 kN, inverts in a turn, and barely steers. |
 | 39 | **The machine handles.** Doc 05 §6.5's anti-roll couple had been applied inverted for the life of the project — a roll *amplifier*, so any disturbance diverged and the reference build went from −1.1° to inverted in a second and a half at full lock from **3.3 m/s**. Corrected, the same manoeuvre settles at −1.3° with all four contacts loaded, and it is what has been putting parked hulls on their sides in every capture since session 31. `tests/physics/test_wheeled_drive_cycle.gd` runs the whole cycle a person performs on a smooth slab and is the first fixture in the project to turn an Assembly at speed. Also: §7.7's holding brake read the raw record while §15.5 had already released the demand, so holding the brake was **strictly worse than holding nothing** (10.49 m of recoil travel against 1.15). And doc 11 §7.1's binding table published three gamepad collisions inside the match; it is rebuilt per context, enforced by `test_input_actions`, given PlayStation/Nintendo/generic glyphs, and the garage camera now orbits on the right stick. |
 | 38 | **The contact integrator is closed, and everything downstream of it came back.** Doc 05 §7.4 stepped through the slip velocity with a chord-implicit factor and an under-relaxed stick cap: a parked build goes from 0.196 m/s and 1.307 m of wander to **0.000 and 0.000**, and its contacts from seven sign reversals in twelve ticks to none. On top of it, §7.7's holding brake and brake proportioning, §15.5's brake release, §12.8's rotary arrest, §13.9's ambulatory stop, and §15.7.4's second gate — an `AiDriver` now fires from a **stop**. Three defects fell out on the way: the contact frame was never projected into the contact plane (a nose-down hull's "longitudinal" friction pitched it further, and a tracked build somersaulted), a tracked bogie credited each of its four road stations with the whole part's inertia, and §7.6's yaw loop was locking the flank it was biasing. The match drives a **mirror of the player's build** at sixty metres. |
 | 37 | **A limb and a rotor disc each have a chassis, and the test drive is a duel.** Doc 01 §7.1 gives `CoreModuleProfile` a `locomotion_mask` and the validator a `MOTIVE_FAMILY_MISMATCH`; `core.ambulatory.strider.t3` and `core.rotary.lifter.t3` join §10.1. The walking recipe stops borrowing a hull whose every published figure describes a machine that stands on the ground — and gains the mounts for an Energy Cell it could not fit. `MatchScreen` spawns one opponent instead of three, with the same store the player carries. Capture: the player is alive at ten seconds at 54% where it was destroyed before nine. |
@@ -67,6 +68,48 @@ they found are in `LEARNED_FACTS.md`.
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 40, in more detail
+
+**Two of the five bad-news items were one missing model.** Between rolling
+resistance at 0.14 m/s² and §7.7's holding brake at 1.5 m/s there was nothing at
+all, so releasing the controls did almost nothing; and `speed_cap_mps` reached the
+ambulatory path and no other, while the garage published it as a projected top
+speed. Doc 05 §7.8 is both terms, and both act through §7.2's friction solve as a
+resisting torque, so neither can exceed grip.
+
+**The obvious form of the drag is wrong and the arithmetic is one line.** Scaled
+by `1 − |throttle|` the drag cancels the drive at `t = 0.26`, so a demand to
+accelerate retards the Assembly. It failed the suite in three places on its first
+run and none of them looked like a friction constant: a quarter throttle moved the
+reference build at 0.89 m/s where it had moved it at 3.8, reverse stopped working,
+and §15.7.1's `APPROACH_MIN_THROTTLE` of 0.35 left an `AiDriver` unable to turn
+onto a bearing behind it. `LEARNED_FACTS.md` fact 93.
+
+**The pad cursor is a substitution rather than a feature.** The garage was
+unplayable on a controller because `_preview_pointer()` was the mouse. A lattice
+cursor — the obvious design — needs its own snapping, bounds and mating rules,
+which is doc 02 §6's chain written twice; a virtual pointer needs none of that and
+guarantees a pad cannot place something a mouse could not. Fact 94.
+
+**The drive torque was re-measured, and the answer was that it stays.** Both
+figures that had capped it at 6400 were void — one closed in session 38, one in
+39 — and the wheeled build now tolerates 16 000 N·m with 2.8° of roll and no
+airborne tick. Raised to 9600 it broke the suite in three places, all tracked,
+because `CombatArena.Recipe.TRACKED` shares the Prime Mover. Measuring one recipe
+is not measuring the part (fact 95), and the tracked recipe turns out to be
+defective on its own: 8.1° of permanent nose-up with its forward road stations
+unloaded, a 35 kN spike as it bottoms out, and 0.03 rad/s of yaw at full lock.
+
+**A second finding of the same shape as session 39's.** The anti-roll couple was
+invisible because nothing turned an Assembly at speed; the tracked recipe's
+attitude is invisible because nothing turns a *tracked* Assembly at all. Both are
+manoeuvres with no fixture rather than fixtures that got an answer wrong.
+
+**The suite's shape, measured rather than assumed.** 7532 checks across 95 files:
+3555 unit, 2105 integration, 1210 architectural, and **539 physics across 23
+files**. Every claim this project makes about how a machine behaves rests on that
+last seven per cent.
 
 ### Session 39, in more detail
 
@@ -482,7 +525,7 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Eight committed sweeps, 131 faults between them, all driven by
+Eight committed sweeps, 136 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
@@ -495,7 +538,7 @@ is a couple of minutes.
 | `match_layer_sweep.py` | doc 11 §16's outcome rule, §14.3's target bracket, §14.6's binding lookup, doc 05 §15.7.5's ladder | 12 |
 | `contact_visual_sweep.py` | doc 05 §16: the droop, the frame it is applied in, the limb's pivot, the swing arc | 12 |
 | `effector_choice_sweep.py` | doc 01 §10.5's second direct-fire row: the starter's module, the comparison fixture, the second round type's wiring | 6 |
-| `drive_cycle_sweep.py` | doc 05 §6.5's anti-roll sign, §7.7's holding brake and proportioning, §15.5's release, §7.1's steering, and doc 11 §7's binding table and glyphs | 13 |
+| `drive_cycle_sweep.py` | doc 05 §6.5's anti-roll sign, §7.7's holding brake and proportioning, §7.8's driveline drag and governor, §15.5's release, §7.1's steering, and doc 11 §7's binding table, glyphs and pad cursor | 18 |
 
 ### What still survives, and why
 
@@ -510,8 +553,6 @@ is a couple of minutes.
 | `aim-point-read-from-scan` | ai | Doc 07 §10 runs selection at 2.9 Hz and aim solving every tick; collapsing them aims at where the target was up to 350 ms ago. Marginal rather than firmly untested — CAUGHT on one run and SURVIVED on the next, either side of an unrelated change. What closes it properly is an engagement in which the AI's target is *driving*. |
 
 | `breakaway-never-releases` | ai | §15.7.1's standing-start demand applied at every speed, so it becomes the sustained heavy throttle that stopped the opponents ever reaching the player on real terrain. **A survivor, then briefly caught, then a survivor again** — and the round trip is the finding, not the verdict. Session 30 recorded it as caught because with no arrival brake a sustained throttle made the driver orbit its stand-off, which `test_ai_engagement`'s rounds floor is sensitive to. Session 31's arrival brake stops a driver orbiting *whatever* its throttle is doing, so the symptom the fixture was reading is gone and the rule underneath it is uncovered again. Nothing about the rule changed; a correct, unrelated change desensitised the one fixture that happened to see it, which is `LEARNED_FACTS.md` §2.1 word for word. Closes only with terrain in a fixture, or with a capture. |
-
-| `garage-stick-orbit-removed` | drive cycle | Doc 11 §7.1's garage camera on a controller. Nothing tests the garage camera at all, on any device: it lives on a `SubViewport` camera, and `LEARNED_FACTS.md` fact 28 says that is not reachable headless. Planted knowingly in the same change as the code. Closes with a capture, or with a fixture that can project a ray from a `SubViewport`. |
 
 The `breakaway-never-releases` row is worth reading twice by anyone about to
 conclude a sweep result means a behaviour is defended. It has now been CAUGHT and

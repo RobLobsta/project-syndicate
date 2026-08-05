@@ -1223,6 +1223,70 @@ there is only one section here.)
     A single action also cannot express two axes, which is why doc 11 §13.6 added
     four analogue `cam_look_*` actions rather than reusing `cam_orbit`.
 
+93. **A retarding term scaled by `1 − throttle` cancels the drive at a quarter
+    throttle, and the arithmetic is one line.** Doc 05 §7.8's driveline drag —
+    engine braking — is naturally written as "a fraction of the mover's capacity,
+    fading as the throttle opens". Written that way the net torque at throttle `t`
+    is `τ·t − 0.35·τ·(1 − t)`, which is **negative below `t = 0.26`**: a demand to
+    accelerate retards the Assembly.
+
+    It failed the suite in three places on its first run and every one of them
+    read as something else. A quarter throttle moved the reference build at
+    0.89 m/s where it had moved it at 3.8 (`test_ground_assembly`), a negative
+    throttle stopped backing it out, and doc 05 §15.7.1's `APPROACH_MIN_THROTTLE`
+    of 0.35 left an `AiDriver` unable to turn onto a bearing behind it — an AI
+    failure caused by a friction constant.
+
+    The repair is to release the term by a *fifth* of the throttle rather than
+    across the whole range, so it models lifting off and is absent from any demand
+    the game actually issues. The general shape: **when a new term opposes an
+    existing one, plot their sum over the whole input range before believing
+    either.** The property to assert is not "the term is right" but "net output is
+    monotonic in the demand, and positive by the smallest throttle anything
+    commands".
+
+94. **The cheapest way to make a pointer-driven interface work on a gamepad is to
+    give the gamepad a pointer.** The garage was unplayable on a pad for exactly
+    one reason: every placement runs
+    `GarageScreen._place_at(_preview_pointer())`, and that pointer was the mouse.
+
+    The obvious design is a lattice cursor — a cell the player moves with the
+    stick. It needs its own snapping, its own bounds test, its own mating rules
+    and its own idea of which face a part attaches through, which is doc 02 §6's
+    whole chain written a second time. The substitution instead is one line:
+    `_preview_pointer()` returns a virtual cursor in the viewport's coordinates
+    when `InputMethod` reports a pad, and the ghost, the inspector wash, the
+    mirror, the validator and the commit are all untouched. A pad cannot then
+    place something a mouse could not, which is the property CLAUDE.md §10 rule 9
+    exists to protect.
+
+    One thing it does need that a mouse does not: **something drawn where the
+    cursor is.** The ghost shows where a *part* would go and there is no ghost
+    until the player has armed one, so a pad with an empty catalogue selection has
+    no feedback at all.
+
+95. **A shared part is a shared constraint, and measuring one recipe is not
+    measuring the part.** `drive_torque_nm` was re-measured on the wheeled
+    reference build after two defects that had capped it were closed: at
+    **16 000 N·m** it neither takes off nor rolls over. Raised to 9600 on that
+    evidence, it broke the suite — because `CombatArena.Recipe.TRACKED` carries the
+    same Prime Mover and is a far less stable machine.
+
+    The tracked recipe turned out to be the real cap and to be defective
+    independently of the torque: at the shipped 6400 it already rides **8.1°
+    nose-up with its two forward road stations carrying nothing**, spikes a single
+    station to 35 kN as it bottoms out, and inverts in a sustained turn. It also
+    barely steers — full lock at 6 m/s yaws it 0.03 rad/s — because
+    `TrackProfile.pivot_taper_mps` has faded the differential to a third by then
+    and `lateral_grip_ratio` of 1.35 gives the patch more lateral grip than
+    longitudinal.
+
+    Two things to carry. **Re-measuring a cap means re-measuring it on every
+    recipe that shares the part**, not on the one the defect was found with. And
+    when a re-measurement says a figure could move, the honest outcome is
+    sometimes that it stays where it is with the *reason* corrected — which is a
+    better answer than the void one it replaced.
+
 ---
 
 ## 2. What fault injection taught

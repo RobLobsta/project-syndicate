@@ -45,9 +45,18 @@ const CORNER_TICKS: int = 150
 ## corner entered flat out measures the grip limit rather than the steering.
 const CORNER_ENTRY_MPS: float = 5.0
 
-## Throttle held through the corner. Enough to hold the entry speed against
-## cornering drag without accelerating out of the window it is measured over.
-const CORNER_THROTTLE: float = 0.25
+## Throttle demand per m/s of shortfall against [constant CORNER_ENTRY_MPS] while
+## the corner is held.
+##
+## [b]A speed controller rather than a fixed throttle, which is what a skidpad
+## test is.[/b] The radius a corner holds is a function of the speed it is taken
+## at, so a phase that decelerates through its own measurement window reports an
+## average of several corners. A fixed throttle cannot hold a speed once §7.8's
+## driveline drag and the friction circle's cornering loss are both in play — at a
+## quarter throttle the build shed a metre a second across the window and the yaw
+## rate wandered by 0.12 rad/s, which is a measurement of the throttle and not of
+## the steering.
+const CORNER_SPEED_GAIN: float = 0.6
 
 ## Ticks of the corner that count as the transient, excluded from the steady-state
 ## reading. Half a second, which is twice the time the axle takes to reach lock.
@@ -121,6 +130,33 @@ const CORNER_MIN_NORMAL_N: float = 400.0
 const RADIUS_RATIO_MIN: float = 0.8
 const RADIUS_RATIO_MAX: float = 2.5
 
+## Ticks of full throttle used to find the governed top speed. Forty seconds: the
+## reference build needs about twenty-five to reach the band, and the run has to
+## stay on the slab, which is 900 m across.
+const TOP_SPEED_TICKS: int = 2100
+
+## Distance from the origin, in metres, each corner of the top-speed run sits at.
+## `CombatArena`'s slab is 900 m across, so this diagonal is 848 m of run.
+const RUN_UP_CORNER_M: float = 300.0
+
+## Ticks the controls are released for after that. Fifteen seconds: §7.8's drag
+## takes the governed 22.6 m/s down at 2.1 m/s², which is eleven seconds before
+## §7.7's holding brake picks it up below 1.5 — a ten-second window left the build
+## at 1.48 m/s and read as a coast that never finished.
+const COAST_TICKS: int = 900
+
+## Bounds on the governed top speed, as a fraction of the Core Module's authored
+## `speed_cap_mps`. §7.8's governor tapers the drive torque over the last two
+## metres a second, so the build settles just below the cap where the surviving
+## torque balances rolling resistance — not exactly on it, and never above it.
+const TOP_SPEED_MIN_FRACTION: float = 0.85
+const TOP_SPEED_MAX_FRACTION: float = 1.02
+
+## Deceleration, in m/s², a released Assembly must exceed. §7.8's whole purpose:
+## before it, rolling resistance alone gave 0.14 m/s² and a build released at four
+## metres a second coasted for half a minute.
+const COAST_DECEL_MIN_MPS2: float = 1.0
+
 ## Speed, in m/s, at or below which the build counts as stopped.
 const STOPPED_MPS: float = 0.30
 
@@ -192,6 +228,63 @@ func test_it_does_not_spin_out_under_full_throttle() -> void:
 			"peak yaw rate under full throttle was %.4f rad/s (%.2f deg/s)"
 			% [_cycle.accel_peak_yaw_rad_s, rad_to_deg(_cycle.accel_peak_yaw_rad_s)]
 		)
+	)
+
+
+## ===== THE GOVERNOR AND THE COAST ======================================
+
+
+## §7.8. `CoreModuleProfile.speed_cap_mps` reached the ambulatory path and nothing
+## else, while `AssemblyStatSolver` published it to the garage as
+## `projected_top_speed_mps` — so the stat panel promised 24 m/s and a wheeled
+## build accelerated through it, bounded only by rolling resistance.
+func test_the_authored_speed_cap_is_a_speed_the_build_actually_reaches_and_holds() -> void:
+	await _measure()
+	check_true(
+		_cycle.speed_cap_mps > 0.0,
+		"the Core Module publishes a cap: %.1f m/s" % _cycle.speed_cap_mps
+	)
+	check_true(
+		_cycle.governed_top_mps > _cycle.speed_cap_mps * TOP_SPEED_MIN_FRACTION,
+		(
+			"and forty seconds of full throttle reached %.2f m/s against it"
+			% _cycle.governed_top_mps
+		)
+	)
+	check_true(
+		_cycle.governed_top_mps < _cycle.speed_cap_mps * TOP_SPEED_MAX_FRACTION,
+		(
+			"without going through it: %.2f m/s against a published %.1f"
+			% [_cycle.governed_top_mps, _cycle.speed_cap_mps]
+		)
+	)
+
+
+## §7.8's driveline drag. The gap between "not accelerating" and "braking", which
+## the model did not have: rolling resistance alone is 0.014 of the weight, about
+## 0.14 m/s², so a build released at four metres a second coasted for half a
+## minute and read as a machine on ice.
+func test_releasing_everything_slows_it_at_a_rate_a_player_would_notice() -> void:
+	await _measure()
+	check_true(
+		_cycle.coast_decel_mps2 > COAST_DECEL_MIN_MPS2,
+		(
+			"released from %.2f m/s it shed speed at %.2f m/s², against the "
+			+ "0.14 rolling resistance alone produces"
+		) % [_cycle.coast_entry_mps, _cycle.coast_decel_mps2]
+	)
+	check_true(
+		_cycle.coast_end_mps < STOPPED_MPS,
+		(
+			"and came to rest inside the window at %.3f m/s, where §7.7's holding "
+			+ "brake takes over below 1.5"
+		) % _cycle.coast_end_mps
+	)
+	# The direction, which a drag term applied without a sign would fail: engine
+	# braking slows an Assembly and never pushes it anywhere.
+	check_true(
+		_cycle.coast_travel_m > 0.0,
+		"having travelled %.1f m forwards while doing it" % _cycle.coast_travel_m
 	)
 
 
@@ -414,6 +507,7 @@ func _measure() -> void:
 	# of it was the turn still unwinding.
 	await _accelerate(c)
 	await _brake(c)
+	await _top_speed_and_coast(c)
 	await _corner(c)
 	await _reverse(c)
 	await _fire(c, false)
@@ -448,6 +542,75 @@ func _accelerate(c: CombatArena.Combatant) -> void:
 	_cycle.accel_travel_m = absf(_along_of(body.global_position - start, line))
 
 
+## §7.8's two terms, back to back: hold full throttle until the governor takes
+## over, then release everything and let the driveline stop it.
+##
+## Run from the stop the brake phase left, and pointed back along the way it came
+## rather than reset — forty seconds at twenty metres a second covers eight
+## hundred, and `CombatArena`'s slab is nine hundred across.
+func _top_speed_and_coast(c: CombatArena.Combatant) -> void:
+	var body := c.runtime.body
+	var input := c.motion.input
+	# Onto the slab's diagonal, because the run does not fit across it. Reaching a
+	# 24 m/s cap takes about twenty-five seconds and five hundred metres, and
+	# `CombatArena`'s slab is nine hundred wide — so a run down an axis leaves the
+	# edge of the world mid-measurement, which reads as a governor that failed and
+	# is a build in free fall. The diagonal is 848 m between these two corners.
+	await _reposition(c, Vector2(-RUN_UP_CORNER_M, -RUN_UP_CORNER_M), -PI * 0.75)
+	_cycle.speed_cap_mps = c.motion.speed_cap_mps()
+	input.brake = 0.0
+	input.steer = 0.0
+	input.throttle = 1.0
+	for i: int in TOP_SPEED_TICKS:
+		await physics_frames(1)
+		_cycle.governed_top_mps = maxf(_cycle.governed_top_mps, _flat_speed(body))
+
+	var nose := _flat_dir(-body.global_transform.basis.z)
+	var start := body.global_position
+	_cycle.coast_entry_mps = _flat_speed(body)
+	input.throttle = 0.0
+	var stopped_at := 0
+	for i: int in COAST_TICKS:
+		await physics_frames(1)
+		if stopped_at == 0 and _flat_speed(body) < STOPPED_MPS:
+			stopped_at = i + 1
+	_cycle.coast_end_mps = _flat_speed(body)
+	_cycle.coast_travel_m = (body.global_position - start).dot(nose)
+	# Against the ticks it actually took, not against the window: a build that
+	# stopped in two seconds and then sat still for eight would otherwise report a
+	# fifth of its real deceleration.
+	var seconds := float(stopped_at if stopped_at > 0 else COAST_TICKS) * SyndicateConstants.PHYSICS_DT
+	_cycle.coast_decel_mps2 = (_cycle.coast_entry_mps - _cycle.coast_end_mps) / maxf(seconds, 0.001)
+	# Back to the middle, so every phase after this one has the same slab under it
+	# as the phases before it did.
+	await _reposition(c, Vector2.ZERO, 0.0)
+
+
+## Sets the hull down at [param ground_xz] on [param yaw_rad], at rest, and lets
+## the suspension find itself again.
+##
+## Legitimate mid-file because nothing carried between phases is a position: each
+## one records against its own start. The velocities are zeroed explicitly — a
+## body moved without them keeps the momentum it had, and the next phase would
+## open with the Assembly already travelling.
+func _reposition(c: CombatArena.Combatant, ground_xz: Vector2, yaw_rad: float) -> void:
+	var body := c.runtime.body
+	var input := c.motion.input
+	input.throttle = 0.0
+	input.steer = 0.0
+	input.brake = 0.0
+	# At the spawn drop height rather than at whatever height the hull happens to
+	# be, so a phase that put the Assembly somewhere unexpected cannot hand the
+	# next one a build under the slab.
+	body.global_transform = Transform3D(
+		Basis.from_euler(Vector3(0.0, yaw_rad, 0.0)),
+		Vector3(ground_xz.x, CombatArena.DROP_HEIGHT_M, ground_xz.y)
+	)
+	body.linear_velocity = Vector3.ZERO
+	body.angular_velocity = Vector3.ZERO
+	await physics_frames(SETTLE_TICKS)
+
+
 ## Full right lock from a standstill run-up to [constant CORNER_ENTRY_MPS], with
 ## the throttle still open through the turn.
 ##
@@ -471,7 +634,6 @@ func _corner(c: CombatArena.Combatant) -> void:
 		await physics_frames(1)
 		if _flat_speed(body) >= CORNER_ENTRY_MPS:
 			break
-	input.throttle = CORNER_THROTTLE
 	var entry := _flat_dir(-body.global_transform.basis.z)
 	_cycle.corner_entry_mps = _flat_speed(body)
 	input.steer = 1.0
@@ -481,6 +643,11 @@ func _corner(c: CombatArena.Combatant) -> void:
 	var speed_sum := 0.0
 	var samples := 0
 	for i: int in CORNER_TICKS:
+		# Held at the entry speed, so what is measured below is one corner rather
+		# than the average of every corner the build passed through on its way down.
+		input.throttle = clampf(
+			(CORNER_ENTRY_MPS - _flat_speed(body)) * CORNER_SPEED_GAIN, 0.0, 1.0
+		)
 		await physics_frames(1)
 		_cycle.corner_worst_roll_deg = maxf(_cycle.corner_worst_roll_deg, absf(c.roll_deg()))
 		_cycle.corner_lock_deg = maxf(_cycle.corner_lock_deg, absf(_widest_steer_deg(c)))
@@ -737,6 +904,13 @@ class Cycle:
 	var corner_wheelbase_m: float = 0.0
 	var corner_yaw_deg: float = 0.0
 
+	var speed_cap_mps: float = 0.0
+	var governed_top_mps: float = 0.0
+	var coast_entry_mps: float = 0.0
+	var coast_end_mps: float = 0.0
+	var coast_decel_mps2: float = 0.0
+	var coast_travel_m: float = 0.0
+
 	var brake_entry_mps: float = 0.0
 	var brake_end_mps: float = 0.0
 	var stopping_distance_m: float = 0.0
@@ -783,6 +957,15 @@ class Cycle:
 			) % [
 				top_speed_mps, accel_travel_m, accel_lateral_m, accel_heading_deg,
 				accel_peak_yaw_rad_s, accel_grounded_min, accel_min_normal_n
+			]
+		)
+		print(
+			(
+				"               governor: %.2f m/s against an authored cap of %.1f; "
+				+ "coast from %.2f at %.2f m/s2 to %.3f over %.1f m"
+			) % [
+				governed_top_mps, speed_cap_mps, coast_entry_mps, coast_decel_mps2,
+				coast_end_mps, coast_travel_m
 			]
 		)
 		print(

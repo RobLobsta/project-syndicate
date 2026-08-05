@@ -921,6 +921,60 @@ It costs the reference wheeled build nothing: three metres of base under a centr
 
 It bounds the service brake and the holding brake alike, and deliberately **not** §7.6's corrective term: that one is a bias between two flanks rather than a retardation, and it is already bounded by `MAX_BRAKE_FRACTION`.
 
+### 7.8 Closed-Throttle Retardation and the Speed Cap
+
+Two terms that answer one complaint: **releasing the controls did almost nothing.** Rolling resistance is `0.014 · N` — about 0.14 m/s² on the reference build — and §7.7's holding brake is gated at 1.5 m/s and correctly so, because that constant means "the driver has stopped" and raising it would brake a player who is deliberately coasting. Between the two there was nothing at all, so a build released at four metres a second took half a minute to come to rest and read as a machine on ice.
+
+Both reach the hull through §7.2's friction solve as a resisting torque, exactly as the brake and the rolling resistance do. Neither can exceed grip, and neither needs proportioning of its own.
+
+#### Driveline drag
+
+```
+lift    = clamp(1 − |throttle| / DRIVELINE_DRAG_RELEASE_THROTTLE, 0, 1)
+τ_drag  = DRIVELINE_DRAG_FRACTION · τ_capacity · lift · min(|ω·r| / DRIVELINE_DRAG_TAPER_MPS, 1)
+```
+
+| Constant | Value |
+|---|---|
+| `DRIVELINE_DRAG_FRACTION` | 0.35 |
+| `DRIVELINE_DRAG_TAPER_MPS` | 2.00 |
+| `DRIVELINE_DRAG_RELEASE_THROTTLE` | 0.20 |
+
+`τ_capacity` is this contact's share of what the Prime Movers could deliver **at full throttle**, not what they are being asked for. Engine braking is a property of the machine rather than of the demand, so a bigger mover has more of it and a build with more driven contacts sheds speed faster than one with fewer. It applies to **driven contacts only** — an undriven wheel freewheels, which is what `driven = false` means and is a real build decision.
+
+**The release taper is not decoration and the obvious form of it is wrong.** Scaled by a bare `1 − |throttle|`, the drive at throttle `t` is `τ_capacity · t` and the drag is `0.35 · τ_capacity · (1 − t)`; the two cancel at `t = 0.26`, so **anything below a quarter throttle decelerates**. That shipped for one suite run and failed it in three places at once — a quarter throttle moved the reference build at 0.89 m/s where it had moved it at 3.8, and §15.7.1's `APPROACH_MIN_THROTTLE` floor of 0.35 left an `AiDriver` unable to turn onto a bearing behind it. This term models *lifting off*, so it is released by a fifth of the throttle and is absent from every demand above that.
+
+What that leaves is a **coasting zone**, and it is correct rather than tolerated: net torque is `4400·t − 560` below the release and `1600·t` above it, so it crosses zero at about an eighth of the throttle. Below that the Assembly still slows, which is what a real driveline does at a cracked throttle. The two properties that must hold are that net torque is **monotonic** in the demand — a control that is not is one a player cannot learn — and that the crossover sits below every throttle the project commands, §15.7.1's 0.35 floor included.
+
+The speed taper is what keeps it out of §7.7's way — below 2 m/s of contact speed it is not the thing bringing the Assembly to rest, the holding brake is.
+
+Measured on the reference build: **−2.0 m/s²**, taking it from 12.5 m/s to a stop in about six seconds, against the 0.14 m/s² it had before.
+
+#### The speed cap
+
+`CoreModuleProfile.speed_cap_mps` was read by the ambulatory path and by nothing else, while `AssemblyStatSolver` published the same figure to the garage as `projected_top_speed_mps`. The stat panel promised 24 m/s and a wheeled build accelerated through it to about 25, bounded only by rolling resistance. **A number the interface shows a player has to be a number the simulation honours.**
+
+```
+scale = clamp((cap − |v_horizontal|) / SPEED_CAP_BAND_MPS, 0, 1)
+τ_drive ← τ_drive · scale
+```
+
+| Constant | Value |
+|---|---|
+| `SPEED_CAP_BAND_MPS` | 2.00 |
+
+A governor, because that is what a speed cap is: the drive torque tapers over the last two metres a second rather than switching off at a threshold, which would leave the hull oscillating either side of the cap. It is applied to the drive torque **before** §14.2 splits it between a tracked build's flanks, so a track at its cap can still steer.
+
+Taken against the **horizontal** speed. An Assembly that has been shot into the air, or one climbing out of a crater, is not travelling faster than its cap in the sense the cap means, and using the full velocity would cut the drive torque of a build that most needs it.
+
+A cap of zero or less answers `1.0` — a Core Module that publishes no cap means "this document has nothing to say", not "this Assembly may not move".
+
+#### What the two of them unblocked
+
+`drive_torque_nm` had been capped at 6400 N·m by two separate defects, and **both measurements were void**: 10 200 pumped the suspension until the Assembly took off (§7.4's unstable integration, closed in session 38) and 9600 rolled it over in a sustained turn (§6.5's couple applied inverted, closed in session 39). Re-measured with the repairs and the governor in place, a 600-tick full-throttle run and a 600-tick full-lock turn at **16 000 N·m** leave the reference build on all four contacts, 2.8° of roll, and not one airborne tick. The authored figure moved to 9600 — 0.54 g against contacts that hold 0.78 — with the headroom deliberately unspent.
+
+---
+
 ---
 
 ## 8. Aerodynamics

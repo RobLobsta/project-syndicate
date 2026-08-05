@@ -440,7 +440,8 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 				c.velocity_world.dot(c.forward),
 				input.traction_control
 			),
-			_yaw_brake_nm(slot, profile, yaw_error)
+			_yaw_brake_nm(slot, profile, yaw_error),
+			_ground_drive_capacity(profile)
 		)
 
 
@@ -460,14 +461,21 @@ func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
 	# Assembly on the spot when it is stopped and commits it to a long arc at
 	# speed, with nothing switching between the two.
 	var bias := TrackSolver.drive_bias(track, input.steer, chassis_speed)
+	var available := 0.0 if power == null else power.drive_torque_nm
+	# §7.8's governor, on the torque before §14.2 splits it between the flanks —
+	# so a tapered drive is still a differential drive and a track at its cap can
+	# still steer.
 	var sides := TrackSolver.side_torques(
-		track, 0.0 if power == null else power.drive_torque_nm, input.throttle, bias
+		track, available * _speed_cap_scale(), input.throttle, bias
 	)
 	var side := TrackSolver.side_of(_part_local_position(slot))
 	var per_side := sides.y if side > 0 else sides.x
 	# Shared across this part's road stations and across the parts on its side,
 	# so adding a second bogie to a flank does not double that flank's torque.
-	var share := per_side / maxf(float(_tracked_count_on_side(side) * contacts.size()), 1.0)
+	var stations := maxf(float(_tracked_count_on_side(side) * contacts.size()), 1.0)
+	var share := per_side / stations
+	# §7.8's driveline drag is sized against the same denominator, ungoverned.
+	var capacity := available / stations
 
 	for c: MotiveContact in contacts:
 		if not c.grounded:
@@ -484,7 +492,9 @@ func _solve_tracked(slot: int, dt: float, chassis_speed: float) -> void:
 		)
 		normal_total += c.normal_force_n
 		_apply_at(c.point_world, c.normal_world * c.normal_force_n)
-		_apply_traction(slot, profile, c, dt, track.lateral_grip_ratio, share)
+		_apply_traction(
+			slot, profile, c, dt, track.lateral_grip_ratio, share, 0.0, capacity
+		)
 
 	var yaw_rate := runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y)
 	var slew := TrackSolver.slew_torque_nm(track, normal_total, yaw_rate)
@@ -1030,6 +1040,12 @@ func wheelbase_m() -> float:
 	return _wheelbase_m
 
 
+## The Core Module's authored speed cap, in m/s — §7.8's governor target and what
+## the garage publishes as a projected top speed. Diagnostics and tests.
+func speed_cap_mps() -> float:
+	return _speed_cap_mps()
+
+
 ## Current steer angle at [param slot], in degrees, positive to the right.
 func steer_angle_deg(slot: int) -> float:
 	return _steer_deg[slot]
@@ -1049,7 +1065,8 @@ func _apply_traction(
 	dt: float,
 	lateral_ratio: float,
 	drive_nm: float,
-	extra_brake_nm: float = 0.0
+	extra_brake_nm: float = 0.0,
+	drive_capacity_nm: float = 0.0
 ) -> void:
 	if c.normal_force_n <= 0.0:
 		return
@@ -1083,6 +1100,13 @@ func _apply_traction(
 		service
 		+ extra_brake_nm
 		+ TractionSolver.rolling_resistance_n(profile, c.normal_force_n, band) * radius
+		# §7.8. Summed into the same resisting torque as the brake and the rolling
+		# resistance, so it goes through the friction solve and can never exceed
+		# grip — engine braking that could lock a contact would be a brake with no
+		# proportioning and no pedal.
+		+ TractionSolver.driveline_drag_nm(
+			drive_capacity_nm, input.throttle, c.contact_omega * radius
+		)
 	)
 
 	# §7.4 part 3, on both axes. Neither cap can raise a force, so neither can
@@ -1499,10 +1523,38 @@ func _static_load_n(slot: int) -> float:
 ## A GROUND contact's share of the Assembly's drive torque. Split evenly across
 ## the driven Motive Assemblies, which is an open differential and is why a
 ## wheeled Assembly with one wheel in the air spins it and goes nowhere.
+##
+## §7.8's governor is applied here rather than inside [PowerSystem], because the
+## taper is a function of how fast the hull is going and the power budget is not.
 func _ground_drive_share(profile: MotiveAssemblyProfile) -> float:
 	if not profile.driven or power == null:
 		return 0.0
-	return power.throttle_torque_nm(input.throttle) / maxf(float(_driven_count()), 1.0)
+	return (
+		power.throttle_torque_nm(input.throttle)
+		* _speed_cap_scale()
+		/ maxf(float(_driven_count()), 1.0)
+	)
+
+
+## This contact's share of what the Prime Movers could deliver at full throttle,
+## which is what §7.8's driveline drag is sized against. Ungoverned deliberately:
+## the drag is a property of the machine, and an Assembly at its speed cap is
+## exactly where the retardation should be at full strength.
+func _ground_drive_capacity(profile: MotiveAssemblyProfile) -> float:
+	if not profile.driven or power == null:
+		return 0.0
+	return power.drive_torque_nm / maxf(float(_driven_count()), 1.0)
+
+
+## §7.8's governor for this tick, in [code][0, 1][/code].
+##
+## Taken against the hull's [b]horizontal[/b] speed. A build falling, or one
+## climbing out of a crater, is not travelling faster than its cap in the sense
+## the cap means, and using the full velocity would cut the drive torque of an
+## Assembly that had just been shot into the air.
+func _speed_cap_scale() -> float:
+	var v := runtime.body.linear_velocity
+	return TractionSolver.speed_cap_scale(Vector2(v.x, v.z).length(), _speed_cap_mps())
 
 
 ## The part's pivot in assembly-local metres. §14.2 partitions the sides by the

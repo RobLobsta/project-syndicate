@@ -106,6 +106,65 @@ const PITCH_LIMIT_MARGIN: float = 0.80
 ## nothing on the way to finding that out.
 const MIN_PITCH_HEIGHT_M: float = 0.20
 
+## ===== §7.8 CLOSED-THROTTLE RETARDATION ================================
+
+## Fraction of the drive torque a driven contact is retarded by when the throttle
+## is shut.
+##
+## [b]The gap between "not accelerating" and "braking", which the model did not
+## have.[/b] Release everything at four metres a second and the only thing
+## retarding an Assembly was rolling resistance — `0.014 · N`, about 0.14 m/s² —
+## so it coasted for half a minute, and §7.7's holding brake is gated at 1.5 m/s
+## and correctly so. A player lifting off read it as a machine on ice.
+##
+## Taken as a fraction of what the Prime Movers can deliver rather than as a
+## figure of its own, because that is what engine braking is: a bigger mover has
+## more of it, and a build with more driven contacts sheds speed faster than one
+## with fewer. At the shipped 6400 N·m across four driven contacts it is 560 N·m
+## a contact, which is 1.23 m/s² — an ordinary vehicle in gear off the throttle.
+##
+## It reaches the hull through [method integrate_contact]'s resisting torque like
+## the brake and the rolling resistance do, so it is bounded by grip and cannot be
+## the thing that puts a build on its nose.
+const DRIVELINE_DRAG_FRACTION: float = 0.35
+
+## Contact speed, in m/s, over which the drag reaches full strength. Below it the
+## term tapers to nothing, so it neither fights §7.7's holding brake nor stands in
+## for it.
+const DRIVELINE_DRAG_TAPER_MPS: float = 2.0
+
+## Throttle at or above which the drag is fully released.
+##
+## [b]This term models lifting off, and it must not fight a throttle the driver is
+## holding.[/b] Scaled by a bare `1 − |throttle|` it does exactly that: the drive
+## at throttle `t` is `τ_capacity · t` and the drag is `0.35 · τ_capacity ·
+## (1 − t)`, so the two cancel at `t = 0.26` and anything below a quarter throttle
+## decelerates. Measured as a suite failure the first time it ran — a quarter
+## throttle moved the reference build at 0.89 m/s where it had moved it at 3.8,
+## and doc 05 §15.7.1's `APPROACH_MIN_THROTTLE` of 0.35 left an `AiDriver` unable
+## to turn onto a bearing behind it.
+##
+## Released by a fifth of the throttle instead, which is what a driver means by
+## coming off it, and which leaves §15.7.1's floor clear with room to spare.
+const DRIVELINE_DRAG_RELEASE_THROTTLE: float = 0.20
+
+## ===== §7.8 THE SPEED CAP ==============================================
+
+## Width of the band below `CoreModuleProfile.speed_cap_mps`, in m/s, over which
+## the drive torque is tapered to nothing.
+##
+## [b]A governor, because that is what a speed cap is.[/b] The authored figure was
+## read by the ambulatory path alone and by nothing else, while
+## [AssemblyStatSolver] published it to the garage as `projected_top_speed_mps` —
+## so the stat panel promised 24 m/s and a wheeled build accelerated through it to
+## about 25 and kept going, bounded only by rolling resistance. A number the
+## interface shows a player has to be a number the simulation honours.
+##
+## Tapered rather than cut, so the last two metres a second arrive gently instead
+## of the drive torque switching off at a threshold — which would leave the hull
+## oscillating either side of the cap.
+const SPEED_CAP_BAND_MPS: float = 2.0
+
 ## ===== §15.5's BRAKE RELEASE ===========================================
 
 ## Forward speed, in m/s, at or below which the service brake demand is released
@@ -443,6 +502,40 @@ static func distribute_torque(
 	for i: int in normals_n.size():
 		out[i] = total_nm * maxf(normals_n[i], 0.0) / sum
 	return out
+
+
+## §7.8's driveline drag on one driven contact, in N·m.
+##
+## [param drive_capacity_nm] is what this contact's share of the Prime Movers
+## could deliver at full throttle — not what it is being asked for — because the
+## drag is a property of the machine and not of the demand. [param throttle] is
+## the signed demand; the drag fades as the throttle opens, so a driver holding
+## half throttle is fighting half of it and one at full throttle none.
+##
+## Zero on an undriven contact, which is what freewheeling means and is a real
+## build decision: an Assembly whose rear pair is `mot.wheeled.fixed_rear.t2` with
+## `driven = false` coasts further than one driving all four.
+static func driveline_drag_nm(
+	drive_capacity_nm: float, throttle: float, contact_speed_mps: float
+) -> float:
+	var taper := clampf(
+		absf(contact_speed_mps) / DRIVELINE_DRAG_TAPER_MPS, 0.0, 1.0
+	)
+	var lift := clampf(
+		1.0 - absf(throttle) / DRIVELINE_DRAG_RELEASE_THROTTLE, 0.0, 1.0
+	)
+	return DRIVELINE_DRAG_FRACTION * absf(drive_capacity_nm) * lift * taper
+
+
+## §7.8's governor: the fraction of the drive torque that survives at
+## [param speed_mps] against [param cap_mps].
+##
+## Answers 1.0 for a cap of zero or less, which is what a Core Module that
+## publishes no cap means — not "this Assembly may not move".
+static func speed_cap_scale(speed_mps: float, cap_mps: float) -> float:
+	if cap_mps <= 0.0:
+		return 1.0
+	return clampf((cap_mps - speed_mps) / SPEED_CAP_BAND_MPS, 0.0, 1.0)
 
 
 ## Rolling resistance force opposing motion, in newtons.

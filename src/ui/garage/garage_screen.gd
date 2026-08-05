@@ -77,6 +77,12 @@ const KEY_MIRROR_ON: StringName = &"garage.mirror.on"
 const KEY_MIRROR_OFF: StringName = &"garage.mirror.off"
 const KEY_MIRROR_REFUSED: StringName = &"garage.mirror.refused"
 
+## ===== THE PAD CURSOR ==================================================
+## Doc 11 §7.3. Span and thickness of the crosshair drawn where a controller's
+## virtual pointer is, in logical units.
+const PAD_CROSSHAIR_SPAN_PX: float = 22.0
+const PAD_CROSSHAIR_THICK_PX: float = 2.0
+
 ## The build being edited. Every placement in it went through the validator.
 var context: BuildContext = null
 
@@ -116,6 +122,7 @@ var _undo_button: Button = null
 var _redo_button: Button = null
 var _mirror_toggle: CheckButton = null
 var _confirm: ConfirmationDialog = null
+var _pad_crosshair: Control = null
 ## What §4.2's `ConfirmDialog` will do if the player agrees. Cleared as it runs,
 ## so a dialog dismissed and re-raised for something else cannot fire the
 ## previous question's answer.
@@ -553,10 +560,54 @@ func _next_yaw_orientation(index: int) -> int:
 ## The 3D view is rendered into a [SubViewport] scaled to the container, so the
 ## mouse position in the screen's space is not the position in the camera's. It
 ## is asked of the viewport, which knows its own stretch.
+##
+## [b]On a gamepad it is the virtual cursor instead, and that one substitution is
+## the whole of doc 11 §7.3's pad placement.[/b] Every caller — the ghost, the
+## inspector wash, the commit, the removal — takes a position in this space and
+## resolves it through doc 02 §6's ray, so a pad and a mouse go down the identical
+## chain and a pad cannot place something a mouse could not. The alternative
+## considered and rejected was a lattice cursor moving cell by cell: it needs its
+## own snapping, its own bounds, and its own mating rules, which is a second
+## placement chain to keep in step with the first.
 func _preview_pointer() -> Vector2:
 	if _viewport == null:
 		return Vector2.ZERO
+	if InputMethod.is_gamepad() and preview != null:
+		return preview.pad_cursor()
 	return _viewport.get_mouse_position()
+
+
+## Redraws the ghost and the inspector wash as the pad cursor moves.
+##
+## The mouse gets here through [method _unhandled_input]'s
+## [InputEventMouseMotion] branch. A stick emits no events while it is held
+## (LEARNED_FACTS.md fact 92), so the preview polls it and announces the result,
+## and both paths converge on the same two calls.
+func _on_pad_cursor_moved(position: Vector2) -> void:
+	if _confirm != null and _confirm.visible:
+		return
+	_update_ghost(position)
+	_inspect_under_pointer(position)
+	_place_pad_crosshair(position)
+
+
+## Puts §7.3's crosshair where the cursor is, and shows it only on a pad.
+##
+## Without it a player on a controller with nothing armed has no idea where the
+## cursor is: the ghost shows where a *part* would go, and there is no ghost until
+## something is selected from the catalogue.
+func _place_pad_crosshair(position: Vector2) -> void:
+	if _pad_crosshair == null or _viewport == null:
+		return
+	var view := Vector2(_viewport.get_visible_rect().size)
+	if view.x <= 0.0 or view.y <= 0.0:
+		return
+	# Out of the viewport's coordinates and into the screen's. The two differ
+	# whenever the container is not the viewport's own size, which is every tier
+	# but one.
+	var scale := size / view
+	_pad_crosshair.position = position * scale - _pad_crosshair.size * 0.5
+	_pad_crosshair.visible = InputMethod.is_gamepad()
 
 
 ## ===== CONSTRUCTION ====================================================
@@ -592,6 +643,36 @@ func _build_viewport() -> void:
 	preview.assembly_id = GARAGE_ASSEMBLY_ID
 	preview.context = context
 	_viewport.add_child(preview)
+	preview.pad_cursor_moved.connect(_on_pad_cursor_moved)
+	_build_pad_crosshair(container)
+
+
+## Doc 11 §7.3's crosshair, over the 3D view and under the docks.
+##
+## Two thin bars rather than a texture, because doc 13 has no icon set and a
+## crosshair that has to be authored is a crosshair that does not ship. It is
+## added to the [SubViewportContainer] so it draws above the 3D view, and it
+## ignores the mouse entirely — §4.2's centre spacer is what routes a click, and a
+## control that swallowed one would stop the mouse being able to place anything.
+func _build_pad_crosshair(container: Control) -> void:
+	_pad_crosshair = Control.new()
+	_pad_crosshair.name = "PadCursor"
+	_pad_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pad_crosshair.size = Vector2(PAD_CROSSHAIR_SPAN_PX, PAD_CROSSHAIR_SPAN_PX)
+	_pad_crosshair.visible = false
+	for horizontal: bool in [true, false] as Array[bool]:
+		var bar := ColorRect.new()
+		bar.name = "Horizontal" if horizontal else "Vertical"
+		bar.color = UiTokens.ACCENT_PRIMARY
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if horizontal:
+			bar.position = Vector2(0.0, (PAD_CROSSHAIR_SPAN_PX - PAD_CROSSHAIR_THICK_PX) * 0.5)
+			bar.size = Vector2(PAD_CROSSHAIR_SPAN_PX, PAD_CROSSHAIR_THICK_PX)
+		else:
+			bar.position = Vector2((PAD_CROSSHAIR_SPAN_PX - PAD_CROSSHAIR_THICK_PX) * 0.5, 0.0)
+			bar.size = Vector2(PAD_CROSSHAIR_THICK_PX, PAD_CROSSHAIR_SPAN_PX)
+		_pad_crosshair.add_child(bar)
+	container.add_child(_pad_crosshair)
 
 
 func _build_stat_solver() -> void:

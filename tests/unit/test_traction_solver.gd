@@ -453,3 +453,136 @@ func test_rolling_resistance_rises_with_damage() -> void:
 		14.0 * 1.35,
 		"IMPAIRED adds 35%, per doc 05 §7.3"
 	)
+
+
+## ===== §7.8 CLOSED-THROTTLE RETARDATION AND THE CAP =====================
+## Doc 05 §7.8, written out by hand here rather than imported, because a test that
+## reads the same constant the source does asserts nothing (LEARNED_FACTS.md §2).
+
+## §7.8's published table.
+const DRAG_FRACTION: float = 0.35
+const DRAG_TAPER_MPS: float = 2.00
+const DRAG_RELEASE_THROTTLE: float = 0.20
+const CAP_BAND_MPS: float = 2.00
+
+## A contact's share of the shipped Prime Mover across four driven contacts.
+const CAPACITY_NM: float = 1600.0
+
+
+func test_the_driveline_drag_is_a_fraction_of_the_drive_capacity() -> void:
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 0.0, 10.0),
+		DRAG_FRACTION * CAPACITY_NM,
+		"a shut throttle above the speed taper retards with 0.35 of the capacity",
+		1e-3
+	)
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM * 2.0, 0.0, 10.0),
+		DRAG_FRACTION * CAPACITY_NM * 2.0,
+		"and twice the mover is twice the engine braking, which is what makes it "
+		+ "a property of the machine rather than a figure of its own",
+		1e-3
+	)
+	check_approx(
+		TractionSolver.driveline_drag_nm(0.0, 0.0, 10.0),
+		0.0,
+		"an undriven contact freewheels",
+		1e-6
+	)
+
+
+## [b]The assertion that would have caught the first version of this term.[/b]
+## Scaled by a bare `1 − |throttle|` the drag cancels the drive at a quarter
+## throttle, so the Assembly decelerates under a demand to accelerate.
+func test_the_drag_is_released_before_any_useful_throttle_and_never_exceeds_the_drive() -> void:
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, DRAG_RELEASE_THROTTLE, 10.0),
+		0.0,
+		"a fifth of the throttle releases it entirely",
+		1e-6
+	)
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 1.0, 10.0),
+		0.0,
+		"and full throttle certainly does",
+		1e-6
+	)
+	# Two properties over the whole range, and the first version of this test
+	# demanded a third that is not true and should not be: below about an eighth of
+	# the throttle a real driveline still retards, which is what a coasting zone is.
+	#
+	# What must hold is that **more throttle is never less net torque** — a control
+	# that is not monotonic is one a player cannot learn — and that the crossover
+	# sits below every throttle the project actually commands.
+	var previous := -INF
+	var crossover := 1.0
+	for step: int in 41:
+		var throttle := float(step) / 40.0
+		var net := (
+			CAPACITY_NM * throttle
+			- TractionSolver.driveline_drag_nm(CAPACITY_NM, throttle, 10.0)
+		)
+		check_true(
+			net >= previous,
+			(
+				"a throttle of %.3f nets %+.0f N.m against %+.0f at the step below it; "
+				+ "more throttle may never mean less"
+			) % [throttle, net, previous]
+		)
+		previous = net
+		if net > 0.0 and crossover > throttle:
+			crossover = throttle
+	check_true(
+		crossover < DRAG_RELEASE_THROTTLE,
+		(
+			"and the Assembly is accelerating by a throttle of %.3f, which is inside "
+			+ "the release and well below doc 05 §15.7.1's 0.35 floor"
+		) % crossover
+	)
+
+
+func test_the_drag_tapers_away_at_a_crawl_so_it_does_not_stand_in_for_the_holding_brake() -> void:
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 0.0, 0.0),
+		0.0,
+		"a stationary contact is not retarded by a driveline",
+		1e-6
+	)
+	check_approx(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 0.0, DRAG_TAPER_MPS * 0.5),
+		DRAG_FRACTION * CAPACITY_NM * 0.5,
+		"and it comes in linearly over the first two metres a second",
+		1e-3
+	)
+	check_true(
+		TractionSolver.driveline_drag_nm(CAPACITY_NM, 0.0, -10.0) > 0.0,
+		"a contact turning backwards is retarded too, and by the same amount"
+	)
+
+
+func test_the_speed_cap_governs_rather_than_switching_off() -> void:
+	check_approx(
+		TractionSolver.speed_cap_scale(0.0, 24.0), 1.0, "well below the cap, nothing is taken"
+	)
+	check_approx(
+		TractionSolver.speed_cap_scale(24.0 - CAP_BAND_MPS * 0.5, 24.0),
+		0.5,
+		"half a band below it, half the torque survives",
+		1e-6
+	)
+	check_approx(
+		TractionSolver.speed_cap_scale(24.0, 24.0), 0.0, "at the cap, none does"
+	)
+	check_approx(
+		TractionSolver.speed_cap_scale(40.0, 24.0),
+		0.0,
+		"and past it the taper clamps rather than driving the Assembly backwards",
+		1e-6
+	)
+
+
+## A Core Module that publishes no cap is saying this document has nothing to add,
+## not that the Assembly may not move.
+func test_a_cap_of_zero_governs_nothing() -> void:
+	check_approx(TractionSolver.speed_cap_scale(10.0, 0.0), 1.0, "a zero cap is no cap")
+	check_approx(TractionSolver.speed_cap_scale(10.0, -1.0), 1.0, "and neither is a negative one")

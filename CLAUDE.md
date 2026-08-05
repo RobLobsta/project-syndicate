@@ -496,7 +496,8 @@ effector_cycle_group
 build_place             build_remove           build_pick
 build_rotate_yaw        build_rotate_pitch     build_rotate_roll
 build_mirror_toggle     build_undo             build_redo
-build_cancel
+build_cancel            build_cursor_left      build_cursor_right
+build_cursor_up         build_cursor_down
 
 cam_orbit               cam_pan                cam_zoom_in
 cam_zoom_out            cam_focus_selection    cam_toggle_view

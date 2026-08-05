@@ -50,6 +50,31 @@ const ACTION_LOOK_LEFT: StringName = &"cam_look_left"
 const ACTION_LOOK_RIGHT: StringName = &"cam_look_right"
 const ACTION_LOOK_UP: StringName = &"cam_look_up"
 const ACTION_LOOK_DOWN: StringName = &"cam_look_down"
+
+## ===== THE PAD CURSOR ==================================================
+## Doc 11 §7.3. A controller has no pointer, and doc 02 §6's whole placement chain
+## starts from one — so the pad is given a virtual pointer in this viewport's own
+## coordinates and everything downstream is unchanged. That is the point of doing
+## it this way rather than with a lattice cursor: the mouse and the stick resolve
+## a candidate through the identical [method resolve_candidate], so a pad cannot
+## place something a mouse could not.
+
+const ACTION_CURSOR_LEFT: StringName = &"build_cursor_left"
+const ACTION_CURSOR_RIGHT: StringName = &"build_cursor_right"
+const ACTION_CURSOR_UP: StringName = &"build_cursor_up"
+const ACTION_CURSOR_DOWN: StringName = &"build_cursor_down"
+
+## Pixels per second the cursor travels at full stick deflection, against a
+## 1080-unit-tall viewport. Scaled by the viewport's actual height so the cursor
+## crosses the view in the same time on every screen — a fixed pixel rate is four
+## times slower to cross a 4K view than a 1080p one.
+const CURSOR_RATE_PX_S: float = 900.0
+const CURSOR_REFERENCE_HEIGHT_PX: float = 1080.0
+
+## Emitted when the stick has moved the cursor. [GarageScreen] drives its ghost
+## and its inspector from this, exactly as it does from mouse motion — which is
+## what stops the pad path being a second, quieter copy of the placement chain.
+signal pad_cursor_moved(position: Vector2)
 ## Pitch stops. Not ±90°: a camera looking straight down at a build has no
 ## silhouette to read, and one looking straight up is under the floor.
 const MIN_PITCH_RAD: float = -0.15
@@ -169,6 +194,9 @@ var _yaw_rad: float = START_YAW_RAD
 var _pitch_rad: float = START_PITCH_RAD
 var _distance_m: float = START_DISTANCE_M
 var _orbiting: bool = false
+## Doc 11 §7.3's virtual pointer, in this preview's viewport coordinates.
+var _pad_cursor: Vector2 = Vector2.ZERO
+var _pad_cursor_placed: bool = false
 
 
 func _ready() -> void:
@@ -202,6 +230,11 @@ func _exit_tree() -> void:
 ## polled, and a frame in which the stick is centred does no work beyond four
 ## strength lookups.
 func _process(dt: float) -> void:
+	_orbit_on_stick(dt)
+	_move_cursor_on_stick(dt)
+
+
+func _orbit_on_stick(dt: float) -> void:
 	var stick := Vector2(
 		ControlSystem.axis(ACTION_LOOK_LEFT, ACTION_LOOK_RIGHT),
 		ControlSystem.axis(ACTION_LOOK_UP, ACTION_LOOK_DOWN)
@@ -215,6 +248,48 @@ func _process(dt: float) -> void:
 	_yaw_rad -= stick.x * step
 	_pitch_rad = clampf(_pitch_rad + stick.y * step, MIN_PITCH_RAD, MAX_PITCH_RAD)
 	_place_camera()
+
+
+## Doc 11 §7.3's pad cursor: the left stick moves a virtual pointer across this
+## preview's viewport, clamped to it.
+func _move_cursor_on_stick(dt: float) -> void:
+	var stick := Vector2(
+		ControlSystem.axis(ACTION_CURSOR_LEFT, ACTION_CURSOR_RIGHT),
+		ControlSystem.axis(ACTION_CURSOR_UP, ACTION_CURSOR_DOWN)
+	)
+	if stick.is_zero_approx():
+		return
+	var view := viewport_size()
+	if view.y <= 0.0:
+		return
+	# Scaled by the view's height, so the cursor takes the same time to cross a
+	# 4K viewport as a 1080p one. A rate in raw pixels is a control that gets
+	# slower as the player's monitor gets better.
+	var rate := CURSOR_RATE_PX_S * view.y / CURSOR_REFERENCE_HEIGHT_PX
+	_pad_cursor = (_pad_cursor + stick * rate * dt).clamp(Vector2.ZERO, view)
+	pad_cursor_moved.emit(_pad_cursor)
+
+
+## Where the pad's virtual pointer is, in this preview's viewport coordinates.
+##
+## Centred on first use rather than at construction: the viewport has no size
+## until it has been laid out, and a cursor initialised at (0, 0) starts in the
+## corner of the screen where there is nothing to point at.
+func pad_cursor() -> Vector2:
+	if not _pad_cursor_placed:
+		var view := viewport_size()
+		if view.y > 0.0:
+			_pad_cursor = view * 0.5
+			_pad_cursor_placed = true
+	return _pad_cursor
+
+
+## The size of the viewport this preview draws into, or zero before layout.
+func viewport_size() -> Vector2:
+	var view := get_viewport()
+	if view == null:
+		return Vector2.ZERO
+	return Vector2(view.get_visible_rect().size)
 
 
 ## ===== POINTER =========================================================

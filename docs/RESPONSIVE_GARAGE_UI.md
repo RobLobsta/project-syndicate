@@ -593,9 +593,15 @@ These action names are normative and are duplicated in `CLAUDE.md` §7. Adding a
 | `cam_focus_selection` | `F` | Left Bumper | Double-tap empty space |
 | `cam_toggle_view` | `C` | Start | Toolbar toggle |
 | `catalogue_search` | `Ctrl+F` | — | Tap search field |
+| `build_cursor_left` / `build_cursor_right` | — (the mouse is the pointer) | Left Stick X | — (the finger is the pointer) |
+| `build_cursor_up` / `build_cursor_down` | — (the mouse is the pointer) | Left Stick Y | — (the finger is the pointer) |
 | `catalogue_prev_class` / `catalogue_next_class` | `Shift+Tab` / `Tab` | D-Pad Left / Right | Swipe filter row |
 
 **The garage camera orbits on the right stick through `cam_look_*`, not through `cam_orbit`.** `cam_orbit` is one action and yields one strength, which is enough to say "the player is orbiting" and not enough to say in which direction — it is the mouse's modifier and nothing else. A stick held at deflection produces no further input events either, so `GaragePreview` polls the four analogue actions in `_process` where the mouse path is event-driven. Before that the garage had *no* camera control on a controller at all, while this table claimed Right Stick against `cam_orbit`.
+
+**A controller places a part through a virtual pointer, not a lattice cursor.** The garage was unplayable on a pad for exactly one reason: every placement goes through `GarageScreen._place_at(_preview_pointer())` and that pointer was the mouse. The four `build_cursor_*` actions move a cursor across `GaragePreview`'s viewport in its own coordinates, and `_preview_pointer()` returns it whenever `InputMethod` reports a pad — so the stick and the mouse resolve a candidate through the identical `GaragePreview.resolve_candidate`, and doc 02 §6's chain is untouched.
+
+The alternative — a cursor that moves cell by cell over the lattice — was considered and rejected. It needs its own snapping, its own bounds test and its own mating rules, which is a second placement chain to keep in step with the first, and CLAUDE.md §10 rule 9 exists to stop exactly that. A crosshair is drawn at the cursor because with nothing armed there is otherwise no way to see where it is: the ghost shows where a *part* would go, and there is no ghost until something is selected.
 
 **The four tilt actions are the rotary family's cyclic**, and `DYNAMIC_MASS_PHYSICS.md` §15.2 owns what they map onto. They are `veh_`-prefixed rather than given a family prefix of their own because §7.1's grammar groups by domain and not by part class: an Assembly is an Assembly whether it rolls or flies, and a control scheme that changed its action names when a rotor was bolted on would need a rebind screen per locomotion family.
 
