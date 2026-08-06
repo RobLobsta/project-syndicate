@@ -24,6 +24,15 @@ extends CenterContainer
 ## than at a test: centred, it covered exactly the band of screen the opponent
 ## approaches through, for the whole of the opening engagement, which is decided
 ## inside its own dwell. §14.6 owns both constants.
+##
+## [b]And the fight waits for it.[/b] Moving the card out of the middle of the
+## screen stopped it hiding the opponent and did nothing about the opponent
+## arriving at four seconds into an eleven-second dwell: the capture that verified
+## the first-run rule has the player at 63% integrity with a part gone, stationary,
+## still reading. §14.6's briefing hold is the answer — doc 05 §15.7.4 keeps an
+## [AiDriver]'s trigger cold while [method is_briefing] is true — and it costs the
+## player nothing they would want, because the card collapses to its fade the
+## instant they touch a control.
 
 ## ===== TIMING (§14.6) ==================================================
 
@@ -111,6 +120,16 @@ const ACTED_ACTIONS: Array[StringName] = [
 ## Seconds of dwell left, or zero when the card is down. Negative is not a state:
 ## the card is either up with time on it or not up at all.
 var _remaining_s: float = 0.0
+## True only while the card is up because this is the player's first match, and
+## false the moment it is up because they asked for it.
+##
+## The distinction exists because §14.6's briefing hold rides on it: doc 05
+## §15.7.4 stops an [AiDriver] firing while a first-time player is reading, and a
+## hold keyed on "the card is visible" would be a hold a player could take at
+## will by leaning on [constant ACTION_TOGGLE_CARD]. A briefing is something the
+## game gives once; a legend is something the player asks for and pays nothing
+## for.
+var _briefing: bool = false
 ## Rows are rebuilt whenever the card is raised, so a rebind made between two
 ## matches — or between two presses of [constant ACTION_TOGGLE_CARD] — is on the
 ## card the next time it is read.
@@ -149,20 +168,36 @@ func _init() -> void:
 
 ## Raises the card and restarts its dwell, rebuilding every row from the live
 ## [InputMap].
+##
+## This is the [b]player asked for it[/b] route. It clears the briefing, so a card
+## raised by [constant ACTION_TOGGLE_CARD] mid-match buys no grace from doc 05
+## §15.7.4 — see [member _briefing].
 func raise() -> void:
-	_rebuild()
-	_remaining_s = DWELL_S
-	modulate.a = 1.0
-	visible = true
+	_briefing = false
+	_raise()
+
+
+## Raises the card as §14.6's first-run briefing: identical presentation, and it
+## holds the opponent's fire for as long as it is up.
+func raise_first_run() -> void:
+	_briefing = true
+	_raise()
 
 
 func dismiss() -> void:
 	_remaining_s = 0.0
+	_briefing = false
 	visible = false
 
 
 func is_raised() -> bool:
 	return _remaining_s > 0.0
+
+
+## True while §14.6's first-run briefing is on screen. Doc 05 §15.7.4's third
+## gate reads this, through [method MatchHud.briefing_is_up].
+func is_briefing() -> bool:
+	return _briefing and is_raised()
 
 
 ## [constant ACTION_TOGGLE_CARD]'s behaviour, as one call so that the HUD does
@@ -206,6 +241,13 @@ func player_has_acted() -> bool:
 
 
 ## ===== PRIVATE =========================================================
+
+
+func _raise() -> void:
+	_rebuild()
+	_remaining_s = DWELL_S
+	modulate.a = 1.0
+	visible = true
 
 
 func _rebuild() -> void:

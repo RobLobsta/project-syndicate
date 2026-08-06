@@ -542,6 +542,38 @@ This is **not** a retreat from §4.1. An Assembly that walks is still one `Rigid
 
 **The one-directional check is deliberate.** A Core Module is always placed first — the validator refuses anything else into an empty lattice and refuses a second Core Module after — so no order exists in which a chassis arrives underneath a family it does not carry. Swapping a chassis means starting the build again, which is what §9.1's removal cascade would do anyway.
 
+
+**Amendment — an Appendage is ambulatory equipment.** The same mask carries a
+second rule: `PlacementValidator` refuses an Appendage on any chassis whose mask
+does not include `AMBULATORY` (reject code `APPENDAGE_CHASSIS_MISMATCH`).
+
+An arm is not general-purpose mounting hardware. §4.3 already keys the hand so
+that a held Effector Module cannot be bolted to a hull and a hand cannot be used
+as a bracket; this is that decision one level up, and it exists because nothing in
+the physics stops an arm being bolted to the front of a car — which is what one
+was, for one session, and what it read as. `tests/physics/test_melee_duel.gd` has
+the measurements from both.
+
+**The family is checked on the chassis rather than declared on the arm, and that
+is deliberate.** It is where the mask already lives, so a Core Module's inspector
+card (`RESPONSIVE_GARAGE_UI.md` §4.3) names the families it carries and a refused
+arm has its reason on screen beside it. Putting an "allowed chassis" list on
+`AppendageProfile` would be a second table saying the same thing from the other
+end, and Section 1.1 of `CLAUDE.md` exists to stop exactly that.
+
+**What makes an arm ambulatory is a body plan, not a physical law**, and the
+chassis is the proxy for it: a walking Assembly is the only one with a torso held
+above the ground and room either side of it. That is not enforceable in the
+lattice and does not need to be.
+
+One geometric consequence is worth stating here because it constrains every
+layout: an Appendage's cells run from its shoulder along the axis the shoulder
+faces, and the module in its hand continues along that same axis. There is no
+elbow — Invariant I-3 admits no joint between parts — so an arm hung off a flank
+at right angles points its weapon at the scenery, and one hung downward beside the
+torso points it at the ground, where §10.5's authored −20°/+40° of mount pitch
+can never recover it. A shoulder at a front corner with the arm running forward
+alongside the hull is the pose that leaves the weapon usable.
 ### 7.2 `MotiveAssemblyProfile`
 
 ```gdscript

@@ -1407,6 +1407,88 @@ there is only one section here.)
     question: **which file did this session add, and what does it build that it
     does not free?**
 
+102. **A frozen fixture cannot assert a rule about not applying a force, and the
+    honest replacement is rarely the obvious quantity.** Fact 100's repair —
+    freeze the target for a phase whose subject is not motion — is right, and it
+    costs exactly one thing: the phase can no longer see anything the code does
+    *to* motion. Doc 07 §15.5's "an instalment carries no impulse" was
+    unassertable for that reason, and the planted fault that deletes it survived
+    the sweep that found it.
+
+    `tests/physics/test_melee_duel.gd` closes it with a live target, and the way
+    it closes it is the part worth carrying. The tempting assertion is the
+    target's **speed**: an impulse throws things, so bound how fast the target may
+    go. Measured, that is 2.76 m/s under correct behaviour against 7.68 under the
+    fault — because a melee build *rams*, so the target is already moving at a
+    good fraction of the attacker's approach speed and the two numbers are three
+    times apart with a two-Assembly fight's noise between them (fact 44).
+
+    What separated them by two orders of magnitude, on that recipe, was **whether
+    contact once made is ever lost**: the range re-opened 0.03 m correct and
+    5.15 m faulted. The general shape: **when a fault adds energy to a system that
+    is also being driven, the driven quantity is contaminated and the one to
+    assert is what the energy destroys.**
+
+    **And then the recipe changed, and the two instruments swapped over.** Doc 01
+    §7.1 made an Appendage ambulatory equipment, so the melee build became a
+    walker — which leans on what it cuts far more gently and whose contact
+    flickers as it steps. The speed bound became the clean one (0.03 m/s correct
+    against 4.00 faulted) and the re-opening stopped discriminating, because the
+    fault now costs contact rather than distance. Same law, same planted fault,
+    opposite instruments.
+
+    So the durable lesson is not which quantity to assert. It is that **an
+    assertion chosen against one fixture is a property of that fixture**, and a
+    sweep re-run after the fixture changes is the only thing that says so. This
+    one went CAUGHT → SURVIVED → CAUGHT across a single session without the code
+    under test being touched. `test_melee_duel` now asserts both quantities, which
+    is the cheap insurance.
+
+103. **A hold a player can grant themselves is not a hold.** Doc 11 §14.6's
+    control card holds the opponent's fire while a first-time player reads it,
+    and the first implementation keyed that on "the card is visible" — which is
+    also true of the card `hud_toggle_stats` raises, at any time, for eleven
+    seconds, as often as the player presses it. The same key would have been a
+    cease-fire button.
+
+    The repair is two entry points that present identically and differ in one
+    flag: `ControlCard.raise_first_run()` sets the briefing and `raise()` clears
+    it. Worth generalising, because this project keeps adding rules of the form
+    "while X is on screen, the simulation does Y": **a grant conditioned on a
+    piece of interface has to be conditioned on why that interface is up, not on
+    whether it is** — and the test that catches it is the one that raises it the
+    other way.
+
+
+104. **There is no elbow, so a held module always continues along its arm's
+    axis** — and that decides what a limbed Assembly can be shaped like far more
+    than any art decision will.
+
+    An Appendage's cells run from its shoulder along the axis the shoulder faces,
+    and Invariant I-3 admits no joint between parts, so the module in its hand
+    carries straight on in the same direction. Measured across all twenty-four
+    orientations against every shipped chassis: an arm hung off a flank at right
+    angles is a T-pose with its weapon pointing at the scenery, and an arm hung
+    downward beside the torso — the human rest pose — points its weapon at the
+    ground, where doc 01 §10.5's authored −20°/+40° of mount pitch can never
+    recover it.
+
+    **So the pose that looks right and the pose that works are different poses**,
+    and this is the trade every humanoid layout in this project runs into. A
+    shoulder at a front corner with the arm running forward alongside the hull is
+    the only arrangement that is both mounted at the sides and able to aim; it is
+    what `CombatArena.MELEE_ARMS` uses and it reads as a quadruped reaching
+    forward rather than as a person. The genuinely humanoid alternative — the Core
+    Module stood on end (orientation 20 carries `BACK` onto `UP`, giving a 6×9×4
+    torso), two limbs under it, shoulder brackets of `str.panel.medium.t2` on each
+    flank and arms hanging from their undersides — builds and validates, and its
+    blades point at the floor.
+
+    Two things to carry beyond the arms. **The Core Module may be placed rotated
+    and nothing forbids it**, which is a whole axis of silhouette nobody had used:
+    a chassis authored as a vehicle cabin becomes a torso for free. And a part set
+    with no bent members cannot express a bent pose, so a body plan that needs one
+    is a request for a *part*, not for a layout.
 ---
 
 ## 2. What fault injection taught
@@ -1784,6 +1866,9 @@ saved a mass floor by finding the one state that reaches it. Reaching for
   target and then freezes it for §15.5's contact phase; fact 100 is what the
   unfrozen version reported, and it read as a defect in the law rather than in
   the fixture.
+- **A frozen phase cannot assert a rule about *not* applying a force**, so a
+  law of that shape needs a second fixture with the body live — and the quantity
+  to assert there is usually not the one the force acts on. Fact 102.
 - **Free everything a test builds, including what it builds inside an
   assertion.** A `Node` constructed as an argument — `check_false(Thing.new().x,
   …)` — is leaked, and the engine's report at exit names no class and no file

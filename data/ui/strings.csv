@@ -114,6 +114,7 @@ build.reject.collider_interpenetration,That part would pass through another
 build.reject.load_capacity_exceeded,Too heavy for what is carrying it
 build.reject.duplicate_core,An Assembly has exactly one Core Module
 build.reject.motive_family_mismatch,This chassis does not carry that kind of Motive Assembly
+build.reject.appendage_chassis_mismatch,An Appendage needs an ambulatory chassis
 build.reject.unknown_part,That part is not in this registry
 part.core.command.compact.t2.name,Compact Command Core
 part.core.command.compact.t2.desc,The root of every Assembly. Sets the mount budget; the power capacity and the speed cap. Lose it and the Assembly is over.

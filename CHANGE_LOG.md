@@ -41,6 +41,7 @@ they found are in `LEARNED_FACTS.md`.
 
 | Session | What it did |
 |---|---|
+| 43 | **The first match waits for you, and the edge finally goes to a fight — on legs.** Doc 05 §15.7.4 gains a third gate — `AiDriver.hold_fire`, written by the match layer — so an opponent holds its fire while doc 11 §14.6's first-run card is up; a player reading it was taking a third of their machine doing so. A card the player *asked for* is deliberately not a briefing, or `hud_toggle_stats` would be a key that switches the opposition off. Doc 01 §7.1 gains its appendage half: **an Appendage requires an ambulatory chassis** (`APPENDAGE_CHASSIS_MISMATCH`), so an arm stops being general mounting hardware. `CombatArena.Recipe.MELEE` is a walker with an arm on each flank and `tests/physics/test_melee_duel.gd` puts doc 07 §15 in an engagement for the first time: it walks to **8.8 m**, holds contact for **374 energised ticks off one swing**, and never throws what it is cutting — which closes `sustained-delivers-impulse`, a fault recorded as a survivor since session 42. Three findings: an energised edge resolves on only **25** of those 374 ticks; two arms are 1434 kg that pitch the walker **29.6° nose-down**; and at 30 m under fire it **loses ground**, which is doc 05 §13's steering defect rather than anything about the weapon. |
 | 14 | Combat layer: damage resolver, effectors, projectiles. Planted 37 faults over it and ran four — the rest waited three sessions (see §3). |
 | 15 | First engagements. Six duels between locomotion families; found the overpenetration grind, the first Prime Mover detonation, and three reasons an ambulatory Assembly is a poor gun platform. |
 | 16 | Bounded overpenetration (doc 07 §12.2), closed the mount-on-its-stop fire gate (§4.3.1), fixed three ambulatory defects, and found the penetration budget restarting every tick. |
@@ -70,6 +71,84 @@ they found are in `LEARNED_FACTS.md`.
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 43, in more detail
+
+**The briefing hold.** Doc 11 §14.6's card was raised once, on a player's first
+match, and session 42's own capture showed what that bought: the opponent arrives
+at four seconds into an eleven-second dwell, so at six seconds the player is at
+63% integrity with a component gone, stationary, still reading. `AiDriver` gains
+`hold_fire`; `MatchScreen` writes it onto every driver once a tick from
+`MatchHud.briefing_is_up()`. It holds the **trigger** and not the approach — an
+opponent that crosses the basin and waits reads as an opponent, and one that sits
+at its spawn reads as a match that has not started.
+
+`ControlCard.raise_first_run()` and `raise()` present identically and differ in
+one flag, because a hold keyed on "the card is visible" is eleven seconds of an
+opponent that will not shoot back, on demand, for as long as a player cares to
+hold `hud_toggle_stats`.
+
+**An arm is ambulatory equipment.** Doc 01 §7.1's mask carries a second rule:
+`PlacementValidator._check_appendage_chassis` refuses an Appendage on any chassis
+that does not carry `AMBULATORY`. It exists because nothing in the physics stopped
+one being bolted to the front of a car — which is what the first version of this
+session's melee recipe was, and what it read as.
+
+**The edge in a fight.** `CombatArena.Recipe.MELEE` is the ambulatory layout with
+`apx.arm.manipulator.t3` on each flank and `eff.melee.beam_edge.t4` in each hand.
+The arms run **forward from the shoulders** rather than hanging at the sides, and
+that is geometry rather than taste: an Appendage's cells run from its shoulder
+along the axis the shoulder faces and the held module continues along the same
+axis, so with no elbow (Invariant I-3) a flank-mounted arm is a T-pose and a
+hanging one points its blade at the ground, where §10.5's −20°/+40° of mount pitch
+can never recover it. Measured across all twenty-four orientations.
+`tests/physics/test_melee_duel.gd` runs two phases against one arena each:
+
+| | contact (12 m, unarmed target) | duel (30 m, armed) |
+|---|---|---|
+| Closed to | 8.8 m | 31.9 m — it lost ground |
+| Swings started | 1 | 1 |
+| Energised ticks | 374 | 197 |
+| Ticks that resolved | 25 | 0 |
+| THERMAL delivered | 69 | 0 |
+| Target's peak speed | 0.03 m/s | — |
+| Worst nose-down | 29.6° | 28.9° |
+| Outcome | held to the window | destroyed at t=236 with its arms intact |
+
+Three things came out of it. **Contact is held** — 25 resolves off one swing is
+§15.5 and nothing else, since a discrete swing costs 58 ticks. **An energised edge
+is not a resolving edge**: it cut on one tick in fifteen, because the blade drifts
+in and out of overlap as both hulls shove each other and a walker never quite
+stands still, so anything sizing a sustained module against a duration has to
+count resolves. And **the weapon is not what fails** — given something to walk at
+this build arrives and cuts; against something that shoots it loses ground, which
+is doc 05 §13's open steering defect.
+
+**A recorded survivor closed, and which assertion closes it depends on the
+recipe.** `sustained-delivers-impulse` — §15.4's per-swing impulse applied on
+every tick — survived `burn_and_hold_sweep.py` because `test_held_weapon` freezes
+its target. It is caught here by the target's peak speed: **0.03 m/s correct
+against 4.00 faulted**. That bound was *useless* on the wheeled version of the
+same recipe, which rammed at three metres a second and moved its target at 2.76
+under correct behaviour; what worked there was the range re-opening, 0.03 m
+against 5.15 — and that one stopped discriminating the moment the build became a
+walker. Same law, same fault, opposite instruments, and the fixture now asserts
+both.
+
+**Verified by looking, not only by the suite.** Two captures of fact 55's route,
+one with `user://settings.cfg` deleted and one without, compared at frame 420:
+fresh install **100% integrity, 12/12 parts, card up**; returning player **52%,
+10/12, two components lost**. The opponent is in both frames. That closes last
+session's finding and it turned up a new one: under sustained fire doc 11 §14.4's
+damage flash pins at `FLASH_ALPHA_MAX` and holds there, so the whole viewport —
+sky, ground and the player's own build — is washed 34% `DANGER` for the length of
+the engagement. `HANDOFF.md` §3.11 has the three candidate repairs.
+
+**Also:** `OrientationTable.first_carrying` — two fixtures needed to hang an arm
+off a hull and the answer is a property of the group; `CombatArena.tick_once` and
+`stand_down`, so a fixture whose subject is a per-tick law can sample between
+physics frames without restarting the timeline's clock; and `PART_CLASS_NAMES`
+gained its Appendage row, which was reading "a part" in every timeline.
 
 ### Session 42, in more detail
 
@@ -588,7 +667,9 @@ restarted every tick |
 | `test_band_dispatch` | the band transition never written; neither system subscribing; the motive id filter dropped; **the effector slot filter dropped** |
 | `test_held_weapon` | *(session 18)* §15.3's capsule reduced to a ball at the blade's midpoint; the capsule left standing on its own +Y; §15.4's impulse on the target never applied; the closing-speed gate refusing everything; the per-swing dedup removed; the sample count dropped back to 6; **§15.4's impulse taken from the blade's axis rather than from the edge's travel**; *(session 42)* §15.5's stage hold removed; **the per-tick clear of the victim set removed**, which is the fault no assertion about damage arriving can see; a held edge charging strike damage per tick; the instalment not declaring its interval; and, through the fire it starts, §7.3's list never told a part ignited |
 | `test_dot_scheduler` | *(session 42)* doc 08 §7.1's ignition never announced to §7.3; one entry per packet instead of one per burning part; the 10 Hz cadence gate removed; the cooling term zeroed, so the hysteresis band is unreachable and a part that catches fire burns to nothing |
-| `test_first_run_card` | *(session 42)* doc 11 §14.6's first-run flag consulted by nobody — the card back to being raised over every match a player ever plays |
+| `test_first_run_card` | *(session 42)* doc 11 §14.6's first-run flag consulted by nobody — the card back to being raised over every match a player ever plays; *(session 43)* doc 05 §15.7.4's briefing gate deleted from `AiDriver`, so the opponent shoots a first-time player who is reading; and a card the player raised counting as a briefing, which makes `hud_toggle_stats` a key that switches the opposition off |
+| `test_melee_duel` | *(session 43)* the melee recipe holding at the ground family's twenty-metre stand-off, so an edge with 2.4 m of reach parks seventeen short; the orientation group answering "identity" when asked to carry an Appendage's shoulder onto a hull face; and **§15.4's per-swing impulse applied on every tick of contact** — a fault `test_held_weapon` cannot see, because it freezes the target that would be thrown |
+| `test_placement_validator` (appendage half) | *(session 43)* doc 01 §7.1's appendage rule deleted, so an arm goes back to being general mounting hardware; and the mirror of it, the rule refusing the one chassis it exists to admit |
 | `test_duel` | destruction never flagged; the destroyed event never emitted; **ammunition never consumed** |
 | `test_part_mesh_pose` | *(session 29)* the §16.1 droop lifting the part instead of lowering it; the droop composed in the part's own frame rather than the chassis's — **which nothing in `tests/physics/` can see, because a Motive Assembly is only ever mounted upright there**; a limb never turned toward its foot; a limb turned about its mesh origin instead of about its hip |
 | `test_part_visuals` | *(session 20; no sweep run against it yet — see below)* doc 13 §2.1's collider mirroring by extent, §9's spawn, I-1 over a **populated** `VisualRoot`, the mesh cache's sharing, and the `part_visual` tag suppressing every mesh while touching no collider |
@@ -620,7 +701,7 @@ restarted every tick |
 
 ## 3. The sweep scripts
 
-Nine committed sweeps, 147 faults between them, all driven by
+Ten committed sweeps, 155 faults between them, all driven by
 `tools/ci/sweeps/sweeplib.py`. Run them with `-j4`; a full pass over one script
 is a couple of minutes.
 
@@ -635,6 +716,7 @@ is a couple of minutes.
 | `effector_choice_sweep.py` | doc 01 §10.5's second direct-fire row: the starter's module, the comparison fixture, the second round type's wiring | 6 |
 | `drive_cycle_sweep.py` | doc 05 §6.5's anti-roll sign, §7.7's holding brake and proportioning, §7.8's driveline drag and governor, §15.5's release, §7.1's steering, and doc 11 §7's binding table, glyphs and pad cursor | 18 |
 | `burn_and_hold_sweep.py` | doc 07 §15.5's sustained contact — the stage hold, the per-tick clear, the rate, the interval, the impulse — doc 08 §7.1's ignition and cooling and §7.3's cadence, plus doc 11 §4.3's chassis row and §14.6's first-run flag | 11 |
+| `briefing_and_edge_sweep.py` | doc 05 §15.7.4's briefing gate and doc 11 §14.6's briefing/legend distinction, doc 01 §7.1's appendage rule in both directions, the melee recipe's stand-off, the orientation group's shoulder answer, and §15.4's impulse against the fixture that now catches it | 8 |
 
 ### What still survives, and why
 
@@ -649,7 +731,7 @@ is a couple of minutes.
 | `aim-point-read-from-scan` | ai | Doc 07 §10 runs selection at 2.9 Hz and aim solving every tick; collapsing them aims at where the target was up to 350 ms ago. Marginal rather than firmly untested — CAUGHT on one run and SURVIVED on the next, either side of an unrelated change. What closes it properly is an engagement in which the AI's target is *driving*. |
 
 | `sustained-no-interval` | burn and hold | *(session 42)* `DamagePacket.interval_s` on a §15.5 instalment reaches doc 08 §7.2's corrosive decay and nothing else — §7.1's heat is `raw · 0.55` per packet and its `maxf(interval_s, 1.0)` is 1.0 for every interval this game produces. The line is right and no shipped melee mix authors a corrosive share, which is the ammunition sentinel's shape exactly. Closes with a corrosive edge, or with a resolver test that submits one. |
-| `sustained-delivers-impulse` | burn and hold | *(session 42)* §15.4's per-swing impulse applied on every tick of contact. `test_held_weapon` **freezes** its target for the contact phase — it has to, or the first strike carries the target off the blade and the phase measures nothing (fact 100) — so a frozen body absorbs the fault. Closes with §3.8's melee duel, where both hulls are live. |
+| `briefing-never-held` | briefing and edge | *(session 43)* The four lines of `MatchScreen` that join doc 11 §14.6's card to doc 05 §15.7.4's gate. Both ends are asserted — the gate on a real `AiDriver`, the briefing on a real `MatchHud` — and the join is reached only by `test_screen_flow`, which builds two real matches and does not control `SyndicateSettings.control_card_seen`. Closes when that file takes over the settings save/restore `test_first_run_card` already does, or when a match is cheap enough to build a third time. |
 | `breakaway-never-releases` | ai | §15.7.1's standing-start demand applied at every speed, so it becomes the sustained heavy throttle that stopped the opponents ever reaching the player on real terrain. **A survivor, then briefly caught, then a survivor again** — and the round trip is the finding, not the verdict. Session 30 recorded it as caught because with no arrival brake a sustained throttle made the driver orbit its stand-off, which `test_ai_engagement`'s rounds floor is sensitive to. Session 31's arrival brake stops a driver orbiting *whatever* its throttle is doing, so the symptom the fixture was reading is gone and the rule underneath it is uncovered again. Nothing about the rule changed; a correct, unrelated change desensitised the one fixture that happened to see it, which is `LEARNED_FACTS.md` §2.1 word for word. Closes only with terrain in a fixture, or with a capture. |
 
 The `breakaway-never-releases` row is worth reading twice by anyone about to

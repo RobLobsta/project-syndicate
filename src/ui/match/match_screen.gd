@@ -212,6 +212,11 @@ var _gun_slot: int = SyndicateConstants.INVALID_SLOT
 var _round_id: int = -1
 
 var _runtimes: Array[AssemblyRuntime] = []
+## Every [AiDriver] this match attached, so that §14.6's briefing hold can be
+## written onto all of them once a tick. They are children of the Assemblies they
+## drive and would otherwise have to be found by walking the tree, which is
+## exactly what CLAUDE.md §3.3 forbids.
+var _drivers: Array[AiDriver] = []
 var _contexts: Array[BuildContext] = []
 var _next_assembly_id: int = 1
 ## Assembly id -> team, handed to every [AiDriver] and shared with all of them.
@@ -644,6 +649,12 @@ func _attach_driver(
 	driver.registry = registry
 	driver.roster = _roster
 	driver.difficulty = OPPONENT_DIFFICULTY
+	# Doc 11 §14.6. Held from the first tick rather than from the first tick the
+	# HUD exists: the drivers are attached in [method _ready] before
+	# [method _build_hud] runs, and a driver that spent those frames with a live
+	# trigger would open the match with the shot the briefing is there to prevent.
+	driver.hold_fire = true
+	_drivers.append(driver)
 	runtime.add_child(driver)
 
 
@@ -672,6 +683,7 @@ static func _on_placement_refused(index: int, reason_key: StringName) -> void:
 ## §14.1's producer. Everything continuous the HUD shows is written here, once,
 ## from state this class already holds.
 func _on_tick_started(tick: int) -> void:
+	_apply_briefing_hold()
 	if _player == null or not is_instance_valid(_player):
 		return
 	if camera != null and _player_guns != null and not _concluded:
@@ -701,6 +713,24 @@ func _on_tick_started(tick: int) -> void:
 	_frame.assemblies_standing = registry.ids().size()
 	if hud != null:
 		hud.present(_frame)
+
+
+## Doc 11 §14.6's briefing hold, carried onto doc 05 §15.7.4's third gate.
+##
+## The match layer is where this belongs and not the HUD: an [AiDriver] is the
+## match's, the roster is the match's, and a HUD reaching into the drivers would
+## be an interface deciding what the opposition does. It is written every tick
+## rather than on the transition because [ControlCard]'s dwell is aged against
+## real time in [code]_process[/code] and the transition it produces has no
+## signal — and because a driver attached to an Assembly spawned later would
+## otherwise never be told.
+##
+## A match with no HUD — every headless fixture — holds nobody, which is right:
+## there is no card, so there is nothing to read and nothing to wait for.
+func _apply_briefing_hold() -> void:
+	var held := hud != null and hud.briefing_is_up()
+	for driver: AiDriver in _drivers:
+		driver.hold_fire = held
 
 
 ## §14.3's five states, read from the mount rather than re-derived.

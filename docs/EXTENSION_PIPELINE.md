@@ -119,6 +119,54 @@ static func _primitive_mesh(p: ProxyPrimitiveDef) -> Mesh:
             s.radial_segments = 12; s.rings = 6; return s
 ```
 
+**Amendment — family proxies, and the collider mirror is a good default and a bad
+drawing.** Mirroring is still what a brand-new part gets and still the fallback,
+but it is no longer the answer for every class. Invariant I-1 caps a part at three
+authored collider primitives, and they exist to be cheap and stable rather than to
+be a likeness — so a rotor disc collides as a 1 m box, a limb as a 1.25 m box, an
+autocannon as a 1.75 m box. Mirrored, that is what the player sees.
+
+For the rotor the error is not cosmetic. `RotorProfile.disc_radius_m` is **2.60 m**
+and the solver lifts with it; the greybox drew a **1.00 m** box, so the machine was
+under-drawn by a factor of five and nothing on screen said it flew. A capture of
+the shipped rotary build was three grey boxes.
+
+`ProxyMeshBuilder.family_primitives` sits between the authored list and the
+mirror, and builds the shape the part's **own profile already describes**:
+
+| Class | Built from | Drawn as |
+|---|---|---|
+| Motive · rotor | `disc_radius_m`, `blade_count` | mast, hub, one blade each to the disc edge |
+| Motive · limb | `hip_offset_m`, `leg_length_m`, `foot_radius_m` | hip, thigh, shin, foot along the leg axis |
+| Motive · track | `patch_length_m`, `road_stations` | two runs, a sprocket, an idler, one road wheel per station |
+| Effector · direct fire | `muzzle_offsets_m` | breech, and a barrel out to the muzzle |
+| Effector · melee | `reach_m` | hilt and a blade of the authored reach |
+| everything else | — | the collider mirror, unchanged |
+
+**Every length is read from the profile the simulation reads; only the thicknesses
+are authored.** That split is the point. A proxy and a solver that disagree about
+how long a leg is now disagree *visibly*, and `tests/unit/test_proxy_mesh.gd`
+asserts each span against its profile figure rather than against the builder. It
+is the first check in the project that can see proportion at all — `LEARNED_FACTS.md`
+fact 75 records that the registry has no check comparing one part against another,
+which is why a gun half the length of its own vehicle shipped and only a capture
+found it.
+
+**The cost is real and is accepted here rather than hidden.** Until now the
+greybox *was* the collider, so what a player saw was exactly what a round hit.
+A rotor's blades are now drawn where nothing collides. That is correct — §12 of
+`DYNAMIC_MASS_PHYSICS.md` makes a disc a thrust vector and never a body, so a
+round passing through a blade is the simulation being honest rather than the
+picture lying — but it means "the picture is the hitbox" is no longer a property
+anyone may assume. §7's validator is where a divergence that is *not* deliberate
+has to be caught.
+
+The two classes whose collider already *is* their likeness — a contact, which
+collides as a cylinder on the correct axis, and a Structural Component, which
+collides as the panel — are deliberately left on the mirror, and that is asserted.
+A family path that claimed every part would be invisible in a capture, because
+everything would still look like something.
+
 The generated mesh is cached per `part_def_id` in `ProxyMeshCache`, so 40 instances of the same panel share one `ArrayMesh` resource. Round primitives are built at `RADIAL_SEGMENTS = 12` and `SPHERE_RINGS = 6` rather than at Godot's defaults, which are 64 radial segments on a `CylinderMesh` — five times the triangles, for geometry whose entire purpose is to be replaced.
 
 #### Class Tints

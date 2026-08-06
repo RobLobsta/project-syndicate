@@ -17,6 +17,14 @@ extends TestCase
 ## the repository had ever delivered a non-KINETIC packet from a weapon.
 
 const CORE_KEY := &"core.command.compact.t2"
+## The attacker's chassis, and it is not [constant CORE_KEY] because it cannot be:
+## doc 01 §7.1 refuses an Appendage on anything that does not carry the ambulatory
+## family, so the hull that holds a sword is a walking one by rule.
+##
+## The [b]target[/b] stays on the command core, which is what every thermal figure
+## quoted below is arithmetic against — and it is the right target anyway, because
+## the question this file asks is what an edge does to the hull a player drives.
+const ATTACKER_CORE_KEY := &"core.ambulatory.strider.t3"
 const PANEL_KEY := &"str.panel.medium.t2"
 const ARM_KEY := &"apx.arm.manipulator.t3"
 const SWORD_KEY := &"eff.melee.beam_edge.t4"
@@ -561,7 +569,7 @@ func _sustain(target: AssemblyRuntime) -> void:
 func _build_attacker() -> AssemblyRuntime:
 	var ctx := BuildContext.with_physics(ATTACKER)
 	_contexts.append(ctx)
-	var core := PartRegistry.definition_by_key(CORE_KEY)
+	var core := PartRegistry.definition_by_key(ATTACKER_CORE_KEY)
 	var arm := PartRegistry.definition_by_key(ARM_KEY)
 	var sword := PartRegistry.definition_by_key(SWORD_KEY)
 
@@ -569,7 +577,7 @@ func _build_attacker() -> AssemblyRuntime:
 
 	# Shoulder (+Y) onto the Core Module's -Z face, so the hand points forward
 	# and the blade runs on ahead of it rather than into the ground.
-	var arm_orientation := _orientation_carrying(Vector3.UP, Vector3.BACK)
+	var arm_orientation := OrientationTable.first_carrying(Vector3.UP, Vector3.BACK)
 	_arm_slot = _place_near(ctx, arm, CORE_ORIGIN, arm_orientation)
 	if _arm_slot == SyndicateConstants.INVALID_SLOT:
 		return null
@@ -688,18 +696,6 @@ func _first_accepting_cell(
 				if PlacementValidator.validate(ctx, cand) == PlacementValidator.Reject.NONE:
 					return cell
 	return Vector3i(SEARCH_MISS, SEARCH_MISS, SEARCH_MISS)
-
-
-## The orientation index carrying [param from] onto [param onto].
-##
-## Searched with a stated predicate rather than written down: which of the 24
-## does this is a property of [OrientationTable], and the integer would not
-## survive a change to the table (§9's fixture conventions).
-func _orientation_carrying(from: Vector3, onto: Vector3) -> int:
-	for i: int in SyndicateConstants.ORIENTATION_COUNT:
-		if (OrientationTable.basis_for(i) * from).is_equal_approx(onto):
-			return i
-	return 0
 
 
 func _sword_definition() -> PartDefinition:

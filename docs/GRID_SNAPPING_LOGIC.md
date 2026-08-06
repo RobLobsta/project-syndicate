@@ -411,6 +411,7 @@ enum Reject {
     LOAD_CAPACITY_EXCEEDED,
     DUPLICATE_CORE,
     MOTIVE_FAMILY_MISMATCH,
+    APPENDAGE_CHASSIS_MISMATCH,
 }
 
 func validate(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
@@ -472,12 +473,21 @@ The matrix is symmetric by construction; the validator asserts this at startup.
 - Exactly one `CORE_MODULE` per Assembly (`DUPLICATE_CORE`).
 - `MAX_EFFECTORS_PER_ASSEMBLY` = 16, `MAX_MOTIVE_PER_ASSEMBLY` = 24.
 - A Motive Assembly's `LocomotionMode` is a bit set in the committed Core Module's `locomotion_mask` (`MOTIVE_FAMILY_MISMATCH`).
+- An `APPENDAGE` requires `AMBULATORY` in that same mask (`APPENDAGE_CHASSIS_MISMATCH`).
 - `Σ mount_weight ≤ core_profile.mount_budget`.
 - `Σ power_draw_pu ≤ core_profile.power_capacity_pu + Σ power_supply_pu`.
 
 Budget sums are maintained incrementally on the `BuildContext` — attach adds, detach subtracts — so this check is `O(1)`, not a re-sum over all parts.
 
 **The family check is one bit test and it runs before the budgets**, which is the cheaper-first ordering the chain is built on and also the more useful rejection: a player who has bolted a limb to a ground chassis wants to be told that, not told the mounts ran out. `PART_DATA_SCHEMA.md` §7.1 owns the mask and the reasoning; what belongs here is why the check needs no mirror image. A Core Module is always slot `0` and always placed first — §7.3 refuses anything else into an empty lattice and `DUPLICATE_CORE` refuses a second one after — so there is no order in which a chassis arrives underneath a family it does not carry, and a check on `CORE_MODULE` placements would be unreachable code.
+
+**The appendage check is the same shape and sits immediately after it.** An
+Appendage is admitted only by a chassis carrying `AMBULATORY`;
+`PART_DATA_SCHEMA.md` §7.1 owns that reading and the body-plan argument behind
+it. It is a separate check rather than a branch inside the motive one because the
+two answer different questions — one asks whether this hull carries that family,
+the other whether this hull has a body plan an arm belongs to — and because a
+player refused for the second reason must not be shown the first reason's string.
 
 A context with no committed Core Module refuses nothing. That case cannot arise through the garage, the auto-assembler, or blueprint loading; it arises in a fixture that assembles a lattice by hand, and an absent chassis declaring nothing is the same answer `mount_budget()` already gives.
 

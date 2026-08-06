@@ -272,6 +272,22 @@ var stand_off_m: float = -1.0
 ## §7.6's aid authority, carried onto the record exactly as [ControlSystem]
 ## carries it. A bot drives with the aids a player has, no more and no fewer.
 var aid_authority: float = 1.0
+## §15.7.4's third gate, written by the match layer once per tick. While true this
+## driver closes, aims and tracks exactly as it otherwise would and holds its
+## fire.
+##
+## It exists for doc 11 §14.6's briefing: a first-time player reading the control
+## card was being shot at from four seconds into an eleven-second dwell, and
+## arrived at their first fight already down a component. It is deliberately a
+## hold on the [b]trigger[/b] and not on the approach — an opponent that crosses
+## the basin and waits reads as an opponent, and one that sits at its spawn until
+## the card goes reads as a match that has not started.
+##
+## The match layer sets it and nothing here ever clears it. A driver whose owner
+## stops writing it holds its fire forever, which is the failure direction to
+## prefer: the alternative is a hold that silently expires and a briefing that
+## silently stops working.
+var hold_fire: bool = false
 
 ## ===== STATE ===========================================================
 
@@ -370,7 +386,11 @@ func step(dt: float) -> void:
 		# And it fires from a stop rather than from inside its stand-off — see
 		# [constant FIRING_SPEED_MPS]. Both halves of the same rule: the one that
 		# says where, and the one that says when it has finished getting there.
-		guns.set_trigger(0, not _closing and has_stopped())
+		#
+		# [member hold_fire] is the third gate and is the only one imposed from
+		# outside: doc 11 §14.6's briefing holds it while a first-time player is
+		# reading the control card.
+		guns.set_trigger(0, not hold_fire and not _closing and has_stopped())
 
 
 ## Drops the trigger and centres the controls.
