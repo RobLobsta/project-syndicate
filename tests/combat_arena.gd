@@ -152,7 +152,16 @@ const UTILITY_REAR_KEY := &"mot.wheeled.fixed_rear.t2"
 const TRACK_KEY := &"mot.tracked.long_bogie.t3"
 const LIMB_KEY := &"mot.limb.strider.t4"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
+## The truck's bonnet, and the wheeled family's second section. §7.3's mask makes
+## this row `CHASSIS_WHEELED`, which is why the three recipes that used to borrow
+## it now name a mover of their own below.
 const POWER_KEY := &"pmv.combustion.standard.t2"
+## One Prime Mover per locomotion family, per doc 01 §7.3's mask. A tank, a mech
+## and a rotorcraft shared a road car's mover until it was added, so every torque
+## figure in the game was a compromise across machines that share nothing.
+const TRACKED_POWER_KEY := &"pmv.turbine.tracked.t3"
+const STRIDER_POWER_KEY := &"pmv.combustion.strider.t3"
+const ROTARY_POWER_KEY := &"pmv.turboshaft.rotary.t3"
 ## The same Prime Mover laid on its side, for a hull whose roof is 1.00 m off
 ## its own floor. See doc 01 §10.4 — every published figure is identical.
 const FLAT_POWER_KEY := &"pmv.combustion.flat.t2"
@@ -1149,8 +1158,23 @@ func _fly(c: Combatant, aim: Vector3) -> void:
 
 	var velocity := body.linear_velocity
 	var altitude_error := (HOVER_HEIGHT_M - body.global_position.y)
+	# [b]Plus the collective that hovers, which is what stops a proportional loop
+	# sitting below the height it was asked for.[/b] A P controller's output has to
+	# be non-zero at equilibrium, so it settles wherever `error x gain` equals the
+	# demand that holds the machine up — measured, 1.28 m under a 4.00 m target,
+	# every time, on both combatants. That reads as "the rotary family cannot reach
+	# its hover height" and is a fixture with droop.
+	#
+	# Fed forward rather than integrated: the disturbance here is the Assembly's own
+	# weight, which is known exactly and does not change between structural events,
+	# and an integrator would be a second piece of state to get wrong on a fixture
+	# that already stands in for a system doc 05 does not have (`HANDOFF.md` §3.7).
 	input.collective = clampf(
-		altitude_error * HOVER_HEIGHT_GAIN - velocity.y * HOVER_CLIMB_GAIN, -1.0, 1.0
+		_hover_collective(c)
+		+ altitude_error * HOVER_HEIGHT_GAIN
+		- velocity.y * HOVER_CLIMB_GAIN,
+		-1.0,
+		1.0
 	)
 
 	# Station-keeping rather than a one-way approach, and the module's 8° of
@@ -1174,6 +1198,32 @@ func _fly(c: Combatant, aim: Vector3) -> void:
 		input.yaw = clampf(
 			bearing * YAW_HEADING_GAIN - body.angular_velocity.y * YAW_RATE_GAIN, -1.0, 1.0
 		)
+
+
+## The normalised collective that holds [param c] in the hover, in [0, 1].
+##
+## Thrust is linear in collective pitch (doc 05 §12.3) and the profile quotes its
+## coefficient at the maximum, so the fraction of full collective that produces
+## the Assembly's own weight is simply weight over what every disc makes at the
+## stop. Ground effect is deliberately excluded — it would make the feed-forward
+## height-dependent, and the proportional term above is what handles the
+## difference.
+func _hover_collective(c: Combatant) -> float:
+	var peak := 0.0
+	for slot: int in c.motion.motive_slots():
+		if c.motion.family_of(slot) != PartEnums.LocomotionMode.ROTARY:
+			continue
+		var rotor := _definition(c.runtime, slot).motive_profile.rotor_profile
+		if rotor == null:
+			continue
+		peak += RotorSolver.base_thrust_n(
+			rotor, rotor.nominal_rad_s, rotor.collective_limit_deg.y
+		)
+	if peak <= 0.0:
+		return 0.0
+	return clampf(
+		c.runtime.body.mass * SyndicateConstants.GRAVITY_MPS2 / peak, 0.0, 1.0
+	)
 
 
 ## The normalised cyclic demand that points this Assembly's disc along
@@ -1368,7 +1418,7 @@ func _lay_out_melee(ctx: BuildContext) -> void:
 ## one.
 func _lay_out_tracked(ctx: BuildContext) -> void:
 	_place(ctx, TRACKED_CORE_KEY, TRACKED_CORE, 0)
-	_place(ctx, POWER_KEY, TRACKED_POWER, 0)
+	_place(ctx, TRACKED_POWER_KEY, TRACKED_POWER, 0)
 	_place(ctx, CANNON_KEY, TRACKED_GUN, 0)
 	for cell: Vector3i in TRACK_HUBS:
 		_place(ctx, HUB_KEY, cell, 0)
@@ -1399,7 +1449,7 @@ func _lay_out_utility(ctx: BuildContext) -> void:
 
 func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 	_place(ctx, AMBULATORY_CORE_KEY, AMBULATORY_CORE, 0)
-	_place(ctx, POWER_KEY, AMBULATORY_POWER, 0)
+	_place(ctx, STRIDER_POWER_KEY, AMBULATORY_POWER, 0)
 	if armed:
 		_place(ctx, GUN_KEY, AMBULATORY_GUN, 0)
 	for i: int in AMBULATORY_LEGS.size() / 2:
@@ -1417,7 +1467,7 @@ func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 ## machine lying on its face.
 func _lay_out_biped(ctx: BuildContext) -> void:
 	_place(ctx, BIPED_CORE_KEY, BIPED_CORE, 0)
-	_place(ctx, POWER_KEY, BIPED_POWER, 0)
+	_place(ctx, STRIDER_POWER_KEY, BIPED_POWER, 0)
 	_place(ctx, GUN_KEY, BIPED_GUN, 0)
 	for i: int in BIPED_LEGS.size() / 2:
 		_place(ctx, HUB_KEY, BIPED_LEGS[i * 2], HUB_AXLE_DOWN_ORIENTATION)
@@ -1440,7 +1490,7 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 	# Energy Cell that covers it has not been bolted on yet — the same rule a
 	# player meets in the garage, and the same order they have to build in.
 	_place(ctx, ROTARY_CORE_KEY, ROTARY_CORE, 0)
-	_place(ctx, POWER_KEY, ROTARY_POWER, 0)
+	_place(ctx, ROTARY_POWER_KEY, ROTARY_POWER, 0)
 	_place(ctx, CELL_KEY, ROTARY_CELL, 0)
 	# Pylon before station before disc. Each mates to the one before it, which is
 	# the order a player has to build in and the order the validator enforces.

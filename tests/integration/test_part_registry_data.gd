@@ -152,6 +152,13 @@ const SHIPPED_KEYS: Array[String] = [
 	# cells as torso depth (§10.1).
 	"str.outrigger.pylon.t2",
 	"core.biped.humanoid.t3",
+	# Session 46. One Prime Mover per locomotion family, per doc 01 §7.3's mask.
+	# Two movers used to carry four families between them — a tank, a mech and a
+	# rotorcraft all ran a road car's 6400 N·m — so no family's torque could be
+	# tuned without moving the other three.
+	"pmv.turbine.tracked.t3",
+	"pmv.combustion.strider.t3",
+	"pmv.turboshaft.rotary.t3",
 ]
 
 
@@ -221,8 +228,11 @@ func test_class_buckets_are_populated() -> void:
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.PRIME_MOVER).size(),
-		2,
-		"one Prime Mover, in a square section and a flat one"
+		5,
+		(
+			"five Prime Movers: the wheeled family's square and flat sections, and one "
+			+ "each for the tracked, ambulatory and rotary families"
+		)
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.ENERGY_CELL).size(), 1, "and one Energy Cell"
@@ -321,11 +331,15 @@ func test_core_module_matches_the_documented_table() -> void:
 	# machine is a wheeled one with a different contact set, and that reading cost
 	# the tracked family a hull thirteen cells long over a 1.42 m contact base.
 	check_true(profile.carries(PartEnums.LocomotionMode.GROUND), "carries rolling contacts")
-	check_true(
+	# [b]This was asserted as a defect and the defect has closed.[/b] The road hull
+	# accepted a bogie through `CHASSIS_GROUND_TRANSITIONAL`, which the comment
+	# above said would go false "when the shipped recipe migrates onto
+	# `core.tracked.hauler.t3`". Session 44 migrated it; §7.3's Prime Mover mask is
+	# what finally made the vestigial bit cost something, because a hull declaring
+	# a family it does not use refuses every mover that does not drive that family.
+	check_false(
 		profile.carries(PartEnums.LocomotionMode.TRACKED),
-		"and a bogie too, through CHASSIS_GROUND_TRANSITIONAL — asserted as it "
-		+ "stands, and it goes false when the shipped recipe migrates onto "
-		+ "`core.tracked.hauler.t3`"
+		"and no longer a bogie: the transitional ground mask is retired"
 	)
 	check_false(profile.carries(PartEnums.LocomotionMode.AMBULATORY), "and refuses a limb")
 	check_false(profile.carries(PartEnums.LocomotionMode.ROTARY), "and refuses a disc")

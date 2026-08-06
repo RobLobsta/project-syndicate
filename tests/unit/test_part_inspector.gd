@@ -157,12 +157,18 @@ func test_a_core_module_says_which_families_it_carries() -> void:
 	check_true(command.length() > 0, "the command core names what it takes: '%s'" % command)
 	check_ne(strider, lifter, "a limb chassis and a disc chassis do not read the same")
 	check_ne(strider, hauler, "nor a limb chassis and a tracked one")
-	check_ne(command, hauler, "nor the transitional ground mask and a tracked-only one")
-	# The transitional mask is the one that carries two families, so it is the one
-	# that proves the row is a list rather than a single name.
+	check_ne(command, hauler, "nor a wheeled chassis and a tracked one")
+	# [b]The command core used to be the two-family one and no longer is.[/b]
+	# `CHASSIS_GROUND_TRANSITIONAL` is retired — doc 01 §7.3's Prime Mover mask is
+	# what finally made a vestigial family bit cost something — so the proof that
+	# this row is a *list* rather than a single name is now built from a mask
+	# rather than read off a shipped part. Every shipped chassis declares one
+	# family, which is the design; the row still has to handle two.
 	check_true(
-		command.length() > hauler.length(),
-		"the two-family mask reads longer than a one-family mask: '%s' against '%s'"
+		PartInspector.chassis_families(
+			PartEnums.CHASSIS_WHEELED | PartEnums.CHASSIS_TRACKED
+		).length() > hauler.length(),
+		"a two-family mask reads longer than a one-family mask: '%s' against '%s'"
 			% [command, hauler]
 	)
 
@@ -173,7 +179,7 @@ func test_a_core_module_says_which_families_it_carries() -> void:
 func test_the_family_list_names_every_bit_and_says_so_when_there_are_none() -> void:
 	var wheeled := PartInspector.chassis_families(PartEnums.CHASSIS_WHEELED)
 	var tracked := PartInspector.chassis_families(PartEnums.CHASSIS_TRACKED)
-	var both := PartInspector.chassis_families(PartEnums.CHASSIS_GROUND_TRANSITIONAL)
+	var both := PartInspector.chassis_families(PartEnums.CHASSIS_WHEELED | PartEnums.CHASSIS_TRACKED)
 	check_true(both.contains(wheeled), "the pair contains the wheeled name")
 	check_true(both.contains(tracked), "and the tracked one")
 	check_ne(

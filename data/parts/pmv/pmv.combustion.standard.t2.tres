@@ -880,6 +880,7 @@ accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_m14mb"]
 script = ExtResource("4_015y3")
+locomotion_mask = 1
 drive_torque_nm = 6400.0
 
 [resource]

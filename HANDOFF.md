@@ -98,13 +98,33 @@ first time.** 8241 checks across 102 files, eight closed, none new. That assert
 was failing the wrapper on its own, so a run could exit non-zero with every check
 green.
 
-**The tracked family was measured and deliberately not changed.** §3.1.1 and
-§3.1.2 carry the numbers. Two long-standing claims are void — the drive-torque
-ceiling was taken on the short bogie and the tilt does not move at all up to
-26 000 N·m, and the pivot is neither torque-bound nor the authored slew damper's
-fault. It is an L/B ratio of 2.8. Raising the torque is four of the thirteen
-remaining failures and it moves every family at once, so it wants a session that
-expects to re-measure.
+**Then one Prime Mover per locomotion family, which is what unblocked it.** Two
+movers carried four families between them — a tank, a mech and a rotorcraft all
+ran a road car's 6400 N·m — so no family's physics could be tuned without moving
+the other three. `PrimeMoverProfile` gains a `locomotion_mask`, the validator
+refuses a mover on a chassis it does not drive, and three rows are authored:
+`pmv.turbine.tracked.t3`, `pmv.combustion.strider.t3`, `pmv.turboshaft.rotary.t3`.
+`CHASSIS_GROUND_TRANSITIONAL` is retired in the same change, because a hull
+declaring a family it does not use now refuses every mover that does not drive
+it.
+
+The tracked raise §3.1.1 held for four sessions is applied: **run-up 2.14 →
+4.98 m/s, reverse −2.53 → −5.80 m**, and the walking family is byte-identical
+across the split, which is what the clone was for.
+
+**And the rotorcraft flies.** Doc 05 §12.7. A disc's thrust is bolted to its own
+hull, so any tilt is positive feedback and the shipped recipe — at a
+thrust-to-weight of **1.47**, never short of lift — passed 57° of tilt at four
+seconds and came down inverted at 177°. It flew in tests only because the arena's
+pilot loop commands the cyclic at a world-space direction and incidentally held
+it level. An attitude hold bounded by what the swashplate could actually produce
+now climbs to **317 m holding 1.99°** on a bare collective demand with nothing
+else commanded. It also fixed the rotary brake — 12.40 m/s out of a 6.62 run-up,
+now 0.590 — and the arena's hover droop, which was a P controller sitting 1.28 m
+under its target because its output must be non-zero at equilibrium.
+
+**The suite is at 7 failures across 7 files, from 21 at the start of the
+session.**
 
 **The bad news, plainly. Four things.**
 
@@ -118,10 +138,10 @@ five seconds walking dead straight**. §3.1.3.
 **A tracked build still will not turn.** Full right lock for five seconds moves
 it 2.4°, at 0.90 m/s. §3.1.2.
 
-**The suite is still red — 13 failures across 9 files — and every one of them
-was red before this session.** They are §3.0's remaining list, and four of them
-are one tracked change nobody has been willing to pay for. A red suite still
-cannot tell a regression from a moved expectation.
+**The suite is still red — 7 failures across 7 files — and every one of them was
+red before this session.** They are §3.0's remaining list. A red suite still
+cannot tell a regression from a moved expectation, and the seven left are the
+ones nobody has looked at closely.
 
 **No preset is reachable from the interface.** Six finished builds and
 `StarterBlueprint.skirmisher()` still has all three callers. §3.3.
@@ -294,8 +314,8 @@ either done or is in section 4.
 
 **Do this before anything else.** Session 44 moved every chassis section, four
 masses, a limb reach, a disc radius and a track patch, and the suite has been
-carrying the result ever since: **13 failures across 9 files**, down from 25
-across 13, 21 across 11 at the start of session 46, and 16 after its first half.
+carrying the result ever since: **7 failures across 7 files**, down from 25
+across 13 and from 21 across 11 at the start of session 46.
 Every one is claimed to be an assertion quoting a number the rebuild moved — but
 that is a claim about a set nobody has finished walking, and **two of the three
 looked at closely so far were not re-measurements at all**.
@@ -324,25 +344,17 @@ and `tests/arch/` are green: the data, the registry, the placement chain, the ma
 solver and the screen flow all agree with the rebuilt geometry. What is left is
 what the simulation *does* with it.
 
-**Four are the tracked family and they are one defect.** §3.1.2 has the
-measurements taken this session; the short version is that the family is
-underpowered and cannot skid-steer, the first is a `balance-review` change with a
-blast radius across every locomotion family, and the second is geometry rather
-than a constant.
+**The tracked and rotary clusters are closed.** Six of the eight failures that
+went this session were those two, and both were one cause each: a Prime Mover
+shared across four families (§3.1.1) and a rotary Assembly with no attitude
+control (doc 05 §12.7). What is left of the tracked family is the pivot, which is
+geometry — §3.1.2.
 
-- `test_locomotion_behaviour` — will not drive straight off the mark (2.15 m/s
-  against a 2.0 bound at the sample tick), will not pivot (2.7° at full lock).
-- `test_braking_and_reverse` — the run-up reaches 2.14 m/s against a 3.0 floor,
-  and the reverse 2.53 m against 3.0.
+**The seven left are singletons and only one has been investigated.**
 
-**Two are the rotary family and are probably one cause.** Both report an
-Assembly that has not reached hover height when the engagement opens:
-`test_family_duels`' pair are at 2.72 m and `test_team_engagement` counts zero of
-two flying. `CombatArena.HOVER_HEIGHT_M` is 4.0 and the masses moved in session
-44 — measure the autopilot's achieved altitude before touching either the
-constant or the recipe.
-
-**The rest are singletons and none has been investigated.**
+- **`test_locomotion_behaviour`** — the tracked pivot, 2.7° at full lock. §3.1.2
+  has the diagnosis: it is an L/B ratio of 2.8 and it is geometry rather than a
+  constant. The other three of this file's failures went with §3.1.1's raise.
 
 - **`test_overpenetration_bounds`** — "resolved over 1 ticks, not inside one".
   The file's claim is that §12.2.2's budget is spent over the round's *life*
@@ -372,52 +384,38 @@ constant or the recipe.
 
 ### 3.1 The motion layer
 
-#### 3.1.1 The drive torque, and the ceiling that turned out to be void
+#### 3.1.1 The drive torque — applied, per family
 
-`pmv.combustion.standard.t2` and `pmv.combustion.flat.t2` both still author
-**6400 N·m**, and the reason has now changed three times. It was capped there
-because 10 200 pumped the suspension until the Assembly took off (§7.4, closed
-session 38), because 9600 rolled it over in a sustained turn (§6.5, closed
-session 39), and then because a tracked build at 9600 "cannot stop without
-pitching past vertical and cannot reverse at all". **All three measurements are
-void.** On the wheeled reference build with §7.8's governor in place, a 600-tick
-full-throttle run and a 600-tick full-lock turn at **16 000 N·m** finish on all
-four contacts with 2.8° of roll and not one airborne tick:
-
-| N·m | straight-line top | airborne ticks | worst roll in a full-lock turn |
-|---|---|---|---|
-| 6400 | 15.65 m/s | 0 | 2.5° |
-| 9600 | 20.85 m/s | 0 | 2.4° |
-| 13 000 | 23.20 m/s | 0 | 2.4° |
-| 16 000 | 23.40 m/s | 0 | 2.8° |
-
-**And the tracked constraint went with the short bogie.** That measurement was
-taken on `mot.tracked.short_bogie.t2` — 1.90 m of patch under a 2.25 m hull, with
-the two forward road stations carrying nothing. Session 44 shipped the 5.60 m
-bogie and 12 of 12 stations now load at 1.4° of pitch, so there is nothing left
-to pitch over. Re-taken this session on the shipped tracked recipe, 420 ticks per
+**Closed.** The published ceiling of 6400 N·m rested on three measurements and
+all three were void: 10 200 pumped the suspension (§7.4, closed session 38),
+9600 rolled the build over in a turn (§6.5, closed session 39), and a tracked
+build at 9600 "cannot stop without pitching past vertical" — taken on the 1.90 m
+short bogie, which session 44 replaced. Re-taken on the 5.60 m one, 420 ticks a
 row:
 
-| N·m | distance | speed | heading | **worst tilt** |
+| N·m | distance | speed | heading | worst tilt |
 |---|---|---|---|---|
-| 6400 | 12.80 m | 3.34 m/s | +0.30° | **1.36°** |
-| 9600 | 20.98 m | 5.48 m/s | −0.55° | **1.41°** |
-| 13 000 | 29.72 m | 7.77 m/s | +0.76° | **1.41°** |
-| 18 000 | 42.59 m | 11.13 m/s | +1.07° | **1.41°** |
-| 26 000 | 59.87 m | 13.20 m/s | +0.65° | **1.41°** |
+| 6400 | 12.80 m | 3.34 m/s | +0.30° | 1.36° |
+| 9600 | 20.98 m | 5.48 m/s | −0.55° | 1.41° |
+| 13 000 | 29.72 m | 7.77 m/s | +0.76° | 1.41° |
+| 18 000 | 42.59 m | 11.13 m/s | +1.07° | 1.41° |
+| 26 000 | 59.87 m | 13.20 m/s | +0.65° | 1.41° |
 
-The tilt does not move at all across a fourfold increase. **Nothing measured now
-holds the torque at 6400**, and raising it is what closes §3.0's two tracked
-speed failures — the run-up floor of 3.0 m/s and the 3.0 m reverse are both
-cleared at 9600.
+The tilt does not move across a fourfold raise. **What had blocked it for four
+sessions was not the measurement but the sharing**: both movers carried several
+families, so the raise moved every engagement, recoil and stopping figure at
+once. Doc 01 §7.3's `locomotion_mask` is what made it attributable, and
+`pmv.turbine.tracked.t3` takes 13 000 — 7.77 m/s, which is a heavy tracked
+vehicle's speed and deliberately short of 18 000's 11 m/s.
 
-**It was deliberately not raised this session.** Both movers are shared: the
-standard one carries the tracked, ambulatory, biped, utility and rotary recipes
-and the flat one carries the wheeled family and `StarterBlueprint`, so either
-edit moves every engagement, recoil and stopping figure in the suite at once.
-That is a `balance-review` change under CLAUDE.md §12 and it wants a session that
-expects to re-measure, not one passing through. **It is the single highest-value
-item left in §3.0**, because it is four failures and it is measured.
+Measured after: tracked run-up **4.98 m/s** against a 3.0 floor and reverse
+**−5.80 m** against 3.0, both of which were failing. The wheeled family is
+untouched at 6400 and the walking family byte-identical.
+
+**What is left is the wheeled family's own ceiling**, which is still 6400 against
+a table that says 16 000 is clean. Nobody has needed it; the road car reaches
+22.95 m/s against an authored 24 already, so the raise would buy acceleration
+rather than speed.
 
 #### 3.1.2 The tracked family cannot skid-steer, and it is geometry
 

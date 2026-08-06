@@ -206,6 +206,23 @@ func test_a_walking_build_reverses() -> void:
 ## §12.8. A disc touches nothing, so its brake is a cyclic tilt against the hull's
 ## own horizontal velocity — the same control a player has, bounded to the same
 ## swashplate cone, and it stops the moment the demand does.
+## [b]Doc 05 §12.7's attitude hold, asserted where the family is actually flying.[/b]
+## A disc's thrust is fixed to the hull that carries it, so before §12.7 existed a
+## rotary Assembly was an inverted pendulum with nothing restoring it: this
+## fixture recorded 0.665 of upright — 48° over — while it was supposedly holding
+## a hover, and a bare collective demand with no autopilot at all took the shipped
+## recipe to 177° and put it down inverted. It now holds 0.998.
+func test_a_rotary_build_stays_the_right_way_up_while_it_flies() -> void:
+	await _measure()
+	check_true(
+		_rotary.worst_upright > 0.95,
+		(
+			"the disc holds its own hull level while flying and braking: %.3f of "
+			+ "upright at worst, against 0.665 before §12.7's levelling term"
+		) % _rotary.worst_upright
+	)
+
+
 func test_a_rotary_build_arrests_its_horizontal_flight() -> void:
 	await _measure()
 	check_true(

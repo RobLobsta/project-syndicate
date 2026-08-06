@@ -38,7 +38,8 @@ extends TestCase
 ## moved when the chassis did: 900 kg in place of 1800, over a hull nine cells
 ## long rather than thirteen.
 const CORE_KEY := &"core.rotary.lifter.t3"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+## The rotary family's own mover, per doc 01 §7.3's mask.
+const POWER_KEY := &"pmv.turboshaft.rotary.t3"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)

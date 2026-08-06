@@ -861,6 +861,62 @@ func test_the_appendage_refusal_is_not_a_budget_refusal_in_disguise() -> void:
 	)
 
 
+## §7.3's Prime Mover mask, and the rule that makes four sets of physics tuning
+## independent of each other.
+##
+## Asserted from both sides on one chassis, because a rule that only ever refuses
+## is indistinguishable from a rule that always refuses. The road hull takes the
+## wheeled family's flat slab and refuses the tank's turbine, the mech's block and
+## the rotorcraft's turboshaft — none of which is a budget refusal: all four rows
+## carry the identical section, mass and mount weight, so the family mask is the
+## only thing that can separate them.
+func test_a_prime_mover_is_refused_by_a_chassis_it_does_not_drive() -> void:
+	var core := PartRegistry.definition_by_key(CORE_KEY)
+	var wheeled := PartRegistry.definition_by_key(&"pmv.combustion.flat.t2")
+	if core == null or wheeled == null:
+		fail("fixture: the command chassis and the wheeled mover must both be registered")
+		return
+	var ctx := _new_context()
+	PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+
+	var seat := Vector3i(CORE_ORIGIN.x, CORE_ORIGIN.y, CORE_ORIGIN.z + 10)
+	check_eq(
+		PlacementValidator.validate(ctx, PlacementCandidate.create(wheeled, seat, 0)),
+		PlacementValidator.Reject.NONE,
+		"a wheeled chassis takes the wheeled family's mover"
+	)
+	for key: StringName in [
+		&"pmv.turbine.tracked.t3", &"pmv.combustion.strider.t3", &"pmv.turboshaft.rotary.t3"
+	]:
+		var foreign := PartRegistry.definition_by_key(key)
+		if foreign == null:
+			fail("fixture: %s must be registered" % key)
+			continue
+		check_eq(
+			foreign.mount_weight,
+			wheeled.mount_weight,
+			"%s costs the same mounts as the wheeled mover, so this is not a budget refusal" % key
+		)
+		check_eq(
+			PlacementValidator.validate(ctx, PlacementCandidate.create(foreign, seat, 0)),
+			PlacementValidator.Reject.PRIME_MOVER_CHASSIS_MISMATCH,
+			"and refuses %s, which drives another family" % key
+		)
+
+
+## A mover that declares nothing drives everything, which is what keeps the field
+## from narrowing a `.tres` nobody has authored for it. The default is
+## [constant PartEnums.CHASSIS_ANY] rather than a single family precisely so that
+## adding the mask to [PrimeMoverProfile] could not silently refuse a part.
+func test_a_prime_mover_that_declares_no_family_is_admitted_anywhere() -> void:
+	var profile := PrimeMoverProfile.new()
+	for mode: int in PartEnums.LOCOMOTION_MODE_COUNT:
+		check_true(
+			profile.drives(mode),
+			"an unauthored Prime Mover drives locomotion family %d" % mode
+		)
+
+
 ## ===== CONTRACT ========================================================
 
 

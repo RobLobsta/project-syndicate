@@ -1802,6 +1802,62 @@ there is only one section here.)
     measuring the conservation law.** Ask which frame the phenomenon lives in
     before choosing where to stand.
 
+120. **A shared part is a shared tuning constant, and the cost is paralysis
+    rather than compromise.** Two Prime Movers carried four locomotion families
+    between them for the life of the project: one slab drove every wheeled build
+    and one upright block drove the tank, the quadruped, the biped and the
+    rotorcraft. The obvious cost is that a 3.5 t road car and a 10.5 t tracked
+    hauler ran the same 6400 N·m, and that is real but survivable.
+
+    The cost that actually bit is that **no family could be changed at all**.
+    `HANDOFF.md` §3.1.1 carried a measured, correct torque raise for the tracked
+    family across four sessions and no session would apply it, because applying it
+    moved every engagement, recoil and stopping figure in the suite at the same
+    time — and a suite that moves everywhere at once cannot tell a fix from a
+    regression. The blocker was never the measurement; it was that the change had
+    no way to be *attributable*.
+
+    Two things to carry. **Ask what a datum is shared by before tuning it**, and
+    treat "this constant is read by four subsystems" as a design defect rather
+    than as economy. And when splitting one, **make the new rows byte-identical
+    clones except for the field being separated** — the walking family's numbers
+    had been re-measured the same session and survived the split exactly because
+    `pmv.combustion.strider.t3` changed nothing but its own mask.
+
+121. **A thrust vector fixed to a hull is an inverted pendulum, and no amount of
+    thrust fixes it.** The shipped rotorcraft could not fly: it lifted off
+    cleanly, passed 12° of tilt at two seconds, 57° at four, and came down
+    inverted at 177°. Every instinct says underpowered; the thrust-to-weight is
+    **1.47** out of ground effect. A disc pushes along the axis its chassis points
+    it at, so a hull that has tilted one degree has lift with a horizontal
+    component, which tilts it further — the lift is the destabilising term.
+
+    It survived because the only thing that ever flew one was a test fixture whose
+    pilot loop commands the cyclic at a *world-space* thrust direction, which
+    incidentally holds the hull level. So the family flew in every test and fell
+    over in the game, and the failing suite assertions read as "the autopilot is
+    mistuned" rather than "there is no attitude control anywhere in `src/`".
+
+    The general shape: **when a fixture stands in for a system that does not
+    exist, it will hide the absence rather than expose it** — and the tell is a
+    family that works only through the fixture. `HANDOFF.md` §3.7 had named the
+    missing layer for six sessions; what nobody had done was drive the thing
+    without the stand-in and watch it fall over.
+
+122. **A proportional controller settles where its output equals the disturbance,
+    and that offset reads as "the machine cannot reach the target".** The arena's
+    rotary builds were asserted to be flying above 3 m and settled at 2.72 m,
+    every run, on both combatants — which was read as the rotary family being
+    unable to make its hover height. The altitude loop is `error · gain − rate ·
+    gain`, and a hover needs a non-zero collective, so it necessarily sits
+    `collective_hover / gain` below the target: 1.28 m under 4.00 m, exactly the
+    measurement.
+
+    The repair is a feed-forward and not an integrator: the disturbance is the
+    Assembly's own weight, which is known exactly and constant between structural
+    events. **A steady-state offset in a P loop is arithmetic, not a limitation of
+    the plant** — check the loop before you conclude anything about the machine.
+
 ---
 
 ## 2. What fault injection taught

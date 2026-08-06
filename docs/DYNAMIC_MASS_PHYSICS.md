@@ -1402,6 +1402,44 @@ Below the reference speed the demand tapers with the speed, so the disc stops ti
 
 Measured on the arena's rotary recipe: 6.58 m/s of horizontal flight down to 1.48 in eighty ticks.
 
+### 12.7 Attitude Hold
+
+**A rotary Assembly cannot fly without this section, and the reason is that its thrust is bolted to its own hull.** A disc pushes along the axis the chassis points it at, so a hull that has tilted a degree is a hull whose lift has acquired a horizontal component — which tilts it further. It is an inverted pendulum with the thrust above the centre of mass and nothing restoring it.
+
+Measured on the shipped rotorcraft recipe with a bare collective demand and nothing else commanded:
+
+| | before | after |
+|---|---|---|
+| tilt at 2 s | 12.3° | **1.9°** |
+| tilt at 4 s | 57.0° | **1.9°** |
+| tilt at 5 s | 132.8° | **2.0°** |
+| where it ended | inverted on the ground at 177° | **climbing through 317 m** |
+
+Thrust-to-weight is **1.47** out of ground effect, so it was never short of lift. It was short of a way to stay the right way up, and until this section the only thing in the repository that could hold a rotary Assembly level was the arena fixture's pilot loop — which meant the family flew in tests and fell over in the game.
+
+```
+theta   = body_up x world_up                  (|theta| = sin of the tilt)
+omega_h = body angular velocity, world-up component removed
+w       = 1 / ATTITUDE_RESPONSE_S
+tau     = I_h · (w² · theta − 2 · ATTITUDE_DAMPING_RATIO · w · omega_h)
+tau     = clamp_length(tau, T · sin(cyclic_limit_deg) · lever) · share
+```
+
+| Constant | Value |
+|---|---|
+| `ATTITUDE_RESPONSE_S` | 0.45 |
+| `ATTITUDE_DAMPING_RATIO` | 0.9 |
+
+Five things about this are normative:
+
+- **The positive sense is "rotates the body's up axis back toward world up".** `theta = body_up x world_up` has that sense by construction; negating it is a controller that pushes the machine over, and it will still look like a controller doing something. A test of this term asserts which way the hull ends up — §10 rule 14, and the same rule §13.10's ankle is written against.
+- **The gain is a response time and never an authored torque.** `I · w²` is a statement about how fast the attitude may be corrected and carries no assumption about the machine's mass. An absolute newton-metres would level a light Assembly briskly and a heavy one not at all, capping what a rotary build may carry at a mass nothing in the data or the interface states — which is exactly what §13.10's ankle constant did before it became a ratio, and is `LEARNED_FACTS.md` §1 fact 110's general shape.
+- **The bound is the model, not a safety rail.** What levels a rotorcraft is the swashplate tilting the disc against its own thrust, so the ceiling is `T · sin(cyclic_limit) · lever`: a disc making no thrust levels nothing, a disc at full thrust levels exactly as hard as its authored cone allows, and there is no configuration in which the term is free rotation. A rotary Assembly that has lost power falls over, which is correct. This is §7.6's rule — an aid may not apply a force the machine could not — applied one family across.
+- **Yaw is excluded rather than damped.** `RotorProfile.yaw_authority_nm` already owns that axis through `ControlInput.yaw`. A leveller that also turned the machine would give the family two heading authorities, which is the defect §13.5 spent three sessions proving is worth avoiding.
+- **`share` is one over the disc count**, so an Assembly levels with the discs it still has and one with none does not level at all — the same degradation §13.10 gets from clamping by its own normal load.
+
+**What it does not do is hold a station or an altitude.** It holds attitude, and those are three different jobs; `HANDOFF.md` §3.7's stability-augmentation layer is still unwritten and is still the thing a player flying a rotary build wants. What this section changes is that the machine no longer falls out of the sky while nobody is flying it, so the remaining work is about *convenience* rather than about *possibility*.
+
 ### 12.7 Cost
 
 | Stage | Per disc per tick |

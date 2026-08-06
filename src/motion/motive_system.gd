@@ -580,6 +580,32 @@ func _solve_rotary(slot: int, dt: float) -> void:
 	if not is_zero_approx(torque):
 		runtime.body.apply_torque(spin_axis * torque)
 
+	# §12.7's attitude hold, and the term without which this family cannot fly at
+	# all. A disc's thrust is fixed to the hull that carries it, so a hull that has
+	# tilted is a hull whose lift has acquired a horizontal component — an inverted
+	# pendulum with nothing restoring it. Bounded by what this disc's own swashplate
+	# could produce against its own thrust, so it fades exactly as lift does and a
+	# powerless Assembly falls over.
+	#
+	# Applied after the reaction and the yaw demand and about the horizontal axes
+	# only: [member RotorProfile.yaw_authority_nm] owns the vertical one, and two
+	# controllers on one axis is the defect §13.5 records at length.
+	var com_world := runtime.body.global_transform * runtime.body.center_of_mass
+	var inertia := runtime.body.inertia
+	var level := RotorSolver.levelling_torque_nm(
+		basis,
+		runtime.body.angular_velocity,
+		maxf(inertia.x, inertia.z),
+		RotorSolver.levelling_authority_nm(
+			rotor,
+			disc.last_thrust_n,
+			(_part_world_position(slot) - com_world).length()
+		),
+		1.0 / float(maxi(_discs.size(), 1))
+	)
+	if not level.is_zero_approx():
+		runtime.body.apply_torque(level)
+
 
 func _solve_ambulatory(slot: int, dt: float) -> void:
 	var def := _definition(slot)

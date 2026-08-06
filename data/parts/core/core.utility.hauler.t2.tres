@@ -5328,7 +5328,6 @@ accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_hoy8v"]
 script = ExtResource("3_4w73f")
-locomotion_mask = 1
 power_capacity_pu = 560.0
 mount_budget = 32
 speed_cap_mps = 18.0

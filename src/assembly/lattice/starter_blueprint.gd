@@ -149,6 +149,12 @@ const ARM_KEY: StringName = &"apx.arm.manipulator.t3"
 ## The upright Prime Mover, for the hulls with the headroom for it. The
 ## skirmisher uses the flat row because its roof is 1.00 m off its own floor.
 const BLOCK_POWER_KEY: StringName = &"pmv.combustion.standard.t2"
+## One Prime Mover per locomotion family, per doc 01 §7.3's mask. The block above
+## is the utility truck's bonnet and is `CHASSIS_WHEELED`; a tank, a mech and a
+## rotorcraft each name their own here, so that tuning one cannot move the others.
+const TRACKED_POWER_KEY: StringName = &"pmv.turbine.tracked.t3"
+const STRIDER_POWER_KEY: StringName = &"pmv.combustion.strider.t3"
+const ROTARY_POWER_KEY: StringName = &"pmv.turboshaft.rotary.t3"
 const CANNON_KEY: StringName = &"eff.ballistic.rifle_long.t3"
 const AUTOCANNON_KEY: StringName = &"eff.ballistic.autocannon_30.t3"
 
@@ -212,7 +218,7 @@ const UTILITY_FRONT_AXLE_Z: int = 24
 static func tracked() -> Blueprint:
 	var bp := Blueprint.new()
 	bp.add(TRACKED_CORE_KEY, TRACKED_CORE_CELL)
-	bp.add(BLOCK_POWER_KEY, TRACKED_POWER_CELL)
+	bp.add(TRACKED_POWER_KEY, TRACKED_POWER_CELL)
 	bp.add(CANNON_KEY, TRACKED_GUN_CELL)
 	for cell: Vector3i in TRACK_HUB_CELLS:
 		bp.add(HUB_KEY, cell)
@@ -227,7 +233,7 @@ static func tracked() -> Blueprint:
 static func ambulatory() -> Blueprint:
 	var bp := Blueprint.new()
 	bp.add(AMBULATORY_CORE_KEY, AMBULATORY_CORE_CELL)
-	bp.add(BLOCK_POWER_KEY, AMBULATORY_POWER_CELL)
+	bp.add(STRIDER_POWER_KEY, AMBULATORY_POWER_CELL)
 	bp.add(AUTOCANNON_KEY, AMBULATORY_GUN_CELL)
 	for i: int in AMBULATORY_LEG_CELLS.size() / 2:
 		bp.add(HUB_KEY, AMBULATORY_LEG_CELLS[i * 2], AXLE_DOWN_ORIENTATION)
@@ -245,7 +251,7 @@ static func ambulatory() -> Blueprint:
 static func biped() -> Blueprint:
 	var bp := Blueprint.new()
 	bp.add(BIPED_CORE_KEY, BIPED_CORE_CELL)
-	bp.add(BLOCK_POWER_KEY, BIPED_POWER_CELL)
+	bp.add(STRIDER_POWER_KEY, BIPED_POWER_CELL)
 	bp.add(AUTOCANNON_KEY, BIPED_GUN_CELL)
 	for i: int in BIPED_LEG_CELLS.size() / 2:
 		bp.add(HUB_KEY, BIPED_LEG_CELLS[i * 2], AXLE_DOWN_ORIENTATION)
@@ -264,7 +270,7 @@ static func biped() -> Blueprint:
 static func rotary() -> Blueprint:
 	var bp := Blueprint.new()
 	bp.add(ROTARY_CORE_KEY, ROTARY_CORE_CELL)
-	bp.add(BLOCK_POWER_KEY, ROTARY_POWER_CELL)
+	bp.add(ROTARY_POWER_KEY, ROTARY_POWER_CELL)
 	bp.add(CELL_KEY, ROTARY_CELL_CELL)
 	for cell: Vector3i in ROTARY_PYLON_CELLS:
 		bp.add(PYLON_KEY, cell)
