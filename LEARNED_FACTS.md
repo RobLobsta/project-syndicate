@@ -1755,6 +1755,53 @@ there is only one section here.)
     supported all along.
 
 
+118. **An `assert()` in production code that a fixture trips does not stop the
+    fixture — it silently builds a different Assembly, and the numbers that come
+    out read as a broken subject.** `tests/physics/test_inertia_coupling.gd`
+    names three parts and commits them through `PlacementValidator.commit`, whose
+    first line is `assert(validate(...) == Reject.NONE)`. Session 44 moved the
+    rotary chassis, the rotor's authored cell stopped mating, and per fact 34 the
+    assert printed and aborted **the call** — so `before_all` carried straight on
+    and built a two-part hull with no rotor. The rotor is the part that hangs
+    mass off two axes at once, which is the entire purpose of the fixture.
+
+    It then spent two sessions on the work queue as "not obviously a
+    re-measurement", suspected of a flipped `−ω × (I ω)`, because it produced
+    plausible wrong numbers rather than crashing. Restoring the rotor closed two
+    of its three failures on the spot.
+
+    Two things to carry. **A fixture that names N parts must count N parts**, and
+    the check has to be a count rather than a property — this file already
+    asserted "the tensor has a substantial xz product" and "three distinct
+    principal moments" as its anti-fixture-trap guards, and the Prime Mover alone
+    satisfied both. And **an engine error in a `before_all` is the highest-value
+    line in a suite log**: the wrapper fails the run on it (fact 34), which is the
+    only reason this was findable at all, so a run that exits non-zero with a
+    green check count is telling you something specific and worth reading before
+    anything else.
+
+119. **A torque-free tumble is invisible in the world frame, and the measurement
+    there runs backwards.** The same file asserted that a spin about the
+    intermediate axis "has left the axis it started on" by taking the off-axis
+    component of the **world** angular velocity. It cannot work: `ω · L` is
+    exactly constant for a free body and `L` is fixed in world space, so once the
+    body has tumbled onto a stable axis its world `ω` settles back down near where
+    it began.
+
+    Measured on the reference fixture, launched at 6 rad/s and soaked for five
+    seconds — the world-frame reading is anti-correlated with the phenomenon:
+
+    | launched about | body keeps, on that axis | world off-axis |
+    |---|---|---|
+    | minor (stable) | **5.21** of 6.0 | 3.02 rad/s |
+    | intermediate (tumbles) | **1.56** of 6.0 | 0.13 rad/s |
+
+    The axis the body genuinely holds reports the *largest* world excursion,
+    because a stable spin that is not exactly on `L` precesses. The general
+    shape: **when a quantity is pinned by a conservation law, measuring it is
+    measuring the conservation law.** Ask which frame the phenomenon lives in
+    before choosing where to stand.
+
 ---
 
 ## 2. What fault injection taught

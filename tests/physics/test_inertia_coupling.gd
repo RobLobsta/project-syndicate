@@ -46,7 +46,19 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## puts products of inertia into the tensor. A symmetric build has none and this
 ## whole section would be a no-op on it.
 const POWER_ORIGIN := Vector3i(21, 0, 20)
-const ROTOR_ORIGIN := Vector3i(19, 4, 21)
+## [b]It was (19, 4, 21), and that cell stopped mating when session 44 gave the
+## rotary family its own chassis.[/b] The placement failed `POLARITY_MISMATCH`,
+## `PlacementValidator.commit`'s assert fired, and — per `LEARNED_FACTS.md` §1
+## fact 34 — an assert here prints and aborts the *call*, so `before_all` carried
+## on and built the Assembly **without its rotor**. Every measurement in this file
+## has therefore been taken on a two-part hull since, and the rotor is the part
+## that hangs mass off two axes at once, which is the entire point of the fixture.
+##
+## The failure mode is worth more than the cell: a broken fixture that still
+## produces numbers reads exactly like a broken subject, and this one spent two
+## sessions on §3.0's "not obviously a re-measurement" list being suspected of an
+## integrator fault.
+const ROTOR_ORIGIN := Vector3i(20, 4, 21)
 
 ## Spin rate for the tumble tests, in rad/s — about one revolution per second.
 const SPIN_RAD_S: float = 6.0
@@ -55,9 +67,28 @@ const SPIN_RAD_S: float = 6.0
 const SEED_WOBBLE: Vector3 = Vector3(0.001, 0.001, 0.001)
 
 const SOAK_TICKS: int = 300
-## Off-axis rate a tumble must exceed, in rad/s. The seeded wobble is 0.0014, so
-## anything near it is "did not tumble".
-const TUMBLE_THRESHOLD_RAD_S: float = 0.5
+## Fraction of its spin a body-frame axis must **keep** to count as holding, and
+## the fraction an unstable one must have **lost**, after the soak.
+##
+## [b]Measured in the body frame, and the frame is the whole of what was wrong
+## with this test.[/b] It used to take the off-axis component of the
+## [i]world[/i] angular velocity against the axis it was launched on, and a
+## torque-free body cannot show a tumble there: `ω · L` is exactly constant and
+## `L` is fixed in world space, so once the body has tumbled onto a stable axis
+## its world-frame `ω` sits back down near where it started. The measurement is
+## not merely insensitive, it runs the wrong way — of the three axes, the one the
+## body genuinely holds (the minor) reports the [i]largest[/i] world off-axis
+## excursion, 3.02 rad/s, because a stable spin that is not exactly on `L`
+## precesses; and the intermediate axis, which the body abandons completely,
+## reports 0.13.
+##
+## In the body frame it is unambiguous. Launched at 6 rad/s and soaked for
+## [constant SOAK_TICKS]: about the minor axis the body keeps **5.21 of 6.0** on
+## the axis it started on, and about the intermediate axis it keeps **1.56**,
+## having moved 5.52 of it onto another axis entirely. That is the migration of
+## the spin through the body that §3.4 exists to produce.
+const AXIS_HELD_FRACTION: float = 0.70
+const AXIS_LOST_FRACTION: float = 0.45
 
 ## Spin rate chosen to drive the unclamped torque far past the ceiling: the
 ## correction goes as omega squared, so ten times the rate is a hundred times the
@@ -121,6 +152,20 @@ func after_all() -> void:
 func test_the_fixture_has_products_of_inertia_to_correct_for() -> void:
 	# Without this the rest of the file passes against a correction that computes
 	# zero, which is the fixture trap CLAUDE.md §9 keeps naming.
+	#
+	# [b]The part count is here because the tensor check alone did not catch a
+	# missing part.[/b] `mot.rotor.coaxial_mid.t3` stopped mating at its authored
+	# cell when session 44 moved the rotary chassis; `commit`'s assert printed and
+	# aborted the call (`LEARNED_FACTS.md` §1 fact 34), `before_all` carried on,
+	# and this file measured a two-part hull for two sessions. The Prime Mover
+	# alone still leaves an xz product above the bound below and still leaves three
+	# distinct moments, so every precondition here passed on the wrong Assembly.
+	# A fixture that names three parts should count three.
+	check_eq(
+		_runtime.graph.alive.count(1),
+		3,
+		"the fixture built all three of the parts it names, rotor included"
+	)
 	var full := _runtime.mass_properties.inertia_full
 	check_true(absf(full.x.z) > 100.0, "the tensor has a substantial xz product")
 	var diag := _runtime.mass_properties.inertia_diag
@@ -152,18 +197,44 @@ func test_the_server_applies_no_gyroscopic_term_of_its_own() -> void:
 
 
 func test_the_correction_tumbles_an_asymmetric_assembly() -> void:
-	# The behaviour §3.4 exists for. Asserted against the same fixture and the
-	# same spin as the test above, so the two differ in exactly one thing.
+	# The behaviour §3.4 exists for, asserted as a comparison rather than as an
+	# absolute: the same fixture, the same rate, the same soak, and the only
+	# difference is which axis the spin was launched on. A correction that did
+	# nothing would hold both, and one that merely added noise would lose both.
+	#
+	# Both readings are taken in the **body** frame. See
+	# [constant AXIS_HELD_FRACTION] for why the world frame cannot see this at
+	# all, which is what this test was doing until it was re-framed.
+	_spin(Vector3.BACK)
+	await physics_frames(SOAK_TICKS)
+	var stable := absf(_body_frame_omega().z)
+
 	var axis := _intermediate_axis()
 	_spin(axis)
-
 	await physics_frames(SOAK_TICKS)
+	var tumbled := absf(_body_frame_omega().dot(axis))
 
-	var omega := _runtime.body.angular_velocity
-	var off_axis := (omega - axis * omega.dot(axis)).length()
+	print(
+		"      inertia coupling: minor axis keeps %.3f of %.1f rad/s, intermediate keeps %.3f"
+		% [stable, SPIN_RAD_S, tumbled]
+	)
 	check_true(
-		off_axis > TUMBLE_THRESHOLD_RAD_S,
-		"the spin has left the axis it started on rather than holding it"
+		stable > SPIN_RAD_S * AXIS_HELD_FRACTION,
+		(
+			"a spin about the minor axis stays on it: %.3f of %.1f rad/s still there "
+			+ "after %d ticks"
+		) % [stable, SPIN_RAD_S, SOAK_TICKS]
+	)
+	check_true(
+		tumbled < SPIN_RAD_S * AXIS_LOST_FRACTION,
+		(
+			"and the same spin about the intermediate axis leaves it: %.3f of %.1f rad/s "
+			+ "left on the axis it was launched on"
+		) % [tumbled, SPIN_RAD_S]
+	)
+	check_true(
+		tumbled < stable,
+		"which is the asymmetry, and it is the comparison rather than either number"
 	)
 
 

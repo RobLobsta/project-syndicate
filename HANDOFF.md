@@ -81,11 +81,30 @@ alone.
 **And the ladder that produced that number settles §7.6's open question the other
 way.** The aid is a **monotone gain at every speed** — 0.3° of heading at 2 m/s,
 16.9° at 20 — so "the loop no longer earns its keep" was a quarter-throttle
-measurement generalised to every speed. §3.0's second "not obviously a
-re-measurement" item is closed, and so is §3.1.4's dispute about it.
+measurement generalised to every speed. §3.1.4's dispute about it is closed.
 
-**The suite went 21 failures to 16, five closed and none new**, at 8238 checks
-across 102 files.
+**Then §3.0, and the first file opened was not a re-measurement at all.**
+`test_inertia_coupling` names three parts and had been building two since session
+44 — the rotor's cell stopped mating, `commit`'s assert printed and aborted the
+call, and `before_all` carried on without the one part that puts products of
+inertia in the tensor. That closed two of its three failures. The third was the
+**frame**: a torque-free tumble is invisible in world space, where `ω · L` is
+pinned by conservation, and the file was measuring there. Re-framed in the body
+frame it is unambiguous — the minor axis keeps 5.21 of 6.0 rad/s and the
+intermediate keeps 1.56.
+
+**The suite went 21 failures to 13, and the engine-error scan is clean for the
+first time.** 8241 checks across 102 files, eight closed, none new. That assert
+was failing the wrapper on its own, so a run could exit non-zero with every check
+green.
+
+**The tracked family was measured and deliberately not changed.** §3.1.1 and
+§3.1.2 carry the numbers. Two long-standing claims are void — the drive-torque
+ceiling was taken on the short bogie and the tilt does not move at all up to
+26 000 N·m, and the pivot is neither torque-bound nor the authored slew damper's
+fault. It is an L/B ratio of 2.8. Raising the torque is four of the thirteen
+remaining failures and it moves every family at once, so it wants a session that
+expects to re-measure.
 
 **The bad news, plainly. Four things.**
 
@@ -99,8 +118,9 @@ five seconds walking dead straight**. §3.1.3.
 **A tracked build still will not turn.** Full right lock for five seconds moves
 it 2.4°, at 0.90 m/s. §3.1.2.
 
-**The suite is still red — 16 failures across 10 files — and every one of them
-was red before this session.** They are §3.0's remaining list. A red suite still
+**The suite is still red — 13 failures across 9 files — and every one of them
+was red before this session.** They are §3.0's remaining list, and four of them
+are one tracked change nobody has been willing to pay for. A red suite still
 cannot tell a regression from a moved expectation.
 
 **No preset is reachable from the interface.** Six finished builds and
@@ -230,10 +250,11 @@ one to drive. §3.1.3.
 project rebuilt a chassis and a bogie for; it drives straight and it cannot
 corner. §3.1.2.
 
-**Nobody knows whether this build plays better than the last one.** 16 failures
-across 10 files. All 16 were failing before this session and all are §3.0's
-re-measurements, but a red suite cannot tell a regression from a moved
-expectation.
+**Nobody knows whether this build plays better than the last one.** 13 failures
+across 9 files. All 13 were failing before this session, but "all of them are
+re-measurements" is the claim §3.0 keeps disproving: of the three looked at
+closely, two were a fixture that had been building the wrong Assembly. A red
+suite cannot tell a regression from a moved expectation.
 
 **Sustained fire still turns the whole screen brown.** Unchanged, cheap, and
 still the only thing in this list a player meets in their first ten seconds.
@@ -244,9 +265,12 @@ Ranked by what would most improve a first-time player's experience:
 1. **The biped cannot be driven.** §3.1.3. It falls over on a turn and cannot
    hold a heading straight. New at the top, because closing the drift is what
    made it visible.
-2. **Finish the re-measurement.** §3.0. Sixteen left.
+2. **Finish the re-measurement.** §3.0. Thirteen left, and four of them are
+   §3.1.1's drive torque, which is measured and waiting.
 3. **Six presets and no way to choose one.** §3.3.
-4. **A tracked build cannot corner.** §3.1.2.
+4. **A tracked build cannot corner, and it is slow.** §3.1.2 for the corner,
+   which is geometry; §3.1.1 for the speed, which is one constant and four of
+   §3.0's failures.
 5. **The fight is two parked hulls trading fire.** §3.1.4.
 6. **Sustained fire turns the whole screen brown.** §3.11.
 7. **The end card is drawn over nothing.** Unchanged.
@@ -270,83 +294,95 @@ either done or is in section 4.
 
 **Do this before anything else.** Session 44 moved every chassis section, four
 masses, a limb reach, a disc radius and a track patch, and the suite has been
-carrying the result ever since: **16 failures across 10 files**, down from 25
-across 13 and from 21 across 11 at the start of session 46. Every one is an
-assertion quoting a number the rebuild moved — but that is a claim about a set
-nobody has finished walking, and the ones that are *not* re-measurements are
-hiding in the same list.
+carrying the result ever since: **13 failures across 9 files**, down from 25
+across 13, 21 across 11 at the start of session 46, and 16 after its first half.
+Every one is claimed to be an assertion quoting a number the rebuild moved — but
+that is a claim about a set nobody has finished walking, and **two of the three
+looked at closely so far were not re-measurements at all**.
 
 The rule is `LEARNED_FACTS.md` §3's and it has not changed: **re-measure and
 re-assert; never loosen.** Where a file asserts a defect as it stands, the
 measurement moves and the complaint stays.
 
-**Five checks came off this list in session 46 and every one was a defect that
-had closed rather than a number that had moved** — `test_biped_balance`'s
-standing drift, `test_ambulatory_drift`'s heading, `test_braking_and_reverse`'s
-walking brake and walking reverse, and `test_ground_assembly`'s yaw loop. That is
-the pattern `test_rest_stability` established and it is worth expecting: a file
-that asserts a defect as it stands goes red when somebody repairs it, and the
-repair is often somewhere the file never mentions.
+**Eight checks came off this list in session 46.** Five were defects that had
+*closed* — `test_biped_balance`'s standing drift, `test_ambulatory_drift`'s
+heading, `test_braking_and_reverse`'s walking brake and walking reverse, and
+`test_ground_assembly`'s yaw loop. Three were `test_inertia_coupling`, and that
+one is the cautionary tale of the whole section: **the fixture had been building
+the wrong Assembly since session 44.** It names three parts, the rotor's authored
+cell stopped mating when the rotary chassis moved, `PlacementValidator.commit`'s
+assert printed and aborted the call, and `before_all` carried straight on with a
+two-part hull — losing the exact part that puts the products of inertia in the
+tensor. It produced plausible wrong numbers rather than crashing, and sat here for
+two sessions suspected of a flipped `−ω × (I ω)`. `LEARNED_FACTS.md` §1 facts 118
+and 119 have it, and **the engine error it printed was the only signal**: the
+wrapper fails a run on one even when the check count is green, so a non-zero exit
+with no failed checks is the first thing to read in a log.
 
-**The biped's standing drift is closed and the diagnosis recorded here was
-wrong**, which is worth keeping because it cost two sessions. This section said
-closing it needed "a third layer — a stepping reflex keyed on the capture point
-leaving the support polygon". §13.4 already had that reflex. What was missing is
-that §13.5's placement law answered the hip's ground projection outright at zero
-cadence, so every one of those re-plants discarded the capture point on arrival.
-Both machines slid, not just the biped: the quadruped's 6.85 m was invisible
-because `test_ambulatory_drift` measured only heading (`LEARNED_FACTS.md` §1
-fact 115).
+**Everything left is in `tests/physics/`.** `tests/unit/`, `tests/integration/`
+and `tests/arch/` are green: the data, the registry, the placement chain, the mass
+solver and the screen flow all agree with the rebuilt geometry. What is left is
+what the simulation *does* with it.
 
-**Every remaining failure is in `tests/physics/`.** Everything in `tests/unit/`,
-`tests/integration/` and `tests/arch/` is green, which is worth knowing: the data,
-the registry, the placement chain, the mass solver and the screen flow all agree
-with the rebuilt geometry. What is left is what the simulation *does* with it.
+**Four are the tracked family and they are one defect.** §3.1.2 has the
+measurements taken this session; the short version is that the family is
+underpowered and cannot skid-steer, the first is a `balance-review` change with a
+blast radius across every locomotion family, and the second is geometry rather
+than a constant.
 
-**One is not obviously a re-measurement and is the first thing to look at.**
+- `test_locomotion_behaviour` — will not drive straight off the mark (2.15 m/s
+  against a 2.0 bound at the sample tick), will not pivot (2.7° at full lock).
+- `test_braking_and_reverse` — the run-up reaches 2.14 m/s against a 3.0 floor,
+  and the reverse 2.53 m against 3.0.
 
-- **`test_inertia_coupling` loses 6.4% of its angular momentum** over a five-second
-  torque-free soak, against a 5% tolerance — 32 443 before, 34 505 after. The
-  fixture's tensor changed shape, so this may be an integrator accuracy question
-  rather than a broken sign, but it is the file whose whole purpose is catching a
-  flipped `−ω × (I ω)` and it should not be loosened without understanding which.
-  It also prints an engine `assert()` from its own `before_all` — "commit of a
-  placement that does not validate" — which fails the wrapper on its own and is
-  the reason a green check count still exits non-zero.
+**Two are the rotary family and are probably one cause.** Both report an
+Assembly that has not reached hover height when the engagement opens:
+`test_family_duels`' pair are at 2.72 m and `test_team_engagement` counts zero of
+two flying. `CombatArena.HOVER_HEIGHT_M` is 4.0 and the masses moved in session
+44 — measure the autopilot's achieved altitude before touching either the
+constant or the recipe.
 
-**The rest are re-measurements.**
+**The rest are singletons and none has been investigated.**
 
-- **`test_family_duels`, `test_team_engagement`, `test_ai_engagement`** —
-  engagement outcomes, hover margins and stand-off distances against builds whose
-  mass and inertia all moved. Read fact 44 before asserting any count.
-- **`test_braking_and_reverse`'s remaining three are the tracked and rotary
-  families**, not the walking one: a rotary build whose brake demand takes it from
-  6.62 m/s to 12.40, and a tracked build whose run-up only reaches 2.14 m/s and
-  which reverses 2.53 m. Both are §3.1.2's family rather than this file's.
-- **`test_locomotion_behaviour`** — the tracked family again: it will not drive
-  straight off the mark and will not pivot.
-- **`test_recoil_geometry`, `test_drive_and_shoot`, `test_overpenetration_bounds`** —
-  a hull whose `I_zz` grew 54% on an unchanged mass, and everything downstream.
+- **`test_overpenetration_bounds`** — "resolved over 1 ticks, not inside one".
+  The file's claim is that §12.2.2's budget is spent over the round's *life*
+  rather than per tick, which needs the four penetrations to land on different
+  ticks. The rebuild put **9 parts on the line where the comment says six**, so
+  the budget may now be spent inside the first hull and the round never reaches
+  the second. If that is it, the repair is a file the round crosses in more than
+  one tick — not a looser bound, because a bound the fixture cannot reach is the
+  fault this file was written to close.
+- **`test_ai_engagement`** — the approach was still running when sampled, 38.0 m
+  out. Related to §3.1.4's slow approach.
+- **`test_drive_and_shoot`** — the autocannon build holds 28.3° of heading over
+  17 rounds. `I_zz` grew 54% on an unchanged mass; this is the file that inverted
+  once already and should be read with fact 78 in hand.
+- **`test_recoil_geometry`** — a traversed round yaws the parked hull −0.0756
+  rad/s against the 0.124 the assertion was written against.
 - **`test_ground_assembly`'s one remaining failure** is
   `test_the_aid_does_not_cost_the_launch`, which is §7.6's *slip limiter* and not
-  its yaw loop. Worth knowing before touching it: measured this session, the
-  limiter costs the reference build **42% of its acceleration** over 300 ticks of
-  full throttle — 7.35 m/s managed against 12.88 unmanaged — while the aid-off
-  contact runs at **160 m/s of slip velocity** at 13 m/s of road speed, which is
-  a burnout that never ends. Both numbers are odd and neither has been explained;
-  the top speed is unaffected, so this is a launch behaviour rather than a cap.
+  its yaw loop. Worth knowing first: measured this session, the limiter costs the
+  reference build **42% of its acceleration** over 300 ticks of full throttle —
+  7.35 m/s managed against 12.88 unmanaged — while the aid-off contact runs at
+  **160 m/s of slip velocity** at 13 m/s of road speed, which is a burnout that
+  never ends. Both numbers are odd, neither is explained, and the governed top
+  speed is unaffected, so this is launch behaviour rather than a cap.
+- **`test_team_engagement`'s five-a-side** still runs to its timeout and is the
+  one file left that asserts a defect as it stands.
 
 ### 3.1 The motion layer
 
-#### 3.1.1 The drive torque, and why it did not move
+#### 3.1.1 The drive torque, and the ceiling that turned out to be void
 
-`pmv.combustion.standard.t2` still authors **6400 N·m**, and the reason has
-changed twice. It was capped there because 10 200 pumped the suspension until the
-Assembly took off (§7.4, closed session 38) and because 9600 rolled it over in a
-sustained turn (§6.5, closed session 39). **Both measurements were void and both
-were re-taken.** On the wheeled reference build with §7.8's governor in place, a
-600-tick full-throttle run and a 600-tick full-lock turn at **16 000 N·m** finish
-on all four contacts with 2.8° of roll and not one airborne tick:
+`pmv.combustion.standard.t2` and `pmv.combustion.flat.t2` both still author
+**6400 N·m**, and the reason has now changed three times. It was capped there
+because 10 200 pumped the suspension until the Assembly took off (§7.4, closed
+session 38), because 9600 rolled it over in a sustained turn (§6.5, closed
+session 39), and then because a tracked build at 9600 "cannot stop without
+pitching past vertical and cannot reverse at all". **All three measurements are
+void.** On the wheeled reference build with §7.8's governor in place, a 600-tick
+full-throttle run and a 600-tick full-lock turn at **16 000 N·m** finish on all
+four contacts with 2.8° of roll and not one airborne tick:
 
 | N·m | straight-line top | airborne ticks | worst roll in a full-lock turn |
 |---|---|---|---|
@@ -355,77 +391,88 @@ on all four contacts with 2.8° of roll and not one airborne tick:
 | 13 000 | 23.20 m/s | 0 | 2.4° |
 | 16 000 | 23.40 m/s | 0 | 2.8° |
 
-**The figure stayed at 6400 because the binding constraint is now the tracked
-recipe.** §3.1.2. Raised to 9600 the suite fails in three places, all of them
-tracked: it cannot stop without pitching past vertical and cannot reverse at all.
-The torque goes up when a tracked build stands level.
+**And the tracked constraint went with the short bogie.** That measurement was
+taken on `mot.tracked.short_bogie.t2` — 1.90 m of patch under a 2.25 m hull, with
+the two forward road stations carrying nothing. Session 44 shipped the 5.60 m
+bogie and 12 of 12 stations now load at 1.4° of pitch, so there is nothing left
+to pitch over. Re-taken this session on the shipped tracked recipe, 420 ticks per
+row:
 
-#### 3.1.2 The tracked family — done, and what it unblocks
+| N·m | distance | speed | heading | **worst tilt** |
+|---|---|---|---|---|
+| 6400 | 12.80 m | 3.34 m/s | +0.30° | **1.36°** |
+| 9600 | 20.98 m | 5.48 m/s | −0.55° | **1.41°** |
+| 13 000 | 29.72 m | 7.77 m/s | +0.76° | **1.41°** |
+| 18 000 | 42.59 m | 11.13 m/s | +1.07° | **1.41°** |
+| 26 000 | 59.87 m | 13.20 m/s | +0.65° | **1.41°** |
 
-**Closed in session 44.** All three items this section listed are shipped:
+The tilt does not move at all across a fourfold increase. **Nothing measured now
+holds the torque at 6400**, and raising it is what closes §3.0's two tracked
+speed failures — the run-up floor of 3.0 m/s and the 3.0 m reverse are both
+cleared at 9600.
 
-1. **A longer bogie.** `mot.tracked.long_bogie.t3` runs 6.00 m with 5.60 m of
-   patch and six road stations, under a 6.00 m `core.tracked.hauler.t3`.
-2. **`pivot_taper_mps` re-derived**, 9.0 → 16.0. At 9.0 the differential was down
-   to a third by 6 m/s, which is why full lock yawed a tracked build 0.03 rad/s.
-3. **`lateral_grip_ratio` questioned and answered**, 1.35 → **0.85**. A machine
-   that steers by breaking its patch loose sideways should not grip harder
-   sideways than it drives forward, and the longer the patch the more wrong it is.
+**It was deliberately not raised this session.** Both movers are shared: the
+standard one carries the tracked, ambulatory, biped, utility and rotary recipes
+and the flat one carries the wheeled family and `StarterBlueprint`, so either
+edit moves every engagement, recoil and stopping figure in the suite at once.
+That is a `balance-review` change under CLAUDE.md §12 and it wants a session that
+expects to re-measure, not one passing through. **It is the single highest-value
+item left in §3.0**, because it is four failures and it is measured.
 
-Measured at rest: **12 of 12 road stations loaded at 1.4° of pitch**, against 8.1°
-nose-up with the two forward stations carrying nothing.
+#### 3.1.2 The tracked family cannot skid-steer, and it is geometry
 
-**And it still will not turn.** Measured this session on the shipped recipe: full
-right lock held for five seconds moves the heading **2.4°**, at 0.90 m/s, against
-a wheeled build's 186.7° and a quadruped's 216° on the identical demand. Both of
-§14.2's re-derivations landed and the family drives straight — 6.8 m in five
-seconds, +0.3° of heading — so this is now the one thing wrong with it and it is
-squarely the top item for the family. `test_locomotion_behaviour`'s two failures
-are the same defect from the other end: it will not pull off the mark cleanly and
-it will not pivot on the spot.
+**Session 44's three items all shipped and the family still will not turn.**
+Measured on the shipped recipe: full right lock held for five seconds moves the
+heading **2.7°**, at 0.90 m/s, against a wheeled build's 186.7° and a quadruped's
+216° on the identical demand. The yaw rate saturates at **0.0095 rad/s** within
+one second and holds there.
 
-The inversion in a sustained turn still has not been re-measured, and neither has
-whether §3.1.1's drive torque can finally come off 6400 N·m.
+Three candidates were tested this session and two are eliminated.
 
-#### 3.1.2a The old tracked section, kept for its measurements
+- **It is not the drive torque.** The pivot scales linearly with it and stays
+  useless: 3.8° at 6400 N·m, 8.3° at 13 000, and only **21.4°** at 26 000 over
+  seven seconds. §3.1.1's raise fixes the family's speed and does not fix this.
+- **It is not the authored slew damper.** `slew_resistance_nm_per_n_m = 0.51`
+  over a 5.60 m patch at 103 kN is 294 kN·m at full scale, which looks decisive
+  and is not: scaling `TrackSolver.slew_torque_nm` to **zero** moves the pivot
+  from 2.68° to 3.56°. It is a quarter of the resistance. The other three
+  quarters are the real per-station scrub — each of the twelve stations computes
+  its own lateral friction at its own longitudinal offset, which is a yaw moment,
+  and that is correct physics rather than a term to delete.
+- **It is the patch-length-to-gauge ratio.** `mot.tracked.long_bogie.t3` runs
+  5.60 m of patch and `CombatArena.TRACK_HUBS` puts the two flanks 8 cells apart
+  — **2.00 m** of track gauge. That is an L/B of **2.8**, where a real tracked
+  vehicle needs about 1.8 for skid steering to work at all. The scrub resistance
+  grows with patch length and the steering authority with gauge, so session 44's
+  longer bogie fixed the pitch and made the turn worse in the same change.
 
-**It has its own chassis now and that did not fix it.** `core.tracked.hauler.t3`
-ships — nine cells rather than the command core's thirteen, `CHASSIS_TRACKED`,
-1700 kg, a 14 m/s cap that §7.8's governor now enforces — and the shipped recipe
-is **not on it**, because migrating measures worse:
+Three ways out, and the choice is a design decision rather than a constant:
 
-| Migrated to the nine-cell chassis | before | after |
-|---|---|---|
-| Rest pitch | 4.7° nose-up | **1.6°** |
-| Front-to-rear load spread | 3.2× | **1.45×** |
-| Inverts in a sustained turn | yes | **yes** |
-| Yaw at full lock, 6 m/s | 0.030 rad/s | 0.035 rad/s |
-| Brakes without going over | yes | **no** |
+1. **Widen the gauge.** The hull is 10 cells across, so the flanks can go to
+   about 2.5 m inside it — L/B 2.24, still short. Past that needs outriggers, and
+   `str.outrigger.pylon.t2` already exists for the rotary recipe.
+2. **Shorten the patch**, which undoes the pitch fix unless the load share is
+   re-derived with it.
+3. **Concentrate the ground pressure toward the centre of the patch**, which is
+   what a real track does and what would cut the scrub lever without touching
+   either length. Doc 05 §14 has no term for it and `station_load_share` is
+   currently one flat number for every station.
 
-`core.command.compact.t2` therefore keeps `CHASSIS_GROUND_TRANSITIONAL`, named so
-that nobody mistakes it for a design.
+The inversion in a sustained turn still has not been re-measured.
 
-**What the family actually needs is a contact base longer than its hull, and the
-part set cannot express one.** `mot.tracked.short_bogie.t2` runs **eight cells** —
-1.90 m — so one per flank is the design and two do not fit on any chassis in the
-registry. A nine-cell hull is 2.25 m over a 1.43 m base and still cannot carry a
-six-cell Prime Mover and a nine-cell Effector Module without one of them
-overhanging it.
+#### 3.1.2a The nine-cell chassis, and why the shipped recipe is not on it
 
-Three things to do, in order:
+Kept for one measurement §3.1.2 does not repeat. `core.tracked.hauler.t3` ships —
+nine cells rather than the command core's thirteen, `CHASSIS_TRACKED`, 1700 kg, a
+14 m/s cap §7.8's governor enforces — and the shipped recipe is **not on it**,
+because migrating measured worse on the short bogie: rest pitch 4.7° → 1.6° and
+load spread 3.2× → 1.45×, but it stopped braking without going over and the yaw
+at full lock got no better. `core.command.compact.t2` therefore keeps
+`CHASSIS_GROUND_TRANSITIONAL`, named so that nobody mistakes it for a design.
 
-1. **Author a longer bogie**, or a `t3` with more road stations, so a flank can
-   carry a patch as long as the hull. That is the one change that makes the rest
-   tractable.
-2. **Re-derive §14.2's `pivot_taper_mps`.** At 9.0 the differential is down to a
-   third by 6 m/s, which is why full lock yaws the build 0.03 rad/s — it cannot
-   turn at any speed a player drives at.
-3. **Question `lateral_grip_ratio = 1.35`.** A patch with *more* lateral grip than
-   longitudinal is the wrong way round for a machine that steers by breaking the
-   patch loose, and it is the other half of why it will not turn.
-
-The inversion is downstream of all three and should be re-measured once they are
-settled rather than chased on its own.
+**That comparison is now void too**, for the same reason §3.1.1's ceiling was: it
+was taken on the 1.90 m bogie, and the braking objection does not survive the
+5.60 m one. It is worth re-taking alongside §3.1.1's raise.
 
 #### 3.1.3 The biped cannot be driven
 
