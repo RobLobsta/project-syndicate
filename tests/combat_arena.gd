@@ -99,6 +99,32 @@ enum Recipe {
 	## [method PlacementValidator._check_appendage_chassis]. It was wheeled for one
 	## session and read as what it was: a car with a sword bolted to its bonnet.
 	MELEE,
+	## The protected utility truck: `core.utility.hauler.t2`, four 1.00 m
+	## contacts, a Prime Mover mated to the nose as a bonnet, and a light module
+	## on the roof.
+	##
+	## [b]It is the second wheeled silhouette and the reason there is a second
+	## wheeled chassis.[/b] Every other recipe here has always been the same box
+	## with different running gear under it; this one is as tall as it is wide
+	## where [constant Recipe.WHEELED_LIGHT] is a quarter of its length in height,
+	## and no arrangement of parts on the road hull produces that. Doc 01 §10.1
+	## carries the reference proportions both are derived from.
+	WHEELED_UTILITY,
+	## Two limbs, a humanoid torso, and the first Assembly in this project that
+	## balances rather than being propped up.
+	##
+	## [b]It exists because doc 05 §13.10 and §13.11 landed.[/b] Until they did, a
+	## walking Assembly's only pitch stability was the fore-and-aft separation of
+	## its feet, so two limbs side by side had a stance base of zero and fell over
+	## on the first tick. A foot with an authored support polygon carries the
+	## fore-aft axis on its ankle instead, and the plant target is a capture point
+	## that knows which way it is being asked to go.
+	##
+	## The torso is `core.biped.humanoid.t3` — twice as tall as it is deep, which
+	## is the humanoid reference's own proportion and which
+	## [constant Recipe.AMBULATORY]'s chassis cannot be, because a quadruped's
+	## stance base *is* its torso depth.
+	BIPED,
 }
 
 const CORE_KEY := &"core.command.compact.t2"
@@ -107,17 +133,36 @@ const CORE_KEY := &"core.command.compact.t2"
 ## [constant CORE_KEY] and are not meant to be — a limb and a disc each have a
 ## chassis now.
 const AMBULATORY_CORE_KEY := &"core.ambulatory.strider.t3"
+const BIPED_CORE_KEY := &"core.biped.humanoid.t3"
 const ROTARY_CORE_KEY := &"core.rotary.lifter.t3"
+const UTILITY_CORE_KEY := &"core.utility.hauler.t2"
+const TRACKED_CORE_KEY := &"core.tracked.hauler.t3"
 const HUB_KEY := &"str.hub.axle_station.t2"
-const WHEEL_KEY := &"mot.wheeled.allroad.t2"
-const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
-const TRACK_KEY := &"mot.tracked.short_bogie.t2"
+## Three cells of spar between a narrow fuselage's flank and its mast station.
+## See [constant ROTARY_PYLONS].
+const PYLON_KEY := &"str.outrigger.pylon.t2"
+## The road car's 0.75 m contacts, sized off the reference at 0.15 of the
+## vehicle's length. The 1.00 m pair below is the utility truck's, where the same
+## ratio is 0.16 — the two vehicles genuinely disagree about wheel size, which is
+## why there are now two pairs (doc 01 §10.3).
+const WHEEL_KEY := &"mot.wheeled.light_road.t1"
+const REAR_KEY := &"mot.wheeled.light_fixed.t1"
+const UTILITY_WHEEL_KEY := &"mot.wheeled.allroad.t2"
+const UTILITY_REAR_KEY := &"mot.wheeled.fixed_rear.t2"
+const TRACK_KEY := &"mot.tracked.long_bogie.t3"
 const LIMB_KEY := &"mot.limb.strider.t4"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 const POWER_KEY := &"pmv.combustion.standard.t2"
+## The same Prime Mover laid on its side, for a hull whose roof is 1.00 m off
+## its own floor. See doc 01 §10.4 — every published figure is identical.
+const FLAT_POWER_KEY := &"pmv.combustion.flat.t2"
 const CELL_KEY := &"cel.static.standard.t3"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
+## The tracked family's gun: 6.00 m, one round every three seconds, and enough
+## penetration that nothing in the shipping set stops it.
+const CANNON_KEY := &"eff.ballistic.rifle_long.t3"
+const CANNON_ROUND_KEY := &"proj.kinetic.ap_120"
 const REPEATER_KEY := &"eff.ballistic.repeater_12.t2"
 const REPEATER_ROUND_KEY := &"proj.kinetic.ap_12"
 const ARM_KEY := &"apx.arm.manipulator.t3"
@@ -141,160 +186,265 @@ const CALLSIGNS: Array[String] = [
 ## ===== LAYOUTS =========================================================
 ## Cell origins, per recipe. Integer lattice coordinates throughout (Invariant
 ## I-6); the only floats in this file are world poses and the pilot's arithmetic.
+##
+## [b]Every layout below is derived against its own chassis's extents, and that
+## is new.[/b] Until session 44 all four authored chassis were 6x4 in section, so
+## one cell list ported between families and the constants here could be shared.
+## Doc 01 §10.1 records why that stopped: five reference vehicles disagree about
+## the section before they disagree about anything else, and a road car, a
+## protected utility truck, a tracked gun platform, a walking torso and a
+## rotorcraft fuselage have no box in common. Each block states the extents it is
+## placed against, because nothing else in the file can tell you.
 
+## --- The road car -------------------------------------------------------
+## `core.command.compact.t2` spans `x` 20–27, `y` 4–7 and `z` 17–30 — 2.00 m wide,
+## 1.00 m tall, 3.50 m long. Its deck is `y = 8` and its underside is `y = 4`.
 const GROUND_CORE := Vector3i(24, 4, 24)
-## The Core Module spans `x` 21–26, `y` 4–7 and `z` 18–30, so its deck is `y = 8`
-## and its two ends are `z` 18 and 30. Every cell in this section is placed
-## against those three ranges.
-const GROUND_POWER := Vector3i(24, 8, 28)
-const GROUND_CELL := Vector3i(24, 4, 33)
+## [b]The Prime Mover is behind the cabin, not on its roof, and that one move is
+## most of what makes this read as a road car.[/b] `pmv.combustion.flat.t2` is the
+## square row rearranged into a 2.00 x 1.00 m slab (doc 01 §10.4), mated to the
+## Core Module's `+Z` face at deck level: it adds 1.50 m of length and no height
+## at all. The square row on the roof added 1.00 m of height to a 1.00 m hull and
+## turned the vehicle into a pickup, which is what every wheeled recipe in this
+## file looked like for forty-four sessions.
+const GROUND_POWER := Vector3i(24, 4, 34)
+## In the tail behind the engine bay, when a recipe carries one.
+const GROUND_CELL := Vector3i(24, 4, 39)
+## On the rear deck, over the cabin's back half. Still at the Core Module's own
+## height above the centre of mass, which is the property the long comment this
+## constant used to carry was actually about: doc 07 §8 applies recoil at the
+## muzzle, and what decides whether that flips an Assembly is the muzzle's height
+## above the centre of mass, because the fore-aft offset is parallel to the
+## recoil and contributes no moment at all.
+const GROUND_GUN := Vector3i(24, 8, 29)
 
-## The Effector Module goes on the [b]nose[/b], at the Core Module's own height,
-## and that is the one deliberate departure from [code]test_duel.gd[/code]'s
-## build. §10.5 authors 1450 N·s of recoil per round and doc 07 §8 applies it at
-## the muzzle: what decides whether that flips the Assembly is not the impulse
-## but the [i]height of the muzzle above the centre of mass[/i], because the
-## fore-aft offset is parallel to the recoil and contributes no moment at all.
-##
-## On the roof the muzzle sits two metres up and one round is 3.6 rad/s of pitch
-## (measured in session 15; see CHANGE_LOG.md). Here it sits about a quarter of a metre above the centre of
-## mass on every ground recipe and within a hand's breadth of it on the rotary
-## one, so the same round is a rock rather than a backflip and the fight lasts
-## long enough to be a fight. The rearward push is untouched and is meant to be:
-## it is what the recoil actually does to a vehicle this size.
-##
-## "The nose" is now the [b]front of the roof[/b] rather than a bracket hung off
-## the front face, because the cabin is thirteen cells long and there is roof to
-## put it on. The height above the centre of mass is what the paragraph above is
-## about and is unchanged; what has gone is the 1.12 m of cantilever forward of
-## the front axle that made a braked hull settle onto its own barrel.
-const GROUND_GUN := Vector3i(24, 8, 24)
-
+## Stations under the two ends of the cabin, `x` 20–21 and 26–27 so each sits
+## inboard of a flank, `z` 18–19 and 28–29.
 const WHEEL_HUBS: Array[Vector3i] = [
-	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
+	Vector3i(21, 2, 19), Vector3i(27, 2, 19), Vector3i(21, 2, 29), Vector3i(27, 2, 29)
 ]
-## The right flank sits one cell forward of the left, which is doc 02 §10's
-## mirror being right about a disc whose pivot is off-centre rather than an
-## off-by-one. `test_the_shipped_starter_is_its_own_mirror` fails on squared-up
-## cells, not on these.
+## [b]The two flanks are square with each other now, and that is the small wheel
+## rather than a repair.[/b] `mot.wheeled.allroad.t2` is four cells across, so its
+## local extent runs -2..1 and is off-centre by one; mirroring it therefore
+## shifted its world span by a cell, which is why `WHEEL_ORIGINS` used to carry a
+## one-cell offset between flanks and a comment insisting it was not an
+## off-by-one. `mot.wheeled.light_road.t1` is three across, -1..1, symmetric — so
+## the mirror is exact and both flanks take the same `z`.
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
+	Vector3i(18, 3, 19), Vector3i(18, 3, 29), Vector3i(29, 3, 19), Vector3i(29, 3, 29)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
 const FRONT_AXLE_Z: int = 24
+
+## --- The utility truck --------------------------------------------------
+## `core.utility.hauler.t2` spans `x` 19–28, `y` 4–9 and `z` 14–33 — 2.50 m wide,
+## 1.50 m tall, 5.00 m long. Deck at `y = 10`, underside at `y = 4`.
+const UTILITY_CORE := Vector3i(24, 4, 24)
+## The bonnet: `pmv.combustion.standard.t2` mated to the cab's `-Z` face at hull
+## level, which puts a raised block forward of the crew box exactly where the
+## reference has one. The square row rather than the flat one, deliberately —
+## this vehicle wants its engine to read as a separate volume.
+const UTILITY_POWER := Vector3i(24, 4, 11)
+## The remote weapon station, on the roof at the cab's centre.
+const UTILITY_GUN := Vector3i(24, 10, 26)
+## `z` 16–17 and 30–31 puts the axles 3.50 m apart under a 6.50 m machine, which
+## is 54% against the reference's 61%.
+const UTILITY_HUBS: Array[Vector3i] = [
+	Vector3i(20, 2, 17), Vector3i(28, 2, 17), Vector3i(20, 2, 31), Vector3i(28, 2, 31)
+]
+## The 1.00 m contacts, and here the one-cell flank offset [b]is[/b] required:
+## these are the four-cell discs whose local extent is off-centre, so the right
+## flank sits one forward of the left in order that both land on the same world
+## `z`. See `WHEEL_ORIGINS` for why the road car needs no such thing.
+const UTILITY_WHEEL_ORIGINS: Array[Vector3i] = [
+	Vector3i(17, 3, 17), Vector3i(17, 3, 31), Vector3i(30, 3, 16), Vector3i(30, 3, 30)
+]
+
+## --- The tracked gun platform -------------------------------------------
+## `core.tracked.hauler.t3` spans `x` 19–28, `y` 4–8 and `z` 12–35 — 2.50 m wide,
+## 1.25 m tall, 6.00 m long. Deck at `y = 9`, underside at `y = 4`.
+const TRACKED_CORE := Vector3i(24, 4, 24)
+## The Prime Mover on the aft deck, behind the gun's breech.
+const TRACKED_POWER := Vector3i(24, 9, 33)
+## [b]`eff.ballistic.rifle_long.t3` is 6.00 m of gun and it is meant to overhang.[/b]
+## Placed here its breech sits at `z` 25 — mid-hull — and its muzzle reaches `z` 2,
+## which is 2.50 m past a nose at `z` 12. The reference's barrel overhangs its
+## glacis by about 0.55 of hull length; this is 0.42 of it, short because the
+## breech cannot go further aft without leaving the deck.
+const TRACKED_GUN := Vector3i(24, 9, 25)
+## One station per flank at the hull's centre. A bogie distributes its own load
+## across six road stations along its patch (doc 01 §10.3), so what the mount
+## carries is attachment and not weight distribution.
+const TRACK_HUBS: Array[Vector3i] = [Vector3i(20, 2, 24), Vector3i(28, 2, 24)]
+## [b]6.00 m of track under a 6.00 m hull, which is the whole repair.[/b] Both
+## bogies span `z` 12–35 exactly — the hull's own length — where
+## `mot.tracked.short_bogie.t2` ran 1.90 m under hulls of 3.25 m and then 2.25 m
+## and the Assembly see-sawed on it. The right flank sits one cell aft because the
+## bogie's 24-cell local extent runs -12..11 and is off-centre by one, the same
+## arithmetic the utility truck's wheels need.
+const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(17, 3, 24), Vector3i(30, 3, 23)]
+
+## --- The walking machine ------------------------------------------------
+## `core.ambulatory.strider.t3` spans `x` 21–26, `y` 14–23 and `z` 19–28 —
+## 1.50 m wide, 2.50 m tall, 2.50 m long. It sits high in the lattice because a
+## limb hangs below its station and the lattice floor is at `y` = 0.
+##
+## Doc 01 §10.1 carries the argument for the section and, more importantly, for
+## why it is not the humanoid reference's section: the reference is a biped whose
+## torso is 1.85 times as tall as it is deep, and doc 05 §13's virtual leg has a
+## point foot, so fore-and-aft foot separation is the only pitch stability this
+## family has. Torso depth and stance base are the same ten cells.
+const AMBULATORY_CORE := Vector3i(24, 14, 24)
+## [b]Slung under the torso between the legs, centred on the stance.[/b] It went
+## on the deck for forty-four sessions and then briefly onto the tail; both are
+## 620 kg on a lever the gait has to hold, and the tail version measured 25.8° of
+## nose-up stoop with all four contacts unloaded. Under the belly at `z` 24 the
+## mass is on the stance's own centre and 1.00 m lower than the torso base, which
+## is where a walking machine's power plant belongs and is the only mount in this
+## layout that contributes no pitching moment at all.
+##
+## The limbs are at `x` 19–21 and 26–28, so a 4-cell-wide mover at 22–25 passes
+## between them; its roof at `y` 13 mates to the torso's underside at `y` 14.
+const AMBULATORY_POWER := Vector3i(24, 10, 24)
+## [b]The Effector Module is shoulder-mounted, and that is the part table
+## deciding rather than the layout.[/b] `eff.ballistic.autocannon_30.t3` carries
+## exactly one attachment node — a `FACE_MALE` on its underside (doc 01 §10.5) —
+## so it mounts downward onto a deck and nowhere else. On a torso this tall the
+## only deck is the roof, which puts the barrel over the shoulder line. That is
+## the humanoid reference's own arrangement and it is arrived at by the
+## constraint rather than chosen: a chest-mounted module would need a `-Z` node
+## the part does not have.
+const AMBULATORY_GUN := Vector3i(24, 24, 26)
+## Station, then the limb hanging off it, four times. A station at orientation 8
+## puts its AXLE faces on ±Y, so it bolts to the torso's flank through a neutral
+## face and offers a downward drive station.
+##
+## A station at orientation 8 spans `x[px..px+1]`, `y[py..py+1]`, `z[pz-1..pz]`.
+## The torso's flanks are at `x` 21 and 26, so a station outboard of the left one
+## starts at 19 and one outboard of the right starts at 27.
+##
+## [b]The hips are at the torso's two ends — `z` 20 and 28, 2.00 m apart — and
+## that separation is the family's entire pitch stability.[/b]
+##
+## It was 1.50 m, held there through the first pass of the rebuild on the
+## reasoning that moving the stance and the height together would leave nothing to
+## attribute a change in the gait to. The measurement settled it: at 1.50 m under
+## a torso that had gone from 1.00 m to 2.50 m of height and a hip from 1.63 m to
+## 2.24 m, the walking recipe stooped 25.8° with all four contacts unloaded and
+## the melee one went past 45°. Doc 05 §13's virtual leg has a point foot, so
+## there is no other term available: the base is the whole of it, and a taller
+## machine on the same base is a longer lever on the same fulcrum.
+##
+## Two metres is what the chassis has. The stations are on its two ends and there
+## is nowhere further for them to go without hanging a hip off nothing.
+const AMBULATORY_LEGS: Array[Vector3i] = [
+	Vector3i(19, 14, 20), Vector3i(20, 13, 20),
+	Vector3i(27, 14, 20), Vector3i(27, 13, 20),
+	Vector3i(19, 14, 28), Vector3i(20, 13, 28),
+	Vector3i(27, 14, 28), Vector3i(27, 13, 28),
+]
+const HUB_AXLE_DOWN_ORIENTATION: int = 8
+
+## --- The biped ----------------------------------------------------------
+## `core.biped.humanoid.t3` spans `x` 21–26, `y` 14–23 and `z` 22–26 — 1.50 m
+## wide, 2.50 m tall, 1.25 m long. Half the strider's depth, and the same height.
+const BIPED_CORE := Vector3i(24, 14, 24)
+## Under the torso between the legs, exactly as on the quadruped and for the same
+## reason: it is the one mount in the layout that contributes no pitching moment,
+## and on a machine balancing over a 0.60 m foot that matters more than it does on
+## one standing on a 2.00 m base.
+const BIPED_POWER := Vector3i(24, 10, 24)
+## Shoulder-mounted, because `eff.ballistic.autocannon_30.t3` carries one
+## attachment node and it is on its underside. See
+## [constant AMBULATORY_GUN].
+const BIPED_GUN := Vector3i(24, 24, 26)
+## [b]Station, then the limb hanging off it — twice, and both at the same `z`.[/b]
+## That is what makes it a biped and it is the line that would have been a bug
+## before §13.10: two feet side by side have a fore-and-aft stance base of
+## [i]zero[/i], so every newton-metre of pitch stability this machine has comes
+## from the ankle torque its support polygon allows.
+##
+## The hips are at `z` 24, on the torso's centre, so the machine stands over its
+## own feet rather than ahead of or behind them.
+const BIPED_LEGS: Array[Vector3i] = [
+	Vector3i(19, 14, 24), Vector3i(20, 13, 24),
+	Vector3i(27, 14, 24), Vector3i(27, 13, 24),
+]
 
 ## [constant Recipe.MELEE]'s two Appendages and the edge in each hand, one per
 ## flank, derived from the ambulatory Core Module's own extents rather than
 ## guessed.
 ##
 ## [b]The arms are at the sides and they run forward, and only one of those two
-## was a choice.[/b] An Appendage's six cells extend from its shoulder along the
-## axis the shoulder faces, and the module in its hand continues along that same
-## axis — there is no elbow, because Invariant I-3 admits no joint between parts.
-## So an arm hung off a flank at right angles is a machine in a T-pose with its
-## blades pointing at the scenery, and an arm hung [i]downward[/i] beside the
-## torso — which is the human pose — points its blade at the ground, where the
-## mount's authored −20°/+40° of pitch can never recover it. Measured across all
+## was a choice.[/b] An Appendage's cells extend from its shoulder along the axis
+## the shoulder faces, and the module in its hand continues along that same axis —
+## there is no elbow, because Invariant I-3 admits no joint between parts. So an
+## arm hung off a flank at right angles is a machine in a T-pose with its blades
+## pointing at the scenery, and an arm hung [i]downward[/i] beside the torso —
+## which is the human pose — points its blade at the ground, where the mount's
+## authored −20°/+40° of pitch can never recover it. Measured across all
 ## twenty-four orientations before it was written down.
 ##
 ## What is left, and what a humanoid actually reads as at a glance, is a shoulder
-## at each front corner with the arm running forward alongside the hull. The Core
-## Module spans `x` 21–26 and `z` 20–28, so a shoulder patch centred on `x` 20 or
+## at each front corner with the arm running forward alongside the torso. The
+## torso spans `x` 21–26 and `z` 19–28, so a shoulder patch centred on `x` 20 or
 ## `x` 27 sits just outboard of a flank and mates through the corner cells of the
-## hull's `-Z` face. `y = 17` is the top row of the torso, so the shoulders are
-## high and the arms swing clear of the limbs below.
-const MELEE_ARMS: Array[Vector3i] = [Vector3i(20, 17, 19), Vector3i(27, 17, 19)]
-## The hand is five cells out along the arm and faces `-Z`; the edge's hilt is its
-## own `+Z` face, so each blade goes in unrotated in the cell the hand points into
-## and its eight cells continue forward to `z` 6.
-const MELEE_EDGES: Array[Vector3i] = [Vector3i(20, 17, 13), Vector3i(27, 17, 13)]
+## torso's `-Z` face. `y = 21` is high on a torso that now runs to 23, so the
+## shoulders sit above the hips at 14 and the arms swing clear of the limbs below.
+const MELEE_ARMS: Array[Vector3i] = [Vector3i(20, 21, 18), Vector3i(27, 21, 18)]
+## The hand is seven cells out along the arm and faces `-Z`; the edge's hilt is
+## its own `+Z` face, so each blade goes in unrotated in the cell the hand points
+## into and its eight cells continue forward.
+const MELEE_EDGES: Array[Vector3i] = [Vector3i(20, 21, 10), Vector3i(27, 21, 10)]
 
-const TRACK_HUBS: Array[Vector3i] = [Vector3i(22, 2, 24), Vector3i(26, 2, 24)]
-const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)]
-
-## The ambulatory build sits high in the lattice because a limb hangs below its
-## station and the lattice floor is at y = 0.
+## --- The rotorcraft -----------------------------------------------------
+## `core.rotary.lifter.t3` spans `x` 22–25, `y` 4–9 and `z` 10–37 — 1.00 m wide,
+## 1.50 m deep, 7.00 m long. Deck at `y = 10`, underside at `y = 4`.
 ##
-## [b]The chassis is `core.ambulatory.strider.t3` and it is nine cells long where
-## the ground chassis is thirteen[/b], so it spans `z` 20–28 rather than 18–30.
-## Its width, its height and its deck row are identical, which is why every
-## station and limb cell below is untouched by the split: doc 01 §10.1 records
-## that as the reason the two family chassis kept the command core's 6×4 section.
-const AMBULATORY_CORE := Vector3i(24, 14, 24)
-## Unchanged by the chassis split, and the two cells it now hangs past the tail
-## are not slack that could be taken up. The deck is nine cells long; the Prime
-## Mover is six and the Effector Module seven, so thirteen cells of parts have to
-## sit on nine and something overhangs. Moving the mover forward to close its own
-## gap puts it through the Module's breech — measured, and the validator says so
-## with `cell_occupied`.
-##
-## What it looks like is right anyway: a barrel over the nose and a power pack
-## over the tail, which is where both belong on a body slung between four limbs.
-const AMBULATORY_POWER := Vector3i(24, 18, 28)
-const AMBULATORY_GUN := Vector3i(24, 18, 24)
-## Station, then the limb hanging off it, four times. A station at orientation 8
-## puts its AXLE faces on ±Y, so it bolts to the Core Module's flank through a
-## neutral face and offers a downward drive station.
-## A station at orientation 8 spans `x[px..px+1]`, `y[py..py+1]`, `z[pz-1..pz]`,
-## which is what makes these exact rather than guessed: the Core Module's flanks
-## are at `x` 21 and 26, so a station outboard of the left one starts at 19 and
-## one outboard of the right starts at 27.
-##
-## [b]The limbs are on the same `z` as the stations they hang from, and that is
-## load-bearing.[/b] Hung one cell forward, as the first pass of the rebuild had
-## them, the four feet come down about a mean of `z` 23 under a hull whose centre
-## of mass is at 24 — a quarter of a metre of permanent pitch bias on a machine
-## that stands 2.4 m tall, which reads as a walker leaning and drifting rather
-## than as a layout error.
-const AMBULATORY_LEGS: Array[Vector3i] = [
-	Vector3i(19, 14, 21), Vector3i(20, 13, 21),
-	Vector3i(27, 14, 21), Vector3i(27, 13, 21),
-	Vector3i(19, 14, 27), Vector3i(20, 13, 27),
-	Vector3i(27, 14, 27), Vector3i(27, 13, 27),
-]
-const HUB_AXLE_DOWN_ORIENTATION: int = 8
-
 ## A disc's own AXLE face is its [b]underside[/b], where a wheel's and a track's
 ## is their `-Z` flank and a limb's is its top, so a mast needs a station under
 ## it exactly as a limb needs one over it. And an AXLE station's two drive faces
 ## are opposite each other, so a station cannot bolt on through one and offer
 ## the other — it attaches through a neutral flank and both drive faces stay
-## free (doc 01 §4.2). That is why the stations here go on the Core Module's
+## free (doc 01 §4.2). That is why the stations here go on the fuselage's
 ## [i]sides[/i] at orientation 8, which puts their AXLE faces on ±Y, and not on
-## its roof where the underside would be a drive face with nothing to drive.
+## its spine where the underside would be a drive face with nothing to drive.
 ##
 ## Two discs, not one, and that falls straight out of the geometry: a station on
-## a flank carries its mast three quarters of a metre off the centreline, and a
-## single disc there rolls the Assembly over. The pair is symmetric, doubles the
-## lift, and costs a second 150 PU draw — which is what the Energy Cell is for.
-##
-## [b]The chassis is `core.rotary.lifter.t3`[/b] — nine cells long and 900 kg
-## against the ground chassis's thirteen and 1800. Both halves help here. The
-## shorter hull keeps the Energy Cell's aft moment on a shorter lever, and the
-## lighter one is 900 kg of lift the discs no longer owe: the recipe went from
-## 5166 kg to 4266 against a pair of discs rated 8300 kg each.
+## a flank carries its mast off the centreline, and a single disc there rolls the
+## Assembly over. The pair is symmetric and doubles the lift.
 const ROTARY_CORE := Vector3i(24, 4, 24)
-const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(19, 5, 24), Vector3i(27, 5, 24)]
-const ROTARY_DISCS: Array[Vector3i] = [Vector3i(19, 7, 24), Vector3i(29, 7, 24)]
 ## [b]The Prime Mover goes under the belly and the Energy Cell on the deck, which
 ## is the reverse of every other recipe here and is arithmetic rather than
-## taste.[/b] [constant ROTARY_CELL] has carried the warning since session 15: a
-## mass hung in the tail drags the solved centre of mass aft of the disc line, and
-## trimming that offset out costs swashplate the Assembly then has none of left to
-## fly with. The rebuild made the warning bite from the other side — the Prime
-## Mover is now 620 kg against the Energy Cell's 450 and it was the part in the
-## tail, which put the centre of mass 0.31 m behind the discs and asked for 23° of
-## a 14° cone. The Assembly went over during the settle.
-##
-## Under the belly the 620 kg contributes nothing fore or aft and lowers the
-## centre of mass; the lighter Energy Cell on the aft deck leaves 0.10 m of
-## residual offset, which is 8° of trim and inside the cone with room to fly.
+## taste.[/b] A mass hung in the tail drags the solved centre of mass aft of the
+## disc line, and trimming that offset out costs swashplate the Assembly then has
+## none of left to fly with — measured in session 34 at 0.31 m of offset asking
+## for 23° of a 14° cone, with the Assembly going over during the settle. Under
+## the belly the 620 kg contributes nothing fore or aft and lowers the centre of
+## mass; the lighter Energy Cell on the aft deck leaves a residual the cone can
+## hold.
 const ROTARY_POWER := Vector3i(24, 0, 24)
-## On the aft half of the deck, where the Prime Mover sits on every other recipe.
-## See [constant ROTARY_POWER] for why the two are the other way round here.
-const ROTARY_CELL := Vector3i(24, 8, 28)
-const ROTARY_GUN := Vector3i(24, 8, 24)
+## On the aft deck, where the Prime Mover sits on every other recipe. See
+## [constant ROTARY_POWER] for why the two are the other way round here.
+const ROTARY_CELL := Vector3i(24, 10, 32)
+## In the chin position, forward on the deck — where the reference carries its
+## turret, and as far as this fuselage allows from the discs it must not foul.
+const ROTARY_GUN := Vector3i(24, 10, 16)
+## [b]A pylon, then the station, then the disc — and the pylon is the whole
+## reason the pair reads as two rotors.[/b] §4.2 makes an AXLE station attach
+## through a neutral flank so both drive faces stay free, so a mast station sits
+## hard against the hull; on a 1.00 m fuselage that put the two disc centres
+## 2.00 m apart under 4.00 m discs, overlapping by half a diameter. Three cells
+## of `str.outrigger.pylon.t2` each side takes the separation to 3.00 m and the
+## overlap to a quarter, which is about what the reference carries.
+##
+## The chain outboard from the fuselage's `x` 22..25: pylon 19..21, station
+## 17..18, disc centred on 17.5 — and mirrored, pylon 26..28, station 29..30,
+## disc centred on 29.5.
+const ROTARY_PYLONS: Array[Vector3i] = [Vector3i(20, 5, 24), Vector3i(27, 5, 24)]
+const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(17, 5, 24), Vector3i(29, 5, 24)]
+const ROTARY_DISCS: Array[Vector3i] = [Vector3i(18, 7, 24), Vector3i(30, 7, 24)]
 
 ## ===== FIXTURE =========================================================
 
@@ -308,10 +458,19 @@ const DROP_HEIGHT_M: float = 2.0
 ## stands with its body origin at about −0.81. Spawning it at +4 was a five-metre
 ## drop onto its own feet, and it spent the whole settle bouncing.
 ##
-## Just high enough that the probes cannot see the ground at spawn — they reach
-## 1.90 m from hips that are 2.375 m up — so the Assembly falls the last few
-## centimetres onto its springs rather than being placed inside them.
-const AMBULATORY_DROP_HEIGHT_M: float = -0.40
+## Just high enough that the probes cannot see the ground at spawn, so the
+## Assembly falls the last few centimetres onto its springs rather than being
+## placed inside them.
+##
+## It was −0.40 and it moved with the limb. `mot.limb.strider.t4` reaches 2.60 m
+## now rather than 1.90, and the hip sits nine cells — 2.25 m — above the body
+## origin, so a stance height of 0.86 × 2.60 = 2.24 m leaves the origin at about
+## −0.01 m at rest where it used to sit at −0.62. Spawning at the old figure put
+## the Assembly below its own standing height with its legs already through the
+## floor, and it reported four unloaded contacts and a body that sank: the
+## failure mode of a spawn height is not a bounce, it is a machine that never
+## finds the ground at all.
+const AMBULATORY_DROP_HEIGHT_M: float = 0.25
 
 ## ===== PILOT ===========================================================
 ## Doc 05 §6.0's [ControlInput] is the whole interface. Every gain below turns
@@ -421,6 +580,7 @@ var _contexts: Array[BuildContext] = []
 var _next_assembly_id: int = 1
 var _round_id: int = -1
 var _repeater_round_id: int = -1
+var _cannon_round_id: int = -1
 ## Ticks since [method engage] opened, for stamping the timeline.
 var _clock: int = 0
 
@@ -448,9 +608,11 @@ func open() -> void:
 	projectile_registry = ProjectileRegistry.new()
 	projectile_registry.register(load("res://data/projectiles/%s.tres" % ROUND_KEY))
 	projectile_registry.register(load("res://data/projectiles/%s.tres" % REPEATER_ROUND_KEY))
+	projectile_registry.register(load("res://data/projectiles/%s.tres" % CANNON_ROUND_KEY))
 	projectile_registry.seal()
 	_round_id = projectile_registry.id_of(ROUND_KEY)
 	_repeater_round_id = projectile_registry.id_of(REPEATER_ROUND_KEY)
+	_cannon_round_id = projectile_registry.id_of(CANNON_ROUND_KEY)
 
 	_ground = StaticBody3D.new()
 	_ground.name = "GroundFixture"
@@ -533,6 +695,10 @@ func spawn(
 			_lay_out_wheeled(ctx, true, GUN_KEY)
 		Recipe.WHEELED_REPEATER:
 			_lay_out_wheeled(ctx, false, REPEATER_KEY)
+		Recipe.WHEELED_UTILITY:
+			_lay_out_utility(ctx)
+		Recipe.BIPED:
+			_lay_out_biped(ctx)
 		Recipe.MELEE:
 			_lay_out_melee(ctx)
 		Recipe.TRACKED:
@@ -633,6 +799,7 @@ func spawn(
 		# recipe it asked for happens to chamber.
 		ammo.add(assembly_id, _round_id, rounds)
 		ammo.add(assembly_id, _repeater_round_id, rounds)
+		ammo.add(assembly_id, _cannon_round_id, rounds)
 	combatants.append(c)
 	return c
 
@@ -682,6 +849,21 @@ func engage(max_ticks: int) -> void:
 ## Calling [method engage] with one tick at a time would work and would restart
 ## [member _clock] on every call, so the timeline every engagement here is read
 ## through would stamp the whole fight at t=0.
+## One physics tick with nothing commanded and the inputs left exactly as the
+## caller set them.
+##
+## [b]Neither of the other two step helpers can hold a demand across a window.[/b]
+## [method settle] zeroes throttle and steer on every combatant before it steps —
+## it is the "put it down and leave it alone" helper — and [method tick_once]
+## overwrites them with [method command]'s decisions. A fixture measuring what a
+## *given* demand does therefore needs a third, and its absence presents as two
+## runs reporting byte-identical displacement for opposite throttles, which reads
+## exactly like a locomotion family ignoring its own input.
+func step_once() -> void:
+	_clock += 1
+	await _tick()
+
+
 func tick_once() -> void:
 	_clock += 1
 	for c: Combatant in combatants:
@@ -1062,7 +1244,7 @@ static func _place(ctx: BuildContext, key: StringName, cell: Vector3i, orientati
 ## meant them to differ in.
 func _lay_out_wheeled(ctx: BuildContext, with_cell: bool, gun_key: StringName) -> void:
 	_place(ctx, CORE_KEY, GROUND_CORE, 0)
-	_place(ctx, POWER_KEY, GROUND_POWER, 0)
+	_place(ctx, FLAT_POWER_KEY, GROUND_POWER, 0)
 	_place(ctx, gun_key, GROUND_GUN, 0)
 	if with_cell:
 		_place(ctx, CELL_KEY, GROUND_CELL, 0)
@@ -1093,15 +1275,43 @@ func _lay_out_melee(ctx: BuildContext) -> void:
 		_place(ctx, EDGE_KEY, cell, 0)
 
 
+## [constant Recipe.TRACKED], on its own chassis at last.
+##
+## It was built on `core.command.compact.t2` — the road hull — for the life of the
+## project, which is how a 1.90 m track patch ended up under a 3.25 m vehicle. It
+## now carries `core.tracked.hauler.t3` and `mot.tracked.long_bogie.t3`, so the
+## contact base is exactly the length of the hull above it, and
+## `eff.ballistic.rifle_long.t3`, whose barrel is the reason anybody would build
+## one.
 func _lay_out_tracked(ctx: BuildContext) -> void:
-	_place(ctx, CORE_KEY, GROUND_CORE, 0)
-	_place(ctx, POWER_KEY, GROUND_POWER, 0)
-	_place(ctx, GUN_KEY, GROUND_GUN, 0)
+	_place(ctx, TRACKED_CORE_KEY, TRACKED_CORE, 0)
+	_place(ctx, POWER_KEY, TRACKED_POWER, 0)
+	_place(ctx, CANNON_KEY, TRACKED_GUN, 0)
 	for cell: Vector3i in TRACK_HUBS:
 		_place(ctx, HUB_KEY, cell, 0)
 	for cell: Vector3i in TRACK_ORIGINS:
-		var inboard := Vector3.RIGHT if cell.x < GROUND_CORE.x else Vector3.LEFT
+		var inboard := Vector3.RIGHT if cell.x < TRACKED_CORE.x else Vector3.LEFT
 		_place(ctx, TRACK_KEY, cell, drive_face_orientation(inboard))
+
+
+## [constant Recipe.WHEELED_UTILITY]: the protected utility truck.
+##
+## The same four-contact construction as the road car on a hull half again as
+## tall, with the 1.00 m contacts rather than the 0.75 m ones and the Prime Mover
+## mated to the nose as a bonnet rather than to the tail as an engine bay. Those
+## three differences are the whole vehicle, and none of them is a line of code —
+## which is the argument for the part table carrying two wheel sizes and two
+## Prime Mover sections.
+func _lay_out_utility(ctx: BuildContext) -> void:
+	_place(ctx, UTILITY_CORE_KEY, UTILITY_CORE, 0)
+	_place(ctx, POWER_KEY, UTILITY_POWER, 0)
+	_place(ctx, REPEATER_KEY, UTILITY_GUN, 0)
+	for cell: Vector3i in UTILITY_HUBS:
+		_place(ctx, HUB_KEY, cell, 0)
+	for cell: Vector3i in UTILITY_WHEEL_ORIGINS:
+		var key := UTILITY_WHEEL_KEY if cell.z < FRONT_AXLE_Z else UTILITY_REAR_KEY
+		var inboard := Vector3.RIGHT if cell.x < UTILITY_CORE.x else Vector3.LEFT
+		_place(ctx, key, cell, drive_face_orientation(inboard))
 
 
 func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
@@ -1114,6 +1324,23 @@ func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 		_place(ctx, LIMB_KEY, AMBULATORY_LEGS[i * 2 + 1], 0)
 
 
+## [constant Recipe.BIPED]: two limbs on a humanoid torso.
+##
+## Structurally the ambulatory layout with half the limbs and a shallower torso.
+## What makes it stand is not in this function at all — it is
+## `mot.limb.strider.t4`'s authored `foot_length_m`, which doc 05 §13.10 turns
+## into a bounded ankle torque, and §13.11's capture point deciding where the next
+## step goes. Neither existed before session 44 and the recipe would have been a
+## machine lying on its face.
+func _lay_out_biped(ctx: BuildContext) -> void:
+	_place(ctx, BIPED_CORE_KEY, BIPED_CORE, 0)
+	_place(ctx, POWER_KEY, BIPED_POWER, 0)
+	_place(ctx, GUN_KEY, BIPED_GUN, 0)
+	for i: int in BIPED_LEGS.size() / 2:
+		_place(ctx, HUB_KEY, BIPED_LEGS[i * 2], HUB_AXLE_DOWN_ORIENTATION)
+		_place(ctx, LIMB_KEY, BIPED_LEGS[i * 2 + 1], 0)
+
+
 func _lay_out_rotary(ctx: BuildContext) -> void:
 	# Supply before draw. §7.4's power budget is checked against what the context
 	# holds at the moment of the placement, so the second disc is refused if the
@@ -1122,6 +1349,10 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 	_place(ctx, ROTARY_CORE_KEY, ROTARY_CORE, 0)
 	_place(ctx, POWER_KEY, ROTARY_POWER, 0)
 	_place(ctx, CELL_KEY, ROTARY_CELL, 0)
+	# Pylon before station before disc. Each mates to the one before it, which is
+	# the order a player has to build in and the order the validator enforces.
+	for cell: Vector3i in ROTARY_PYLONS:
+		_place(ctx, PYLON_KEY, cell, 0)
 	for cell: Vector3i in ROTARY_MAST_HUBS:
 		_place(ctx, HUB_KEY, cell, HUB_AXLE_DOWN_ORIENTATION)
 	for cell: Vector3i in ROTARY_DISCS:
@@ -1158,6 +1389,7 @@ static func is_ambulatory(recipe: int) -> bool:
 		recipe == Recipe.AMBULATORY
 		or recipe == Recipe.AMBULATORY_BARE
 		or recipe == Recipe.MELEE
+		or recipe == Recipe.BIPED
 	)
 
 

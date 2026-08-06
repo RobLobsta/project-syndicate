@@ -223,6 +223,8 @@ project-syndicate/
 │   └── syndicate_pipeline/         ← import plugin, editor tools
 │
 ├── tools/                          ← @tool / EditorScript utilities and CI checks
+│   ├── author_all_parts.sh         ← re-authors every part, in the one correct order
+│   ├── capture_vehicles.gd/.tscn   ← §10 rule 18's proportion capture
 │   ├── validate_part_registry.gd
 │   ├── validate_part_visuals.gd
 │   ├── bake_static_volumes.gd

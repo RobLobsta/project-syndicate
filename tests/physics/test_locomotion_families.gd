@@ -14,6 +14,17 @@ const TRACK: StringName = &"mot.tracked.short_bogie.t2"
 const ROTOR: StringName = &"mot.rotor.coaxial_mid.t3"
 const LIMB: StringName = &"mot.limb.strider.t4"
 const PLANT: StringName = &"pmv.combustion.standard.t2"
+## Doc 01 §7.1: a disc goes on a rotary chassis and the validator refuses it
+## anywhere else, so the minimal flying Assembly is rooted on this and not on
+## [constant CORE]. It mattered the moment §10.3 took the disc's radius from
+## 2.60 m to 2.00 and its rating from 8300 kg to 2893: the same four parts on the
+## 1800 kg ground hull come to a thrust-to-weight of 0.96 and do not leave the
+## ground, which is a true statement about a build nobody may make.
+const ROTARY_CORE: StringName = &"core.rotary.lifter.t3"
+## Doc 01 §10.3's disc draw at full collective, quoted. Re-asserted here so a
+## radius change names itself rather than surfacing as a power budget that
+## silently stopped binding.
+const DISC_DRAW_PU: float = 40.0
 const EDGE: StringName = &"eff.melee.beam_edge.t4"
 
 
@@ -77,11 +88,13 @@ func test_the_shipped_disc_lifts_its_rated_load() -> void:
 	)
 
 
-## A minimal rotary Assembly: Core Module, one AXLE station, one disc, one Power
-## Plant. If this cannot hover, the shipping data cannot produce a flying build
-## at all.
+## A minimal rotary Assembly: the rotary chassis, one AXLE station, one disc, one
+## Prime Mover. If this cannot hover, the shipping data cannot produce a flying
+## build at all.
 func test_a_minimal_rotary_assembly_hovers_with_margin() -> void:
-	var weight := _weight_n([CORE, HUB, ROTOR, PLANT] as Array[StringName], [1, 1, 1, 1])
+	var weight := _weight_n(
+		[ROTARY_CORE, HUB, ROTOR, PLANT] as Array[StringName], [1, 1, 1, 1]
+	)
 	var thrust := _def(ROTOR).motive_profile.rotor_profile.max_thrust_n()
 	check_true(thrust > weight, "one disc lifts the smallest Assembly that can carry it")
 	check_true(
@@ -100,16 +113,32 @@ func test_ground_effect_changes_the_hover_margin() -> void:
 	check_approx(high, 1.0, "and gains nothing at two radii up")
 
 
-## §12.5 chose ROTOR_W_PER_PU so that this is exactly true. It is the whole
-## reason the constant is 4500 rather than a round number.
-func test_one_power_plant_runs_one_disc() -> void:
+## [b]It used to be one plant per disc, and the radius change made it three.[/b]
+## §12.5 chose `ROTOR_W_PER_PU` so that `pmv.combustion.standard.t2`'s 150 PU was
+## exactly one `mot.rotor.coaxial_mid.t3` at full collective, and that equality
+## was the reason the constant is 4500 rather than a round number.
+##
+## Doc 01 §10.3 took the disc from 2.60 m of radius to 2.00 for the rotorcraft
+## reference's proportion, and shaft power goes as `R⁴` exactly as thrust does:
+## the draw fell from 150 PU to 40. The constant is untouched — what moved is the
+## part — so the assertion is now the *ratio*, which is the thing §12.5 was
+## really about. A rotary build's Prime Mover covers its discs with room over,
+## which is a change in what the family can carry and is recorded as one.
+func test_one_power_plant_runs_three_discs() -> void:
 	var rotor := _def(ROTOR).motive_profile.rotor_profile
 	var draw := RotorSolver.draw_pu(rotor, rotor.nominal_rad_s)
-	check_approx(draw, _def(PLANT).power_supply_pu, "one standard plant per mid disc", 1.0)
+	check_approx(draw, DISC_DRAW_PU, "the mid disc draws 40 PU at full collective", 1.0)
 	check_approx(
 		_def(ROTOR).power_draw_pu,
-		150.0,
+		DISC_DRAW_PU,
 		"and the definition budgets the full-collective figure, so the garage is conservative"
+	)
+	check_true(
+		_def(PLANT).power_supply_pu > DISC_DRAW_PU * 3.0,
+		(
+			"one standard plant covers three discs (%.0f PU against %.0f), where it "
+			+ "used to cover exactly one"
+		) % [_def(PLANT).power_supply_pu, DISC_DRAW_PU]
 	)
 
 

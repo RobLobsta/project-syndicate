@@ -23,6 +23,20 @@ extends Resource
 ## the stance force is applied at, and the origin of the foot placement law.
 @export var hip_offset_m: Vector3 = Vector3(0.0, 0.75, 0.0)
 @export var foot_radius_m: float = 0.16
+## ===== SUPPORT POLYGON (doc 05 §13.10) ================================
+## Fore-aft and lateral extent of the foot's contact patch, in metres. Together
+## they are the support polygon the centre of pressure may move inside, and the
+## bound on the ankle torque is `N x half-extent` on each axis.
+##
+## [b]Both default to zero, and a profile that authors neither behaves exactly as
+## it did before §13.10 existed.[/b] A foot with no extent can only push along
+## the hip-to-foot line, which is the model every walking Assembly in this
+## project was built on and is why every one of them was a quadruped: with no
+## ankle, pitch stability is entirely the fore-aft stance base, and stance base
+## and torso depth are the same cells. Authoring these is what makes a biped
+## expressible.
+@export var foot_length_m: float = 0.0
+@export var foot_width_m: float = 0.0
 ## Height the stance controller holds the hip at, as a fraction of leg length.
 ## The virtual leg's rest length; the Assembly settles below it by whatever
 ## compression its share of the weight demands of the spring.

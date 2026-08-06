@@ -27,18 +27,31 @@ const CORE_FACES: Dictionary = {Vector3i(0, 1, 0): PartEnums.AttachmentPolarity.
 ## The Core Module's two corner cells, and the one pair of numbers most of the
 ## reference build's proportions fall out of.
 ##
-## It was 4x3x5. At `LATTICE_UNIT_M = 0.25` that is a 1.25 m cabin under a 2.25 m
-## Effector Module — the weapon was half the Assembly's length and the cabin a
-## quarter of it — and a chassis five cells deep has nowhere to put an axle
-## station except under its own middle, which is what produced a 1.50 m wheelbase
-## on a 4.25 m machine and a hull that stood on its front pair alone.
+## It was 4x3x5, then 6x4x13, and it is now **8x4x14** — 2.00 m by 1.00 m by
+## 3.50 m. Both earlier figures were fixing the same defect from different ends
+## and neither asked what the machine was supposed to *be*.
 ##
-## 6x4x13 is 1.50 m by 1.00 m by 3.25 m. The stations reach the ends of it, the
-## module tucks onto the roof instead of hanging past the front axle, and the
-## whole Assembly comes out at 141 kg/m3 of its bounding box against a passenger
-## car's 115 — where it used to be 46, a fifth of balsa.
-const CORE_LO := Vector3i(-3, 0, -6)
-const CORE_HI := Vector3i(2, 3, 6)
+## [b]This chassis is a mid-engine road car, and one ratio decides it.[/b] The
+## reference measures 4.67 m long, 1.97 m wide and 1.22 m tall: height is
+## [b]0.26 of length[/b] and width is 0.42 of it. The 6x4x13 hull was 0.46 of its
+## length in width — near enough — and produced a finished Assembly standing
+## about 2.75 m tall on a 4.00 m wheelbase, which is 0.69. It was the right
+## density and the wrong machine.
+##
+## Fourteen cells rather than eighteen because the Prime Mover moved. §10.4's
+## `pmv.combustion.flat.t2` mates to this hull's `+Z` face at deck level instead
+## of standing on its roof, so the engine bay is 1.50 m of *length* and no height
+## at all — which is what the reference does with the same volume, and is the
+## only way a 1.00 m hull stays a 1.00 m silhouette. 3.50 m of cabin plus 1.50 m
+## of engine bay is a 5.00 m machine 1.33 m tall: 0.27 against the reference's
+## 0.26.
+##
+## The width went 6 -> 8 to keep the section honest at the new length, and it
+## buys one thing besides: 2.00 m of beam is where an `AXLE` station outboard of
+## a flank puts a 0.75 m contact fully inside the body's own envelope, the way a
+## road car's wheels sit under its arches rather than proud of them.
+const CORE_LO := Vector3i(-4, 0, -7)
+const CORE_HI := Vector3i(3, 3, 6)
 
 var _done: bool = false
 
@@ -61,7 +74,7 @@ func _run() -> bool:
 	return PartAuthoring.append_to_manifest(keys)
 
 
-## §10.1: `core.command.compact.t2`, 6×4×13 cells, 1800 kg, 4200 integrity,
+## §10.1: `core.command.compact.t2`, 8×4×14 cells, 1800 kg, 4200 integrity,
 ## 18 armour, 520 PU capacity, 28 mounts, 24.0 m/s cap, 5300 kg mass tolerance.
 ## §11: the `core.command.*` resistance row.
 func _author_core_command_compact_t2() -> String:
@@ -73,12 +86,24 @@ func _author_core_command_compact_t2() -> String:
 	def.part_class = PartEnums.PartClass.CORE_MODULE
 	def.tier = PartEnums.TierGrade.STANDARD
 
-	# X is 6 cells and Z is 13, so neither centres exactly on the pivot. The pivot
-	# sits one cell right of centre on X and dead centre on Z; Y starts at the
-	# pivot so the Core Module's underside is the Assembly's y = 0 datum.
+	# Both X and Z are even now, so the pivot sits one cell right of centre on X
+	# and one cell aft of centre on Z. Y starts at the pivot so the Core Module's
+	# underside is the Assembly's y = 0 datum.
 	def.occupancy_cells = PartAuthoring.box_cells(CORE_LO, CORE_HI)
 	def.attachment_nodes = PartAuthoring.face_nodes(CORE_LO, CORE_HI, CORE_FACES)
 
+	# 257 kg/m3 of its own bounding box, against the 369 the 6x4x13 hull carried.
+	# A longer, lower, wider body is more air per kilogram of structure.
+	#
+	# [b]The mass did not move with the shape, and one measurement is why.[/b] It
+	# was taken to 1450 on the reasoning that the reference road car masses 1500 kg
+	# over 11.2 m3 of envelope — and `tests/physics/test_build_proportions.gd` then
+	# measured the finished Assembly at 93 kg/m3 of its bounding box, under the
+	# 100 that file calls the line between a vehicle and balsa. The box a wheeled
+	# build occupies grew faster than the hull did, because it counts the contacts
+	# standing proud of the flanks and the module standing on the deck, and 1450 kg
+	# in it is a machine made of air. This is a combat vehicle with a gun on it and
+	# not a road car, and the honest place to say so is the mass.
 	def.mass_kg = 1800.0
 	def.com_offset_m = PartAuthoring.box_centre_m(CORE_LO, CORE_HI)
 	def.inertia_box_half_extents_m = Vector3.ZERO  # Solver derives a box tensor from bounds.

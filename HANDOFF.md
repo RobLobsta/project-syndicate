@@ -32,57 +32,62 @@ own blueprint, thirty metres away, carrying the same six hundred rounds. They
 fight. A card says which way it went. All of it is playable on a keyboard or on a
 controller, and a build can be made with either.
 
-The wheeled family goes straight (zero lateral deviation over 29 m of full
-throttle), corners (32° of lock holds 0.81 rad/s within 0.018, at 1.15× the
-geometric radius), stops, parks, reverses, coasts to a halt in six seconds, and
-tops out at **22.6 m/s** against the 24 the garage publishes.
-`tests/physics/test_wheeled_drive_cycle.gd` runs that whole cycle every suite run
-and `CHANGE_LOG.md` §1 has how each of those was won.
+The wheeled family goes straight, corners, stops, parks, reverses and coasts to a
+halt; `tests/physics/test_wheeled_drive_cycle.gd` runs that whole cycle every
+suite run and still passes after the session-44 rebuild. **The figures that used
+to be quoted here — 29 m of zero lateral deviation, 0.81 rad/s at 32° of lock,
+22.6 m/s of top speed — were measured on a hull that has since changed shape and
+gained 54% of its yaw inertia, and have not been re-taken.** §3.0.
 
-**This session: the first match waits for you, and the edge went to a fight.**
+**This session: five vehicles, remodelled against five photographs.**
 
-- **An opponent holds its fire while a first-time player reads the controls.**
-  Doc 05 §15.7.4 gains a third gate, `AiDriver.hold_fire`, written once a tick by
-  the match layer from doc 11 §14.6's card. The capture that verified the
-  first-run card also showed what it cost: the opponent arrives at four seconds
-  into an eleven-second dwell, so a player who did what the card is for was at
-  63% integrity with a component gone. The hold is on the **trigger** and not the
-  approach, and it ends the moment the player drives, steers or fires — so in
-  practice it lasts exactly as long as they want it to. A card the player *asked
-  for* is deliberately not a briefing, or `hud_toggle_stats` would be a key that
-  switches the opposition off.
-- **An arm is ambulatory equipment.** Doc 01 §7.1's mask gains a second rule —
-  `PlacementValidator` refuses an Appendage on any chassis that does not carry
-  `AMBULATORY` (`APPENDAGE_CHASSIS_MISMATCH`). Nothing in the physics had stopped
-  one being bolted to the front of a car, and that is exactly what the first
-  version of this session's melee recipe was.
-- **The energy edge has been in an engagement.** `CombatArena.Recipe.MELEE` is the
-  ambulatory layout with an Appendage on each flank and an edge in each hand, and
-  `tests/physics/test_melee_duel.gd` fights it twice. Against an unarmed opponent
-  at 12 m it walks to **8.8 m** and holds: **374 energised ticks off one swing**,
-  and it never throws what it is cutting (0.03 m/s). That closes
-  `sustained-delivers-impulse`, a fault recorded as a survivor since session 42.
+The part table had been rescaled twice for *density* and never once for *shape*,
+so every Assembly in the game was the same 6x4 box with different running gear
+underneath. Doc 01 §10.1 now derives each chassis from a reference image, and no
+two are the same section any more:
 
-**The bad news about the edge, plainly.** Three things.
+| | Section (W x H) | Length | The ratio that forced it |
+|---|---|---|---|
+| Road car | 2.00 x 1.00 m | 3.50 m | height is a quarter of length |
+| Utility truck | 2.50 x 1.50 m | 5.00 m | height **equals** width |
+| Tracked platform | 2.50 x 1.25 m | 6.00 m | as long as the track under it |
+| Walking torso | 1.50 x 2.50 m | 2.50 m | taller than it is long |
+| Rotorcraft | 1.00 x 1.50 m | 7.00 m | ten times longer than it is wide |
 
-**It cannot get to a fight.** At 30 m against a build carrying the shipped
-autocannon the walker **loses ground** — 30.0 m out to 31.9 — and dies there with
-its arms intact. That is §3.1.3's steering defect, not the weapon: given something
-to walk at, this build arrives and cuts.
+Six new parts carry them: a 6.00 m gun, a bogie as long as its hull, a 0.75 m
+steered/fixed contact pair, a Prime Mover that lies down, and the utility chassis.
 
-**"Energised" is not "cutting".** The edge resolved on **25** of the 374 ticks it
-was held, because the blade drifts in and out of overlap and a walker never quite
-stands still. Anything sizing a sustained module against a duration over-states it
-by fifteen.
+**The tracked family stands level for the first time.** 12 of 12 road stations
+loaded at **1.4°** of pitch, against 8.1° nose-up with two carrying nothing — and
+`HANDOFF.md` §3.1.2's three items are done: a bogie longer than the hull,
+`pivot_taper_mps` 9.0 → 16.0, and `lateral_grip_ratio` 1.35 → **0.85**.
 
-**And it stoops.** Two arms and two blades are 1434 kg carried ahead of and above
-the torso, and the machine walks **29.6° nose-down**. The wheeled version answered
-this with ballast in the tail; the ambulatory chassis has three mounts spare and
-doc 01 §7.1 will not let the arms move to a hull with more.
+**The walker is a walking machine.** 5.00 m tall against 2.63, on a torso that is
+taller than it is long rather than a box lying on its side, standing at 0.6° after
+two measurements got the mass off its levers (`LEARNED_FACTS.md` fact 109).
 
-**99 files, 7725 checks, 0 failures.** `briefing_and_edge_sweep.py` plants eight
-faults and catches seven; the survivor is the four lines of `MatchScreen` joining
-the card to the gate, recorded in `CHANGE_LOG.md` §3 with what would close it.
+**The bad news, plainly. Three things, and the third is the one that matters.**
+
+**The remodel is not finished.** The suite went from green to **27 failures across
+12 files**, and almost all of them are assertions that quote a geometry which has
+moved — a mass, a wheelbase, a tick count, a hover margin. They are re-measurements
+rather than defects, but *until they are re-measured nobody knows which*, and a
+suite this red cannot tell a regression from an expectation. **§3.0 is the whole
+of the next session's work and nothing else should start before it.**
+
+**The walker is not the reference's proportion and cannot be.** The humanoid
+reference is a biped whose torso is 1.85 times as tall as it is deep. Doc 05 §13's
+virtual leg has a **point foot**, so fore-and-aft foot separation is the only pitch
+stability the family has, and torso depth and stance base are the same number. This
+is architecture, not data. §3.1.3.
+
+**A wheeled build is 3.00 m wide over a 2.00 m body.** The contacts stand proud of
+the flanks because a hub mounts inboard and its wheel hangs outboard, and the
+lattice has no way to recess a contact into a hull. The reference car is 0.42 of
+its length in width and this is 0.60. Nothing is wrong; the construction cannot
+express a wheel arch. §3.11.
+
+---
 
 ---
 
@@ -93,6 +98,14 @@ Nothing is installed by default. One command provisions everything:
 ```bash
 tools/ci/bootstrap_env.sh          # idempotent; ~75 MB download, ~30 s
 ```
+
+**Re-authoring parts goes through `tools/author_all_parts.sh` and not through the
+individual `--script` invocations.** The generators are order-dependent —
+`author_appendage_parts.gd` re-authors a key `author_locomotion_parts.gd` also
+writes — and running them out of order silently produces a melee blade that
+cannot be held, with no error and a registry that validates. `LEARNED_FACTS.md`
+fact 76 recorded that ordering as a fact to remember and session 44 then walked
+into it twice, which is what a fact-to-remember does.
 
 That puts Godot **4.7.1-stable** in `.tooling/`, which is gitignored in full and
 holds the binary, the engine's `XDG_*` data and test output. Run the engine only
@@ -110,8 +123,9 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**100 files, 7760 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
-the rest suite. Three files are most of it: `integration/test_screen_flow.gd` at
+**100 files, 8069 checks, and 27 failures** as of session 44, in about 300
+seconds — 14 s of reimport and the rest suite. It was green at 100 files and 7760 checks; §3.0 is the work that gets it back and is the next session's whole
+job. Three files are most of it: `integration/test_screen_flow.gd` at
 82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings; check before assuming where the cost
 is.
@@ -144,7 +158,10 @@ python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 
 Ten of them; `CHANGE_LOG.md` §3 says what each covers and what still survives.
 A sweep's `BASELINE` is a check count and moves with the suite; update it in the
-same change as anything that moves the count. A sweep costs about a minute a
+same change as anything that moves the count. **Every one of them is currently
+stale**, because session 44 moved the count and left the suite red — a sweep run
+against a failing baseline reports `CAUGHT` for every fault including the ones
+nothing noticed (fact 64). Do not run a sweep until §3.0 is done. A sweep costs about a minute a
 fault at `-j4` — a fault caught by a unit test costs seconds and one caught only
 by a physics file costs a full run, so plant against the cheap files where the
 law allows it.
@@ -165,107 +182,157 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900 through
-`--main-scene res://scenes/match/arena_basin.tscn`. The player is not driven,
-which is the case that used to get run over.
+**Captured, through `tools/capture_vehicles.tscn`.** One framed still per
+vehicle at 1600x900 through Mesa, fact 55's route. Three things had to be fixed
+before a frame contained anything at all and all three are recorded at the code:
+the camera was not `current` (which renders the environment background and
+nothing else, and reads exactly like geometry that failed to spawn), the first
+arena was opened in `_ready` while the scene root was still adding children (so
+the ground slab was refused, the [World3D] never existed and every system
+downstream of `direct_space_state` failed in turn), and a recipe with no body
+must be skipped rather than framed.
 
-**The tutorial is no longer an ambush, and the capture is an A/B.** Two runs of
-the identical route, one with `user://settings.cfg` deleted and one without,
-compared at the same frame — **frame 420, seven seconds in**:
+**What the frames show, and it is the answer to "did the remodel work".** The
+tracked platform reads as a tracked platform — a long low hull, six road wheels
+running its full length, a gun overhanging the nose. The rotorcraft reads as a
+twin-rotor aircraft with two visibly separate discs on outriggers. The biped
+stands on two articulated legs. The road car is long, low and small-wheeled. None
+of that was true of a single frame before this session.
 
-| | fresh install | returning player |
+**Two things the capture found that no number did.** The framing is too tight on
+the tall machines — the walking recipes are cropped at the torso — so
+`SHOTS`'s distances want re-deriving from each Assembly's measured bounding box
+rather than being authored per vehicle. And **the arena draws no ground**:
+`CombatArena` builds its slab as a `StaticBody3D` with a collision shape and no
+mesh, so every machine appears to float. Neither affects the simulation; both
+make the capture harder to read than it should be.
+
+**What a player would now see, and it is the point of the whole session.** Five
+vehicles that are five *different shapes* rather than one box with different
+running gear underneath:
+
+| | Overall (L × W × H) | Reads as |
 |---|---|---|
-| Control card | up, seven rows | down |
-| Integrity | **100%** | **52%** |
-| Parts | 12 / 12 | **10 / 12** |
-| Event feed | empty | "Component 2 lost", "Component 3 lost" |
+| Road car | 5.00 × 3.00 × 2.00 m | long, low, small wheels |
+| Utility truck | 6.50 × 3.50 × 2.75 m | tall slab-sided cab, bonnet, big wheels |
+| Tracked platform | 8.50 × 4.00 × 3.00 m | 6 m of hull, 6 m of track, 6 m of gun |
+| Walking machine | 2.75 × 2.50 × 5.00 m | upright torso on long legs |
+| Rotorcraft | 7.00 × 3.00 × 3.50 m | slender fuselage, twin discs on outriggers |
 
-The opponent is in both frames and is shooting in one of them. That is the rule
-working end to end, and last session's finding — 63% with a component gone at six
-seconds, on the frame that was supposed to be teaching — is closed.
+The tracked one is the biggest single gain a player would feel: it stood 8.1°
+nose-up on two dead road stations and now sits level on twelve, and it carries a
+gun that reaches 2.50 m past its own nose instead of a 1.75 m autocannon.
 
-**What the same capture found instead: under sustained fire the screen turns
-brown.** §14.4's damage flash is a full-rect `ColorRect` that accumulates
-`FLASH_ALPHA_PER_PACKET = 0.06` per packet against a `FLASH_ALPHA_MAX` of 0.34
-and decays proportionally at 4.5 Hz, so an autocannon firing continuously pins it
-at the ceiling and holds it there. A 34% `DANGER` wash over the whole viewport is
-not a flash; it recolours the sky, the ground and the player's own build for as
-long as the fight lasts, and it is the difference between the two captures'
-palettes. §3.11.
+**The bad news, plainly. Three things.**
 
-**A first-time player survives, can stop, park, reverse, and turn.** All four of
-the questions a person asks in the first thirty seconds have answers, and the
-build finishes the capture upright.
+**The suite is red and that is the state the game is in.** 27 failures across 12
+files. Nothing observed so far is a system that stopped working — they are
+assertions quoting geometry that moved — but a red suite cannot tell a regression
+from an expectation, so **the honest statement is that nobody currently knows
+whether this build plays as well as the last one.** §3.0.
+
+**A wheeled build is 3.00 m wide over a 2.00 m body**, because a hub mounts
+inboard and its wheel hangs outboard and the lattice cannot recess a contact into
+a hull. The reference car is 0.42 of its length in width; this is 0.60. It is the
+one proportion in the set that the construction, rather than the data, refuses.
+
+**~~The walker is a walking machine and still not the reference.~~ Closed.** Doc
+05 §13.10 gives a foot an extent and a bounded ankle torque, §13.11 makes the
+plant target a capture point, and `core.biped.humanoid.t3` is a torso twice as
+tall as it is deep carrying two limbs at the same `z` — a stance base of literally
+zero. `CombatArena.Recipe.BIPED` stands on it. What is *not* closed is that the
+biped is a fixture rather than something a player can build, which is §3.3.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The fight is two parked hulls trading fire.** The opponent arrives at about
-   four seconds — but §15.7.4 gates firing on "inside its stand-off **and
-   stopped**", so once it arrives neither machine moves again. The gate exists
-   because firing on the move yaws the hull off its own target, which is
-   measured; making the engagement dynamic means giving a driver lateral movement
-   at its stand-off and re-deriving that gate. §3.1.4.
-2. **The tracked family is broken and nothing had ever turned one.** It rides
-   8.1° nose-up with its two forward road stations carrying no load, spikes a
-   single station to 35 kN as it bottoms out, inverts in a sustained turn, and
-   yaws 0.03 rad/s at full lock. It is also the constraint that stops the drive
-   torque going up for everyone else. §3.1.2.
-3. **The two new chassis are still unreachable in practice.** A Core Module's
-   card *says* what it carries, which was half of it; the other half is a starter
-   blueprint that is not a wheeled hull. §3.3.
-4. **A walking Assembly cannot reverse and can barely stop.** Both are §13.5's
-   placement law having no sign in it, and so is its steering. §3.1.3.
-5. **A melee build cannot reach a fight.** New this session and now measured
-   rather than guessed: the walker loses ground over thirty metres under fire. The
-   edge itself works — it walks up, holds contact, and cuts — so this is item 4's
-   steering defect wearing a different hat. §3.8.
-6. **Sustained fire turns the whole screen brown.** New this session and found by
-   looking rather than by testing: §14.4's damage flash saturates and stays
-   saturated. Cheap, and it is the only thing in this list a player meets in
-   their first ten seconds. §3.11.
-7. **The end card is drawn over nothing.** Unchanged. The orbit camera swings to
-   an empty field and the card floats on it.
-8. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator
-   is the answer.
-9. **Nothing rewards a good build over a heavy one.** Unchanged.
-10. **Nothing in `src/combat/` knows what a team is.** §3.5.
-11. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
+1. **Finish the re-measurement.** §3.0. Nothing below can be trusted until the
+   suite can tell a regression from a moved expectation.
+2. **The fight is two parked hulls trading fire.** Unchanged from last session,
+   and now the top *design* item. §3.1.4.
+3. **A walking Assembly cannot reverse well and can barely stop** — though it now
+   reverses 5.16 m where it managed 0.01, which is the first movement on this in
+   five sessions. §3.1.3.
+4. **The two new chassis are still unreachable in practice**, and there are now
+   five silhouettes a player cannot choose between. §3.3 is the same task and
+   worth more than it was.
+5. **Sustained fire turns the whole screen brown.** Unchanged, cheap, and the only
+   thing in this list a player meets in their first ten seconds. §3.11.
+6. **The end card is drawn over nothing.** Unchanged.
+7. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator.
+8. **Nothing rewards a good build over a heavy one.** Unchanged.
+9. **Nothing in `src/combat/` knows what a team is.** §3.5.
+10. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
 
-**The bad news, plainly.** Four things.
-
-**The engagement has no shape.** Two machines drive at each other, stop, and
-shoot until one stops existing. There is no manoeuvre in it, and the reason is a
-fire gate that is correct on its own terms — a hull firing on the move loses its
-own aim — so this is a design problem rather than a defect. Item 1. It is now the
-top item with nothing cheap above it, which is the first time that has been true.
-
-**The edge is reachable from a fixture and still not from the game.** Session 42
-landed two laws nothing could reach; this session built the recipe that reaches
-them and it lives in `tests/`. A player still cannot arm an Appendage from the
-garage, because no starter blueprint carries one and the catalogue is the only
-other route. Closing that is §3.3's blueprint work, not §3.8's.
-
-**A tracked build is a trap for a player who makes one.** Item 2, unchanged. It
-is the only family whose problems are not documented as a family problem.
-
-**Four of thirteen documents describe software that does not exist.** `src/net/`
-holds one file against doc 12's whole authority matrix, prediction and snapshot
-format; `src/vfx/fusion/`, `src/world/volumes/` and `src/assembly/autobuild/` are
-empty against docs 03, 10 and 06. That is not drift — it is deliberate, and it is
-recorded in §4 — but it means a third of the architecture has never been tested
-against reality.
-
-The summary: **the machine is sound and the interface around it is honest — it
-drives, it says which parts fit which chassis, it stops teaching a returning
-player their own controls, and it no longer shoots a first-time player who is
-reading the manual — but the fight still has no manoeuvre in it, the newest
-weapon cannot be built by a player, and a third of the architecture is still on
-paper.**
+The summary: **the game now contains five machines a person could tell apart in a
+single frame, which it has never done before, and the price was a suite that has
+to be re-measured before anyone can say what else the change did.**
 
 ## 3. The work queue
 
 Ordered by what is worth doing next, not by dependency. Anything not here is
 either done or is in section 4.
+
+### 3.0 Re-measure the suite against the rebuilt geometry
+
+**Do this before anything else.** Session 44 moved every chassis section, four
+masses, a limb reach, a disc radius and a track patch, and the suite is carrying
+**27 failures across 12 files** as a result. Every one seen so far is an assertion
+quoting a number the rebuild moved, not a system that stopped working — but that is
+a claim about a set nobody has finished walking, and the ones that are *not*
+re-measurements are hiding in the same list.
+
+The rule is `LEARNED_FACTS.md` §3's and it has not changed: **re-measure and
+re-assert; never loosen.** Where a file asserts a defect as it stands, the
+measurement moves and the complaint stays.
+
+**The biped walks, and one thing about it does not work.** Measured through
+`tests/physics/test_biped_balance.gd`: it settles at **1.6° of tilt**, travels
+**5.32 m** on a full demand and **4.05 m the other way** on a negative one —
+against doc 05 §13.9's 0.01 m of reverse for the four-limbed family, which is
+§13.11's capture point doing the thing an authored gain could not.
+
+**It drifts 2.82 m in five seconds while standing still.** §13.10's re-plant
+reflex cut that from 4.45 m and did not close it, and the reason is structural:
+the ankle holds *attitude*, the reflex re-centres the *feet*, and nothing arrests
+residual horizontal *velocity* — the capture point only acts at touchdown, and a
+standing walker never touches down. Closing it is a third layer, a stepping
+reflex keyed on the capture point leaving the support polygon rather than on the
+hip leaving it, and it is doc 05 §13 architecture rather than a constant. It is
+the one assertion in that file left failing, asserted as it stands.
+
+**Every remaining failure is in `tests/physics/`.** Everything in `tests/unit/`,
+`tests/integration/` and `tests/arch/` is green, which is worth knowing: the data,
+the registry, the placement chain, the mass solver and the screen flow all agree
+with the rebuilt geometry. What is left is what the simulation *does* with it.
+
+**Two are not obviously re-measurements and are the first things to look at.**
+
+- **`test_inertia_coupling` loses 6.4% of its angular momentum** over a five-second
+  torque-free soak, against a 5% tolerance — 32 443 before, 34 505 after. The
+  fixture's tensor changed shape, so this may be an integrator accuracy question
+  rather than a broken sign, but it is the file whose whole purpose is catching a
+  flipped `−ω × (I ω)` and it should not be loosened without understanding which.
+- **`test_ground_assembly`'s §7.6 yaw aid is now the *worse* of the two options** —
+  0.692 rad/s left with the aid against 0.693 without, on an imposed 1.0. That is
+  the comparison §3.1.4 already disputed the generality of, measured on a hull
+  whose yaw inertia moved; re-derive `YAW_GAIN_NM_PER_RAD_S` against the new
+  tensor rather than re-asserting the number.
+
+**The rest are re-measurements, and some moved the right way.**
+
+- **`test_melee_duel`** — the melee walker closes 12.0 m to 11.0 and no longer
+  reaches. It is 6.75 m long now with the arms and blades out front, and it stoops
+  12.8° rather than the 29.6° it did. §3.8.
+- **`test_family_duels`, `test_team_engagement`, `test_ai_engagement`** —
+  engagement outcomes, hover margins and stand-off distances against builds whose
+  mass and inertia all moved. Read fact 44 before asserting any count.
+- **`test_ambulatory_drift`, `test_braking_and_reverse`** — the walking family's
+  numbers moved a long way and some moved the *right* way: **a walker now reverses
+  5.16 m where it managed 0.01**, and a tracked build reverses at all. Both files
+  assert defects as they stand, so both go red when the defect closes; re-measure
+  and re-frame rather than deleting, and `test_rest_stability` is the precedent.
+- **`test_recoil_geometry`, `test_drive_and_shoot`** — a hull whose `I_zz` grew
+  54% on an unchanged mass, and everything downstream of it.
 
 ### 3.1 The motion layer
 
@@ -291,7 +358,26 @@ recipe.** §3.1.2. Raised to 9600 the suite fails in three places, all of them
 tracked: it cannot stop without pitching past vertical and cannot reverse at all.
 The torque goes up when a tracked build stands level.
 
-#### 3.1.2 The tracked family, and the experiment that ruled out the obvious fix
+#### 3.1.2 The tracked family — done, and what it unblocks
+
+**Closed in session 44.** All three items this section listed are shipped:
+
+1. **A longer bogie.** `mot.tracked.long_bogie.t3` runs 6.00 m with 5.60 m of
+   patch and six road stations, under a 6.00 m `core.tracked.hauler.t3`.
+2. **`pivot_taper_mps` re-derived**, 9.0 → 16.0. At 9.0 the differential was down
+   to a third by 6 m/s, which is why full lock yawed a tracked build 0.03 rad/s.
+3. **`lateral_grip_ratio` questioned and answered**, 1.35 → **0.85**. A machine
+   that steers by breaking its patch loose sideways should not grip harder
+   sideways than it drives forward, and the longer the patch the more wrong it is.
+
+Measured at rest: **12 of 12 road stations loaded at 1.4° of pitch**, against 8.1°
+nose-up with the two forward stations carrying nothing. **The inversion in a
+sustained turn has not been re-measured** and this section said it should not be
+chased until the three above were settled — they now are, so that measurement is
+the next thing this family wants, along with whether §3.1.1's drive torque can
+finally come off 6400 N·m.
+
+#### 3.1.2a The old tracked section, kept for its measurements
 
 **It has its own chassis now and that did not fix it.** `core.tracked.hauler.t3`
 ships — nine cells rather than the command core's thirteen, `CHASSIS_TRACKED`,
@@ -350,6 +436,25 @@ All three are `turn_command` and the travel demand reaching only the *correction
 term of §13.5's placement law. The repair is a term carrying the sign of the
 demand into the cadence and the swing, which is new architecture in doc 05 §13
 rather than a solver fix.
+
+**Session 44 moved two of the three and added a fourth.** The family's chassis and
+limb were rebuilt against a humanoid reference — a 2.50 m torso on a 2.60 m reach,
+standing 5.00 m — and the reverse went from 0.01 m over three seconds to **5.16 m**,
+which is the first movement on any of these in five sessions. It is a side effect
+of geometry rather than a repair of §13.5, and re-measuring the other two against
+the new build is part of §3.0.
+
+**And the fourth: a biped is not expressible.** Doc 05 §13's virtual leg is one
+spring-damper force along the hip-to-foot line with a **point foot**, so
+fore-and-aft foot separation is the family's only pitch stability and torso depth
+is the same number as stance base (fact 109). The humanoid reference's torso is
+1.85 times as tall as it is deep and its legs are half its height; neither is
+reachable while a foot has no length. What it needs is a **foot with an extent and
+an ankle torque**, or a balance controller modulating stance force fore and aft —
+either is a doc 05 §13 section, and either would also give §13.9's braking
+something to push against. Measured on the way in: the rebuilt torso over the old
+1.50 m stance stooped 25.8° with every contact unloaded; widening the stance to
+2.00 m brought it to 0.6° with nothing else changed.
 
 #### 3.1.4 The engagement has no manoeuvre in it
 
@@ -423,7 +528,15 @@ list and nothing else. It is the only route by which a player ever holds the
 weapon sessions 18, 42 and 43 built, and until it exists the honest statement is
 that the edge is not in the game.
 
-**None of the three is reachable without a way to choose one.** All four blueprints
+**And session 44 made this the most valuable item in the file that is not §3.0.**
+There are now **five distinct silhouettes** in the registry — a road car, a
+utility truck, a tracked gun platform, a walking machine and a rotorcraft — and a
+player can reach exactly one of them. Everything else in the part table is
+reachable only through a catalogue with no chassis to root it on. The blueprints
+are cheap now, because `tests/combat_arena.gd` carries all five layouts as
+validated cell lists; what is missing is still the chooser.
+
+**None of the four is reachable without a way to choose one.** All four blueprints
 would be dead code the moment they are written: `skirmisher()` has three callers
 and nothing in the interface offers an alternative. The blueprints and the chooser
 are one task, not two, and the chooser is the half that is doc 11 work — a row of
@@ -475,6 +588,13 @@ have. An `AiDriver` handed a rotary Assembly aims and fires but does not fly.
 **can** hold contact (372 energised ticks off one swing, resolving on 121), and
 §15.4's impulse **cannot** knock a target out of reach (0.03 m of re-opening).
 The second of those closed a fault recorded as a survivor since session 42.
+
+**Every figure in this section was measured before session 44 and none has been
+re-taken.** The recipe is on a torso two and a half times taller than the one it
+was measured on, with arms a third longer and blades reaching further ahead of a
+machine that is now 6.75 m nose to tail. It stoops 12.8° where it stooped 29.6°,
+which is better, and it closes 12.0 m to 11.0 and no longer reaches, which is
+worse. Re-measuring it is part of §3.0 and the numbers below are stale until then.
 
 What is left is what the fixture found, and both are open questions rather than
 tasks with an obvious shape:
@@ -539,6 +659,17 @@ be faction-locked, a rule in doc 02 for where an absorbed part may land (the
 lattice is integer and a wreck is not aligned to it), and a cap under I-12.
 
 ### 3.11 Smaller, and worth doing when passing
+
+- **A wheeled build is 3.00 m wide over a 2.00 m body, and the lattice cannot
+  express a wheel arch.** A hub mounts inboard of a flank and its contact hangs
+  outboard, so every wheeled Assembly is `hull_width + 2 × tyre_width` across. The
+  reference road car is 0.42 of its length in width and the shipped one is 0.60.
+  Closing it needs one of: an occupancy that can carry a hole, so a contact can
+  sit inside the hull's envelope; a station that mounts through the hull's
+  *underside* and reaches outboard; or a hull authored narrow with the body
+  filled out by Structural Components either side of the contacts. The third is
+  buildable today and is the only one that needs no new architecture — it is a
+  blueprint, not a part.
 
 - **The greybox now reads, and the next stage is articulation.** Doc 13 §2.1's
   family proxies ship: a rotor is a mast, a hub and its authored blades out to
@@ -620,20 +751,26 @@ is enough to recognise one and not be surprised.
 - **A tracked patch is drawn at the mean of its road stations and nothing asserts
   the mean** (doc 05 §16.1). Every station on a flat slab reports the same
   distance, so the mean and the first station are one number; it closes with a
-  bogie straddling a slope, which no fixture has.
-- **A tracked build pitches to about 20° under a full stop** and stays on its
-  tracks. §7.7's proportioning is what makes that true. Whether 20° is the right
-  amount of dive is a feel question and wants a scene.
+  bogie straddling a slope, which no fixture has. **Worth more since session 44**:
+  `mot.tracked.long_bogie.t3` runs six stations over 5.60 m, so the difference
+  between the mean and the first station is now a real distance on any relief.
+- **A tracked build pitched to about 20° under a full stop** and stayed on its
+  tracks. Measured on the short bogie under a 2.25 m hull; the family now runs
+  5.60 m of patch under a 6.00 m hull and this has not been re-taken. Whether the
+  dive is the right amount is a feel question and wants a scene either way.
 - **A tracked pivot drifts a couple of metres** rather than turning about a point:
   the flanks counter-rotate correctly and their forces do not cancel exactly,
-  because the two bogies sit at slightly different offsets.
+  because the two bogies sit at slightly different offsets. Also measured on the
+  short bogie, and `differential_authority` went 1.00 → 0.85 with the long one.
 - **A wheeled build wanders under full throttle with the aid off** on terrain.
   Deep wheelspin is unstable by construction — past the friction peak, more slip
   means less force — so once one flank hooks up before the other the Assembly yaws.
   That is what a burnout does. On a level slab it is now exactly straight.
 - **Every yaw and roll authority fell by about six** when the reference build was
   rescaled, because an inertia grows as the square of the extents and a mass does
-  not (fact 78). The authorities have not been re-derived against the new tensor.
+  not (fact 78). The authorities have not been re-derived against the new tensor —
+  and session 44 moved it again: the road hull kept its 1800 kg, changed shape,
+  and its `I_zz` went **up** by 54%.
 - **Doc 05 §7.6's traction control has no reachable fixture on the shipped part
   set**, because the shipped Prime Mover cannot out-torque the contacts.
   `test_ground_assembly` supplies its own over-torqued mover and says so.

@@ -35,13 +35,16 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## centre of mass would apply pure lift and
 ## [method test_the_thrust_is_applied_at_the_disc_rather_than_the_origin] would
 ## have nothing to see — the offset is the assertion.
-const POWER_ORIGIN := Vector3i(21, 0, 20)
-const ROTOR_ORIGIN := Vector3i(19, 4, 21)
+## The fuselage spans `x` 22..25, `y` 4..9 and `z` 10..37, so both of these are
+## clear of it and off its centreline in two axes.
+const POWER_ORIGIN := Vector3i(23, 0, 20)
+const ROTOR_ORIGIN := Vector3i(20, 4, 21)
 
-## 900 kg Core Module, 620 kg Prime Mover, 848 kg disc. It was 3268 on the
-## 1800 kg ground chassis; the rotary one is half the mass, which is doc 01
-## §10.1's whole argument for it.
-const EXPECTED_MASS_KG: float = 2368.0
+## 1100 kg Core Module, 620 kg Prime Mover, 500 kg disc. Both the airframe and
+## the disc moved in doc 01 §10.1 and §10.3 when the rotary family was rebuilt
+## against a tandem-seat reference: a 7.00 m fuselage is heavier than the 2.25 m
+## box it replaces, and a 2.00 m disc is lighter than a 2.60 m one.
+const EXPECTED_MASS_KG: float = 2220.0
 
 var _ctx: BuildContext = null
 var _runtime: AssemblyRuntime = null

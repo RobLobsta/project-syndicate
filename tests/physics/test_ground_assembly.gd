@@ -28,12 +28,12 @@ extends TestCase
 
 const CORE_KEY := &"core.command.compact.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
-const WHEEL_KEY := &"mot.wheeled.allroad.t2"
-const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+const WHEEL_KEY := &"mot.wheeled.light_road.t1"
+const REAR_KEY := &"mot.wheeled.light_fixed.t1"
+const POWER_KEY := &"pmv.combustion.flat.t2"
 
 ## On the Core Module's roof, on the centreline, so it does not bias the build.
-const POWER_ORIGIN := Vector3i(24, 8, 28)
+const POWER_ORIGIN := Vector3i(24, 4, 34)
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Hub stations under the Core Module's four lower corners. They mate to its
@@ -41,7 +41,7 @@ const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## drive faces are opposite each other, so a station that bolted on through one
 ## of them would have nowhere to put a wheel.
 const HUB_ORIGINS: Array[Vector3i] = [
-	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
+	Vector3i(21, 2, 19), Vector3i(27, 2, 19), Vector3i(21, 2, 29), Vector3i(27, 2, 29)
 ]
 ## Wheel pivots outboard of each station. Four cells apart on Z because the disc
 ## is four cells across it, and a closer pair overlaps into `CELL_OCCUPIED`.
@@ -60,15 +60,17 @@ const HUB_ORIGINS: Array[Vector3i] = [
 ## contact patches 0.25 m out of line, which loads them unevenly and makes the
 ## Assembly veer under power. Matching the *probes* is what makes it a mirror.
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
+	Vector3i(18, 3, 19), Vector3i(18, 3, 29), Vector3i(29, 3, 19), Vector3i(29, 3, 29)
 ]
 
 ## Pivot Z below which a wheel is on the front axle and steers.
 const FRONT_AXLE_Z: int = 24
 
-## 1800 kg Core Module, 620 kg Prime Mover, four 90 kg stations, two 110 kg
-## steered discs and two 105 kg fixed ones.
-const EXPECTED_MASS_KG: float = 3210.0
+## 1800 kg Core Module, 620 kg Prime Mover, four 90 kg stations, two 78 kg
+## steered discs and two 74 kg fixed ones. The contacts are the road car's 0.75 m
+## pair since session 44 — doc 01 §10.3 sizes them off the reference at 0.15 of
+## the vehicle's length, where the 1.00 m pair is 0.20 of it.
+const EXPECTED_MASS_KG: float = 3084.0
 
 ## Doc 05 §6.1's probe radius ratio, quoted rather than imported.
 ##

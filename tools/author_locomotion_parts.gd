@@ -60,9 +60,14 @@ func _process(_delta: float) -> bool:
 func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_hub_axle_station())
+	keys.append(_author_outrigger_pylon())
 	keys.append(_author_wheeled_allroad())
 	keys.append(_author_wheeled_fixed_rear())
+	keys.append(_author_wheeled_light_road())
+	keys.append(_author_wheeled_light_fixed())
 	keys.append(_author_tracked_short_bogie())
+	keys.append(_author_tracked_long_bogie())
+	keys.append(_author_prime_mover_combustion_flat())
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
 	keys.append(_author_prime_mover_combustion_standard())
@@ -108,6 +113,54 @@ func _author_hub_axle_station() -> String:
 	def.load_capacity_kg = 2400.0
 	# Tier-2 baseline for `str.hub.axle_station`; §12 scales other tiers from it.
 	def.build_cost = 140
+	def.mount_weight = 1
+	return PartAuthoring.save_part(
+		def, "str", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.2: `str.outrigger.pylon.t2`, 3x2x2, 85 kg, 410 integrity, 15 armour,
+## 3500 kg load capacity. §11: the `str.hub.*` row, which it shares — it is the
+## same load path in a different shape.
+##
+## [b]It exists because a fuselage can be too narrow for its own rotors.[/b] §4.2
+## makes an AXLE station attach through a neutral flank so that both of its drive
+## faces stay free, which means a mast station sits directly against the hull it
+## mounts on — and `core.rotary.lifter.t3` is 1.00 m wide, because the reference
+## rotorcraft seats one abreast. Two stations on its flanks put their disc centres
+## 2.00 m apart under 4.00 m discs: half a diameter of overlap, which reads as one
+## blurred rotor and not as two.
+##
+## Three cells between the flank and the station takes the separation to 3.00 m
+## and the overlap to a quarter of a diameter. The reference overlaps by about a
+## third, so this is very slightly the wider of the two and is the nearest an
+## integer lattice gets.
+##
+## [b]A stub and not a wing, deliberately.[/b] An outrigger long enough to
+## separate the discs completely would put them 4.50 m apart on a 7.00 m
+## fuselage, which is a wider span than the reference carries and would make the
+## machine read as a flying trestle. Every face is neutral so it mates on both
+## sides, and it takes one mount.
+func _author_outrigger_pylon() -> String:
+	var lo := Vector3i(-1, 0, -1)
+	var hi := Vector3i(1, 1, 0)
+	var def := _base(&"str.outrigger.pylon.t2", PartEnums.PartClass.STRUCTURAL_COMPONENT)
+	def.tier = PartEnums.TierGrade.STANDARD
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	# Every face neutral. A pylon exists to be built through from both ends, and a
+	# DECK or a polarity on either flank would refuse one of the two joints it is
+	# entirely for.
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 85.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 410.0
+	def.resistance = PackedFloat32Array([0.26, 0.10, 0.44, 0.10, 0.06])
+	def.armour_rating = 15.0
+	# High for its mass, and for the same reason the AXLE station's is: everything
+	# a disc does to the airframe — 28 kN of thrust and the reaction that comes
+	# with it — passes through this one spar.
+	def.load_capacity_kg = 3500.0
+	def.build_cost = 160
 	def.mount_weight = 1
 	return PartAuthoring.save_part(
 		def, "str", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
@@ -240,6 +293,153 @@ func _author_wheeled_fixed_rear() -> String:
 	)
 
 
+## §10.3: `mot.wheeled.light_road.t1`, WHEELED_STEERED, 3x3x2, 78 kg,
+## 240 integrity, 950 kg rated, 0.78 traction, 34 degree steer, 116000 N/m,
+## 9400 Ns/m. §11: the `mot.wheeled.*` row.
+##
+## [b]0.75 m across, and that is the whole reason it exists.[/b] The reference
+## road car measures its wheel at 0.15 of its own length; `mot.wheeled.allroad.t2`
+## is 1.00 m against a 5.00 m machine, which is 0.20 — a rally contact under a
+## supercar. Three cells is 0.75 m and lands on 0.15 exactly.
+##
+## Everything else is `allroad` scaled by the load it carries rather than
+## re-derived. Rated load is 950 kg against 1100 because a smaller contact patch
+## carries less, and the spring rate follows it: `allroad` is 134000 N/m at
+## 1100 kg, so 950 kg wants 116000 to sit at the same static fraction of travel.
+## Traction is the shipped ground basis of 0.78 unchanged — §10.3's session-38
+## review caps every ground row there against the hull's own rollover threshold,
+## and a road tyre does not get an exemption from arithmetic.
+##
+## Travel is 0.18 m against `allroad`'s 0.24, which is not a scaling. It is
+## `suspension_rest_length_m` being `contact_radius_m + travel` (doc 05 §6.1)
+## against a radius of 0.375: keeping 0.24 would put the rest length at 0.615 and
+## stand the hull higher on the smaller wheel than on the larger one, which is
+## the opposite of what a low car is for.
+func _author_wheeled_light_road() -> String:
+	var lo := Vector3i(-1, -1, -1)
+	var hi := Vector3i(1, 1, 0)
+	var cells := PartAuthoring.box_cells(lo, hi)
+	var def := _base(&"mot.wheeled.light_road.t1", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.SALVAGE
+	def.occupancy_cells = cells
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
+	)
+	def.mass_kg = 78.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 240.0
+	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
+	def.armour_rating = 8.0
+	def.load_capacity_kg = 160.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.WHEELED_STEERED
+	# Three cells across is 0.75 m, two deep is 0.5 m — derived from the cells
+	# rather than quoted, so the collider, the rolling radius and the occupancy
+	# keep describing one object.
+	profile.contact_radius_m = 0.375
+	profile.contact_width_m = 0.50
+	profile.suspension_rest_length_m = 0.555
+	profile.suspension_stiffness_n_m = 116000.0
+	profile.suspension_damping_ns_m = 9400.0
+	profile.suspension_travel_limit_m = 0.18
+	# Wider lock than `allroad`'s 32: a road car steers harder than a utility
+	# vehicle because it has less to roll over.
+	profile.max_steer_angle_deg = 34.0
+	profile.steer_rate_deg_s = 160.0
+	profile.rated_load_kg = 950.0
+	profile.traction_coefficient = 0.78
+	profile.rolling_resistance = 0.011
+	# Brake torque scales with radius, not with load: the same friction at a
+	# shorter arm is less torque, and 8300 x (0.375 / 0.50) is 6200.
+	profile.brake_torque_nm = 6200.0
+	profile.driven = true
+	def.motive_profile = profile
+
+	def.build_cost = 190
+	def.mount_weight = 2
+	# A BOX where the four-cell rows carry a CYLINDER, and the arithmetic forces
+	# it. §6.2 wants a collider covering 82%-118% of the occupancy; a cylinder
+	# inscribed in a square is π/4 = 78.5% of it, always, at every radius. The
+	# four-cell wheels get away with a cylinder because `disc_cells` takes their
+	# four corners off, which drops the occupancy to 75% of the box and puts the
+	# ratio at 105%. At three cells a corner-cut leaves a plus of five cells —
+	# 55.6% — and the same cylinder is then 141% of it.
+	#
+	# So a three-cell disc has no cell list a cylinder fits: the box is 78.5% and
+	# the plus is 141%, with nothing between them. The box occupancy with a box
+	# collider is exactly 100%, and on a 0.75 m contact the corner it adds is
+	# 0.11 m of hull that never touches anything the suspension cares about —
+	# doc 05 §6.1 shape-casts from the probe, not from this shape, so what the
+	# collider decides is ramming and hit registration.
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.single_box_collider(lo, hi), &"tread_std"
+	)
+
+
+## §10.3: `mot.wheeled.light_fixed.t1`, WHEELED_FIXED, 3x3x2, 74 kg,
+## 250 integrity, 1000 kg rated, 0.80 traction, 0 steer, 121000 N/m, 9700 Ns/m.
+##
+## The unsteered half of the road-car axle pair, and it exists for the reason
+## [method _author_wheeled_fixed_rear] gives at length: four contacts that all
+## steer the same way translate an Assembly instead of turning it. The trade is
+## the same one §10.3 makes at the larger size — slightly more rated load and
+## more grip for slightly less mass, because there is no steering mechanism in it
+## — so the rear axle is again the one worth driving.
+func _author_wheeled_light_fixed() -> String:
+	var lo := Vector3i(-1, -1, -1)
+	var hi := Vector3i(1, 1, 0)
+	var cells := PartAuthoring.box_cells(lo, hi)
+	var def := _base(&"mot.wheeled.light_fixed.t1", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.SALVAGE
+	def.occupancy_cells = cells
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo,
+		hi,
+		{FACE_ZN: PartEnums.AttachmentPolarity.AXLE},
+		{FACE_ZN: structural_only()},
+		cells
+	)
+	def.mass_kg = 74.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 250.0
+	def.resistance = PackedFloat32Array([0.08, 0.12, 0.30, 0.02, 0.00])
+	def.armour_rating = 8.0
+	def.load_capacity_kg = 160.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.WHEELED_FIXED
+	profile.contact_radius_m = 0.375
+	profile.contact_width_m = 0.50
+	# Shares a footprint and a travel with the steered row, so it shares §6.1's
+	# rest length.
+	profile.suspension_rest_length_m = 0.555
+	profile.suspension_stiffness_n_m = 121000.0
+	profile.suspension_damping_ns_m = 9700.0
+	profile.suspension_travel_limit_m = 0.18
+	# Zero, and load-bearing: this is the whole difference between the two rows.
+	profile.max_steer_angle_deg = 0.0
+	profile.steer_rate_deg_s = 0.0
+	profile.rated_load_kg = 1000.0
+	profile.traction_coefficient = 0.80
+	profile.rolling_resistance = 0.011
+	profile.brake_torque_nm = 6200.0
+	profile.driven = true
+	def.motive_profile = profile
+
+	def.build_cost = 175
+	def.mount_weight = 2
+	# A BOX, for the reason [method _author_wheeled_light_road] sets out: no cell
+	# list for a three-cell disc puts a cylinder inside §6.2's coverage band.
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.single_box_collider(lo, hi), &"tread_std"
+	)
+
+
 ## §10.3: `mot.tracked.short_bogie.t2`, TRACKED_SEGMENT, 8x4x3, 672 kg,
 ## 900 integrity, 6700 kg rated, 1.34 traction, 0 steer, 88000 N/m, 7600 Ns/m.
 ## §7.2.3 and §10.3's tracked parameter table for the rest. §11: `mot.tracked.*`.
@@ -304,16 +504,123 @@ func _author_tracked_short_bogie() -> String:
 	)
 
 
-## §10.3: `mot.rotor.coaxial_mid.t3`, ROTOR_DISC, 4x6x4, 848 kg, 690 integrity,
-## 8300 kg rated, 150 PU. §10.3's rotary table for the disc parameters.
+## §10.3: `mot.tracked.long_bogie.t3`, TRACKED_SEGMENT, 24x4x3, 1450 kg,
+## 1420 integrity, 11000 kg rated, 0.95 traction, 0 steer, 132000 N/m,
+## 11400 Ns/m. §10.3's tracked parameter table for the rest.
+##
+## [b]The part `HANDOFF.md` §3.1.2 asked for: a contact base longer than the hull
+## it carries.[/b] `mot.tracked.short_bogie.t2` runs eight cells — 1.90 m of
+## patch — and one per flank is the design, so a tracked Assembly was a hull
+## see-sawing on a base shorter than itself. Measured at rest on the old 2.25 m
+## hull it sat 8.1 degrees nose-up with both forward road stations carrying
+## nothing and spiked a single station to 35 kN as the bogie bottomed out. Nothing
+## downstream of that is worth tuning: a suspension that is not in contact has no
+## rate.
+##
+## Twenty-four cells is 6.00 m against `core.tracked.hauler.t3`'s 6.00 m hull,
+## with 5.60 m of it patch and the last two cells idler and sprocket. The
+## reference photograph is where the number comes from — six road wheels running
+## the full length of the hull with a drive sprocket and an idler at the two ends
+## — and it is also the only arrangement in which six road stations are evenly
+## spaced under a hull rather than clustered under its middle.
+##
+## [b]Two figures here are repairs and not trades, and §10.3 records why.[/b]
+## `pivot_taper_mps` is 16.0 against the short bogie's 9.0, because at 9.0 the
+## differential was down to a third by 6 m/s and full lock yawed a tracked build
+## 0.03 rad/s — it could not turn at any speed a player drives at, and a longer
+## patch resists a pivot harder. `lateral_grip_ratio` is 0.85, below 1.0, where
+## the short bogie carries 1.35: a tracked vehicle steers by breaking its patch
+## loose sideways, so a patch that grips laterally harder than it drives forward
+## is the wrong way round for the mechanism, and the longer the run the more
+## wrong it is.
+func _author_tracked_long_bogie() -> String:
+	var lo := Vector3i(-12, -2, -1)
+	var hi := Vector3i(11, 1, 1)
+	var def := _base(&"mot.tracked.long_bogie.t3", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo, hi, {FACE_ZN: PartEnums.AttachmentPolarity.AXLE}, {FACE_ZN: structural_only()}
+	)
+	# 1450 kg is the short bogie's 672 scaled by run length rather than by volume:
+	# a track is its shoes and its return run, both of which go as the length, and
+	# the two idlers do not triple because there are still only two of them.
+	def.mass_kg = 1450.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 1420.0
+	def.resistance = PackedFloat32Array([0.24, 0.18, 0.40, 0.08, 0.04])
+	def.armour_rating = 24.0
+	def.load_capacity_kg = 1600.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.TRACKED_SEGMENT
+	profile.contact_radius_m = 0.50
+	profile.contact_width_m = 0.75
+	# §6.1's rule, unchanged from the short bogie: a road station's spring is §6.2
+	# whatever the run above it is doing.
+	profile.suspension_rest_length_m = 0.74
+	profile.suspension_stiffness_n_m = 132000.0
+	profile.suspension_damping_ns_m = 11400.0
+	profile.suspension_travel_limit_m = 0.24
+	# §14 rule 22: a track that steered by angling its hub would be a wheel.
+	profile.max_steer_angle_deg = 0.0
+	profile.steer_rate_deg_s = 0.0
+	profile.rated_load_kg = 11000.0
+	profile.traction_coefficient = 0.95
+	profile.rolling_resistance = 0.024
+	profile.brake_torque_nm = 14800.0
+	profile.driven = true
+
+	var track := TrackProfile.new()
+	# 5.60 m of patch against a 6.00 m part, for the same reason the short bogie
+	# runs 1.90 under 2.00: the patch is the ground contact and the last half-cell
+	# at each end is idler rather than run.
+	track.patch_length_m = 5.60
+	track.road_stations = 6
+	# Below 1/6 deliberately, so the ends of the patch are soft and the track
+	# conforms to a rise instead of bridging it rigidly. The short bogie's 0.22
+	# sits the same distance below its own 1/4.
+	track.station_load_share = 0.15
+	track.sprocket_rad_s = 19.0
+	track.differential_authority = 0.85
+	track.pivot_taper_mps = 16.0
+	track.slew_resistance_nm_per_n_m = 0.51
+	track.lateral_grip_ratio = 0.85
+	track.internal_loss = 0.10
+	profile.track_profile = track
+	def.motive_profile = profile
+
+	def.build_cost = 1420
+	def.mount_weight = 5
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.single_box_collider(lo, hi), &"tread_std"
+	)
+
+
+## §10.3: `mot.rotor.coaxial_mid.t3`, ROTOR_DISC, 4x6x4, 500 kg, 690 integrity,
+## 2893 kg rated, 40 PU. §10.3's rotary table for the disc parameters.
 ## §11: the `mot.rotor.*` row.
 ##
-## Thrust at full collective is 81 083 N against a rated 81 395 N — 0.38% apart,
+## Thrust at full collective is 28 383 N against a rated 28 380 N — 0.01% apart,
 ## inside the 1% §14 rule 19 requires. The coefficients are solved from that
 ## relationship, not chosen: a rotor that cannot lift its own rating presents as
 ## an Assembly that silently refuses to leave the ground.
 ##
-## The collider is the hub housing. The 2.6 m disc is aerodynamics and carries no
+## [b]The radius went 2.60 -> 2.00 m for a proportion, and thrust goes as the
+## fourth power of it.[/b] `A` carries `R²` and `(ΩR)²` carries another two, so a
+## 23% cut in radius is a 65% cut in lift: 8300 kg of rating down to 2893, and
+## the draw down from 150 PU to 40 with it. The reference rotorcraft carries two
+## discs of about 0.45 of its own length each; 2.60 m discs on the 7.00 m fuselage
+## of `core.rotary.lifter.t3` are 0.74 of it, which reads as two rotors with a
+## stick between them rather than as an aircraft.
+##
+## The lift that buys back is why the rotary chassis is an 1100 kg airframe: a
+## pair of these lifts 5786 kg and the recipe masses about 3800. Ω is held at
+## 85 rad/s rather than raised to recover the rating, because the disc loading
+## falls with it — 2258 N/m² against the old 3818 — and a lightly loaded disc is
+## the one that hovers stably on a small airframe.
+##
+## The collider is the hub housing. The 2.0 m disc is aerodynamics and carries no
 ## collision geometry at all, which is Invariant I-1 doing exactly its job.
 func _author_rotor_coaxial_mid() -> String:
 	var lo := Vector3i(-2, 0, -2)
@@ -326,7 +633,7 @@ func _author_rotor_coaxial_mid() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.AXLE}, {FACE_YN: structural_only()}
 	)
-	def.mass_kg = 848.0
+	def.mass_kg = 500.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 690.0
 	# The lowest resistance row in the schema, and deliberately so: a rotor is
@@ -337,7 +644,7 @@ func _author_rotor_coaxial_mid() -> String:
 	def.load_capacity_kg = 300.0
 	# Full-collective shaft draw, so the garage's power budget is conservative:
 	# an Assembly that balances on paper can always hover. §12.5.
-	def.power_draw_pu = 150.0
+	def.power_draw_pu = 40.0
 
 	var profile := MotiveAssemblyProfile.new()
 	profile.kind = PartEnums.MotiveKind.ROTOR_DISC
@@ -351,14 +658,14 @@ func _author_rotor_coaxial_mid() -> String:
 	profile.suspension_travel_limit_m = 0.0
 	profile.max_steer_angle_deg = 0.0
 	profile.steer_rate_deg_s = 0.0
-	profile.rated_load_kg = 8300.0
+	profile.rated_load_kg = 2893.0
 	profile.traction_coefficient = 0.0
 	profile.rolling_resistance = 0.0
 	profile.brake_torque_nm = 0.0
 	profile.driven = true
 
 	var rotor := RotorProfile.new()
-	rotor.disc_radius_m = 2.60
+	rotor.disc_radius_m = 2.00
 	rotor.blade_count = 4
 	rotor.spin_sign = 1
 	rotor.nominal_rad_s = 85.0
@@ -390,9 +697,28 @@ func _author_rotor_coaxial_mid() -> String:
 	)
 
 
-## §10.3: `mot.limb.strider.t4`, AMBULATORY_LIMB, 3x8x3, 592 kg, 720 integrity,
-## 4500 kg rated, 1.22 traction, 45 degree turn, 307000 N/m, 38400 Ns/m.
+## §10.3: `mot.limb.strider.t4`, AMBULATORY_LIMB, 3x7x3, 700 kg, 720 integrity,
+## 4500 kg rated, 1.22 traction, 45 degree turn, 340000 N/m, 42500 Ns/m.
 ## §10.3's gait table for the rest. §11: the `mot.limb.*` row.
+##
+## [b]The reach went 1.90 -> 2.60 m, which puts the hip at 2.24 m under a 2.50 m
+## torso.[/b] The humanoid reference is half legs — hip-to-sole is 0.50 of overall
+## height off the artwork and the torso a further 0.24 — and the shipped limb
+## stood a 1.00 m hull 1.63 m off the ground, which is a body slung between legs
+## the way a car body is slung between wheels.
+##
+## 2.60 m rather than the 3.10 the reference's ratio asks for, and the ceiling is
+## the stance base rather than the part. `core.ambulatory.strider.t3` records the
+## whole argument: doc 05 §13's virtual leg has a point foot, so fore-and-aft foot
+## separation is the only pitch stability the family has, and a taller hip over
+## the same 1.50 m stance is a longer lever on the same base. 2.24 m of hip over
+## 1.50 m of stance is 0.67, against the 0.92 the family was measured at; below
+## that the machine is being asked to balance rather than to walk.
+##
+## `max_step_length_m` and `step_height_m` are not free of the reach and are
+## carried across at the shipped `t4` ratios — 0.58 and 0.177 of `leg_length_m` —
+## because a leg that reaches 2.60 m and steps 1.10 is mincing, and the swing has
+## to clear its own arc.
 ##
 ## The suspension fields are zero because a limb's compliance is commanded, not
 ## passive: its spring is [member LimbProfile.stance_stiffness_n_m], which is a
@@ -404,10 +730,15 @@ func _author_limb_strider() -> String:
 	# the same reason. Doc 05 §13.1 puts the visible articulation under
 	# `VisualRoot` as inverse kinematics; Invariant I-1 forbids a collider that
 	# follows it. A footprint spanning the fully extended leg therefore bakes a
-	# 2.0 m collider around a limb that stands 1.63 m tall, and the Assembly
-	# rests on its own shins with the stance spring never compressing at all —
-	# measured, before this was shortened, at 0.23 m of unreachable travel.
-	var lo := Vector3i(-1, -4, -1)
+	# collider around a limb that stands two thirds of its length, and the
+	# Assembly rests on its own shins with the stance spring never compressing at
+	# all — measured, before this was shortened, at 0.23 m of unreachable travel.
+	#
+	# Seven cells rather than five now that the reach is 2.60 m: the housing is
+	# held at the same fraction of stance height it had at 1.90 m, so the hip
+	# structure grows with the leg and the ratio the paragraph above records is
+	# unchanged.
+	var lo := Vector3i(-1, -6, -1)
 	var hi := Vector3i(1, 0, 1)
 	var def := _base(&"mot.limb.strider.t4", PartEnums.PartClass.MOTIVE_ASSEMBLY)
 	def.tier = PartEnums.TierGrade.PROTOTYPE
@@ -417,7 +748,7 @@ func _author_limb_strider() -> String:
 	def.attachment_nodes = PartAuthoring.face_nodes(
 		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: structural_only()}
 	)
-	def.mass_kg = 592.0
+	def.mass_kg = 700.0
 	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
 	def.integrity_max = 720.0
 	def.resistance = PackedFloat32Array([0.16, 0.14, 0.26, 0.06, 0.02])
@@ -443,21 +774,33 @@ func _author_limb_strider() -> String:
 	profile.driven = true
 
 	var limb := LimbProfile.new()
-	limb.leg_length_m = 1.90
+	limb.leg_length_m = 2.60
 	# The pivot cell centre is the top of the limb, which is where the hip is.
 	limb.hip_offset_m = Vector3.ZERO
-	limb.foot_radius_m = 0.16
+	limb.foot_radius_m = 0.22
+	# §13.10's support polygon. Measured off the humanoid reference, whose foot is
+	# about 0.13 of its overall height long and half that wide; on a machine
+	# standing 4.75 m that is 0.60 m by 0.34. It is the first authored foot in the
+	# project — every limb before this one was a point, which is why every walking
+	# Assembly was a quadruped.
+	limb.foot_length_m = 0.60
+	limb.foot_width_m = 0.34
 	limb.stance_height_ratio = 0.86
-	limb.stance_stiffness_n_m = 307000.0
-	limb.stance_damping_ns_m = 38400.0
-	limb.max_foot_force_n = 42000.0
+	# Scaled with the mass the stance carries, not with the reach: the rebuilt
+	# ambulatory recipe puts about 700 kg more on four limbs, and a stance spring
+	# that did not follow it sags a machine that is already tall.
+	limb.stance_stiffness_n_m = 340000.0
+	limb.stance_damping_ns_m = 42500.0
+	limb.max_foot_force_n = 52000.0
 	# Above 0.5, so support is continuous and a two-limbed Assembly always has a
 	# foot down. A flight phase is expressible and is outside the shipping set.
 	limb.duty_factor = 0.62
 	limb.nominal_cadence_hz = 1.05
 	limb.max_cadence_hz = 2.20
-	limb.max_step_length_m = 1.10
-	limb.step_height_m = 0.34
+	# 0.58 and 0.177 of `leg_length_m`, which are the ratios the 1.90 m row
+	# carried. See the docstring: neither is free of the reach.
+	limb.max_step_length_m = 1.50
+	limb.step_height_m = 0.46
 	limb.placement_gain_s = 0.19
 	limb.turn_rate_deg_s = 45.0
 	profile.limb_profile = limb
@@ -482,6 +825,57 @@ func _author_prime_mover_combustion_standard() -> String:
 	var lo := Vector3i(-2, 0, -3)
 	var hi := Vector3i(1, 3, 2)
 	var def := _base(&"pmv.combustion.standard.t2", PartEnums.PartClass.PRIME_MOVER)
+	def.tier = PartEnums.TierGrade.STANDARD
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 620.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 420.0
+	def.resistance = PackedFloat32Array([0.10, 0.05, 0.15, 0.30, 0.02])
+	def.armour_rating = 14.0
+	def.load_capacity_kg = 700.0
+	def.power_supply_pu = 150.0
+	def.heat_generation_hu_s = 7.4
+
+	var mover := PrimeMoverProfile.new()
+	mover.drive_torque_nm = 6400.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
+
+	def.build_cost = 480
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `pmv.combustion.flat.t2`, 8x4x6, 620 kg, 420 integrity, 6400 N.m,
+## 5200 RPM, 150 PU, 7.4 HU/s, 4.2 m blast, 380 damage.
+##
+## [b]`pmv.combustion.standard.t2` laid on its side, and every published figure is
+## identical.[/b] The same twenty-four cells of section rearranged from a 1.00 m
+## square into a 2.00 x 1.00 m slab; a table that charged differently for the two
+## would be pricing the orientation rather than the machine.
+##
+## It exists because of what a mount does to a silhouette. Every Prime Mover in
+## the set is placed on a deck, so its height adds to the hull's, and
+## `core.command.compact.t2` is 1.00 m tall — a 1.00 m mover on its roof doubles
+## the height of the vehicle and turns a mid-engine road car into a pickup. Mated
+## instead to the hull's `+Z` face at deck level, this row is the engine bay
+## behind the cabin: 1.50 m of length and no height at all, which is what the
+## reference does with the same volume.
+##
+## Eight cells is even, so it centres on an even-width hull exactly — §14 rule
+## 27's parity argument, which is normally a constraint and here is a gift.
+func _author_prime_mover_combustion_flat() -> String:
+	var lo := Vector3i(-4, 0, -3)
+	var hi := Vector3i(3, 3, 2)
+	var def := _base(&"pmv.combustion.flat.t2", PartEnums.PartClass.PRIME_MOVER)
 	def.tier = PartEnums.TierGrade.STANDARD
 	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
 	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})

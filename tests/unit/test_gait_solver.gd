@@ -10,6 +10,9 @@ const STANCE_K: float = 96000.0
 const STANCE_C: float = 12000.0
 const MAX_FOOT_N: float = 42000.0
 const GAIN: float = 0.19
+## §13.10's support polygon, as `mot.limb.strider.t4` authors it.
+const FOOT_L: float = 0.60
+const FOOT_W: float = 0.34
 
 var _limb: LimbProfile = null
 var _motive: MotiveAssemblyProfile = null
@@ -20,6 +23,8 @@ func before_all() -> void:
 	_limb.leg_length_m = LEG
 	_limb.hip_offset_m = Vector3.ZERO
 	_limb.foot_radius_m = 0.16
+	_limb.foot_length_m = FOOT_L
+	_limb.foot_width_m = FOOT_W
 	_limb.stance_height_ratio = 0.86
 	_limb.stance_stiffness_n_m = STANCE_K
 	_limb.stance_damping_ns_m = STANCE_C
@@ -411,4 +416,186 @@ func test_the_drawn_foot_never_leaves_the_swing_whatever_it_is_handed() -> void:
 	check_true(
 		GaitSolver.swing_foot_world(_limb, from, to, -0.5).is_equal_approx(from),
 		"and before lift-off is the plant point"
+	)
+
+
+## ===== §13.10 THE ANKLE ================================================
+
+
+## The bound is the model. A foot carrying nothing can do nothing, and a foot at
+## load can do exactly as much as its own size allows — no more, at any tilt.
+func test_the_ankle_torque_is_bounded_by_the_load_and_the_foot() -> void:
+	check_true(
+		GaitSolver.ankle_torque_limit_nm(_limb, 0.0).is_zero_approx(),
+		"a foot carrying no load has no ankle authority at all"
+	)
+	var limit := GaitSolver.ankle_torque_limit_nm(_limb, 10000.0)
+	check_approx(limit.x, 10000.0 * FOOT_L * 0.5, "pitch is bounded by the fore-aft half extent")
+	check_approx(limit.y, 10000.0 * FOOT_W * 0.5, "and roll by the lateral one")
+
+	# Saturated by construction: a tilt far past anything the stiffness could
+	# answer still cannot ask for more than the polygon allows.
+	var far_over := Basis(Vector3.RIGHT, deg_to_rad(40.0))
+	var tau := GaitSolver.ankle_torque_nm(_limb, 10000.0, far_over, Vector3.ZERO)
+	check_true(
+		tau.length() <= limit.x + limit.y + 1.0,
+		"and 40 degrees of tilt cannot ask for more than the polygon allows"
+	)
+
+
+## [b]The sign, which is the assertion a flipped term passes every other test
+## of.[/b] Doc 05 §13.10 makes the positive sense normative and §10 rule 14 makes
+## asserting it mandatory: a magnitude is half a specification, and doc 05 §6.5's
+## anti-roll bar shipped inverted for the life of the project behind a unit test
+## that checked the number.
+func test_the_ankle_torque_rights_the_machine_rather_than_pushing_it_over() -> void:
+	# Pitched nose-down: rotated about +X by a positive angle takes the body's up
+	# axis toward -Z. Righting it is a torque about -X.
+	var nose_down := Basis(Vector3.RIGHT, deg_to_rad(5.0))
+	var tau := GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_down, Vector3.ZERO)
+	check_true(
+		tau.x < 0.0,
+		"a nose-down hull gets a torque that pitches it back up (%.0f N·m about X)" % tau.x
+	)
+
+	# And the mirror, because a term that answered one sign and not the other
+	# would satisfy the case above.
+	var nose_up := Basis(Vector3.RIGHT, deg_to_rad(-5.0))
+	check_true(
+		GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_up, Vector3.ZERO).x > 0.0,
+		"and a nose-up one gets the opposite"
+	)
+
+	# Rolled right: about +Z. The restoring torque is about -Z.
+	var rolled := Basis(Vector3.BACK, deg_to_rad(5.0))
+	check_true(
+		GaitSolver.ankle_torque_nm(_limb, 20000.0, rolled, Vector3.ZERO).z < 0.0,
+		"and a rolled hull is rolled back"
+	)
+
+
+## §13.10 sets yaw to zero rather than clamping it, because §13.5 gives this
+## family exactly one heading authority and it is placement. A second one would
+## be two things fighting over the same axis.
+func test_the_ankle_never_yaws() -> void:
+	var yawing := Vector3(0.0, 3.0, 0.0)
+	var tau := GaitSolver.ankle_torque_nm(
+		_limb, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(6.0)), yawing
+	)
+	check_approx(tau.y, 0.0, "a yaw rate produces no ankle torque about the vertical")
+
+
+## A profile with no authored polygon behaves exactly as it did before §13.10.
+## That is what makes the term opt-in per part rather than a change to every
+## walking Assembly in the registry.
+func test_a_foot_with_no_extent_has_no_ankle() -> void:
+	var pointy := LimbProfile.new()
+	pointy.leg_length_m = LEG
+	check_true(
+		GaitSolver.ankle_torque_nm(
+			pointy, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(8.0)), Vector3.ZERO
+		).is_zero_approx(),
+		"a point foot applies no torque at any tilt or load"
+	)
+
+
+## ===== §13.11 THE CAPTURE POINT ========================================
+
+
+## The pendulum's time constant, and the floor that stands in for it when there
+## is no pendulum to measure.
+func test_the_capture_time_is_the_pendulum_and_the_gain_is_its_floor() -> void:
+	var tau := GaitSolver.capture_time_s(_limb, 2.5)
+	check_approx(
+		tau, sqrt(2.5 / SyndicateConstants.GRAVITY_MPS2), "sqrt(h/g) at a real height"
+	)
+	check_true(tau > GAIN, "which on a machine this tall is well above the authored gain")
+	check_approx(
+		GaitSolver.capture_time_s(_limb, 0.0), GAIN,
+		"and with no height to measure it falls back to the authored gain"
+	)
+
+
+## A body at rest captures under itself; a moving one captures ahead, downrange.
+func test_the_capture_point_leads_a_moving_body_and_not_a_still_one() -> void:
+	var com := Vector3(0.0, 2.5, 0.0)
+	var still := GaitSolver.capture_point(com, Vector3.ZERO, 2.5)
+	check_approx(still.x, 0.0, "a body at rest captures directly beneath itself (x)")
+	check_approx(still.z, 0.0, "and (z)")
+	check_approx(still.y, 0.0, "at the height of the foot rather than of the mass")
+
+	var running := GaitSolver.capture_point(com, Vector3(0.0, 0.0, -4.0), 2.5)
+	check_true(
+		running.z < -1.0,
+		"and a body running down -Z captures ahead of itself at %.2f m" % running.z
+	)
+
+
+## [b]The property §13.11 exists for, and the one the authored gain could not
+## have.[/b] Doc 05 §13.9 measures the shipped family reversing 0.01 m in three
+## seconds because the old correction could scale a disturbance and never create
+## one. A demand has to move the plant target, and the two demands have to move
+## it opposite ways.
+##
+## [b]A forward demand plants the foot behind the hip, and that is not a typo.[/b]
+## §13.6's stance force acts along foot-to-hip, so a foot planted behind the body
+## pushes it forward — which is why the sign of this assertion is the one thing in
+## the file worth reading twice. Getting it backwards produces a machine that
+## accelerates when told to stop, and every magnitude in it is identical.
+func test_the_two_demands_plant_the_foot_opposite_sides_of_the_hip() -> void:
+	var hip := Vector3(0.0, 1.4, 0.0)
+	var forward := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3.ZERO, Vector3(0.0, 0.0, -1.0), 1.0, 0.0, 2.0
+	)
+	var backward := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3.ZERO, Vector3(0.0, 0.0, 1.0), 1.0, 0.0, 2.0
+	)
+	check_true(
+		forward.z > 0.05,
+		(
+			"a forward demand from a standstill plants %.2f m behind the hip, which "
+			+ "is what pushes the body forward"
+		) % forward.z
+	)
+	check_true(
+		backward.z < -0.05,
+		"and a reverse demand plants %.2f m ahead of it" % backward.z
+	)
+	check_true(
+		absf(forward.z + backward.z) < 0.01,
+		"symmetrically, because the demand enters as a signed velocity"
+	)
+
+
+## Braking is the same term with `v_desired` at zero: a body already moving
+## plants ahead of itself, which is the direction that takes speed off.
+func test_a_stop_demand_plants_the_foot_ahead_of_a_moving_body() -> void:
+	var hip := Vector3(0.0, 1.4, 0.0)
+	var braking := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3(0.0, 0.0, -1.0), Vector3.ZERO, 1.0, 0.0, 2.0
+	)
+	check_true(
+		braking.z < -0.05,
+		"a body running down -Z with no demand plants %.2f m ahead of itself"
+		% braking.z
+	)
+
+
+## A taller machine has a longer pendulum, so the same momentum error asks for a
+## longer step. That is the physics the authored gain flattened away.
+##
+## The velocity is small on purpose: §13.5's step-length clamp binds at
+## `max_step_length_m / 2` and would flatten both cases onto the same number,
+## which is a comparison that passes whatever the term does.
+func test_a_taller_machine_reaches_further_for_the_same_error() -> void:
+	var hip := Vector3(0.0, 1.4, 0.0)
+	var low := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3(0.0, 0.0, -0.3), Vector3.ZERO, 1.0, 0.0, 0.5
+	)
+	var tall := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3(0.0, 0.0, -0.3), Vector3.ZERO, 1.0, 0.0, 3.0
+	)
+	check_true(
+		absf(tall.z) > absf(low.z) + 0.01,
+		"3.0 m of pendulum reaches %.3f m against %.3f at 0.5" % [tall.z, low.z]
 	)

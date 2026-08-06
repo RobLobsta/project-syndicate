@@ -27,35 +27,46 @@ extends TestCase
 
 const CORE_KEY := &"core.command.compact.t2"
 ## The walking build is rooted on the ambulatory chassis, per doc 01 §7.1: a
-## limb cannot be placed on [constant CORE_KEY] and is not meant to be. Nine
-## cells long rather than thirteen, and 1350 kg rather than 1800.
+## limb cannot be placed on [constant CORE_KEY] and is not meant to be. A torso
+## 2.50 m tall rather than a 1.00 m hull, and 1800 kg rather than 1450.
 const WALKER_CORE_KEY := &"core.ambulatory.strider.t3"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+## The road car's Prime Mover is the flat row, which is 2.00 m wide: it mates to
+## a hull's tail rather than standing on its deck (doc 01 §10.4). The walking and
+## tracked fixtures below carry the square row instead, and on the walker that is
+## load-bearing — a 2.00 m mover slung between limbs 1.50 m apart occupies the
+## cells the limbs need, and two of the four are then silently refused.
+const POWER_KEY := &"pmv.combustion.flat.t2"
+const SQUARE_POWER_KEY := &"pmv.combustion.standard.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
-const TRACK_KEY := &"mot.tracked.short_bogie.t2"
+const TRACK_KEY := &"mot.tracked.long_bogie.t3"
+const TRACKED_CORE_KEY := &"core.tracked.hauler.t3"
 const LIMB_KEY := &"mot.limb.strider.t4"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 8, 28)
+const POWER_ORIGIN := Vector3i(24, 4, 34)
 
 ## Stations under the Core Module's flanks, and a bogie outboard of each. A track
 ## bolts on through its `-Z` drive face exactly as a wheel does; the orientation
 ## that carries that face inboard is derived, never written down.
-const TRACK_HUBS: Array[Vector3i] = [Vector3i(22, 2, 24), Vector3i(26, 2, 24)]
-const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)]
+const TRACKED_CORE_ORIGIN := Vector3i(24, 4, 24)
+const TRACK_HUBS: Array[Vector3i] = [Vector3i(20, 2, 24), Vector3i(28, 2, 24)]
+const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(17, 3, 24), Vector3i(30, 3, 23)]
+const TRACKED_POWER_ORIGIN := Vector3i(24, 9, 33)
 
 ## The walker is built high in the lattice because a limb hangs below its station
 ## and the lattice floor is at y = 0.
 const WALKER_CORE := Vector3i(24, 14, 24)
-const WALKER_POWER := Vector3i(24, 18, 28)
+## Slung under the torso between the legs and centred on the stance — see
+## [constant CombatArena.AMBULATORY_POWER] for why it is not on the deck.
+const WALKER_POWER := Vector3i(24, 10, 24)
 ## Station origin and the limb that hangs off it. A station at orientation 8 puts
 ## its AXLE faces on ±Y, so it bolts to the Core Module's flank through a neutral
 ## face and offers a downward drive station; the limb's own AXLE face is its top.
 const WALKER_LEGS: Array[Vector3i] = [
-	Vector3i(19, 14, 21), Vector3i(20, 13, 21),
-	Vector3i(27, 14, 21), Vector3i(27, 13, 21),
-	Vector3i(19, 14, 27), Vector3i(20, 13, 27),
-	Vector3i(27, 14, 27), Vector3i(27, 13, 27),
+	Vector3i(19, 14, 20), Vector3i(20, 13, 20),
+	Vector3i(27, 14, 20), Vector3i(27, 13, 20),
+	Vector3i(19, 14, 28), Vector3i(20, 13, 28),
+	Vector3i(27, 14, 28), Vector3i(27, 13, 28),
 ]
 const HUB_AXLE_DOWN_ORIENTATION: int = 8
 
@@ -428,18 +439,27 @@ func _build_tracked() -> Array:
 	var ctx := BuildContext.with_physics(31)
 	_contexts.append(ctx)
 	PlacementValidator.commit(
-		ctx, PlacementCandidate.create(PartRegistry.definition_by_key(CORE_KEY), CORE_ORIGIN, 0)
+		ctx,
+		PlacementCandidate.create(
+			PartRegistry.definition_by_key(TRACKED_CORE_KEY), TRACKED_CORE_ORIGIN, 0
+		)
 	)
 	PlacementValidator.commit(
 		ctx,
-		PlacementCandidate.create(PartRegistry.definition_by_key(POWER_KEY), POWER_ORIGIN, 0)
+		PlacementCandidate.create(
+			PartRegistry.definition_by_key(SQUARE_POWER_KEY),
+			TRACKED_POWER_ORIGIN,
+			0
+		)
 	)
 	var hub := PartRegistry.definition_by_key(HUB_KEY)
 	for cell: Vector3i in TRACK_HUBS:
 		PlacementValidator.commit(ctx, PlacementCandidate.create(hub, cell, 0))
 	var track := PartRegistry.definition_by_key(TRACK_KEY)
 	for i: int in TRACK_ORIGINS.size():
-		var inboard := Vector3.RIGHT if TRACK_ORIGINS[i].x < CORE_ORIGIN.x else Vector3.LEFT
+		var inboard := (
+			Vector3.RIGHT if TRACK_ORIGINS[i].x < TRACKED_CORE_ORIGIN.x else Vector3.LEFT
+		)
 		PlacementValidator.commit(
 			ctx,
 			PlacementCandidate.create(track, TRACK_ORIGINS[i], _drive_face_orientation(inboard))
@@ -458,7 +478,9 @@ func _build_walker() -> Array:
 	)
 	PlacementValidator.commit(
 		ctx,
-		PlacementCandidate.create(PartRegistry.definition_by_key(POWER_KEY), WALKER_POWER, 0)
+		PlacementCandidate.create(
+			PartRegistry.definition_by_key(SQUARE_POWER_KEY), WALKER_POWER, 0
+		)
 	)
 	var hub := PartRegistry.definition_by_key(HUB_KEY)
 	var limb := PartRegistry.definition_by_key(LIMB_KEY)
