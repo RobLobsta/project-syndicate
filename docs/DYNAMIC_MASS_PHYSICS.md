@@ -2223,6 +2223,25 @@ real.
 What a player sees is the whole point of it: the opponent crosses the basin, stops
 in front of them, and only then opens fire.
 
+**The third gate is imposed from outside and has no constant.** `AiDriver.hold_fire`
+is a boolean the match layer writes once a tick, and while it is true the driver
+closes, aims and tracks exactly as it otherwise would and does not shoot. It
+exists for one caller: `RESPONSIVE_GARAGE_UI.md` §14.6's first-run control card.
+A first-time player reading that card was being shot at from four seconds into an
+eleven-second dwell and arrived at their first fight already down a component,
+which is the whole of the case for it.
+
+It holds the **trigger** and deliberately not the approach. An opponent that
+crosses the basin and waits reads as an opponent; one that sits at its spawn
+until the card goes reads as a match that has not started, and the briefing is
+over the instant the player touches a control anyway.
+
+Nothing in this document clears it. A driver whose owner stops writing it holds
+its fire forever, which is the failure direction to prefer — the alternative is a
+hold that silently expires and a briefing that silently stops working. The
+symmetry is deliberate with `aid_authority` above: both are settings the match
+layer owns and the driver merely obeys.
+
 `WEAPON_TARGETING_LOGIC.md` §10.5 authors 1450 N·s of recoil a round and §8
 applies it **at the muzzle**. On the reference wheeled build one round is 1.31
 m/s of the Assembly's own speed, and a driver holding the trigger through its

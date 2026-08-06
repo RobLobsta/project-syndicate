@@ -1351,6 +1351,36 @@ its own last row says so, which is what makes "once" defensible: the cost of
 being wrong about a returning player is one keypress, and the cost of being wrong
 about a new one was the whole game.
 
+**The briefing hold, and why moving the card was not enough.** Taking the card out
+of the middle of the screen stopped it hiding the opponent. It did nothing about
+the opponent *arriving*: the capture that verified the first-run rule has the
+player at 63% integrity with a component gone, stationary, still reading, six
+seconds in. The opponent reaches its stand-off at about four seconds and the
+dwell is eleven, so a first-time player who does what this card is for is
+punished for it.
+
+While the first-run card is up, `MatchScreen` writes `AiDriver.hold_fire` onto
+every driver in the match and `DYNAMIC_MASS_PHYSICS.md` §15.7.4 keeps their
+triggers cold. The match still starts, the opponent still crosses the basin and
+stops in front of the player, and the first round is fired when the player has
+put the card down — which they do by driving, steering, or firing, so in practice
+the grace lasts exactly as long as they want it to.
+
+**A card the player raised is not a briefing.** `ControlCard.raise_first_run()`
+and `ControlCard.raise()` present identically and differ in exactly this, because
+a hold keyed on "the card is visible" is a hold a player can take at will by
+leaning on `hud_toggle_stats` — eleven seconds of an opponent that will not shoot
+back, on demand, for as long as they care to press it. `ControlCard.is_briefing()`
+is the distinction and `MatchHud.briefing_is_up()` is the only thing outside the
+HUD that reads it.
+
+The hold is a query answered per tick rather than a signal on the transition. The
+dwell is aged against real time in the HUD's one `_process`, so the moment it
+ends has no edge to hang a signal on, and a driver attached to an Assembly
+spawned later would never have received one. A match with no HUD — every headless
+fixture — holds nobody, which is correct: there is no card, so there is nothing
+to read and nothing to wait for.
+
 ---
 
 ## 15. Boot and Screen Flow

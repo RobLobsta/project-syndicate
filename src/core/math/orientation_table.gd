@@ -162,6 +162,26 @@ static func upright_facing(face: Vector3) -> int:
 	return IDENTITY_INDEX
 
 
+## The first member of the group carrying [param local_axis] onto [param onto],
+## or [constant IDENTITY_INDEX] when none does.
+##
+## Unlike [method upright_facing] the answer is [b]not[/b] unique: four rotations
+## carry any axis onto any other and they differ by roll about it. So this is for
+## parts whose roll about the carried axis does not read — an Appendage's
+## shoulder, whose section is square and whose held Effector Module carries its
+## own frame — and [method upright_facing] remains the one to reach for when the
+## roll is the difference between a contact on the road and a contact on its side.
+##
+## It lives here for the reason [method upright_facing] does: which of the
+## twenty-four does this is a property of the group, and it had two would-be
+## owners the moment a second fixture needed to hang an arm off a hull.
+static func first_carrying(local_axis: Vector3, onto: Vector3) -> int:
+	for i: int in COUNT:
+		if (basis_for(i) * local_axis).is_equal_approx(onto):
+			return i
+	return IDENTITY_INDEX
+
+
 ## The member of the group that best stands in for [param index] reflected in the
 ## Assembly's x plane, per [code]docs/GRID_SNAPPING_LOGIC.md[/code] §10.
 ##

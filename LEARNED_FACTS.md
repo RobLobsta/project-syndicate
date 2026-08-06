@@ -1407,6 +1407,43 @@ there is only one section here.)
     question: **which file did this session add, and what does it build that it
     does not free?**
 
+102. **A frozen fixture cannot assert a rule about not applying a force, and the
+    honest replacement is rarely the obvious quantity.** Fact 100's repair —
+    freeze the target for a phase whose subject is not motion — is right, and it
+    costs exactly one thing: the phase can no longer see anything the code does
+    *to* motion. Doc 07 §15.5's "an instalment carries no impulse" was
+    unassertable for that reason, and the planted fault that deletes it survived
+    the sweep that found it.
+
+    `tests/physics/test_melee_duel.gd` closes it with a live target, and the way
+    it closes it is the part worth carrying. The tempting assertion is the
+    target's **speed**: an impulse throws things, so bound how fast the target may
+    go. Measured, that is 2.76 m/s under correct behaviour against 7.68 under the
+    fault — because a melee build *rams*, so the target is already moving at a
+    good fraction of the attacker's approach speed and the two numbers are three
+    times apart with a two-Assembly fight's noise between them (fact 44).
+
+    What separates them by two orders of magnitude is **whether contact, once
+    made, is ever lost**: the range re-opens 0.03 m correct and 5.15 m faulted.
+    The general shape: **when a fault adds energy to a system that is also being
+    driven, the driven quantity is contaminated and the one to assert is what the
+    energy destroys.** Here the drive is a ram and the thing destroyed is contact.
+
+103. **A hold a player can grant themselves is not a hold.** Doc 11 §14.6's
+    control card holds the opponent's fire while a first-time player reads it,
+    and the first implementation keyed that on "the card is visible" — which is
+    also true of the card `hud_toggle_stats` raises, at any time, for eleven
+    seconds, as often as the player presses it. The same key would have been a
+    cease-fire button.
+
+    The repair is two entry points that present identically and differ in one
+    flag: `ControlCard.raise_first_run()` sets the briefing and `raise()` clears
+    it. Worth generalising, because this project keeps adding rules of the form
+    "while X is on screen, the simulation does Y": **a grant conditioned on a
+    piece of interface has to be conditioned on why that interface is up, not on
+    whether it is** — and the test that catches it is the one that raises it the
+    other way.
+
 ---
 
 ## 2. What fault injection taught
@@ -1784,6 +1821,9 @@ saved a mass floor by finding the one state that reaches it. Reaching for
   target and then freezes it for §15.5's contact phase; fact 100 is what the
   unfrozen version reported, and it read as a defect in the law rather than in
   the fixture.
+- **A frozen phase cannot assert a rule about *not* applying a force**, so a
+  law of that shape needs a second fixture with the body live — and the quantity
+  to assert there is usually not the one the force acts on. Fact 102.
 - **Free everything a test builds, including what it builds inside an
   assertion.** A `Node` constructed as an argument — `check_false(Thing.new().x,
   …)` — is leaked, and the engine's report at exit names no class and no file

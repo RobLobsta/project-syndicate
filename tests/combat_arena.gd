@@ -82,6 +82,23 @@ enum Recipe {
 	## chassis, at one mount, under one throttle — doc 01 §10.5's whole claim for
 	## the row is a comparison and a single-module fixture cannot make one.
 	WHEELED_REPEATER,
+	## The wheeled layout carrying an Appendage on the front face with
+	## `eff.melee.beam_edge.t4` in its hand, and no direct-fire module at all.
+	##
+	## [b]It exists because doc 07 §15's whole melee chain had never been in a
+	## fight.[/b] The strike, the sustained contact of §15.5 and doc 08 §7.3's fire
+	## are exercised by [code]tests/physics/test_held_weapon.gd[/code] against a
+	## frozen target held at a measured distance by a frozen attacker, which
+	## answers what the laws compute and nothing about whether an Assembly that
+	## has to drive, turn and close can ever reach one.
+	##
+	## It carries an Energy Cell that [constant Recipe.WHEELED_LIGHT] does not, and
+	## that is ballast rather than supply. The arm and the edge together are 717 kg
+	## hung off the front face of a build that is already 73/27 nose-heavy
+	## (LEARNED_FACTS.md §1 fact 74); without a mass in the tail the layout is a
+	## machine that stands on its front contacts before it has been asked to do
+	## anything. A player building this would reach for the same answer.
+	MELEE,
 }
 
 const CORE_KEY := &"core.command.compact.t2"
@@ -103,6 +120,8 @@ const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
 const REPEATER_KEY := &"eff.ballistic.repeater_12.t2"
 const REPEATER_ROUND_KEY := &"proj.kinetic.ap_12"
+const ARM_KEY := &"apx.arm.manipulator.t3"
+const EDGE_KEY := &"eff.melee.beam_edge.t4"
 
 ## Callsigns, handed out in spawn order and deterministic for a given arena.
 ##
@@ -164,6 +183,25 @@ const WHEEL_ORIGINS: Array[Vector3i] = [
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
 const FRONT_AXLE_Z: int = 24
+
+## [constant Recipe.MELEE]'s Appendage and the edge in its hand, both derived
+## from the Core Module's own extents rather than guessed.
+##
+## The Core Module spans `z` 18–30, so its `-Z` face is the row of `zn_*` nodes at
+## `z = 18` and a part mating with them offers a `+Z` node in the cell in front,
+## `z = 17`. The arm is placed to carry its shoulder — its own `+Y`, nine
+## FACE_NEUTRAL nodes — onto that face, which turns its six cells of reach through
+## a quarter circle so they run [b]forward[/b] from `z` 17 to 12 with the hand at
+## the far end facing `-Z`. The edge's hilt is its `+Z` face, so it goes in
+## unrotated at `z` 11, the cell the hand points into, and its eight cells of blade
+## continue on to `z` 4.
+##
+## `y = 5` puts both of them across the middle of the hull rather than over the
+## roof, which is where the thing they have to reach is: an opposing Core Module's
+## own collider sits about a metre and a third above the body origin, and a blade
+## swung at roof height passes over it.
+const MELEE_ARM := Vector3i(24, 5, 17)
+const MELEE_EDGE := Vector3i(24, 5, 11)
 
 const TRACK_HUBS: Array[Vector3i] = [Vector3i(22, 2, 24), Vector3i(26, 2, 24)]
 const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)]
@@ -306,6 +344,21 @@ const CYCLIC_ACCEL_LIMIT_MPS2: float = 2.08
 const YAW_HEADING_GAIN: float = 0.6
 const YAW_RATE_GAIN: float = 0.5
 
+## Range [constant Recipe.MELEE] stops closing at, in metres.
+##
+## Zero, which is to say [b]never stop closing[/b]: doc 07 §15.5 pays per tick of
+## contact, and a driver that arrives, strikes, and drifts back off the blade
+## collects one strike. The thing that stops this build is its own edge running
+## into the other hull.
+##
+## [b]It is the fixture's and not [AiDriver]'s, deliberately.[/b] Doc 05 §15.7.1's
+## table is a stand-off per locomotion family, and a contact stand-off is not a
+## property of how an Assembly gets around — it is a property of how far its
+## Effector Module reaches. Putting a fifth row in that table would say the
+## opposite. The day a driver picks its stand-off from the module it is carrying,
+## this constant moves there and this comment is the reason it did.
+const MELEE_STAND_OFF_M: float = 0.0
+
 var registry: AssemblyRegistry = null
 var resolver: DamageResolver = null
 var projectiles: ProjectileSystem = null
@@ -374,6 +427,7 @@ const PART_CLASS_NAMES: Dictionary = {
 	PartEnums.PartClass.SUPPORT_MODULE: "a Support Module",
 	PartEnums.PartClass.CONTROL_SURFACE: "a Control Surface",
 	PartEnums.PartClass.ENERGY_CELL: "its Energy Cell",
+	PartEnums.PartClass.APPENDAGE: "an Appendage",
 }
 
 
@@ -472,6 +526,8 @@ func spawn(
 			_lay_out_wheeled(ctx, true, GUN_KEY)
 		Recipe.WHEELED_REPEATER:
 			_lay_out_wheeled(ctx, false, REPEATER_KEY)
+		Recipe.MELEE:
+			_lay_out_melee(ctx)
 		Recipe.TRACKED:
 			_lay_out_tracked(ctx)
 		Recipe.AMBULATORY:
@@ -530,6 +586,8 @@ func spawn(
 		c.stand_off_m = AiDriver.ROTARY_STAND_OFF_M
 	elif recipe == Recipe.AMBULATORY or recipe == Recipe.AMBULATORY_BARE:
 		c.stand_off_m = AiDriver.AMBULATORY_STAND_OFF_M
+	elif recipe == Recipe.MELEE:
+		c.stand_off_m = MELEE_STAND_OFF_M
 
 	for slot: int in SyndicateConstants.MAX_PARTS_PER_ASSEMBLY:
 		var def := runtime.definition_at(slot)
@@ -603,14 +661,33 @@ func engage(max_ticks: int) -> void:
 	peak_in_flight = 0
 	_clock = 0
 	for i: int in max_ticks:
-		_clock = i
-		for c: Combatant in combatants:
-			command(c)
-		await _tick()
-		ticks_engaged += 1
-		peak_in_flight = maxi(peak_in_flight, projectiles.active_count())
+		await tick_once()
 		if teams_standing().size() <= 1:
 			break
+	stand_down()
+
+
+## One commanded tick, and the whole of what [method engage] does per iteration.
+##
+## Public because a fixture whose subject is a [i]per-tick[/i] law cannot use
+## [method engage]: doc 07 §15.5 pays per tick of contact and the stage machine
+## that decides whether there is any is only readable between physics frames.
+## Calling [method engage] with one tick at a time would work and would restart
+## [member _clock] on every call, so the timeline every engagement here is read
+## through would stamp the whole fight at t=0.
+func tick_once() -> void:
+	_clock += 1
+	for c: Combatant in combatants:
+		command(c)
+	await _tick()
+	ticks_engaged += 1
+	peak_in_flight = maxi(peak_in_flight, projectiles.active_count())
+
+
+## Drops every trigger and centres every control. [method engage] ends with this;
+## a fixture running its own loop over [method tick_once] must call it, or the
+## Assemblies go on driving into whatever is measured next.
+func stand_down() -> void:
 	for c: Combatant in combatants:
 		c.guns.set_trigger(0, false)
 		c.motion.input.throttle = 0.0
@@ -990,6 +1067,27 @@ func _lay_out_wheeled(ctx: BuildContext, with_cell: bool, gun_key: StringName) -
 		_place(ctx, key, cell, drive_face_orientation(inboard))
 
 
+## [constant Recipe.MELEE]: the wheeled running gear, an Energy Cell for ballast,
+## and an Appendage on the front face holding the edge.
+##
+## The arm before the edge, because the edge's only attachment node is a GRIP
+## hilt (doc 01 §4.3) and there is nothing for it to mate with until the hand
+## exists. That is the same order a player has to build in and the same order the
+## validator enforces, which is the point of routing this through it.
+func _lay_out_melee(ctx: BuildContext) -> void:
+	_place(ctx, CORE_KEY, GROUND_CORE, 0)
+	_place(ctx, POWER_KEY, GROUND_POWER, 0)
+	_place(ctx, CELL_KEY, GROUND_CELL, 0)
+	_place(ctx, ARM_KEY, MELEE_ARM, shoulder_orientation())
+	_place(ctx, EDGE_KEY, MELEE_EDGE, 0)
+	for cell: Vector3i in WHEEL_HUBS:
+		_place(ctx, HUB_KEY, cell, 0)
+	for cell: Vector3i in WHEEL_ORIGINS:
+		var key := WHEEL_KEY if cell.z < FRONT_AXLE_Z else REAR_KEY
+		var inboard := Vector3.RIGHT if cell.x < GROUND_CORE.x else Vector3.LEFT
+		_place(ctx, key, cell, drive_face_orientation(inboard))
+
+
 func _lay_out_tracked(ctx: BuildContext) -> void:
 	_place(ctx, CORE_KEY, GROUND_CORE, 0)
 	_place(ctx, POWER_KEY, GROUND_POWER, 0)
@@ -1032,6 +1130,18 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 ## not survive a change to the table (LEARNED_FACTS.md §3, and watch fact 39).
 static func drive_face_orientation(face: Vector3) -> int:
 	return OrientationTable.upright_facing(face)
+
+
+## The orientation that turns an Appendage's shoulder — its own `+Y` — onto the
+## Assembly's rear, so the arm reaches forward off a `-Z` face and the hand at its
+## far end points the way the hull is going.
+##
+## Roll about the shoulder axis is not specified and does not need to be: the arm
+## is square in section and the Effector Module in its hand carries its own frame,
+## which is why this goes through [method OrientationTable.first_carrying] rather
+## than through [method OrientationTable.upright_facing].
+static func shoulder_orientation() -> int:
+	return OrientationTable.first_carrying(Vector3.UP, Vector3.BACK)
 
 
 ## ===== COMBATANT =======================================================

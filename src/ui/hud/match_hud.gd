@@ -88,7 +88,7 @@ func _ready() -> void:
 	# It never becomes unreachable — `hud_toggle_stats` raises it at any time, and
 	# the card's own last row says so.
 	if not SyndicateSettings.control_card_seen:
-		_control_card.raise()
+		_control_card.raise_first_run()
 		SyndicateSettings.mark_control_card_seen()
 	EventBus.part_damaged.connect(_on_part_damaged)
 	EventBus.part_destroyed.connect(_on_part_destroyed)
@@ -133,6 +133,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	_control_card.toggle()
 	get_viewport().set_input_as_handled()
+
+
+## True while §14.6's first-run briefing is on screen, and false for a card the
+## player raised themselves.
+##
+## The one thing outside this HUD that reads the control card, and the reason it
+## is a query rather than a signal: doc 05 §15.7.4's hold has to be true on the
+## tick it is read, and a briefing that ended between two ticks would leave a
+## driver holding its fire until the next edge.
+func briefing_is_up() -> bool:
+	return _control_card.is_briefing()
 
 
 ## §14.1. The whole continuous half of the interface, once per tick.

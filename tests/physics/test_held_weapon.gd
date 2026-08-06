@@ -569,7 +569,7 @@ func _build_attacker() -> AssemblyRuntime:
 
 	# Shoulder (+Y) onto the Core Module's -Z face, so the hand points forward
 	# and the blade runs on ahead of it rather than into the ground.
-	var arm_orientation := _orientation_carrying(Vector3.UP, Vector3.BACK)
+	var arm_orientation := OrientationTable.first_carrying(Vector3.UP, Vector3.BACK)
 	_arm_slot = _place_near(ctx, arm, CORE_ORIGIN, arm_orientation)
 	if _arm_slot == SyndicateConstants.INVALID_SLOT:
 		return null
@@ -688,18 +688,6 @@ func _first_accepting_cell(
 				if PlacementValidator.validate(ctx, cand) == PlacementValidator.Reject.NONE:
 					return cell
 	return Vector3i(SEARCH_MISS, SEARCH_MISS, SEARCH_MISS)
-
-
-## The orientation index carrying [param from] onto [param onto].
-##
-## Searched with a stated predicate rather than written down: which of the 24
-## does this is a property of [OrientationTable], and the integer would not
-## survive a change to the table (§9's fixture conventions).
-func _orientation_carrying(from: Vector3, onto: Vector3) -> int:
-	for i: int in SyndicateConstants.ORIENTATION_COUNT:
-		if (OrientationTable.basis_for(i) * from).is_equal_approx(onto):
-			return i
-	return 0
 
 
 func _sword_definition() -> PartDefinition:

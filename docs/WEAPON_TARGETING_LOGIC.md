@@ -1235,6 +1235,45 @@ starved module. Bringing an edge up therefore browns out the rest of the
 Assembly, which is a decision the player makes and feels rather than a message
 they read.
 
+**In a fight, and it holds.** `tests/physics/test_melee_duel.gd` drives a wheeled
+build carrying an Appendage and this edge at an unarmed opponent twelve metres
+away and lets the arena's own pilot do the closing. It arrives at **6.5 m**, which
+is where its blade collider meets the other hull, and then holds: **372 ticks
+energised** off **one** swing, resolving on **121** of them for 323 THERMAL and
+zero KINETIC.
+
+Two things fall out of that and neither was reachable from a frozen fixture.
+
+**"An instalment carries no impulse" is asserted, at last.** The paragraph above
+had never been tested anywhere: `test_held_weapon` freezes its target for the
+sustained phase, so sixty impulses a second move nothing it can observe, and the
+planted fault that deletes the rule survived the sweep that found it. With a live
+target the separation is unambiguous — **the range re-opens 0.03 m** over the rest
+of the phase, against **5.15 m** under the fault, which throws the target to
+7.7 m/s and costs three quarters of the contact.
+
+The measurement that does *not* separate them is the one to expect to reach for:
+the target's peak speed is 2.76 m/s correct against 7.68 faulted, because a melee
+build **rams** — it closes at about three metres a second and leans on what it is
+cutting, so the target is already moving. Contact once made is either kept or lost,
+and that is the shape this law has.
+
+**An energised edge is not a resolving edge.** Contact resolved on 121 of the 372
+ticks it was held, because the blade drifts in and out of overlap as both hulls
+settle and shove each other. The rate is right on the ticks it lands and a reading
+of `energised` as "cutting" over-states the damage by three. Anything sizing a
+sustained module against a duration has to count resolves, not ticks held.
+
+**What the same edge cannot do is get there against somebody shooting.** At thirty
+metres against an armed opponent it loses its Effector Module and the Appendage
+holding it at **t=37** — six tenths of a second, at better than two thirds of the
+starting range — and finishes the fight as an unarmed hull. That is not a balance
+number, it is a consequence of the geometry this section specifies: a held module
+sits three metres in front of the hull that carries it, so it is the first thing a
+round coming down the approach meets and has none of the hull behind it to soak
+anything. A melee build needs armour in front of its arm, cover, or an opponent
+that also has to close; `PART_DATA_SCHEMA.md` §10.5's numbers are not the lever.
+
 ### 15.6 Degradation
 
 Melee indexes the same `DegradationTable` rows the ballistic path does, with one
