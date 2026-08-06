@@ -61,7 +61,7 @@ GRAPH = "src/assembly/graph/chassis_graph.gd"
 CANDIDATE = "src/assembly/lattice/placement_candidate.gd"
 LATTICE = "src/core/math/lattice_math.gd"
 
-BASELINE = 7712
+BASELINE = 7725
 
 FAULTS = [
     # The inversion of an attach, gone. The stack still reports the command it

@@ -12,6 +12,9 @@ anything noticing.
                               a key that stops the opposition firing on demand
   briefing-never-held         the match layer never writing the hold onto its
                               drivers -- expected to SURVIVE; see below
+  appendage-chassis-unchecked doc 01 §7.1's appendage half: an arm bolted to a car
+  appendage-chassis-inverted   and the mirror of it -- the rule refusing the one
+                              chassis it is supposed to admit
   melee-stand-off-defaulted   the melee recipe holding at the ground family's
                               twenty metres, so an edge with 2.4 m of reach parks
                               seventeen and a half metres short of anything
@@ -25,11 +28,16 @@ anything noticing.
 re-plants a fault another sweep already owns. `test_held_weapon` freezes its
 target for the sustained phase, so an impulse added per tick moves nothing it can
 observe and the fault survived the sweep that found it. `test_melee_duel` drives
-one live Assembly into another, and the assertion that separates them is not the
-one that was tempting: under the fault the target is thrown to 7.7 m/s against
-2.76 correct, which is inside the noise of a two-Assembly fight, while the
-**range re-opens 5.15 m against 0.03**. Contact once made is either kept or it is
-not, and that is the shape the law has.
+one live Assembly into another and asserts that the target is never thrown:
+**0.03 m/s correct against 4.00 under the fault**.
+
+Which assertion does the separating turned out to depend on the recipe, and the
+round trip is worth reading. While the melee build was wheeled it rammed at three
+metres a second, so the target moved at 2.76 m/s under correct behaviour and the
+speed bound was useless -- what separated them then was the range re-opening,
+0.03 m against 5.15. Making the build a walker (doc 01 §7.1 now requires one)
+inverted both: a walker leans far more gently, so the speed became clean and the
+re-opening stopped discriminating. Same law, same fault, different instrument.
 
 `briefing-never-held` is expected to survive and is planted anyway.
 `tests/integration/test_first_run_card.gd` asserts the gate on the driver and the
@@ -57,12 +65,13 @@ CARD = "src/ui/hud/control_card.gd"
 SCREEN = "src/ui/match/match_screen.gd"
 ARENA = "tests/combat_arena.gd"
 ORIENTATION = "src/core/math/orientation_table.gd"
+VALIDATOR = "src/assembly/lattice/placement_validator.gd"
 EFFECTORS = "src/combat/effectors/effector_system.gd"
 
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7712
+BASELINE = 7725
 
 FAULTS = [
     # §15.7.4's third gate deleted: the opponent opens fire over the briefing.
@@ -81,6 +90,23 @@ FAULTS = [
     ("briefing-never-held", SCREEN,
      "	var held := hud != null and hud.briefing_is_up()",
      "	var held := false"),
+
+    # Doc 01 §7.1's appendage half deleted: an arm goes back to being general
+    # mounting hardware and the melee build goes back to being a car with a sword
+    # bolted to its bonnet.
+    ("appendage-chassis-unchecked", VALIDATOR,
+     "	if core.carries(PartEnums.LocomotionMode.AMBULATORY):\n\t\treturn Reject.NONE\n"
+     "	return Reject.APPENDAGE_CHASSIS_MISMATCH",
+     "	if true:\n\t\treturn Reject.NONE\n"
+     "	return Reject.APPENDAGE_CHASSIS_MISMATCH"),
+
+    # The mirror, and the one a single-direction assertion would miss: a rule that
+    # refuses everything passes every test that only tries a wheeled hull.
+    ("appendage-chassis-inverted", VALIDATOR,
+     "	if core.carries(PartEnums.LocomotionMode.AMBULATORY):\n\t\treturn Reject.NONE\n"
+     "	return Reject.APPENDAGE_CHASSIS_MISMATCH",
+     "	if false:\n\t\treturn Reject.NONE\n"
+     "	return Reject.APPENDAGE_CHASSIS_MISMATCH"),
 
     # The melee recipe holding at the ground family's stand-off. It parks
     # seventeen and a half metres from a weapon that reaches 2.4.

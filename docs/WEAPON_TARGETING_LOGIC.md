@@ -1235,12 +1235,12 @@ starved module. Bringing an edge up therefore browns out the rest of the
 Assembly, which is a decision the player makes and feels rather than a message
 they read.
 
-**In a fight, and it holds.** `tests/physics/test_melee_duel.gd` drives a wheeled
-build carrying an Appendage and this edge at an unarmed opponent twelve metres
-away and lets the arena's own pilot do the closing. It arrives at **6.5 m**, which
-is where its blade collider meets the other hull, and then holds: **372 ticks
-energised** off **one** swing, resolving on **121** of them for 323 THERMAL and
-zero KINETIC.
+**In a fight, and it holds.** `tests/physics/test_melee_duel.gd` walks a build
+carrying an Appendage on each flank and one of these edges in each hand at an
+unarmed opponent twelve metres away, and lets the arena's own pilot do the
+closing. It arrives at **8.8 m**, which is where its blades meet the other hull,
+and then holds: **374 ticks energised** off **one** swing, resolving on **25** of
+them for 69 THERMAL and zero KINETIC.
 
 Two things fall out of that and neither was reachable from a frozen fixture.
 
@@ -1248,30 +1248,39 @@ Two things fall out of that and neither was reachable from a frozen fixture.
 had never been tested anywhere: `test_held_weapon` freezes its target for the
 sustained phase, so sixty impulses a second move nothing it can observe, and the
 planted fault that deletes the rule survived the sweep that found it. With a live
-target the separation is unambiguous — **the range re-opens 0.03 m** over the rest
-of the phase, against **5.15 m** under the fault, which throws the target to
-7.7 m/s and costs three quarters of the contact.
+target the separation is unambiguous — the target peaks at **0.03 m/s** against
+**4.00** under the fault.
 
-The measurement that does *not* separate them is the one to expect to reach for:
-the target's peak speed is 2.76 m/s correct against 7.68 faulted, because a melee
-build **rams** — it closes at about three metres a second and leans on what it is
-cutting, so the target is already moving. Contact once made is either kept or lost,
-and that is the shape this law has.
+**Which measurement separates them depends on how the attacker gets around, and
+that is worth more than either number.** This fixture was wheeled for one session
+before doc 01 §7.1 made an arm ambulatory equipment. A wheeled melee build *rams*
+— three metres a second, leaning on what it cuts — so the target was already
+moving at 2.76 m/s and the speed bound was worthless; what worked then was the
+range re-opening, 0.03 m against 5.15. A walker leans far more gently and its
+contact flickers, so the fault costs contact rather than distance: the speed became
+clean and the re-opening stopped discriminating. Same law, same planted fault,
+opposite instruments.
 
-**An energised edge is not a resolving edge.** Contact resolved on 121 of the 372
+**An energised edge is not a resolving edge.** Contact resolved on 25 of the 374
 ticks it was held, because the blade drifts in and out of overlap as both hulls
-settle and shove each other. The rate is right on the ticks it lands and a reading
-of `energised` as "cutting" over-states the damage by three. Anything sizing a
+settle and shove each other — and on a walker, which never quite stands still,
+that is most of the time. The rate is right on the ticks it lands and a reading of
+`energised` as "cutting" over-states the damage by fifteen. Anything sizing a
 sustained module against a duration has to count resolves, not ticks held.
 
 **What the same edge cannot do is get there against somebody shooting.** At thirty
-metres against an armed opponent it loses its Effector Module and the Appendage
-holding it at **t=37** — six tenths of a second, at better than two thirds of the
-starting range — and finishes the fight as an unarmed hull. That is not a balance
-number, it is a consequence of the geometry this section specifies: a held module
-sits three metres in front of the hull that carries it, so it is the first thing a
-round coming down the approach meets and has none of the hull behind it to soak
-anything. A melee build needs armour in front of its arm, cover, or an opponent
+metres against an armed opponent the walker does not merely fail to arrive: it
+**loses ground**, finishing 31.9 m from a target it started 30.0 m from, and dies
+there. That is `DYNAMIC_MASS_PHYSICS.md` §13's open steering defect rather than
+anything in this section — a walking Assembly's steering demand reaches only the
+correction term of §13.5's placement law — and it is the reason the melee recipe
+cannot yet be read as a balance question at all.
+
+The wheeled version of the same recipe failed differently and the finding survives
+the change: it lost its Effector Module and the Appendage holding it at **t=37**,
+because a held module sits three metres in front of the hull that carries it and
+is the first thing a round coming down the approach meets, with none of the hull
+behind it. A melee build wants armour in front of its arms, cover, or an opponent
 that also has to close; `PART_DATA_SCHEMA.md` §10.5's numbers are not the lever.
 
 ### 15.6 Degradation

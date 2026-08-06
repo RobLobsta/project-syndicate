@@ -55,7 +55,7 @@ SCREEN = "src/ui/garage/garage_screen.gd"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7712
+BASELINE = 7725
 
 FAULTS = [
     # §6.5's sign, back to what shipped. The couple pushes the loaded side further

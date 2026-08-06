@@ -13,12 +13,19 @@ extends TestCase
 ## session 18 and the sustained contact added in session 42 had never been in an
 ## engagement at all.
 ##
+## [b]The build is a walker with an arm on each flank, and that is a rule.[/b] Doc
+## 01 §7.1 refuses an Appendage on any chassis that does not carry the ambulatory
+## family, so the only Assembly that can hold a blade is one with a torso and legs
+## — see [method PlacementValidator._check_appendage_chassis] for why, and
+## [constant CombatArena.MELEE_ARMS] for why the arms run forward from the
+## shoulders rather than hanging at the sides.
+##
 ## [b]Two phases, because the two questions have different answers and a single
 ## fight would only reach the first of them.[/b]
 ##
 ## [enum]
 ## [*] [b]The contact.[/b] Against an unarmed opponent at twelve metres: can a
-##     driver close inside its own reach, and once there, can it [i]hold[/i]
+##     walker close inside its own reach, and once there, can it [i]hold[/i]
 ##     contact? §15.5 pays per tick, so a build that arrives, strikes, and drifts
 ##     back off the blade collects one strike — which is LEARNED_FACTS.md §1 fact
 ##     100 seen from the other side. The same phase settles §15.4's impulse, which
@@ -30,9 +37,10 @@ extends TestCase
 ## [/enum]
 ##
 ## [b]The edge was expected to lose and that is a measurement, not a failure.[/b]
-## What was not expected is the manner: its weapon is the furthest-forward thing
-## on it, so an autocannon firing down the approach takes the arm and the blade off
-## before the range has closed by a third. Asserted as it behaves, per §9's rule
+## What the two phases together say is that the weapon is not what fails: given
+## something to walk at, this build arrives and cuts. Against something that
+## shoots, it **loses ground** — 30.0 m out to 31.9 — which is doc 05 §13's open
+## steering defect and not doc 07 §15's. Asserted as it behaves, per §9's rule
 ## about writing down a measurement you cannot yet fix.
 ##
 ## There is no fire in either phase. `CombatArena` builds no [DotScheduler], so doc
@@ -64,35 +72,57 @@ const DUEL_TICKS: int = 900
 ## the round counter below is asserted to show.
 const LOADED_ROUNDS: int = 600
 
-## Range, in metres between body origins, under which the two hulls are as close
+## Range, in metres between body origins, inside which the two hulls are as close
 ## as their colliders let them get.
 ##
-## Derived rather than guessed: the melee build's blade collider reaches 5.1 m
-## forward of its own body origin and a wheeled hull is about 1.6 m from origin to
-## nose, so the pair cannot be closer than about 6.7 m and a blade that is touching
-## anything is inside eight. It is a floor on "arrived", not a measurement of one.
-const CONTACT_RANGE_M: float = 8.0
+## A walking Assembly holding two blades out in front of it stops at **8.8 m**,
+## which is where the blades meet the other hull, and it cuts from there — so this
+## is a floor on "arrived" rather than a measurement of one, with room over the
+## measured figure for the fact that a walker never quite stands still.
+##
+## [b]It was 8.0 while the melee build was wheeled and the layout is what moved
+## it.[/b] Two arms carried at the top of a 2.4 m torso reach further forward than
+## one arm carried at hull height did, and the walker's own hull is deeper. The
+## number is a property of the recipe and has to be re-derived whenever the recipe
+## moves, which is the argument for the assertion that follows it: THERMAL
+## arriving at all is unambiguous where a range is a geometry.
+const CONTACT_RANGE_M: float = 10.0
 
 ## Metres the range may re-open by after the edge has first cut something.
 ##
 ## [b]This is the assertion §15.5's "an instalment carries no impulse" was waiting
-## for, and it is a gap rather than a threshold.[/b] Held correctly the range goes
-## to 6.49 m and stays there: measured re-opening over the rest of the phase,
-## **0.01 m**. With §15.4's per-swing impulse applied on every tick instead, the
-## target is thrown to 7.7 m/s, the range opens from 8.4 m back out past **ten**,
-## and contact falls from 121 ticks to 33.
+## for, and it is a gap rather than a threshold.[/b] Held correctly the walker
+## arrives at its blades' length and stays there: measured re-opening over the
+## rest of the phase, **0.00 m**. With §15.4's per-swing impulse applied on every
+## tick instead, sixty of them a second throw the target clear and the range opens
+## by metres.
 ##
-## One and a half is a hundred and fifty times the one and less than half the
-## other, which is the kind of margin fact 47 says a physics fixture needs.
-##
-## [b]The peak speed cannot make this separation and the tempting version of this
-## test used it.[/b] The melee build [i]rams[/i] — it closes at about three metres
-## a second and leans on what it is cutting — so the target is already moving at
-## 2.76 m/s under correct behaviour against 7.68 under the fault, and a bound
-## between those two is a bound sitting inside the noise of a two-Assembly fight
-## (fact 44). Where the two runs differ unambiguously is whether contact, once
-## made, is ever lost.
+## [b]It is not sufficient on its own and the history is the lesson.[/b] While
+## this recipe was wheeled it rammed at three metres a second, kept a firm grip,
+## and the re-opening separated correct from faulted by 0.03 m against 5.15. A
+## walker leans on its target far more gently and its contact flickers, so a fault
+## that throws the target costs contact rather than distance and the re-opening
+## stops discriminating. [constant TARGET_PEAK_SPEED_MPS] is what discriminates
+## now — and the two constants are kept together because which of them is the
+## sharp one is a property of the [i]recipe[/i], and the recipe has already
+## changed once.
 const CONTACT_REOPEN_M: float = 1.5
+
+## Ceiling on how fast the target may ever be travelling during the contact phase,
+## in m/s.
+##
+## The other half of §15.5's "an instalment carries no impulse", and on a walking
+## attacker it is the half that bites. A four-tonne machine walking into a 1.1 t
+## one moves it at **0.03 m/s** — the shove is two colliders touching and nothing
+## else. With §15.4's 2800 N·s applied on every tick instead, sixty a second is
+## about 46 m/s² on that hull and it leaves at speed.
+##
+## One is thirty times the measured figure and far below anything an impulse can
+## produce, which is the margin fact 47 asks for. Note that this bound would have
+## been [b]useless[/b] on the wheeled version of this recipe, where the ram itself
+## moved the target at 2.76 m/s: the same law needs a different instrument
+## depending on how the Assembly carrying it gets around.
+const TARGET_PEAK_SPEED_MPS: float = 1.0
 
 var _ran: bool = false
 var _arena: CombatArena = null
@@ -183,19 +213,25 @@ func test_a_held_edge_does_not_throw_what_it_is_cutting() -> void:
 	if not check_true(_contact.contact_ticks > 0, "the edge made contact to hold"):
 		return
 	check_true(
+		_contact.target_peak_speed_mps < TARGET_PEAK_SPEED_MPS,
+		(
+			"the target never exceeded %.2f m/s over the whole phase, so what reached "
+			% _contact.target_peak_speed_mps
+			+ "it was contact and not §15.4's per-swing impulse"
+		)
+	)
+	check_true(
 		_contact.reopened_m < CONTACT_REOPEN_M,
 		(
-			"the range never re-opened by more than %.2f m after the first cut, so "
+			"the range never re-opened by more than %.2f m after the first cut"
 			% _contact.reopened_m
-			+ "the held edge delivered contact and not §15.4's per-swing impulse"
 		)
 	)
 	check_true(
 		_contact.final_range_m < CONTACT_RANGE_M,
 		(
-			"and the two were still hull to hull at %.1f m when the window closed, "
+			"and the two were still hull to hull at %.1f m when the window closed"
 			% _contact.final_range_m
-			+ "with the target having peaked at %.2f m/s" % _contact.target_peak_speed_mps
 		)
 	)
 
@@ -234,49 +270,74 @@ func test_the_gunner_wins_the_duel() -> void:
 	)
 
 
-## [b]The finding, and it is a build rule rather than a balance number.[/b] An
-## Effector Module held in an Appendage sits three metres in front of the hull that
-## carries it, so it is the first thing a round coming down the approach meets and
-## it has none of the hull behind it to soak anything. Measured: the arm and the
-## edge are both gone inside the first second, at better than two thirds of the
-## starting range, and everything after that is an unarmed build driving at
-## somebody who is shooting it.
+## [b]The finding, and it is doc 05 §13's rather than doc 07 §15's.[/b] Over thirty
+## metres, under fire, the melee build does not merely fail to arrive — it
+## **loses ground**, finishing 31.9 m from a target it started 30.0 m from.
 ##
-## This is why the duel cannot be read as "the edge is too weak". The edge never
-## touched anything. What it needs is either a way to survive an approach — armour
-## in front of it, or cover, or speed it does not have at four tonnes — or an
-## opponent that has to close too.
-func test_the_edge_is_disarmed_before_it_can_close() -> void:
+## The edge is not what fails here. Given something to walk at, the same build
+## closes and cuts (every assertion above). What it cannot do is close on a target
+## while being shot at, and that is §3.1.3's open defect seen from a new angle: a
+## walking Assembly's steering demand reaches only the correction term of §13.5's
+## placement law, so a heading it is asked to hold is a heading it drifts off.
+## Recorded here rather than in prose because a finding left in prose gets
+## re-litigated (§9).
+##
+## The `effector_lost` half is recorded and deliberately not asserted. When this
+## recipe was wheeled it lost its arm and blade at t=37 and the reading was "a held
+## module is the first thing a round meets" — which is still true and is still the
+## reason a melee build wants armour in front of its arms. It is simply no longer
+## what kills this one: the walker dies at 30 m with its arms intact, because it
+## never brings them anywhere.
+func test_the_walker_cannot_close_on_something_that_is_shooting() -> void:
 	await _run()
-	check_true(
-		_duel.effector_lost,
-		"the melee build lost its Effector Module during the approach"
-	)
 	check_true(
 		_duel.closest_range_m > CONTACT_RANGE_M,
 		(
-			"and never got inside its own reach: %.1f m at the closest, against the "
+			"it never got inside its own reach: %.1f m at the closest, against the "
 			% _duel.closest_range_m + "%.1f m it needs" % CONTACT_RANGE_M
+		)
+	)
+	check_true(
+		_duel.final_range_m > DUEL_SEPARATION_M,
+		(
+			"and finished further out than it started: %.1f m against %.1f"
+			% [_duel.final_range_m, DUEL_SEPARATION_M]
 		)
 	)
 
 
-## The layout's own cost, recorded because it is the first thing a player building
-## this would meet and because fact 74 predicts it: an arm and a blade on the front
-## face of a build that is already nose-heavy.
+## The layout's own cost, asserted as it stands because a player building this
+## would meet it in the first second.
 ##
-## The Energy Cell in the tail is what makes this pass, and it is ballast rather
-## than supply — see [constant CombatArena.Recipe.MELEE].
-func test_the_layout_stays_on_its_contacts() -> void:
+## **Two arms and two blades are 1434 kg carried ahead of and above a walking
+## torso, and the machine leans on it: 29.6° nose-down.** It stays up — every foot
+## keeps finding the ground and it never goes onto a flank — but it walks at a
+## pronounced stoop, and that is a third of the way to the 90° that would put its
+## blades in the dirt.
+##
+## The wheeled version of this recipe answered the same problem with an Energy
+## Cell in the tail as ballast. That is not available here: four limbs and two arms
+## are 31 of the ambulatory chassis's 34 mounts, and doc 01 §7.1 will not let the
+## arms move to a hull with more of them. The candidates are a lighter Appendage
+## tier, a shorter blade, or a chassis with the mounts for a counterweight — all
+## three are data, and none is measured.
+func test_the_walker_stoops_under_its_own_arms() -> void:
 	await _run()
 	check_true(
-		_contact.worst_nose_down_deg < 45.0,
-		"the melee build never pitched past %.1f degrees nose-down, blade and all"
+		_contact.worst_nose_down_deg > 15.0,
+		(
+			"1434 kg of arms and blades pitches the walker %.1f degrees nose-down, "
 			% _contact.worst_nose_down_deg
+			+ "which is the layout's cost and is asserted as it stands"
+		)
+	)
+	check_true(
+		_contact.worst_nose_down_deg < 45.0,
+		"and it is a stoop rather than a fall: still under 45 degrees"
 	)
 	check_true(
 		_contact.worst_roll_deg < 90.0,
-		"and never went onto a flank: %.1f degrees of roll" % _contact.worst_roll_deg
+		"and it never went onto a flank: %.1f degrees of roll" % _contact.worst_roll_deg
 	)
 
 

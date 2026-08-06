@@ -36,8 +36,8 @@ than the damage that landed.
 fixture freezes its target so that contact is maintained across two hundred ticks,
 and a frozen body absorbs the impulse the fault adds, so nothing this sweep runs
 could see it. Session 43's `tests/physics/test_melee_duel.gd` drives one live
-Assembly into another and asserts that the range never re-opens once the edge has
-cut; under the fault it re-opens 5.15 m. The fault is kept in this list because it
+Assembly into another and asserts that the target is never thrown: 0.03 m/s
+correct against 4.00 under the fault. The fault is kept in this list because it
 belongs to §15.5 and because a sweep that stopped planting it would stop noticing
 if the fixture that catches it were ever deleted -- see
 `tools/ci/sweeps/briefing_and_edge_sweep.py`, which plants the same one against
@@ -66,7 +66,7 @@ HUD = "src/ui/hud/match_hud.gd"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7712
+BASELINE = 7725
 
 FAULTS = [
     # §15.5's stage rule: the edge recovers at the end of its arc whatever the

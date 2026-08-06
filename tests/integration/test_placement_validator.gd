@@ -24,6 +24,7 @@ const LIFTER_KEY := &"core.rotary.lifter.t3"
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
 const LIMB_KEY := &"mot.limb.strider.t4"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
+const ARM_KEY := &"apx.arm.manipulator.t3"
 
 ## Each probe hung off the Core Module's `-X` flank, at a height inside the
 ## `y` 4..7 band all three chassis share and at `z` 24, which every chassis
@@ -32,6 +33,19 @@ const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 const FLANK_WHEEL := Vector3i(19, 6, 24)
 const FLANK_LIMB := Vector3i(19, 7, 24)
 const FLANK_ROTOR := Vector3i(19, 4, 24)
+## The same probe for an Appendage: its shoulder carried onto `+X` so the arm
+## mates through the Core Module's `-X` flank and reaches outboard from there.
+##
+## [b]A flank mount rather than the forward-running one
+## [constant CombatArena.MELEE_ARMS] uses, and the reason is the fixture rather
+## than the pose.[/b] An arm running forward has to sit one cell ahead of its
+## hull's `-Z` face, and that cell is `z` 19 on a nine-cell chassis and `z` 17 on
+## the thirteen-cell one — so no single candidate is legal geometry on all three,
+## and a case that rejected on `CELL_OCCUPIED` would look exactly like the family
+## rule working. The flank is at `x` 21 and `z` 24 on every chassis here, which
+## leaves the chassis as the only thing that differs between the three cases.
+const FLANK_ARM := Vector3i(20, 6, 24)
+const ARM_ORIENTATION: int = 8
 
 ## The Core Module seated at the lattice origin. Occupies x 21..26, y 4..7,
 ## z 18..30; its whole top face at y = 7 is DECK polarity.
@@ -747,6 +761,65 @@ func test_a_lattice_with_no_chassis_refuses_on_mating_rather_than_on_family() ->
 		),
 		PlacementValidator.Reject.NO_MATING_NODE,
 		"an empty lattice takes a Core Module first and says so"
+	)
+
+
+## Doc 01 §7.1's appendage half: an arm belongs to a walking Assembly and to no
+## other, and the rule is asserted across every shipped chassis in both
+## directions.
+##
+## Both directions, because a rule with one is not a rule. A check that refused
+## everything would pass an assertion that only tried the wheeled hull, and a check
+## that refused nothing would pass one that only tried the strider.
+func test_an_appendage_takes_an_ambulatory_chassis_and_no_other() -> void:
+	var arm := PartRegistry.definition_by_key(ARM_KEY)
+	if not check_not_null(arm, "the Appendage is registered"):
+		return
+	var chassis: Array[StringName] = [CORE_KEY, STRIDER_KEY, LIFTER_KEY]
+	for key: StringName in chassis:
+		var core := PartRegistry.definition_by_key(key)
+		if not check_not_null(core, "%s is registered" % key):
+			continue
+		var ctx := _new_context()
+		PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+		var expected := (
+			PlacementValidator.Reject.NONE
+			if key == STRIDER_KEY
+			else PlacementValidator.Reject.APPENDAGE_CHASSIS_MISMATCH
+		)
+		check_eq(
+			PlacementValidator.validate(
+				ctx, PlacementCandidate.create(arm, FLANK_ARM, ARM_ORIENTATION)
+			),
+			expected,
+			"an Appendage on %s" % key
+		)
+
+
+## The refusal must arrive on the chassis and not on the mounts.
+##
+## Same shape as the motive version above and for the same reason: an unreachable
+## check reads exactly like a working one from the outside. The command core
+## offers twenty-eight mounts and an arm costs far fewer, so the only thing that
+## can refuse this candidate is the family.
+func test_the_appendage_refusal_is_not_a_budget_refusal_in_disguise() -> void:
+	var core := PartRegistry.definition_by_key(CORE_KEY)
+	var arm := PartRegistry.definition_by_key(ARM_KEY)
+	if core == null or arm == null:
+		fail("fixture: the command chassis and the Appendage must both be registered")
+		return
+	var ctx := _new_context()
+	PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+	check_true(
+		ctx.budgets.mount_used + arm.mount_weight <= ctx.budgets.mount_budget(),
+		"the mount budget has room for the arm"
+	)
+	check_eq(
+		PlacementValidator.validate(
+			ctx, PlacementCandidate.create(arm, FLANK_ARM, ARM_ORIENTATION)
+		),
+		PlacementValidator.Reject.APPENDAGE_CHASSIS_MISMATCH,
+		"and it is refused on its chassis anyway"
 	)
 
 

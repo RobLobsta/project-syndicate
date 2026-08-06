@@ -31,6 +31,7 @@ enum Reject {
 	LOAD_CAPACITY_EXCEEDED,
 	DUPLICATE_CORE,
 	MOTIVE_FAMILY_MISMATCH,
+	APPENDAGE_CHASSIS_MISMATCH,
 }
 
 ## Effector arc sampling, per §7.6.
@@ -64,6 +65,7 @@ const REJECT_KEYS: Array[StringName] = [
 	&"build.reject.load_capacity_exceeded",
 	&"build.reject.duplicate_core",
 	&"build.reject.motive_family_mismatch",
+	&"build.reject.appendage_chassis_mismatch",
 ]
 
 ## Downward face in the part's own frame, rotated per candidate by §7.5.
@@ -114,6 +116,9 @@ static func validate(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
 	if r != Reject.NONE:
 		return r
 	r = _check_motive_family(ctx, cand)
+	if r != Reject.NONE:
+		return r
+	r = _check_appendage_chassis(ctx, cand)
 	if r != Reject.NONE:
 		return r
 	r = _check_budgets(ctx, cand)
@@ -380,6 +385,39 @@ static func _check_motive_family(ctx: BuildContext, cand: PlacementCandidate) ->
 	if core.carries(mp.locomotion_mode()):
 		return Reject.NONE
 	return Reject.MOTIVE_FAMILY_MISMATCH
+
+
+## §7.4, appendage half. An Appendage may only be placed on a chassis that
+## carries the ambulatory family.
+##
+## [b]An arm is not general-purpose mounting hardware.[/b] Doc 01 §4.3 keys the
+## hand so that a held Effector Module cannot be bolted to a hull and a hull
+## cannot be used as a hand; this is the same decision one level up. Nothing in
+## the physics stops an arm from being bolted to the front of a car — which is
+## exactly what it was, before this rule — and the result was a machine with a
+## weapon three metres in front of its own nose and no reason to have one there.
+##
+## The family is a property of the [i]chassis[/i] rather than of the arm, because
+## that is where doc 01 §7.1 already keeps the question and because a player who
+## has been refused wants to be told about the hull they chose: a Core Module's
+## inspector card names the families it carries, so a refused arm has a reason on
+## screen next to it.
+##
+## [b]This is the reading, and it is a design decision rather than a physical
+## one.[/b] What makes an arm ambulatory is that a walking Assembly is the only
+## one with a body plan an arm belongs to — a torso above the ground with room
+## either side of it. That is not enforceable in the lattice and does not need to
+## be; the chassis is the proxy for it.
+static func _check_appendage_chassis(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
+	if cand.definition.part_class != PartEnums.PartClass.APPENDAGE:
+		return Reject.NONE
+	# As above: an absent chassis declares nothing and refuses nothing.
+	var core := ctx.budgets.core_profile
+	if core == null:
+		return Reject.NONE
+	if core.carries(PartEnums.LocomotionMode.AMBULATORY):
+		return Reject.NONE
+	return Reject.APPENDAGE_CHASSIS_MISMATCH
 
 
 ## §7.4, budget half. O(1) against totals the ledger maintains incrementally.

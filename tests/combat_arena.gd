@@ -82,22 +82,22 @@ enum Recipe {
 	## chassis, at one mount, under one throttle — doc 01 §10.5's whole claim for
 	## the row is a comparison and a single-module fixture cannot make one.
 	WHEELED_REPEATER,
-	## The wheeled layout carrying an Appendage on the front face with
-	## `eff.melee.beam_edge.t4` in its hand, and no direct-fire module at all.
+	## The ambulatory layout with an Appendage on each flank, an
+	## `eff.melee.beam_edge.t4` in each hand, and no direct-fire module at all.
 	##
 	## [b]It exists because doc 07 §15's whole melee chain had never been in a
 	## fight.[/b] The strike, the sustained contact of §15.5 and doc 08 §7.3's fire
 	## are exercised by [code]tests/physics/test_held_weapon.gd[/code] against a
 	## frozen target held at a measured distance by a frozen attacker, which
 	## answers what the laws compute and nothing about whether an Assembly that
-	## has to drive, turn and close can ever reach one.
+	## has to walk, turn and close can ever reach one.
 	##
-	## It carries an Energy Cell that [constant Recipe.WHEELED_LIGHT] does not, and
-	## that is ballast rather than supply. The arm and the edge together are 717 kg
-	## hung off the front face of a build that is already 73/27 nose-heavy
-	## (LEARNED_FACTS.md §1 fact 74); without a mass in the tail the layout is a
-	## machine that stands on its front contacts before it has been asked to do
-	## anything. A player building this would reach for the same answer.
+	## [b]It is a walker, and that is now a rule rather than a preference.[/b] Doc
+	## 01 §7.1 refuses an Appendage on any chassis that does not carry the
+	## ambulatory family, so this recipe could not be built on the ground chassis
+	## even if it wanted to be — see
+	## [method PlacementValidator._check_appendage_chassis]. It was wheeled for one
+	## session and read as what it was: a car with a sword bolted to its bonnet.
 	MELEE,
 }
 
@@ -184,24 +184,31 @@ const WHEEL_ORIGINS: Array[Vector3i] = [
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md, session 12.
 const FRONT_AXLE_Z: int = 24
 
-## [constant Recipe.MELEE]'s Appendage and the edge in its hand, both derived
-## from the Core Module's own extents rather than guessed.
+## [constant Recipe.MELEE]'s two Appendages and the edge in each hand, one per
+## flank, derived from the ambulatory Core Module's own extents rather than
+## guessed.
 ##
-## The Core Module spans `z` 18–30, so its `-Z` face is the row of `zn_*` nodes at
-## `z = 18` and a part mating with them offers a `+Z` node in the cell in front,
-## `z = 17`. The arm is placed to carry its shoulder — its own `+Y`, nine
-## FACE_NEUTRAL nodes — onto that face, which turns its six cells of reach through
-## a quarter circle so they run [b]forward[/b] from `z` 17 to 12 with the hand at
-## the far end facing `-Z`. The edge's hilt is its `+Z` face, so it goes in
-## unrotated at `z` 11, the cell the hand points into, and its eight cells of blade
-## continue on to `z` 4.
+## [b]The arms are at the sides and they run forward, and only one of those two
+## was a choice.[/b] An Appendage's six cells extend from its shoulder along the
+## axis the shoulder faces, and the module in its hand continues along that same
+## axis — there is no elbow, because Invariant I-3 admits no joint between parts.
+## So an arm hung off a flank at right angles is a machine in a T-pose with its
+## blades pointing at the scenery, and an arm hung [i]downward[/i] beside the
+## torso — which is the human pose — points its blade at the ground, where the
+## mount's authored −20°/+40° of pitch can never recover it. Measured across all
+## twenty-four orientations before it was written down.
 ##
-## `y = 5` puts both of them across the middle of the hull rather than over the
-## roof, which is where the thing they have to reach is: an opposing Core Module's
-## own collider sits about a metre and a third above the body origin, and a blade
-## swung at roof height passes over it.
-const MELEE_ARM := Vector3i(24, 5, 17)
-const MELEE_EDGE := Vector3i(24, 5, 11)
+## What is left, and what a humanoid actually reads as at a glance, is a shoulder
+## at each front corner with the arm running forward alongside the hull. The Core
+## Module spans `x` 21–26 and `z` 20–28, so a shoulder patch centred on `x` 20 or
+## `x` 27 sits just outboard of a flank and mates through the corner cells of the
+## hull's `-Z` face. `y = 17` is the top row of the torso, so the shoulders are
+## high and the arms swing clear of the limbs below.
+const MELEE_ARMS: Array[Vector3i] = [Vector3i(20, 17, 19), Vector3i(27, 17, 19)]
+## The hand is five cells out along the arm and faces `-Z`; the edge's hilt is its
+## own `+Z` face, so each blade goes in unrotated in the cell the hand points into
+## and its eight cells continue forward to `z` 6.
+const MELEE_EDGES: Array[Vector3i] = [Vector3i(20, 17, 13), Vector3i(27, 17, 13)]
 
 const TRACK_HUBS: Array[Vector3i] = [Vector3i(22, 2, 24), Vector3i(26, 2, 24)]
 const TRACK_ORIGINS: Array[Vector3i] = [Vector3i(19, 3, 24), Vector3i(28, 3, 23)]
@@ -601,7 +608,7 @@ func spawn(
 	motion.reassign_gait_phases()
 
 	var height := DROP_HEIGHT_M
-	if recipe == Recipe.AMBULATORY or recipe == Recipe.AMBULATORY_BARE:
+	if is_ambulatory(recipe):
 		height = AMBULATORY_DROP_HEIGHT_M
 	elif recipe == Recipe.ROTARY:
 		height = HOVER_HEIGHT_M
@@ -820,7 +827,7 @@ func _drive(c: Combatant, aim: Vector3) -> void:
 	# defends it.
 	var bearing := AiDriver.bearing_to(body.global_transform.basis, flat)
 	input.throttle = 1.0 if flat.length() > c.stand_off_m else 0.0
-	if c.recipe == Recipe.AMBULATORY:
+	if is_ambulatory(c.recipe):
 		input.steer = AiDriver.ambulatory_steer_demand(bearing, body.angular_velocity.y)
 		return
 	input.steer = AiDriver.steer_demand(bearing)
@@ -1067,25 +1074,23 @@ func _lay_out_wheeled(ctx: BuildContext, with_cell: bool, gun_key: StringName) -
 		_place(ctx, key, cell, drive_face_orientation(inboard))
 
 
-## [constant Recipe.MELEE]: the wheeled running gear, an Energy Cell for ballast,
-## and an Appendage on the front face holding the edge.
+## [constant Recipe.MELEE]: the ambulatory running gear with an Appendage on each
+## flank and an edge in each hand.
 ##
-## The arm before the edge, because the edge's only attachment node is a GRIP
+## The arms before the edges, because an edge's only attachment node is a GRIP
 ## hilt (doc 01 §4.3) and there is nothing for it to mate with until the hand
 ## exists. That is the same order a player has to build in and the same order the
 ## validator enforces, which is the point of routing this through it.
+##
+## It carries no Energy Cell. The four limbs and two arms come to 31 of the
+## ambulatory chassis's 34 mounts, and the two edges draw 40 PU against 710
+## available — supply is not what is scarce here, mounts are.
 func _lay_out_melee(ctx: BuildContext) -> void:
-	_place(ctx, CORE_KEY, GROUND_CORE, 0)
-	_place(ctx, POWER_KEY, GROUND_POWER, 0)
-	_place(ctx, CELL_KEY, GROUND_CELL, 0)
-	_place(ctx, ARM_KEY, MELEE_ARM, shoulder_orientation())
-	_place(ctx, EDGE_KEY, MELEE_EDGE, 0)
-	for cell: Vector3i in WHEEL_HUBS:
-		_place(ctx, HUB_KEY, cell, 0)
-	for cell: Vector3i in WHEEL_ORIGINS:
-		var key := WHEEL_KEY if cell.z < FRONT_AXLE_Z else REAR_KEY
-		var inboard := Vector3.RIGHT if cell.x < GROUND_CORE.x else Vector3.LEFT
-		_place(ctx, key, cell, drive_face_orientation(inboard))
+	_lay_out_ambulatory(ctx, false)
+	for cell: Vector3i in MELEE_ARMS:
+		_place(ctx, ARM_KEY, cell, shoulder_orientation())
+	for cell: Vector3i in MELEE_EDGES:
+		_place(ctx, EDGE_KEY, cell, 0)
 
 
 func _lay_out_tracked(ctx: BuildContext) -> void:
@@ -1140,6 +1145,22 @@ static func drive_face_orientation(face: Vector3) -> int:
 ## is square in section and the Effector Module in its hand carries its own frame,
 ## which is why this goes through [method OrientationTable.first_carrying] rather
 ## than through [method OrientationTable.upright_facing].
+## True for every recipe built on the ambulatory chassis, which is the question
+## the spawn height and the steering law both actually ask.
+##
+## Written as one predicate rather than as a list repeated at each call site,
+## because [constant Recipe.MELEE] joining the walking recipes is exactly the
+## change that leaves one of two such lists behind — and the one that gets missed
+## is the spawn height, where the symptom is a five-metre drop onto its own feet
+## rather than an error.
+static func is_ambulatory(recipe: int) -> bool:
+	return (
+		recipe == Recipe.AMBULATORY
+		or recipe == Recipe.AMBULATORY_BARE
+		or recipe == Recipe.MELEE
+	)
+
+
 static func shoulder_orientation() -> int:
 	return OrientationTable.first_carrying(Vector3.UP, Vector3.BACK)
 

@@ -17,6 +17,14 @@ extends TestCase
 ## the repository had ever delivered a non-KINETIC packet from a weapon.
 
 const CORE_KEY := &"core.command.compact.t2"
+## The attacker's chassis, and it is not [constant CORE_KEY] because it cannot be:
+## doc 01 §7.1 refuses an Appendage on anything that does not carry the ambulatory
+## family, so the hull that holds a sword is a walking one by rule.
+##
+## The [b]target[/b] stays on the command core, which is what every thermal figure
+## quoted below is arithmetic against — and it is the right target anyway, because
+## the question this file asks is what an edge does to the hull a player drives.
+const ATTACKER_CORE_KEY := &"core.ambulatory.strider.t3"
 const PANEL_KEY := &"str.panel.medium.t2"
 const ARM_KEY := &"apx.arm.manipulator.t3"
 const SWORD_KEY := &"eff.melee.beam_edge.t4"
@@ -561,7 +569,7 @@ func _sustain(target: AssemblyRuntime) -> void:
 func _build_attacker() -> AssemblyRuntime:
 	var ctx := BuildContext.with_physics(ATTACKER)
 	_contexts.append(ctx)
-	var core := PartRegistry.definition_by_key(CORE_KEY)
+	var core := PartRegistry.definition_by_key(ATTACKER_CORE_KEY)
 	var arm := PartRegistry.definition_by_key(ARM_KEY)
 	var sword := PartRegistry.definition_by_key(SWORD_KEY)
 

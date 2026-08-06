@@ -51,33 +51,37 @@ and `CHANGE_LOG.md` §1 has how each of those was won.
   practice it lasts exactly as long as they want it to. A card the player *asked
   for* is deliberately not a briefing, or `hud_toggle_stats` would be a key that
   switches the opposition off.
-- **The energy edge has been in an engagement.** `CombatArena` gains a `MELEE`
-  recipe — the wheeled layout with an Appendage on the front face, the edge in its
-  hand, and an Energy Cell in the tail that is ballast rather than supply — and
+- **An arm is ambulatory equipment.** Doc 01 §7.1's mask gains a second rule —
+  `PlacementValidator` refuses an Appendage on any chassis that does not carry
+  `AMBULATORY` (`APPENDAGE_CHASSIS_MISMATCH`). Nothing in the physics had stopped
+  one being bolted to the front of a car, and that is exactly what the first
+  version of this session's melee recipe was.
+- **The energy edge has been in an engagement.** `CombatArena.Recipe.MELEE` is the
+  ambulatory layout with an Appendage on each flank and an edge in each hand, and
   `tests/physics/test_melee_duel.gd` fights it twice. Against an unarmed opponent
-  at 12 m it closes to **6.5 m** and holds: **372 energised ticks off one swing**,
-  resolving on **121** of them for 323 THERMAL, and the range never re-opens.
-  That closes `sustained-delivers-impulse`, a fault recorded as a survivor since
-  session 42 — a frozen target absorbs sixty impulses a second and reports
-  nothing.
+  at 12 m it walks to **8.8 m** and holds: **374 energised ticks off one swing**,
+  and it never throws what it is cutting (0.03 m/s). That closes
+  `sustained-delivers-impulse`, a fault recorded as a survivor since session 42.
 
-**The bad news about the edge, plainly.** Two things.
+**The bad news about the edge, plainly.** Three things.
 
-**It cannot get to the fight.** At 30 m against a build carrying the shipped
-autocannon, the melee build loses its Effector Module *and* the Appendage holding
-it at **t=37** — six tenths of a second, at better than two thirds of the starting
-range — and spends the remaining four seconds driving at somebody unarmed. A held
-module sits three metres in front of the hull that carries it, so it is the first
-thing a round meets and has none of the hull behind it. That is a build rule, not
-a balance number: doc 01 §10.5's figures are not the lever.
+**It cannot get to a fight.** At 30 m against a build carrying the shipped
+autocannon the walker **loses ground** — 30.0 m out to 31.9 — and dies there with
+its arms intact. That is §3.1.3's steering defect, not the weapon: given something
+to walk at, this build arrives and cuts.
 
-**And "energised" is not "cutting".** The edge resolved on 121 of the 372 ticks it
-was held, because the blade drifts in and out of overlap as both hulls shove each
-other. Anything sizing a sustained module against a duration over-states it by
-three.
+**"Energised" is not "cutting".** The edge resolved on **25** of the 374 ticks it
+was held, because the blade drifts in and out of overlap and a walker never quite
+stands still. Anything sizing a sustained module against a duration over-states it
+by fifteen.
 
-**99 files, 7712 checks, 0 failures.** `briefing_and_edge_sweep.py` plants six
-faults and catches five; the survivor is the four lines of `MatchScreen` joining
+**And it stoops.** Two arms and two blades are 1434 kg carried ahead of and above
+the torso, and the machine walks **29.6° nose-down**. The wheeled version answered
+this with ballast in the tail; the ambulatory chassis has three mounts spare and
+doc 01 §7.1 will not let the arms move to a hull with more.
+
+**99 files, 7725 checks, 0 failures.** `briefing_and_edge_sweep.py` plants eight
+faults and catches seven; the survivor is the four lines of `MatchScreen` joining
 the card to the gate, recorded in `CHANGE_LOG.md` §3 with what would close it.
 
 ---
@@ -106,7 +110,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**99 files, 7712 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
+**99 files, 7725 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
 the rest suite. Three files are most of it: `integration/test_screen_flow.gd` at
 82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings; check before assuming where the cost
@@ -211,10 +215,10 @@ Ranked by what would most improve a first-time player's experience:
    blueprint that is not a wheeled hull. §3.3.
 4. **A walking Assembly cannot reverse and can barely stop.** Both are §13.5's
    placement law having no sign in it, and so is its steering. §3.1.3.
-5. **A melee build cannot survive its own approach.** New this session and now
-   measured rather than guessed: at 30 m the arm and the blade are gone at t=37.
-   The edge itself works — it closes, holds contact, and cuts — so this is a
-   build-and-encounter problem rather than a weapon one. §3.8.
+5. **A melee build cannot reach a fight.** New this session and now measured
+   rather than guessed: the walker loses ground over thirty metres under fire. The
+   edge itself works — it walks up, holds contact, and cuts — so this is item 4's
+   steering defect wearing a different hat. §3.8.
 6. **Sustained fire turns the whole screen brown.** New this session and found by
    looking rather than by testing: §14.4's damage flash saturates and stays
    saturated. Cheap, and it is the only thing in this list a player meets in
@@ -412,12 +416,18 @@ left:
    on §3.7; an ambulatory one is not, it just walks badly (§3.1.3).
 
 **And a `melee()` beside them, which is now cheap.**
-`CombatArena.Recipe.MELEE`'s layout is authored, validated and fought
-(§3.8) — the Appendage at `(24, 5, 17)` on the Core Module's `-Z` face, the edge
-at `(24, 5, 11)` in its hand — so a `StarterBlueprint.melee()` is that cell list
-and nothing else. It is the only route by which a player ever holds the weapon
-sessions 18, 42 and 43 built, and until it exists the honest statement is that the
-edge is not in the game.
+`CombatArena.Recipe.MELEE`'s layout is authored, validated and fought (§3.8) —
+the ambulatory hull, an Appendage at `(20, 17, 19)` and `(27, 17, 19)`, an edge at
+`(20, 17, 13)` and `(27, 17, 13)` — so a `StarterBlueprint.melee()` is that cell
+list and nothing else. It is the only route by which a player ever holds the
+weapon sessions 18, 42 and 43 built, and until it exists the honest statement is
+that the edge is not in the game.
+
+**None of the three is reachable without a way to choose one.** All four blueprints
+would be dead code the moment they are written: `skirmisher()` has three callers
+and nothing in the interface offers an alternative. The blueprints and the chooser
+are one task, not two, and the chooser is the half that is doc 11 work — a row of
+build presets on the main menu, or a "new build" control in the garage.
 
 ### 3.4 Two controls with a producer and no consumer
 
@@ -469,18 +479,25 @@ The second of those closed a fault recorded as a survivor since session 42.
 What is left is what the fixture found, and both are open questions rather than
 tasks with an obvious shape:
 
-1. **A held module is the first thing a round meets.** At 30 m the arm and the
-   edge are both destroyed at t=37. The candidate answers, in rough order of
-   honesty: armour authored in front of the arm (a Structural Component on the
-   `-Z` face, which the layout has room for), an encounter where both sides have
-   to close, or an Appendage tier with the integrity to survive an approach. All
-   three are design decisions and none is measured.
-2. **An energised edge resolves on a third of the ticks it is held**, because the
-   blade drifts in and out of overlap as both hulls shove each other. Whether
-   that is correct — a beam that flickers as two machines grind together — or a
-   §15.3 gap worth closing with a wider capsule is not settled. Doc 07 §15.5
-   records the number either way, and anything balancing `sustained_damage_s`
-   against a duration has to know it.
+1. **The walker cannot reach a fight**, which is §3.1.3 rather than doc 07 §15:
+   it loses ground over thirty metres under fire. Nothing about the melee build
+   improves until a walking Assembly can hold a heading.
+2. **An energised edge resolves on one tick in fifteen**, because the blade drifts
+   in and out of overlap and a walker never quite stands still. Whether that is
+   correct — a beam that flickers as two machines grind together — or a §15.3 gap
+   worth closing with a wider capsule is not settled. Doc 07 §15.5 records the
+   number either way, and anything balancing `sustained_damage_s` against a
+   duration has to know it.
+3. **Two arms are 1434 kg and the walker stoops 29.6° under them.** The wheeled
+   version of this recipe used an Energy Cell in the tail as ballast; the
+   ambulatory chassis has three mounts spare and doc 01 §7.1 will not let the arms
+   move elsewhere. Candidates: a lighter Appendage tier, a shorter blade, or a
+   chassis authored with the mounts for a counterweight. All data, none measured.
+4. **A held module is the first thing a round meets.** Measured on the wheeled
+   version before the rule moved it: the arm and edge were destroyed at t=37. It
+   is no longer what kills this build — the walker dies with its arms intact,
+   because it never brings them anywhere — but it is still true and still argues
+   for armour in front of the arms.
 
 The other thing this turned up: **`CombatArena` builds no `DotScheduler`**, so no
 engagement in the suite can set anything on fire. Doc 08 §7.3 is exercised only by
@@ -523,6 +540,14 @@ lattice is integer and a wreck is not aligned to it), and a cap under I-12.
 
 ### 3.11 Smaller, and worth doing when passing
 
+- **A rotary Assembly has no visual identity at all.** A capture of the shipped
+  rotary layout is three grey boxes: `mot.rotor.coaxial_mid.t3` renders as a
+  rectangular block like every other part, so nothing on screen says the machine
+  flies, and the same is true of a tracked bogie. Doc 13's proxy meshes and class
+  tints are the answer and are unbuilt; what makes this worth a line here rather
+  than in §4 is that **the greybox stage is what every player sees today**, and a
+  proxy that suggested a disc, a track run and a limb would cost one afternoon of
+  `ProxyMeshBuilder` work against an art pipeline nobody is going to run soon.
 - **§14.4's damage flash saturates and stays saturated.** `FLASH_ALPHA_PER_PACKET`
   is 0.06 against a `FLASH_ALPHA_MAX` of 0.34 and the decay is proportional at
   4.5 Hz, so any module firing faster than about ten rounds a second pins it — and

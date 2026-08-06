@@ -1423,11 +1423,26 @@ there is only one section here.)
     good fraction of the attacker's approach speed and the two numbers are three
     times apart with a two-Assembly fight's noise between them (fact 44).
 
-    What separates them by two orders of magnitude is **whether contact, once
-    made, is ever lost**: the range re-opens 0.03 m correct and 5.15 m faulted.
-    The general shape: **when a fault adds energy to a system that is also being
-    driven, the driven quantity is contaminated and the one to assert is what the
-    energy destroys.** Here the drive is a ram and the thing destroyed is contact.
+    What separated them by two orders of magnitude, on that recipe, was **whether
+    contact once made is ever lost**: the range re-opened 0.03 m correct and
+    5.15 m faulted. The general shape: **when a fault adds energy to a system that
+    is also being driven, the driven quantity is contaminated and the one to
+    assert is what the energy destroys.**
+
+    **And then the recipe changed, and the two instruments swapped over.** Doc 01
+    §7.1 made an Appendage ambulatory equipment, so the melee build became a
+    walker — which leans on what it cuts far more gently and whose contact
+    flickers as it steps. The speed bound became the clean one (0.03 m/s correct
+    against 4.00 faulted) and the re-opening stopped discriminating, because the
+    fault now costs contact rather than distance. Same law, same planted fault,
+    opposite instruments.
+
+    So the durable lesson is not which quantity to assert. It is that **an
+    assertion chosen against one fixture is a property of that fixture**, and a
+    sweep re-run after the fixture changes is the only thing that says so. This
+    one went CAUGHT → SURVIVED → CAUGHT across a single session without the code
+    under test being touched. `test_melee_duel` now asserts both quantities, which
+    is the cheap insurance.
 
 103. **A hold a player can grant themselves is not a hold.** Doc 11 §14.6's
     control card holds the opponent's fire while a first-time player reads it,
@@ -1444,6 +1459,36 @@ there is only one section here.)
     whether it is** — and the test that catches it is the one that raises it the
     other way.
 
+
+104. **There is no elbow, so a held module always continues along its arm's
+    axis** — and that decides what a limbed Assembly can be shaped like far more
+    than any art decision will.
+
+    An Appendage's cells run from its shoulder along the axis the shoulder faces,
+    and Invariant I-3 admits no joint between parts, so the module in its hand
+    carries straight on in the same direction. Measured across all twenty-four
+    orientations against every shipped chassis: an arm hung off a flank at right
+    angles is a T-pose with its weapon pointing at the scenery, and an arm hung
+    downward beside the torso — the human rest pose — points its weapon at the
+    ground, where doc 01 §10.5's authored −20°/+40° of mount pitch can never
+    recover it.
+
+    **So the pose that looks right and the pose that works are different poses**,
+    and this is the trade every humanoid layout in this project runs into. A
+    shoulder at a front corner with the arm running forward alongside the hull is
+    the only arrangement that is both mounted at the sides and able to aim; it is
+    what `CombatArena.MELEE_ARMS` uses and it reads as a quadruped reaching
+    forward rather than as a person. The genuinely humanoid alternative — the Core
+    Module stood on end (orientation 20 carries `BACK` onto `UP`, giving a 6×9×4
+    torso), two limbs under it, shoulder brackets of `str.panel.medium.t2` on each
+    flank and arms hanging from their undersides — builds and validates, and its
+    blades point at the floor.
+
+    Two things to carry beyond the arms. **The Core Module may be placed rotated
+    and nothing forbids it**, which is a whole axis of silhouette nobody had used:
+    a chassis authored as a vehicle cabin becomes a torso for free. And a part set
+    with no bent members cannot express a bent pose, so a body plan that needs one
+    is a request for a *part*, not for a layout.
 ---
 
 ## 2. What fault injection taught
