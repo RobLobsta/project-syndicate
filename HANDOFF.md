@@ -165,11 +165,29 @@ Captured with `LEARNED_FACTS.md` §1 fact 55's route at 1600×900 through
 `--main-scene res://scenes/match/arena_basin.tscn`. The player is not driven,
 which is the case that used to get run over.
 
-**The tutorial is no longer an ambush, and that was the cheapest item on last
-session's list.** A first-time player now gets the card *and* a fight that waits
-for them: the opponent crosses the basin, stops in front of them, and opens fire
-when they put the card down by touching a control. A returning player sees a
-clear screen and is shot at immediately, which is right.
+**The tutorial is no longer an ambush, and the capture is an A/B.** Two runs of
+the identical route, one with `user://settings.cfg` deleted and one without,
+compared at the same frame — **frame 420, seven seconds in**:
+
+| | fresh install | returning player |
+|---|---|---|
+| Control card | up, seven rows | down |
+| Integrity | **100%** | **52%** |
+| Parts | 12 / 12 | **10 / 12** |
+| Event feed | empty | "Component 2 lost", "Component 3 lost" |
+
+The opponent is in both frames and is shooting in one of them. That is the rule
+working end to end, and last session's finding — 63% with a component gone at six
+seconds, on the frame that was supposed to be teaching — is closed.
+
+**What the same capture found instead: under sustained fire the screen turns
+brown.** §14.4's damage flash is a full-rect `ColorRect` that accumulates
+`FLASH_ALPHA_PER_PACKET = 0.06` per packet against a `FLASH_ALPHA_MAX` of 0.34
+and decays proportionally at 4.5 Hz, so an autocannon firing continuously pins it
+at the ceiling and holds it there. A 34% `DANGER` wash over the whole viewport is
+not a flash; it recolours the sky, the ground and the player's own build for as
+long as the fight lasts, and it is the difference between the two captures'
+palettes. §3.11.
 
 **A first-time player survives, can stop, park, reverse, and turn.** All four of
 the questions a person asks in the first thirty seconds have answers, and the
@@ -197,13 +215,17 @@ Ranked by what would most improve a first-time player's experience:
    measured rather than guessed: at 30 m the arm and the blade are gone at t=37.
    The edge itself works — it closes, holds contact, and cuts — so this is a
    build-and-encounter problem rather than a weapon one. §3.8.
-6. **The end card is drawn over nothing.** Unchanged. The orbit camera swings to
+6. **Sustained fire turns the whole screen brown.** New this session and found by
+   looking rather than by testing: §14.4's damage flash saturates and stays
+   saturated. Cheap, and it is the only thing in this list a player meets in
+   their first ten seconds. §3.11.
+7. **The end card is drawn over nothing.** Unchanged. The orbit camera swings to
    an empty field and the card floats on it.
-7. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator
+8. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator
    is the answer.
-8. **Nothing rewards a good build over a heavy one.** Unchanged.
-9. **Nothing in `src/combat/` knows what a team is.** §3.5.
-10. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
+9. **Nothing rewards a good build over a heavy one.** Unchanged.
+10. **Nothing in `src/combat/` knows what a team is.** §3.5.
+11. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
 
 **The bad news, plainly.** Four things.
 
@@ -501,6 +523,17 @@ lattice is integer and a wreck is not aligned to it), and a cap under I-12.
 
 ### 3.11 Smaller, and worth doing when passing
 
+- **§14.4's damage flash saturates and stays saturated.** `FLASH_ALPHA_PER_PACKET`
+  is 0.06 against a `FLASH_ALPHA_MAX` of 0.34 and the decay is proportional at
+  4.5 Hz, so any module firing faster than about ten rounds a second pins it — and
+  the shipped autocannon does. The capture shows a 34% `DANGER` wash over the
+  entire viewport for the whole engagement: the sky, the ground and the player's
+  own build all change colour, which is a state readout drawn as an atmosphere.
+  Three candidates and the first is probably right: **an edge vignette rather than
+  a full-rect fill**, so the periphery reddens and the world does not; a decay
+  that outruns the shipped cadence; or a per-hit pulse with no accumulator, which
+  loses the "how hard am I being hit" reading the accumulator is there for. Doc 11
+  §14.4 owns the constants and the shape.
 - **A destroyed part leaves no visible trace.** `release_part` takes its collider
   and mesh out the moment it dies, which is half of doc 08 §9.
   `VisualDamageController` is the other half and is unwritten — and it now has a

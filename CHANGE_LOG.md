@@ -122,6 +122,15 @@ assertion that was tempting: the target's peak speed is 2.76 m/s correct against
 build rams. What separates them cleanly is whether contact, once made, is ever
 lost: **0.03 m of re-opening against 5.15**.
 
+**Verified by looking, not only by the suite.** Two captures of fact 55's route,
+one with `user://settings.cfg` deleted and one without, compared at frame 420:
+fresh install **100% integrity, 12/12 parts, card up**; returning player **52%,
+10/12, two components lost**. The opponent is in both frames. That closes last
+session's finding and it turned up a new one: under sustained fire doc 11 §14.4's
+damage flash pins at `FLASH_ALPHA_MAX` and holds there, so the whole viewport —
+sky, ground and the player's own build — is washed 34% `DANGER` for the length of
+the engagement. `HANDOFF.md` §3.11 has the three candidate repairs.
+
 **Also:** `OrientationTable.first_carrying` — two fixtures needed to hang an arm
 off a hull and the answer is a property of the group; `CombatArena.tick_once` and
 `stand_down`, so a fixture whose subject is a per-tick law can sample between
