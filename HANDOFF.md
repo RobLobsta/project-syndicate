@@ -110,7 +110,7 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**99 files, 7725 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
+**100 files, 7760 checks, 0 failures**, in about 300 seconds — 14 s of reimport and
 the rest suite. Three files are most of it: `integration/test_screen_flow.gd` at
 82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
 at 30 s. The runner prints per-file timings; check before assuming where the cost
@@ -540,14 +540,15 @@ lattice is integer and a wreck is not aligned to it), and a cap under I-12.
 
 ### 3.11 Smaller, and worth doing when passing
 
-- **A rotary Assembly has no visual identity at all.** A capture of the shipped
-  rotary layout is three grey boxes: `mot.rotor.coaxial_mid.t3` renders as a
-  rectangular block like every other part, so nothing on screen says the machine
-  flies, and the same is true of a tracked bogie. Doc 13's proxy meshes and class
-  tints are the answer and are unbuilt; what makes this worth a line here rather
-  than in §4 is that **the greybox stage is what every player sees today**, and a
-  proxy that suggested a disc, a track run and a limb would cost one afternoon of
-  `ProxyMeshBuilder` work against an art pipeline nobody is going to run soon.
+- **The greybox now reads, and the next stage is articulation.** Doc 13 §2.1's
+  family proxies ship: a rotor is a mast, a hub and its authored blades out to
+  `disc_radius_m`; a limb is hip, thigh, shin and foot; a track is two runs and
+  its authored road wheels; a module is a breech and a barrel to its muzzle. What
+  is still missing is **movement within a part** — a limb is drawn as a leg and
+  swings as one rigid piece, because doc 05 §13.1 leaves the inverse-kinematics
+  chain unspecified. A two-segment IK knee under `VisualRoot` is the next thing
+  worth doing and needs no invariant change: I-3 is about physics bodies and a
+  visual chain is not one.
 - **§14.4's damage flash saturates and stays saturated.** `FLASH_ALPHA_PER_PACKET`
   is 0.06 against a `FLASH_ALPHA_MAX` of 0.34 and the decay is proportional at
   4.5 Hz, so any module firing faster than about ten rounds a second pins it — and

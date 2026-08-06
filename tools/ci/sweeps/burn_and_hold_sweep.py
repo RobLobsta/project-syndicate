@@ -66,7 +66,7 @@ HUD = "src/ui/hud/match_hud.gd"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7725
+BASELINE = 7760
 
 FAULTS = [
     # §15.5's stage rule: the edge recovers at the end of its arc whatever the

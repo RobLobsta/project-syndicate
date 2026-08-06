@@ -53,7 +53,7 @@ GAIT = "src/motion/gait_solver.gd"
 MOTIVE = "src/motion/motive_system.gd"
 FACTORY = "src/core/util/part_mesh_factory.gd"
 
-BASELINE = 7725
+BASELINE = 7760
 
 FAULTS = [
     # §16.4's one call site. Every mesh stays at its placement pose for the whole

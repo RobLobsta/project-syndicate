@@ -60,7 +60,7 @@ BLUEPRINT_TEST = "tests/unit/test_blueprint.gd"
 MATCH = "src/ui/match/match_screen.gd"
 ARENA = "tests/combat_arena.gd"
 
-BASELINE = 7725
+BASELINE = 7760
 
 FAULTS = [
     # The one line that decides what a first-time player is handed. The build is

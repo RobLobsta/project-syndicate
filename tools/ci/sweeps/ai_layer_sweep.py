@@ -75,7 +75,7 @@ GUN_TRES = "data/parts/eff/eff.ballistic.autocannon_30.t3.tres"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7725
+BASELINE = 7760
 
 FAULTS = [
     # §15.7.1's whole sign rule. Positive steer is right and a right turn is a

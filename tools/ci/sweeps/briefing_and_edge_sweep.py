@@ -71,7 +71,7 @@ EFFECTORS = "src/combat/effectors/effector_system.gd"
 # The check count at the commit this last ran clean. sweeplib measures the real
 # one and warns if this disagrees, so a stale value here is a printed warning
 # rather than a sweep that reports CAUGHT for everything.
-BASELINE = 7725
+BASELINE = 7760
 
 FAULTS = [
     # §15.7.4's third gate deleted: the opponent opens fire over the briefing.
