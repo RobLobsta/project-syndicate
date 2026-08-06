@@ -285,6 +285,21 @@ The rule is `LEARNED_FACTS.md` §3's and it has not changed: **re-measure and
 re-assert; never loosen.** Where a file asserts a defect as it stands, the
 measurement moves and the complaint stays.
 
+**The biped walks, and one thing about it does not work.** Measured through
+`tests/physics/test_biped_balance.gd`: it settles at **1.6° of tilt**, travels
+**5.32 m** on a full demand and **4.05 m the other way** on a negative one —
+against doc 05 §13.9's 0.01 m of reverse for the four-limbed family, which is
+§13.11's capture point doing the thing an authored gain could not.
+
+**It drifts 2.82 m in five seconds while standing still.** §13.10's re-plant
+reflex cut that from 4.45 m and did not close it, and the reason is structural:
+the ankle holds *attitude*, the reflex re-centres the *feet*, and nothing arrests
+residual horizontal *velocity* — the capture point only acts at touchdown, and a
+standing walker never touches down. Closing it is a third layer, a stepping
+reflex keyed on the capture point leaving the support polygon rather than on the
+hip leaving it, and it is doc 05 §13 architecture rather than a constant. It is
+the one assertion in that file left failing, asserted as it stands.
+
 **Every remaining failure is in `tests/physics/`.** Everything in `tests/unit/`,
 `tests/integration/` and `tests/arch/` is green, which is worth knowing: the data,
 the registry, the placement chain, the mass solver and the screen flow all agree

@@ -193,6 +193,22 @@ moment of acting is a fact that will be forgotten; the order is now in a script.
 **`tools/capture_vehicles.gd`/`.tscn`.** Fact 55's route, framed per vehicle, so
 CLAUDE.md §10 rule 18's proportion review has something to look at.
 
+**And it walks.** 1.6° of settled tilt, **5.32 m forward on a full demand and
+4.05 m back on a negative one**, against §13.9's 0.01 m of reverse for the
+four-limbed family. One assertion is left failing and asserted as it stands: it
+drifts **2.82 m in five seconds standing still**, because the ankle holds
+attitude and the re-plant reflex re-centres the feet but nothing arrests residual
+horizontal velocity — the capture point acts at touchdown and a standing walker
+never touches down.
+
+**A fixture fault worth recording, because it reads as a physics one.** The first
+drive measurement reported byte-identical displacement for opposite throttles,
+which reads exactly like a locomotion family ignoring its own input. It was
+`CombatArena.settle` zeroing throttle and steer before every step — it is the
+"put it down and leave it alone" helper — and `tick_once` overwriting them with
+the pilot's decisions. Neither can hold a demand across a window, so
+`step_once` is the third step helper and the reason it exists.
+
 **Where it ends.** 8069 checks, **27 failures across 12 files, every one of them
 in `tests/physics/`.** Everything in `tests/unit/`, `tests/integration/` and
 `tests/arch/` agrees with the rebuilt geometry — the data, the registry, the
