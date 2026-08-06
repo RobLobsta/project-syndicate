@@ -1012,7 +1012,7 @@ All tables below are the shipping baseline for Tier 2 (`STANDARD`) unless a tier
 
 The tables were written at a scale nothing had measured, and the measurement, when it was finally taken, was a picture. At `LATTICE_UNIT_M = 0.25` a 4×3×5 Core Module is 1.25 m long and a 4×4×9 Effector Module is 2.25 m: the weapon was **half the reference build's length and the cabin a quarter of it**, the whole Assembly was **46 kg/m³** of its bounding box — a fifth of balsa — and the axle stations had nowhere to go but under the middle of a five-cell chassis, which produced a 1.50 m wheelbase on a 4.25 m machine standing on two of its four contacts. Every validator in `tools/` passed, because a validator checks one part against its own schema and nothing in the repository compares one part against another (`LEARNED_FACTS.md` §1 fact 75).
 
-The **fourteen rows that are authored** have been rescaled against a Crossout medium cabin: `core.command.compact.t2` is 6×4×13 at 1800 kg, and the reference build is 3630 kg at 132 kg/m³ against a passenger car's 115, on a 3.00 m wheelbase, standing on all four contacts with a 48/52 static split.
+The **authored rows have been rescaled twice**, and the second pass is the one to read. Session 34 rescaled them against a Crossout medium cabin, which fixed the density and left every chassis the same 6×4 box. Session 44 rescaled them again against **five photographic references — a mid-engine road car, a protected utility truck, a tracked gun platform, a humanoid walking machine and a tandem-seat rotorcraft** — and this time the *section* moved, not only the mass. `core.command.compact.t2` is 8×4×14 at 1800 kg, and no two chassis in the registry are the same shape any more.
 
 **Every other row in §10 is still on the old scale.** They are a design table and not data; authoring one means rescaling it against the fourteen, not transcribing it. Three ratios are worth checking while doing it, all derivable from `occupancy_cells` and `mass_kg` with no engine at all: mass against bounding-box volume, module length against hull length, and cabin length against hull length.
 
@@ -1028,10 +1028,11 @@ Three joins are load-bearing when a mass moves, and each of them broke once duri
 
 | `part_key` | Cells (X×Y×Z) | Mass (kg) | Integrity | Armour | Power Cap (PU) | Mounts | Speed Cap (m/s) | Mass Tol. (kg) | Chassis mask |
 |---|---|---|---|---|---|---|---|---|---|
-| `core.command.compact.t2` | 6×4×13 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 | `CHASSIS_GROUND_TRANSITIONAL` |
-| `core.ambulatory.strider.t3` | 6×4×9 | 1350 | 3600 | 20 | 560 | 34 | 12.0 | 7400 | `CHASSIS_AMBULATORY` |
-| `core.rotary.lifter.t3` | 6×4×9 | 900 | 2400 | 10 | 640 | 26 | 34.0 | 5200 | `CHASSIS_ROTARY` |
-| `core.tracked.hauler.t3` | 6×4×9 | 1700 | 4600 | 26 | 500 | 30 | 14.0 | 9000 | `CHASSIS_TRACKED` |
+| `core.command.compact.t2` | 8×4×14 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 | `CHASSIS_GROUND_TRANSITIONAL` |
+| `core.utility.hauler.t2` | 10×6×20 | 3000 | 5200 | 24 | 560 | 32 | 18.0 | 8200 | `CHASSIS_WHEELED` |
+| `core.ambulatory.strider.t3` | 6×10×10 | 1800 | 3600 | 20 | 560 | 34 | 12.0 | 7400 | `CHASSIS_AMBULATORY` |
+| `core.rotary.lifter.t3` | 4×6×28 | 1100 | 2400 | 10 | 640 | 26 | 34.0 | 5200 | `CHASSIS_ROTARY` |
+| `core.tracked.hauler.t3` | 10×5×24 | 4200 | 4600 | 26 | 500 | 30 | 14.0 | 9000 | `CHASSIS_TRACKED` |
 | `core.command.balanced.t2` | 5×4×6 | 520 | 1900 | 22 | 310 | 34 | 21.0 | 4800 | `CHASSIS_WHEELED` |
 | `core.command.bastion.t3` | 6×5×7 | 780 | 2850 | 31 | 380 | 40 | 17.5 | 7200 | `CHASSIS_WHEELED` |
 | `core.command.skirmish.t3` | 4×3×4 | 300 | 1150 | 15 | 260 | 24 | 28.0 | 2900 | `CHASSIS_WHEELED` |
@@ -1039,19 +1040,35 @@ Three joins are load-bearing when a mass moves, and each of them broke once duri
 | `core.command.vanguard.t4` | 5×4×6 | 560 | 2350 | 27 | 460 | 38 | 25.5 | 5400 | `CHASSIS_WHEELED` |
 | `core.command.apex_prime.t5` | 6×5×7 | 820 | 3600 | 35 | 640 | 46 | 23.0 | 8600 | `CHASSIS_WHEELED` |
 
-The three authored rows are `core.command.compact.t2`, `core.ambulatory.strider.t3` and `core.rotary.lifter.t3`; the `core.command.*` rows below them are on the pre-rebuild scale this section opens with.
+The five authored rows are the first five; the `core.command.*` rows below them are on the pre-rebuild scale this section opens with.
 
-**The two family chassis are the command core's width and height and shorter along `Z`, and that is a decision.** Six by four is what puts an `AXLE` station on a flank and a deck four cells up, so every mount cell that hangs off a flank or sits on a roof is the same cell on all three; thirteen cells of length is what a wheelbase needs and neither of these families has one. Nine cells — 2.25 m — leaves a station at each end of an ambulatory stance and keeps a rotary hull's mass off the lever whose fulcrum is the disc line.
+#### The chassis no longer share a section, and that is the reversal
 
-The three read as a design triangle, and each figure is the family paying for what it gets:
+**Until session 44 all four authored chassis were 6×4 in section and differed only in length**, on the reading recorded here that six by four is what puts an `AXLE` station on a flank and a deck four cells up, so every mount cell is the same cell on all of them. That reading bought one real thing — a recipe cell list that ported between families — and cost the only property of a part table no validator can see: **each chassis was the same box, and the Assembly on top of it was the same silhouette with different running gear underneath.**
 
-| | Ground | Ambulatory | Rotary |
-|---|---|---|---|
-| Mass | 1800 kg | 1350 kg | **900 kg** — everything held up by thrust is lift the discs owe |
-| Armour / integrity | 18 / 4200 | **20 / 3600** — braced for the shock its own gait puts through it | **10 / 2400** — the softest chassis in the registry; a rotary build's defence is being somewhere else |
-| Mounts | 28 | **34** | 26 |
-| Speed cap | 24.0 m/s | **12.0 m/s** — a gait is a cadence, not a road speed | **34.0 m/s** |
-| Mass tolerance | 5300 kg | **7400 kg** — four limbs rated 4500 kg carry more than four contacts rated 1100 | 5200 kg |
+The rebuild is driven by five reference vehicles, and the section is the first thing every one of them disagrees about:
+
+| Chassis | Reference | Section (W×H) | Length | The proportion that forced it |
+|---|---|---|---|---|
+| `core.command.compact.t2` | mid-engine road car | 2.00 × 1.00 m | 3.50 m | **Height is a quarter of length.** A road car is defined by being low; the old 6×4×13 was 1.50 wide against a 4.00 m machine standing 2.75 m tall. |
+| `core.utility.hauler.t2` | protected utility truck | 2.50 × 1.50 m | 5.00 m | **Height equals width.** The one silhouette in the set that is as tall as it is wide, and it needs a section no road car would carry. |
+| `core.tracked.hauler.t3` | tracked gun platform | 2.50 × 1.25 m | 6.00 m | **Long and flat.** Twenty-four cells of hull so the track under it can be as long as it is — see §10.3. |
+| `core.ambulatory.strider.t3` | humanoid walking machine | 1.50 × 2.50 m | 2.50 m | **Two and a half times the height it had**, on the same footprint. A torso, not a hull — and see below for why it is not the reference's proportion. |
+| `core.rotary.lifter.t3` | tandem-seat rotorcraft | 1.00 × 1.50 m | 7.00 m | **Ten times longer than it is wide.** A fuselage sized for one seat abreast, with the length carried by a boom. |
+
+The cost is real and is paid knowingly: **a recipe cell list no longer ports between families**, so every layout in `tests/combat_arena.gd` and `StarterBlueprint` is derived against its own chassis's extents and each one says which. What is bought is that a person can tell the five apart in a single frame, which is the property `LEARNED_FACTS.md` §1 fact 75 says nothing in the repository can check and one capture answers immediately.
+
+The published figures still read as a design triangle, and each is the family paying for what it gets:
+
+| | Road | Utility | Tracked | Ambulatory | Rotary |
+|---|---|---|---|---|---|
+| Mass | 1800 kg | 3000 kg | **4200 kg** | 1800 kg | **1100 kg** — everything held up by thrust is lift the discs owe |
+| Armour / integrity | 18 / 4200 | 24 / 5200 | **26 / 4600** | **20 / 3600** — braced for the shock its own gait puts through it | **10 / 2400** — the softest chassis in the registry; a rotary build's defence is being somewhere else |
+| Mounts | 28 | 32 | 30 | **34** | 26 |
+| Speed cap | 24.0 m/s | 18.0 m/s | 14.0 m/s | **12.0 m/s** — a gait is a cadence, not a road speed | **34.0 m/s** |
+| Mass tolerance | 5300 kg | 8200 kg | 9000 kg | **7400 kg** — four limbs rated 4500 kg carry more than four contacts rated 1100 | 5200 kg |
+
+**`core.tracked.hauler.t3` is 4200 kg against the 1700 it published**, and that is the section change rather than a balance one: 2.50 × 1.25 × 6.00 m is 18.75 m³ where 1.50 × 1.00 × 2.25 was 3.38, so 1700 kg on the new hull would be 91 kg/m³ — a tracked gun platform built out of expanded foam. 4200 kg is 224 kg/m³, above the road chassis's 257 and the airframe's 105, which is the ordering a hull of mostly armour and running gear should have against a cabin and against a loaded spine.
 
 The mount budget is the figure that changes a build rather than a number on a card. Four limbs cost four mounts apiece and their stations one each; against twenty-eight that left two, and an Energy Cell costs three, so a walking Assembly could not carry supply at all. `tests/combat_arena.gd` recorded that as a constraint of the shipped part set. It was a constraint of the wheeled chassis it was borrowing.
 
@@ -1090,17 +1107,18 @@ The mount budget is the figure that changes a build rather than a number on a ca
 
 | `part_key` | Kind | Cells | Mass (kg) | Integrity | Rated Load (kg) | Traction | Steer (°) | Susp. k (N/m) | Susp. c (Ns/m) |
 |---|---|---|---|---|---|---|---|---|---|
-| `mot.wheeled.light_road.t1` | `WHEELED_STEERED` | 3×3×2 | 42 | 210 | 380 | 1.18 | 34 | 30000 | 2400 |
+| `mot.wheeled.light_road.t1` | `WHEELED_STEERED` | 3×3×2 | 78 | 240 | 950 | **0.78** | 34 | 116000 | 9400 |
+| `mot.wheeled.light_fixed.t1` | `WHEELED_FIXED` | 3×3×2 | 74 | 250 | 1000 | **0.80** | 0 | 121000 | 9700 |
 | `mot.wheeled.allroad.t2` | `WHEELED_STEERED` | 4×4×2 | 110 | 340 | 1100 | **0.78** | 32 | 134000 | 10900 |
 | `mot.wheeled.offroad_heavy.t3` | `WHEELED_STEERED` | 5×5×3 | 124 | 610 | 1180 | 0.96 | 28 | 68000 | 5200 |
 | `mot.wheeled.fixed_rear.t2` | `WHEELED_FIXED` | 4×4×2 | 105 | 355 | 1200 | **0.80** | 0 | 140000 | 11200 |
 | `mot.wheeled.armoured.t4` | `WHEELED_STEERED` | 5×5×3 | 168 | 1050 | 1320 | 0.91 | 24 | 74000 | 5900 |
 | `mot.tracked.short_bogie.t2` | `TRACKED_SEGMENT` | 8×4×3 | 672 | 900 | 6700 | **0.95** | 0 | 88000 | 7600 |
-| `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 12×4×3 | 320 | 1420 | 3400 | 1.41 | 0 | 112000 | 9800 |
+| `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 24×4×3 | 1450 | 1420 | 11000 | **0.95** | 0 | 132000 | 11400 |
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
-| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×5×3 | 592 | 720 | 4500 | 1.22 | 45 | 307000 | 38400 |
+| `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×7×3 | 700 | 720 | 4500 | 1.22 | 45 | 340000 | 42500 |
 | `mot.repulsor.pad.t5` | `REPULSOR_PAD` | 5×2×5 | 140 | 480 | 1600 | 0.72 | 0 | 26000 | 8800 |
-| `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 848 | 690 | 8300 | 0.00 | 0 | 0 | 0 |
+| `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 500 | 690 | **2893** | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.coaxial_heavy.t4` | `ROTOR_DISC` | 5×7×5 | 410 | 1010 | 4400 | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.main_single.t3` | `ROTOR_DISC` | 4×6×4 | 210 | 620 | 2200 | 0.00 | 0 | 0 | 0 |
 | `mot.limb.strider.t3` | `AMBULATORY_LIMB` | 3×4×3 | 132 | 500 | 980 | 1.18 | 42 | 68000 | 8600 |
@@ -1109,15 +1127,19 @@ The four zero columns on the rotary rows are not omissions. A `ROTOR_DISC` has n
 
 | `part_key` | Disc R (m) | Blades | Ω (rad/s) | C_T | C_Q | Collective (°) | Cyclic (°) | Reaction | Yaw (N·m) | Draw (PU) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `mot.rotor.coaxial_mid.t3` | 2.60 | 4 | 85.0 | 0.0638 | 0.0024 | −4 … 14 | 14 | 0.00 | 9600 | 150 |
+| `mot.rotor.coaxial_mid.t3` | **2.00** | 4 | 85.0 | 0.0638 | 0.0024 | −4 … 14 | 14 | 0.00 | 9600 | **40** |
 | `mot.rotor.coaxial_heavy.t4` | 3.40 | 6 | 65.0 | 0.020 | 0.0024 | −4 … 15 | 12 | 0.00 | 15400 | 196 |
 | `mot.rotor.main_single.t3` | 3.10 | 3 | 55.0 | 0.020 | 0.0024 | −5 … 15 | 18 | 1.00 | 0 | 98 |
 
 **These numbers are derived, not chosen, and the derivation is a validator rule.** `DYNAMIC_MASS_PHYSICS.md` §12.2 computes maximum thrust as `T = C_T · ρ · A · (Ω R)²` with `A = π R²`. Every row above is solved so that `T` at full collective equals the row's `rated_load_kg × g` to within 1%, which is what §14 rule 19 checks. A rotor that cannot lift its own rating is a data error that would present as an Assembly which simply refuses to leave the ground, with nothing in the logs, so it is checked rather than trusted.
 
-Working the mid disc through: `A = π(2.6)² = 21.24 m²`, tip speed `ΩR = 85 × 2.6 = 221 m/s`, so `T = 0.020 × 1.225 × 21.24 × 221² = 25 410 N`, against `2600 × 9.81 = 25 506 N`. The tip speed of 221 m/s is not a coincidence either — it is where a real rotor lives, below the transonic blade tip, and all three rows share it. They also share `C_T`, which means they share a disc loading of `1200 N/m²`; that is about 2.7× a real utility helicopter and is the one deliberate departure from reality in the family, bought so that a rotor fits inside a 12 m Build Lattice.
+Working the mid disc through at its rebuilt radius: `A = π(2.0)² = 12.566 m²`, tip speed `ΩR = 85 × 2.0 = 170 m/s`, so `T = 0.0638 × 1.225 × 12.566 × 170² = 28 383 N`, against `2893 × 9.81 = 28 380 N`.
 
-`C_Q = 0.0024` follows from `C_T` rather than being independent: momentum theory gives induced velocity `v_i = sqrt(T / 2ρA) = 22.1 m/s`, so ideal `C_Q = C_T · v_i / (ΩR) = 0.0020`, and the shipping value carries 20% on top for profile power. Because the three rows share a disc loading they share `v_i`, and therefore share `C_Q` exactly.
+**The radius went 2.60 → 2.00 m for a proportion, and thrust goes as `R⁴`, which is the trap in doing it.** `A` carries `R²` and `(ΩR)²` carries another two, so a 23% cut in radius is a **65% cut in lift** — 8300 kg of rating down to 2893. The reference rotorcraft is a 10.7 m airframe carrying two discs of about 0.45 its length each, and 2.60 m discs on the 7.00 m fuselage of `core.rotary.lifter.t3` are 0.74 of it: a machine that reads as two rotors with a stick between them. The lift that buys back is the reason `core.rotary.lifter.t3` is a 1100 kg airframe and the rotary recipe carries no armour it does not need — a pair of these lifts 5786 kg and the recipe masses about 3800.
+
+Ω is held at 85 rad/s rather than raised to recover the lift, and that is not an oversight: 170 m/s is a *low* tip speed where 221 was a realistic one, and taking Ω up to 110 to hold `ΩR` at 221 would put the rating back near 4900 kg. It is left low because the disc loading falls with it — `T/A` is 2258 N/m² against the old 3818 — and a lightly loaded disc is the one that hovers stably on a small airframe.
+
+`C_Q = 0.0024` follows from `C_T` rather than being independent: momentum theory gives induced velocity `v_i = sqrt(T / 2ρA)`, so ideal `C_Q = C_T · v_i / (ΩR)`, and the shipping value carries 20% on top for profile power. That ratio is preserved under the radius change rather than surviving it by luck — `v_i` and `ΩR` both scale as `R`, so `C_Q` is unchanged at 2.00 m as it was at 2.60, and the mid disc's draw falls from 150 PU to 40 for the same reason its thrust does. The two unauthored rows still share the old disc loading with each other.
 
 The `Draw (PU)` column is `shaft_power / ROTOR_W_PER_PU` at full collective, with the constant owned by doc 05 §12.5. It is stored on the definition's `power_draw_pu` as the **full-collective** figure so that the garage's power budget is conservative: an Assembly that balances on paper can always hover.
 
@@ -1132,9 +1154,17 @@ Tracked rows carry the ground columns, and their `Steer (°)` of zero is require
 | `part_key` | Patch (m) | Stations | Sprocket (rad/s) | Diff. auth. | Pivot taper (m/s) | Slew resist. | Lateral grip | Internal loss |
 |---|---|---|---|---|---|---|---|---|
 | `mot.tracked.short_bogie.t2` | 1.90 | 4 | 22.0 | 1.00 | 9.0 | 0.42 | 1.35 | 0.08 |
-| `mot.tracked.long_bogie.t3` | 2.90 | 6 | 19.0 | 0.85 | 7.0 | 0.51 | 1.48 | 0.10 |
+| `mot.tracked.long_bogie.t3` | 5.60 | 6 | 19.0 | 0.85 | **16.0** | 0.51 | **0.85** | 0.10 |
 
-The long bogie is the deliberate trade and reads directly off the row: more patch and more stations buy it grip (`1.48` lateral against `1.35`) and the ability to bridge a wider gap, and cost it agility (`0.85` authority against `1.00`, tapering to nothing by 7 m/s instead of 9) and efficiency (`0.10` internal loss against `0.08`). A short-bogie Assembly pivots and darts; a long-bogie one holds a line and does not care what it drives over. Both are `TRACKED_SEGMENT` and neither needs a line of code the other does not.
+The long bogie is the deliberate trade and reads directly off the row: more patch and more stations buy it load (11 000 kg against 6700) and the ability to bridge a gap, and cost it a pivot (`0.85` differential authority against `1.00`) and efficiency (`0.10` internal loss against `0.08`). A short-bogie Assembly pivots and darts; a long-bogie one holds a line and does not care what it drives over.
+
+**Three of its figures are not a trade and are the repair of a family, and each one is a defect this table published.**
+
+- **`patch_length_m` is 5.60 m against a 6.00 m hull.** The short bogie ran 1.90 m under a hull that was 3.25 m and then 2.25 m, so a tracked Assembly was a hull see-sawing on a base shorter than itself: measured at rest it sat 8.1° nose-up with its two forward road stations carrying nothing and spiked a single station to 35 kN as the bogie bottomed out. `HANDOFF.md` §3.1.2 named a bogie longer than the hull as the one change that makes the rest tractable, and this is that change. The reference photograph is unambiguous about it — six road wheels running the full length of the hull, with the idler and the sprocket at the two ends.
+- **`pivot_taper_mps` is 16.0, not the 7.0 the row published.** The taper is the speed at which differential drive has decayed to nothing, and at 9.0 the short bogie was down to a third of its differential by 6 m/s, which is why full lock yawed a tracked build 0.03 rad/s — it could not turn at any speed a player drives at. A long bogie resists a pivot *more* than a short one, so tapering it *sooner* would have made an unsteerable machine unsteerable at a lower speed.
+- **`lateral_grip_ratio` is 0.85, below 1.0 and below the short bogie's 1.35.** A tracked vehicle steers by breaking its patch loose sideways, so a patch with **more** lateral grip than longitudinal is the wrong way round for the mechanism — and the longer the patch, the more wrong. `HANDOFF.md` §3.1.2 item 3 raised this as a question; the reference vehicle answers it, because a six-wheel run that gripped sideways harder than it drove forward could not execute the neutral turn the machine is built to do.
+
+These three are `balance-review` and they move together. Any one of them alone leaves the family in a different broken state: a long patch with the old taper is a machine that cannot turn at all, and a corrected taper on a short patch is a machine that pivots while still see-sawing.
 
 `slew_resistance_nm_per_n_m` scales with patch length *and* with normal load, so the resistance to turning is `k · L · N`. That product is the whole reason a heavy tracked Assembly is committed once it is moving: doubling the armour doubles the torque required to change heading, and there is no steering input that can overcome it. This is the failure mode a `bastion` build is supposed to have.
 
@@ -1143,7 +1173,13 @@ Ambulatory rows carry the ground columns because a foot genuinely has a friction
 | `part_key` | Leg (m) | Duty | Cadence (Hz) | Max step (m) | Step height (m) | Foot force (N) | Turn (°/s) |
 |---|---|---|---|---|---|---|---|
 | `mot.limb.strider.t3` | 1.62 | 0.64 | 1.15 | 0.92 | 0.29 | 30000 | 42 |
-| `mot.limb.strider.t4` | 1.90 | 0.62 | 1.05 | 1.10 | 0.34 | 42000 | 45 |
+| `mot.limb.strider.t4` | **2.60** | 0.62 | 1.05 | **1.50** | **0.46** | **52000** | 45 |
+
+**`mot.limb.strider.t4`'s reach went 1.90 → 2.60 m, and the ceiling on it is the stance base rather than the part.** The humanoid reference is half legs: measured off the artwork, hip-to-sole is 0.50 of overall height and the torso a further 0.24. The shipped limb gave 1.63 m of stance height under a 1.00 m hull — a body slung *between* legs the way a car body is slung between wheels, which is what `HANDOFF.md` §3.1.3 means when it says a walker is not a car with legs.
+
+The reference's ratio wants 3.10 m of reach, and §10.1's `core.ambulatory.strider.t3` entry has the reason it is not authored there: `DYNAMIC_MASS_PHYSICS.md` §13's virtual leg is one spring-damper force along the hip-to-foot line with a **point foot**, so fore-and-aft foot separation is the only pitch stability an ambulatory Assembly has. A taller hip over the same stance is a longer lever on the same base. 2.24 m of hip over the family's measured 1.50 m stance is 0.67; the shipped build was 0.92, and below about this the machine is being asked to balance rather than to walk.
+
+`max_step_length_m` and `step_height_m` scale with the reach rather than being free: a leg that reaches 3.10 m and steps 1.10 is mincing, and the step height has to clear the foot's own swing arc. Both are `0.58` and `0.177` of `leg_length_m`, which are the shipped `t4` ratios carried forward unchanged. `max_foot_force_n` scales with the mass the stance carries — the rebuild puts about 700 kg more on four limbs — and `stance_stiffness_n_m` with it.
 
 A `duty_factor` above `0.5` means more than half the gait cycle is spent in stance, so a two-limbed Assembly always has at least one foot planted and never leaves the ground. This is what makes a biped tractable under Invariant I-3: the chassis is one rigid body held up by whichever feet are currently in stance, and there is never a tick with no support. Duty factors below `0.5` describe a run with a flight phase and are outside the shipping set — not because the solver cannot express one, but because a flight phase makes support intermittent and the tuning is a separate piece of work.
 
@@ -1153,8 +1189,13 @@ A `duty_factor` above `0.5` means more than half the gait cycle is spent in stan
 |---|---|---|---|---|---|---|---|---|---|
 | `pmv.combustion.compact.t1` | 3×3×4 | 95 | 260 | 1900 | 4600 | 90 | 5.2 | 3.0 | 210 |
 | `pmv.combustion.standard.t2` | 4×4×6 | 620 | 420 | 6400 | 5200 | 150 | 7.4 | 4.2 | 380 |
+| `pmv.combustion.flat.t2` | 8×4×6 | 620 | 420 | 6400 | 5200 | 150 | 7.4 | 4.2 | 380 |
 | `pmv.combustion.forced.t3` | 5×4×6 | 240 | 610 | 5100 | 6100 | 215 | 11.8 | 5.4 | 620 |
 | `pmv.turbine.axial.t4` | 5×4×7 | 285 | 700 | 6800 | 8800 | 300 | 16.5 | 6.1 | 880 |
+
+**`pmv.combustion.flat.t2` is `pmv.combustion.standard.t2` laid on its side, and every published figure is identical.** Same mass, same torque, same supply, same heat, same blast — 8×4×6 against 4×4×6 is the *same twenty-four cells of section* rearranged from a 1.00 m square into a 2.00 × 1.00 m slab, and a part table that charged differently for the two would be pricing the orientation rather than the machine.
+
+It exists because of what a mount does to a silhouette. Every Prime Mover in the shipping set is placed on a chassis deck, so its height is added to the hull's, and the road chassis is 1.00 m tall: a 1.00 m mover on its roof doubles the height of the vehicle and turns a mid-engine road car into a pickup. Mated instead to the hull's `+Z` face at deck level, the flat row is the engine bay *behind the cabin* — it adds 1.50 m of length and no height at all, which is what the reference car does with the same volume. §14 rule 27's parity argument applies here too and for once helps: eight cells is even, so a flat mover centres on an even-width hull exactly.
 
 Energy Cells make no torque and have no shaft, so the torque and RPM columns are gone rather than zeroed:
 
@@ -1195,7 +1236,7 @@ change worth shipping. The finding is recorded; the decision is open.
 | `eff.ballistic.repeater_12.t2` | `BALLISTIC_DIRECT` | 4×2×5 | 150 | 260 | 26 | 0.075 | 860 | 26 | 1.9 |
 | `eff.ballistic.autocannon_20.t2` | `BALLISTIC_DIRECT` | 4×3×7 | 118 | 340 | 42 | 0.11 | 880 | 980 | 5.4 |
 | `eff.ballistic.autocannon_30.t3` | `BALLISTIC_DIRECT` | 4×3×7 | 420 | 480 | 68 | 0.14 | 940 | 1450 | 7.5 |
-| `eff.ballistic.rifle_long.t3` | `BALLISTIC_DIRECT` | 4×3×12 | 165 | 400 | 55 | 1.35 | 1180 | 4200 | 14.0 |
+| `eff.ballistic.rifle_long.t3` | `BALLISTIC_DIRECT` | 4×3×24 | 2600 | 900 | 55 | 3.00 | 1180 | 5000 | 14.0 |
 | `eff.ballistic.scatter_short.t2` | `BALLISTIC_DIRECT` | 4×3×5 | 88 | 300 | 30 | 0.72 | 460 | 2600 | 9.2 |
 | `eff.arced.mortar_medium.t3` | `BALLISTIC_ARCED` | 5×5×5 | 210 | 420 | 60 | 2.10 | 190 | 3100 | 12.5 |
 | `eff.beam.emitter_mid.t4` | `CONTINUOUS_BEAM` | 4×4×6 | 175 | 380 | 130 | 0.05 | 0 | 0 | 18.0 |
@@ -1205,6 +1246,14 @@ change worth shipping. The finding is recorded; the decision is open.
 | `eff.melee.rotor_blade.t4` | `KINETIC_MELEE` | 6×4×3 | 245 | 1300 | 90 | 0.00 | 0 | 0 | 4.5 |
 | `eff.melee.beam_edge.t3` | `ENERGY_MELEE` | 3×3×6 | 68 | 290 | 98 | 0.00 | 0 | 0 | 8.0 |
 | `eff.melee.beam_edge.t4` | `ENERGY_MELEE` | 3×3×8 | 307 | 420 | 145 | 0.00 | 0 | 0 | 11.0 |
+
+#### `eff.ballistic.rifle_long.t3` is the tracked family's gun, and it is mostly barrel
+
+Twenty-four cells is **6.00 m**, which is the length of the hull it is mounted on and about 3.00 m of overhang past the nose. That is not an exaggeration for effect: it is measured off the reference photograph, where the barrel from mantlet to muzzle is roughly `0.85` of hull length and the overhang past the glacis is roughly `0.55` of it. A tracked gun platform whose gun does not reach past its own front is the one silhouette in the set nobody would recognise, and the shipped `eff.ballistic.autocannon_30.t3` at seven cells is exactly that.
+
+The mass follows the length rather than the calibre: 2600 kg for a gun that is a quarter of the Assembly it sits on, against the autocannon's 420. **This is the row where §10's opening warning bites hardest** — the table published 165 kg for a 3.00 m weapon, which is a scaffolding pole, and doubling the length while leaving the mass would have produced a 6.00 m gun massing less than one of the wheels on the car. It is also the reason the cycle time went 1.35 s → 3.00 s and the integrity 400 → 900: a single-shot gun this size is a different weapon from the one the row described, and pretending otherwise would have handed the tracked family a three-round-a-second 5000 N·s cannon.
+
+The recoil is 5000 N·s rather than the tabled 4200, and the important half of that number is where it is applied. `WEAPON_TARGETING_LOGIC.md` §8 puts the impulse at the **muzzle**, so a gun this long fired at any traverse has an enormous lever: the same round that is a 0.30 rad/s pitch rock dead ahead is several times that across the beam. That is correct behaviour for the weapon and it is a build constraint on whoever mounts it, exactly as the autocannon's is.
 
 **Every `BALLISTIC_DIRECT` row is even-width, and §14 rule 27 requires it.** The
 `autocannon_30` was authored at 5×4×9 and is the reason the rule exists. A Core
@@ -1412,7 +1461,7 @@ Defined in `HEADLESS_NETWORK_SYNC.md` §5. `PART_DATA_SCHEMA.md` fixes only the 
 2. `part_key` is absent from `registry_manifest.tres`, or the manifest order changed.
 3. `occupancy_cells` does not contain `Vector3i(0,0,0)`.
 4. `occupancy_cells` contains duplicates, or is not 6-connected (a part must be a single contiguous solid).
-5. `occupancy_cells` extent exceeds `Vector3i(16, 16, 16)`.
+5. `occupancy_cells` extent exceeds **two thirds of `LATTICE_EXTENT` on any axis** — `Vector3i(32, 21, 32)` at the shipping lattice. The figure was a flat `Vector3i(16, 16, 16)` and the reason given for it — that a larger part "would not fit the lattice with room to mate on both sides" — was true of a number three times bigger. What 16 cells actually did was cap every part at 4.00 m, which nobody noticed while every chassis in the registry was 2.25 m long, and which §10.1's five reference vehicles all break. The rule is real and the figure was not: two thirds is a **design** bound rather than a packing one, because a part occupying a whole axis would be the vehicle, and an Assembly assembled from one part is not an Assembly. A third of every axis is left for whatever has to be built around the largest part on it.
 6. The class-specific profile does not match `part_class`, or more than one profile is non-null.
 7. `resistance` has a length other than `DAMAGE_CHANNEL_COUNT`, or any element is outside `[0.0, 0.85]`.
 8. `collider_profile` violates any rule in §6.2.

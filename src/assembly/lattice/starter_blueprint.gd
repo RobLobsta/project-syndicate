@@ -16,15 +16,24 @@ extends RefCounted
 ## [i]deliberate[/i] second copy CLAUDE.md §1.1 tolerates. A third would not be.
 
 ## ===== THE SKIRMISHER ==================================================
-## A wheeled build: a Core Module, a Prime Mover, an Energy Cell, a rapid-fire
-## Effector Module on the nose, and four contacts on four stations. Integer
-## coordinates throughout (Invariant I-6).
+## A mid-engine road car: a Core Module, a Prime Mover behind the cabin, a
+## rapid-fire Effector Module on the rear deck, and four contacts on four
+## stations. Integer coordinates throughout (Invariant I-6).
 
 const CORE_KEY: StringName = &"core.command.compact.t2"
 const HUB_KEY: StringName = &"str.hub.axle_station.t2"
-const WHEEL_KEY: StringName = &"mot.wheeled.allroad.t2"
-const REAR_KEY: StringName = &"mot.wheeled.fixed_rear.t2"
-const POWER_KEY: StringName = &"pmv.combustion.standard.t2"
+## The 0.75 m contacts. Doc 01 §10.3 sizes them off the reference road car, whose
+## wheel is 0.15 of its own length; `mot.wheeled.allroad.t2` at 1.00 m is 0.20 of
+## this machine and is the utility truck's contact rather than this one's.
+const WHEEL_KEY: StringName = &"mot.wheeled.light_road.t1"
+const REAR_KEY: StringName = &"mot.wheeled.light_fixed.t1"
+## `pmv.combustion.flat.t2` rather than `pmv.combustion.standard.t2`, and the two
+## are the same twenty-four cells of section with identical published figures
+## (doc 01 §10.4). What differs is where it can go: the square row is 1.00 m tall
+## and has to stand on the deck of a 1.00 m hull, which doubles the height of the
+## vehicle and makes a mid-engine road car read as a pickup. The flat row mates to
+## the hull's tail at deck level and is the engine bay behind the cabin.
+const POWER_KEY: StringName = &"pmv.combustion.flat.t2"
 const CELL_KEY: StringName = &"cel.static.standard.t3"
 ## `eff.ballistic.repeater_12.t2` rather than `eff.ballistic.autocannon_30.t3`,
 ## and this one line is most of what a first-time player feels.
@@ -41,39 +50,43 @@ const CELL_KEY: StringName = &"cel.static.standard.t3"
 ## know what a mount does.
 const EFFECTOR_KEY: StringName = &"eff.ballistic.repeater_12.t2"
 
-## The Core Module spans `z` 18–30 and `x` 21–26, which is the fact every cell
-## below is placed against. It used to span five cells of `z`, and everything
-## wrong with the shipped stance followed from that: the stations had nowhere to
-## go but under the middle of it, so the wheelbase was 1.50 m on a 4.25 m machine
-## and the Effector Module hung a metre past the front axle.
+## The Core Module spans `x` 20–27, `y` 4–7 and `z` 17–30, which is the fact every
+## cell below is placed against.
+##
+## [b]It is a mid-engine road car now, and the shape is measured rather than
+## chosen.[/b] Doc 01 §10.1 derives 8×4×14 — 2.00 m by 1.00 m by 3.50 m — from a
+## reference whose height is 0.26 of its length and whose width is 0.42 of it. The
+## hull it replaces was 6×4×13 and produced a finished Assembly about 2.75 m tall
+## on a 4.00 m footprint, which is a ratio of 0.69: the right density and the
+## wrong machine.
 const CORE_CELL := Vector3i(24, 4, 24)
-## On the deck, over the rear half of the cabin. The deck is `y = 8` now that the
-## Core Module is four cells tall.
-const POWER_CELL := Vector3i(24, 8, 28)
-## In the tail, mating to the Core Module's `+Z` face.
-const CELL_CELL := Vector3i(24, 4, 33)
-## On the roof rather than on the nose, which the thirteen-cell cabin is what
-## makes possible. What decides whether a round flips the shipped chassis is not
-## the impulse alone but the height of the muzzle above the centre of mass,
-## because the fore-aft offset is parallel to the recoil and contributes no
-## moment at all — and a mount over the front of a 3.25 m hull is barely further
-## from the centre of mass vertically than one hung off its nose was, while being
-## 1.12 m less of a cantilever fore and aft.
-const EFFECTOR_CELL := Vector3i(24, 8, 24)
+## Behind the cabin at deck level rather than on the roof, which is the whole of
+## why this reads as a car. See [constant POWER_KEY].
+const POWER_CELL := Vector3i(24, 4, 34)
+## In the tail behind the engine bay, for a build that wants supply.
+const CELL_CELL := Vector3i(24, 4, 39)
+## On the rear deck, over the cabin's back half. What decides whether a round
+## flips the chassis is not the impulse alone but the height of the muzzle above
+## the centre of mass, because the fore-aft offset is parallel to the recoil and
+## contributes no moment at all — so a mount at the Core Module's own height
+## costs a rock rather than a backflip.
+const EFFECTOR_CELL := Vector3i(24, 8, 29)
 
-## The stations reach the ends of the cabin: `z` 19 and 30 against a hull that
-## spans 18 to 30. With the contacts hung off their outboard faces that is a
-## 3.00 m wheelbase under a 4.00 m machine, and a 48/52 static split.
+## The stations sit inboard of the two flanks at `x` 20–21 and 26–27, under the
+## cabin's two ends at `z` 18–19 and 28–29. That is a 2.50 m wheelbase under a
+## 5.00 m machine — 50%, against the reference's 58%.
 const HUB_CELLS: Array[Vector3i] = [
-	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
+	Vector3i(21, 2, 19), Vector3i(27, 2, 19), Vector3i(21, 2, 29), Vector3i(27, 2, 29)
 ]
-## The right flank's cells sit one forward of the left's, which looks like a
-## mirror off-by-one and is not: doc 02 §10's mirror is correct and the disc's
-## pivot is off-centre, so cells that are symmetric are metres that are not. See
-## `test_the_shipped_starter_is_its_own_mirror`, which fails the moment these are
-## squared up.
+## [b]The two flanks are square with each other, and they did not use to be.[/b]
+## `mot.wheeled.allroad.t2` is four cells across so its local extent runs −2..1
+## and is off-centre by one; mirroring it shifted its world span by a cell, and
+## these cells carried a one-cell offset between flanks with a comment insisting
+## it was not doc 02 §10's old off-by-one. `mot.wheeled.light_road.t1` is three
+## across — −1..1, symmetric — so the mirror is exact and both flanks take the
+## same `z`. `test_the_shipped_starter_is_its_own_mirror` still guards it.
 const CONTACT_CELLS: Array[Vector3i] = [
-	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
+	Vector3i(18, 3, 19), Vector3i(18, 3, 29), Vector3i(29, 3, 19), Vector3i(29, 3, 29)
 ]
 ## Contacts forward of this row steer; the pair behind it is fixed. An Assembly
 ## on which every contact steers crabs instead of turning; see CHANGE_LOG.md,

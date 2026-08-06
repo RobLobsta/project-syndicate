@@ -15,7 +15,7 @@ extends TestCase
 ## §10.1 and §10.2, quoted. A change to either table must be made here too, in
 ## the same commit, or this test is the thing that says so.
 const CORE_KEY: StringName = &"core.command.compact.t2"
-const CORE_CELLS: Vector3i = Vector3i(6, 4, 13)
+const CORE_CELLS: Vector3i = Vector3i(8, 4, 14)
 const CORE_MASS_KG: float = 1800.0
 const CORE_INTEGRITY: float = 4200.0
 const CORE_ARMOUR: float = 18.0
@@ -25,13 +25,20 @@ const CORE_SPEED_CAP_MPS: float = 24.0
 const CORE_MASS_TOLERANCE_KG: float = 5300.0
 const CORE_RESISTANCE: Array[float] = [0.15, 0.20, 0.25, 0.10, 0.05]
 
-## §10.1's two family-locked chassis, quoted. Both are 6x4x9 — the command
-## core's section, shorter along Z — which is what keeps every flank and deck
-## mount cell the same on all three.
+## §10.1's two family-locked chassis, quoted.
+##
+## [b]They no longer share a section, and the section is the assertion worth
+## having.[/b] Both were 6x4x9 — the command core's box, shorter along Z — on the
+## reading that a shared section keeps every flank and deck mount cell the same
+## across families. §10.1 records why that was reversed in session 44: a walking
+## torso is taller than it is long and a rotorcraft fuselage is ten times longer
+## than it is wide, and one box expresses neither. Each is quoted separately
+## below, because a shared constant is exactly how the two silently converged.
 const STRIDER_KEY: StringName = &"core.ambulatory.strider.t3"
 const LIFTER_KEY: StringName = &"core.rotary.lifter.t3"
-const FAMILY_CHASSIS_CELLS: Vector3i = Vector3i(6, 4, 9)
-const STRIDER_MASS_KG: float = 1350.0
+const STRIDER_CELLS: Vector3i = Vector3i(6, 10, 10)
+const LIFTER_CELLS: Vector3i = Vector3i(4, 6, 28)
+const STRIDER_MASS_KG: float = 1800.0
 const STRIDER_INTEGRITY: float = 3600.0
 const STRIDER_ARMOUR: float = 20.0
 const STRIDER_POWER_CAPACITY_PU: float = 560.0
@@ -39,7 +46,7 @@ const STRIDER_MOUNT_BUDGET: int = 34
 const STRIDER_SPEED_CAP_MPS: float = 12.0
 const STRIDER_MASS_TOLERANCE_KG: float = 7400.0
 const STRIDER_RESISTANCE: Array[float] = [0.18, 0.16, 0.30, 0.10, 0.05]
-const LIFTER_MASS_KG: float = 900.0
+const LIFTER_MASS_KG: float = 1100.0
 const LIFTER_INTEGRITY: float = 2400.0
 const LIFTER_ARMOUR: float = 10.0
 const LIFTER_POWER_CAPACITY_PU: float = 640.0
@@ -57,8 +64,8 @@ const PANEL_LOAD_CAPACITY_KG: float = 1560.0
 const PANEL_RESISTANCE: Array[float] = [0.18, 0.10, 0.20, 0.05, 0.05]
 
 ## Exposed cell faces of a solid box, which is what both parts are. The Core
-## Module's 6x4x13 gives 2*(6*4 + 4*13 + 6*13) = 308; the panel's 4x1x4 gives 48.
-const CORE_NODE_COUNT: int = 308
+## Module's 8x4x14 gives 2*(8*4 + 4*14 + 8*14) = 400; the panel's 4x1x4 gives 48.
+const CORE_NODE_COUNT: int = 400
 const PANEL_NODE_COUNT: int = 48
 
 var _validator: PartRegistryValidator = null
@@ -129,6 +136,16 @@ const SHIPPED_KEYS: Array[String] = [
 	"core.ambulatory.strider.t3",
 	"core.rotary.lifter.t3",
 	"core.tracked.hauler.t3",
+	# Session 44's five reference vehicles. Four of these exist because a
+	# silhouette the shipping set could not express needed them (doc 01 §10.1 and
+	# §10.3): a 6.00 m gun, two 0.75 m road contacts, a bogie as long as the hull
+	# it carries, a Prime Mover that lies down, and a hull as tall as it is wide.
+	"eff.ballistic.rifle_long.t3",
+	"mot.wheeled.light_road.t1",
+	"mot.wheeled.light_fixed.t1",
+	"mot.tracked.long_bogie.t3",
+	"pmv.combustion.flat.t2",
+	"core.utility.hauler.t2",
 ]
 
 
@@ -175,8 +192,12 @@ func test_part_ids_reverse_resolve() -> void:
 func test_class_buckets_are_populated() -> void:
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(),
-		4,
-		"one chassis per locomotion family: wheeled, tracked, ambulatory, rotary"
+		5,
+		(
+			"one chassis per locomotion family — wheeled, tracked, ambulatory, rotary — "
+			+ "and a second wheeled one, because a road car and a utility truck "
+			+ "disagree about the section before they disagree about anything else"
+		)
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT).size(),
@@ -185,21 +206,27 @@ func test_class_buckets_are_populated() -> void:
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY).size(),
-		5,
-		"one Motive Assembly per locomotion family, and a second wheeled kind"
+		8,
+		(
+			"one Motive Assembly per locomotion family, plus a steered/fixed pair at "
+			+ "0.75 m for the road car and a bogie long enough for a hull"
+		)
 	)
 	check_eq(
-		PartRegistry.ids_of_class(PartEnums.PartClass.PRIME_MOVER).size(), 1, "one Prime Mover"
+		PartRegistry.ids_of_class(PartEnums.PartClass.PRIME_MOVER).size(),
+		2,
+		"one Prime Mover, in a square section and a flat one"
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.ENERGY_CELL).size(), 1, "and one Energy Cell"
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.EFFECTOR_MODULE).size(),
-		3,
+		4,
 		(
-			"a powered edge and two direct-fire modules: one per resolution path, "
-			+ "and a second ballistic row so the recoil trade is a choice"
+			"a powered edge and three direct-fire modules: one per resolution path, "
+			+ "a second ballistic row so the recoil trade is a choice, and a 6.00 m "
+			+ "gun for the family that is built around carrying one"
 		)
 	)
 	check_eq(
@@ -264,7 +291,7 @@ func test_core_module_matches_the_documented_table() -> void:
 
 	check_eq(def.part_class, PartEnums.PartClass.CORE_MODULE, "class")
 	check_eq(def.tier, PartEnums.TierGrade.STANDARD, "t2 is STANDARD")
-	check_eq(def.bounds_size_cells, CORE_CELLS, "§10.1 gives 6x4x13 cells")
+	check_eq(def.bounds_size_cells, CORE_CELLS, "§10.1 gives 8x4x14 cells")
 	check_eq(def.volume_cells, CORE_CELLS.x * CORE_CELLS.y * CORE_CELLS.z, "a solid box")
 	check_approx(def.mass_kg, CORE_MASS_KG, "mass")
 	check_approx(def.integrity_max, CORE_INTEGRITY, "integrity")
@@ -308,6 +335,7 @@ func test_core_module_matches_the_documented_table() -> void:
 func test_the_family_chassis_match_the_documented_table() -> void:
 	_check_family_chassis(
 		STRIDER_KEY,
+		STRIDER_CELLS,
 		STRIDER_MASS_KG,
 		STRIDER_INTEGRITY,
 		STRIDER_ARMOUR,
@@ -316,6 +344,7 @@ func test_the_family_chassis_match_the_documented_table() -> void:
 	)
 	_check_family_chassis(
 		LIFTER_KEY,
+		LIFTER_CELLS,
 		LIFTER_MASS_KG,
 		LIFTER_INTEGRITY,
 		LIFTER_ARMOUR,
@@ -359,6 +388,7 @@ func test_the_family_chassis_match_the_documented_table() -> void:
 
 func _check_family_chassis(
 	key: StringName,
+	cells: Vector3i,
 	mass_kg: float,
 	integrity: float,
 	armour: float,
@@ -370,7 +400,7 @@ func _check_family_chassis(
 		return
 	check_eq(def.part_class, PartEnums.PartClass.CORE_MODULE, "%s class" % key)
 	check_eq(def.tier, PartEnums.TierGrade.REFINED, "%s t3 is REFINED" % key)
-	check_eq(def.bounds_size_cells, FAMILY_CHASSIS_CELLS, "%s §10.1 gives 6x4x9 cells" % key)
+	check_eq(def.bounds_size_cells, cells, "%s §10.1 gives %v cells" % [key, cells])
 	check_approx(def.mass_kg, mass_kg, "%s mass" % key)
 	check_approx(def.integrity_max, integrity, "%s integrity" % key)
 	check_approx(def.armour_rating, armour, "%s armour" % key)

@@ -16,17 +16,31 @@ extends TestCase
 ## started — whether all of its contacts are on the ground.
 ##
 ## [b]It was written with two of its assertions asserted as they failed, and the
-## rebuild closed both.[/b] The build it was written against was 1107 kg at
+## first rebuild closed both.[/b] The build it was written against was 1107 kg at
 ## 46 kg/m³ — a fifth of balsa — on a 1.50 m wheelbase under a 4.25 m hull, and
 ## it stood on two of its four contacts with the front axle carrying every newton.
-## It is now 3630 kg at 141 kg/m³ on a 2.75 m wheelbase, standing on all four.
+##
+## [b]Session 44 rebuilt it again, this time against a photograph of a mid-engine
+## road car, and the figures below are that machine.[/b] Doc 01 §10.1 has the
+## derivation; what reaches this file is a 5.00 m Assembly on a 2.50 m wheelbase,
+## 2.00 m wide in the body and 3.00 m over its contacts, standing on all four.
 ##
 ## Two findings survive and are asserted the way they are measured, which is this
-## file's convention rather than a lapse: the static split is 38% front, so the
-## build is rear-biased where a road vehicle is nose-biased, and the wheelbase is
-## 73% of the hull where a road vehicle is 55–65%. Both follow from a chassis
-## whose axle stations sit on its two ends. Re-measure them when the layout moves;
-## do not loosen them.
+## file's convention rather than a lapse.
+##
+## [b]The wheelbase is 50% of the machine where a road vehicle is 55–65%.[/b] It
+## reads long or short depending on what is being measured: the axle stations sit
+## at the two ends of the 3.50 m cabin, which is 71% of *that*, and the engine bay
+## mated behind it adds 1.50 m of length carrying no axle. The reference does the
+## same thing and comes out at 58%, so the gap is the engine bay being a fifth of
+## our machine and a seventh of theirs.
+##
+## [b]And it is 108 kg/m³ of bounding box where a passenger car is 115.[/b] Close,
+## and closer than it looks: the box counts the 0.75 m contacts standing proud of
+## a 2.00 m body and the Effector Module standing on the deck, neither of which a
+## road car's own envelope contains. The hull alone is 257 kg/m³.
+##
+## Re-measure both when the layout moves; do not loosen them.
 ##
 ## One Assembly on a slab, which reproduces exactly (LEARNED_FACTS.md §1 fact 44).
 
@@ -36,24 +50,33 @@ const SETTLE_TICKS: int = 180
 ## Contacts the reference build carries, and it stands on every one of them.
 const CONTACT_COUNT: int = 4
 
-## Share of the static weight the front axle carries, measured at 38%. The band
+## Share of the static weight the front axle carries. The band
 ## is asserted in both directions: below the floor the build is standing on its
 ## rear pair the way it used to stand on its front, and above the ceiling it has
 ## been rebalanced and this constant is the thing to re-measure.
 const FRONT_BIAS_FLOOR: float = 0.30
 const FRONT_BIAS_CEILING: float = 0.50
 
-## Mass per cubic metre of the bounding box, measured at 141. A passenger car is
+## Mass per cubic metre of the bounding box, measured at 108. A passenger car is
 ## about 115 and the build this file was written against was 46 — the ratio
 ## LEARNED_FACTS.md §1 fact 75 is about, and the one number that says whether the
 ## part table is the right shape rather than merely self-consistent.
+##
+## [b]It caught a real defect during the session-45 rebuild and is the only thing
+## that did.[/b] The road chassis was taken from 1800 kg to 1450 on the reasoning
+## that the reference car masses 1500 kg, every validator passed, and this figure
+## fell to 93 — under the floor. The bounding box a wheeled build occupies grew
+## faster than its hull did, so a mass scaled against the hull alone made the
+## machine out of air. The mass went back to 1800.
 const DENSITY_FLOOR_KG_M3: float = 100.0
 const DENSITY_CEILING_KG_M3: float = 200.0
 
-## Wheelbase as a fraction of hull length, measured at 0.73. A road vehicle is
-## 0.55–0.65; this hull carries its axle stations on its two ends, so it runs
-## long. Asserted above the road floor and recorded as being past the band.
-const WHEELBASE_FRACTION_FLOOR: float = 0.55
+## Wheelbase as a fraction of overall length, measured at 0.50 against a road
+## vehicle's 0.55–0.65 and the reference's 0.58. Asserted below the road band and
+## recorded as being below it: see the header for why the two are measuring
+## slightly different things, and re-measure rather than loosening if the engine
+## bay moves.
+const WHEELBASE_FRACTION_FLOOR: float = 0.46
 
 ## Newtons under which a contact counts as carrying nothing. Well below any real
 ## share of a 3630 kg build, and above the float noise on a settled spring.

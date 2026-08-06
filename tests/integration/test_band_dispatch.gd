@@ -18,16 +18,16 @@ extends TestCase
 ## Assembly's arrays.
 
 const CORE_KEY := &"core.command.compact.t2"
-const WHEEL_KEY := &"mot.wheeled.allroad.t2"
+const WHEEL_KEY := &"mot.wheeled.light_road.t1"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+const POWER_KEY := &"pmv.combustion.flat.t2"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 8, 28)
+const POWER_ORIGIN := Vector3i(24, 4, 34)
 const GUN_ORIGIN := Vector3i(24, 8, 24)
-const HUB_ORIGIN := Vector3i(22, 2, 19)
-const WHEEL_ORIGIN := Vector3i(19, 3, 18)
+const HUB_ORIGIN := Vector3i(21, 2, 19)
+const WHEEL_ORIGIN := Vector3i(18, 3, 19)
 
 ## §8.2's IMPAIRED row for a Motive Assembly, quoted rather than imported. The
 ## mandated behaviour: below 50% integrity a drive unit loses 40% of its grip.

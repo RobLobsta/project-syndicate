@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ProjectileDefinition" format=3 uid="uid://u0kgjbmdy86r"]
+
+[ext_resource type="Script" path="res://src/core/data/projectile_definition.gd" id="1_qjr2a"]
+
+[resource]
+script = ExtResource("1_qjr2a")
+projectile_key = &"proj.kinetic.ap_120"
+damage = 640.0
+penetration = 220.0
+drag_coefficient_per_m = 1.3e-05
+penetrates_after_hit = true

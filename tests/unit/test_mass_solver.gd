@@ -30,8 +30,10 @@ const PANEL_MASS := 100.0
 ##
 ## Panel at (24, 8, 24): cell centre (0.125, 1.125, 0.125) + (-0.125, 0, -0.125).
 const PANEL_COM_AT_DECK := Vector3(0.0, 1.125, 0.0)
-## Core at (24, 4, 24): cell centre (0.125, 0.125, 0.125) + (-0.125, 0.375, 0).
-const CORE_COM_AT_ORIGIN := Vector3(0.0, 0.5, 0.125)
+## Core at (24, 4, 24): cell centre (0.125, 0.125, 0.125) + (-0.125, 0.375, -0.125).
+## The z term went to zero when the hull went from 13 cells to 14: an odd cell
+## count centres on the pivot cell and an even one straddles it.
+const CORE_COM_AT_ORIGIN := Vector3(0.0, 0.5, 0.0)
 
 ## Box tensor of one panel about its own centre, doc 05 §3.3. The panel occupies
 ## 4 x 1 x 4 cells, so its full extents are (1.0, 0.25, 1.0) m:
@@ -40,11 +42,18 @@ const CORE_COM_AT_ORIGIN := Vector3(0.0, 0.5, 0.125)
 ##   I_zz = (100/12)(1.00² + 0.25²) = 8.333333 · 1.0625  = 8.854167
 const PANEL_TENSOR := Vector3(8.854167, 16.666667, 8.854167)
 
-## The Core Module occupies 6 x 4 x 13 cells: full extents (1.5, 1.0, 3.25) m.
-##   I_xx = (1800/12)(1.00² + 3.25²) = 150.0 · 11.5625 = 1734.375
-##   I_yy = (1800/12)(1.50² + 3.25²) = 150.0 · 12.8125 = 1921.875
-##   I_zz = (1800/12)(1.50² + 1.00²) = 150.0 ·  3.25   =  487.5
-const CORE_TENSOR := Vector3(1734.375, 1921.875, 487.5)
+## The Core Module occupies 8 x 4 x 14 cells: full extents (2.0, 1.0, 3.5) m.
+##   I_xx = (1800/12)(1.00² + 3.50²) = 150.0 · 13.25 = 1987.5
+##   I_yy = (1800/12)(2.00² + 3.50²) = 150.0 · 16.25 = 2437.5
+##   I_zz = (1800/12)(2.00² + 1.00²) = 150.0 ·  5.00 =  750.0
+##
+## The tensor is the quantity a rebuild moves furthest and the one nothing else
+## notices: doc 01 §10 records that an inertia grows as the square of the extents
+## while a mass does not. This hull kept its 1800 kg and changed shape, and its
+## `I_zz` went up by 54% — every rotational authority in the project is a torque
+## over one of these three numbers, so the build turns more slowly than it did
+## for no reason a mass table would show.
+const CORE_TENSOR := Vector3(1987.5, 2437.5, 750.0)
 
 ## Tensors run to two significant figures past the decimal point in the
 ## constants above; the solver's own arithmetic is exact to float precision.
@@ -67,7 +76,7 @@ func test_fixture_parts_are_what_the_arithmetic_assumes() -> void:
 	check_not_null(_panel, "the Structural Component is registered")
 	check_approx(_core.mass_kg, CORE_MASS, "core mass matches doc 01 §10.1")
 	check_approx(_panel.mass_kg, PANEL_MASS, "panel mass matches doc 01 §10.2")
-	check_eq(_core.bounds_size_cells, Vector3i(6, 4, 13), "core occupies 6 x 4 x 13 cells")
+	check_eq(_core.bounds_size_cells, Vector3i(8, 4, 14), "core occupies 8 x 4 x 14 cells")
 	check_eq(_panel.bounds_size_cells, Vector3i(4, 1, 4), "panel occupies 4 x 1 x 4 cells")
 	check_eq(
 		_panel.inertia_box_half_extents_m, Vector3.ZERO,
@@ -116,7 +125,7 @@ func test_assembly_centre_of_mass_is_the_mass_weighted_mean() -> void:
 
 	check_eq(mp.part_count, 2, "both parts counted")
 	check_approx(mp.total_mass, CORE_MASS + PANEL_MASS, "total mass is 1900 kg")
-	# (1800 · (0, 0.5, 0.125) + 100 · (0, 1.125, 0)) / 1900
+	# (1800 · (0, 0.5, 0) + 100 · (0, 1.125, 0)) / 1900
 	var expected := (
 		CORE_COM_AT_ORIGIN * CORE_MASS + PANEL_COM_AT_DECK * PANEL_MASS
 	) / (CORE_MASS + PANEL_MASS)
@@ -400,7 +409,7 @@ func test_an_assembly_that_loses_everything_is_floored_rather_than_left_stale() 
 	# Reachable, and worth pinning: doc 04 §7.2 turns every remaining part into
 	# debris when the Core Module dies, so a solve can find nothing live while
 	# the body is still registered. Godot rejects a mass of zero outright and
-	# leaves whatever the body had — a wreck still reporting 1900 kg — and reads a
+	# leaves whatever the body had — a wreck still reporting its live mass — and reads a
 	# zero inertia component as "derive it from the collision shapes", which is
 	# exactly the coupling Architectural Invariant I-1 forbids.
 	var loaded := _core_and_deck_panel()

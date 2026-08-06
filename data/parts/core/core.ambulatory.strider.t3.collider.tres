@@ -5,8 +5,8 @@
 
 [sub_resource type="Resource" id="Resource_r2wcl"]
 script = ExtResource("1_r2wcl")
-half_extents_m = Vector3(0.75, 0.5, 1.125)
-local_offset_m = Vector3(-0.125, 0.375, 0)
+half_extents_m = Vector3(0.75, 1.25, 1.25)
+local_offset_m = Vector3(-0.125, 1.125, -0.125)
 
 [resource]
 script = ExtResource("2_ivj05")

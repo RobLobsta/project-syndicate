@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="PartVisualProfile" format=3 uid="uid://cp4lnv7ooxhug"]
+
+[ext_resource type="Script" path="res://src/core/data/proxy_primitive_def.gd" id="1_jpvry"]
+[ext_resource type="Script" path="res://src/core/data/part_visual_profile.gd" id="2_qemuw"]
+
+[resource]
+script = ExtResource("2_qemuw")
+lod_distances_m = PackedFloat32Array(18, 42, 90)
+attachment_marker_names = PackedStringArray()

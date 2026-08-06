@@ -37,6 +37,7 @@ func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_autocannon_30())
 	keys.append(_author_repeater_12())
+	keys.append(_author_rifle_long())
 	for key: String in keys:
 		if key.is_empty():
 			return false
@@ -235,6 +236,99 @@ func _author_repeater_12() -> String:
 	return PartAuthoring.save_part(def, "eff", collider, &"barrel_std")
 
 
+## §10.5's `eff.ballistic.rifle_long.t3` row: `BALLISTIC_DIRECT`, 4x3x24 cells,
+## 2600 kg, 900 integrity, 55 PU, 3.00 s cycle, 1180 m/s muzzle, 5000 N·s recoil,
+## 14.0 HU per shot. §11's `eff.ballistic.*` resistance row.
+##
+## [b]Twenty-four cells is 6.00 m, and it is measured off the reference rather
+## than chosen for effect.[/b] On the tracked reference the barrel from mantlet to
+## muzzle is about 0.85 of hull length and the overhang past the glacis about
+## 0.55 of it; mounted mid-deck on `core.tracked.hauler.t3`'s 6.00 m hull this
+## reaches 3.00 m past the nose. A tracked gun platform whose gun does not reach
+## past its own front is the one silhouette in the reference set nobody would
+## recognise, and `eff.ballistic.autocannon_30.t3` at seven cells is exactly that.
+##
+## [b]The mass follows the length, and this is the row where §10's opening warning
+## bites hardest.[/b] The table published 165 kg for a 3.00 m weapon, which is a
+## scaffolding pole; doubling the length and leaving the mass would have produced
+## a 6.00 m gun massing less than one of the road car's wheels. 2600 kg is a
+## quarter of the Assembly it sits on, which is what a gun of this size is.
+##
+## The cycle went 1.35 s -> 3.00 s and the integrity 400 -> 900 for the same
+## reason: a single-shot gun this size is a different weapon from the one the row
+## described, and leaving the cadence would have handed the tracked family a
+## three-round-a-second 5000 N·s cannon.
+func _author_rifle_long() -> String:
+	# Twenty-four cells along -Z, which is barrel for all but the breech. Four
+	# wide for §14 rule 27's parity: an odd-width BALLISTIC_DIRECT module cannot
+	# be centred on an even-width Core Module at any placement, and on a gun this
+	# long a half-cell bore offset is the moment arm of a 5000 N·s round.
+	var lo := Vector3i(-2, 0, -23)
+	var hi := Vector3i(1, 2, 0)
+	var def := _base(&"eff.ballistic.rifle_long.t3", PartEnums.PartClass.EFFECTOR_MODULE)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	# Mounts downward onto a deck, as the autocannon and the beam edge do.
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo, hi, {FACE_YN: PartEnums.AttachmentPolarity.FACE_MALE}
+	)
+	def.mass_kg = 2600.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 900.0
+	def.resistance = PackedFloat32Array([0.12, 0.10, 0.18, 0.14, 0.06])
+	# Heavier than the autocannon's 16. A gun this size carries a mantlet, and it
+	# is the part of a tracked build an opponent is most likely to be shooting at.
+	def.armour_rating = 30.0
+	def.load_capacity_kg = 400.0
+	def.power_draw_pu = 55.0
+	def.heat_generation_hu_s = 14.0
+
+	var effector := EffectorModuleProfile.new()
+	effector.kind = PartEnums.EffectorKind.BALLISTIC_DIRECT
+	effector.yaw_limit_deg = Vector2(-180.0, 180.0)
+	effector.pitch_limit_deg = Vector2(-8.0, 34.0)
+	# Slower in both axes than the autocannon's 65 and 48. Six metres of barrel
+	# has the inertia to match, and a turret that slewed as fast as a 1.75 m
+	# autocannon would be the one place in the part table where size costs
+	# nothing.
+	effector.yaw_rate_deg_s = 22.0
+	effector.pitch_rate_deg_s = 16.0
+	# One barrel, half a cell past the last occupied cell, laterally on the
+	# footprint's own centre — §14 rule 25's equality, and on this row it matters
+	# more than on any other because doc 07 §8 applies the recoil here.
+	var bore := PartAuthoring.box_centre_m(lo, hi)
+	effector.muzzle_offsets_m = PackedVector3Array([
+		Vector3(bore.x, 0.0, (float(lo.z) - 0.5) * SyndicateConstants.LATTICE_UNIT_M)
+	])
+	effector.projectile_key = &"proj.kinetic.ap_120"
+	effector.muzzle_velocity_mps = 1180.0
+	effector.cycle_time_s = 3.00
+	effector.burst_count = 0
+	effector.burst_recovery_s = 0.0
+	effector.magazine_rounds = 0
+	effector.reload_time_s = 0.0
+	# The tightest grouping in the set and no bloom worth the name: one round
+	# every three seconds gives a barrel time to settle, and the whole argument
+	# for the weapon is that the round it does fire arrives where it was aimed.
+	effector.spread_base_deg = 0.06
+	effector.spread_bloom_deg = 0.02
+	effector.spread_decay_deg_s = 0.40
+	effector.recoil_impulse_ns = 5000.0
+	effector.heat_per_shot_hu = 14.0
+	effector.jam_clear_time_s = 3.2
+	effector.melee_profile = null
+	def.effector_profile = effector
+
+	# Five mounts against the autocannon's three, on a chassis offering thirty.
+	# A tracked build carries this and its running gear and very little else,
+	# which is the decision the row is for.
+	def.build_cost = 2400
+	def.mount_weight = 5
+
+	var collider := PartAuthoring.single_box_collider(lo, hi)
+	return PartAuthoring.save_part(def, "eff", collider, &"barrel_std")
+
+
 ## The round the autocannon fires. §12's flight fields and §4's damage fields.
 ##
 ## Penetration is set against the shipped armour ratings rather than in the
@@ -291,7 +385,29 @@ func _author_projectiles() -> bool:
 	if DirAccess.make_dir_recursive_absolute(PROJECTILES_DIR) != OK:
 		printerr("author_combat_parts: cannot create %s" % PROJECTILES_DIR)
 		return false
-	for r: ProjectileDefinition in [round_def, light] as Array[ProjectileDefinition]:
+	# The tracked family's round. A single 6.00 m gun at a 3.00 s cycle is one
+	# tenth of the repeater's throughput, so the round has to be worth waiting
+	# for: 640 damage and 220 penetration is `core.tracked.hauler.t3`'s 26 armour
+	# defeated at 8.5x — full penetration square on and still past §4.4's 1.85
+	# overpenetration ratio at 70 degrees of obliquity. There is no angle at which
+	# this round bounces off anything in the shipping set, which is what the
+	# 3.00 s between shots is buying.
+	var heavy := ProjectileDefinition.new()
+	heavy.projectile_key = &"proj.kinetic.ap_120"
+	heavy.channel = PartEnums.DamageChannel.KINETIC
+	heavy.damage = 640.0
+	heavy.penetration = 220.0
+	heavy.blast_radius_m = 0.0
+	heavy.life_s = 4.0
+	heavy.gravity_scale = 1.0
+	# The flattest trajectory in the set: a long dense penetrator at 1180 m/s
+	# sheds about a third of what `ap_30` does over the same distance.
+	heavy.drag_coefficient_per_m = 0.000013
+	heavy.penetrates_after_hit = true
+
+	for r: ProjectileDefinition in (
+		[round_def, light, heavy] as Array[ProjectileDefinition]
+	):
 		var path := "%s/%s.tres" % [PROJECTILES_DIR, r.projectile_key]
 		if not PartAuthoring.save(r, path):
 			return false

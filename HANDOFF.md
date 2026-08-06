@@ -39,50 +39,55 @@ tops out at **22.6 m/s** against the 24 the garage publishes.
 `tests/physics/test_wheeled_drive_cycle.gd` runs that whole cycle every suite run
 and `CHANGE_LOG.md` §1 has how each of those was won.
 
-**This session: the first match waits for you, and the edge went to a fight.**
+**This session: five vehicles, remodelled against five photographs.**
 
-- **An opponent holds its fire while a first-time player reads the controls.**
-  Doc 05 §15.7.4 gains a third gate, `AiDriver.hold_fire`, written once a tick by
-  the match layer from doc 11 §14.6's card. The capture that verified the
-  first-run card also showed what it cost: the opponent arrives at four seconds
-  into an eleven-second dwell, so a player who did what the card is for was at
-  63% integrity with a component gone. The hold is on the **trigger** and not the
-  approach, and it ends the moment the player drives, steers or fires — so in
-  practice it lasts exactly as long as they want it to. A card the player *asked
-  for* is deliberately not a briefing, or `hud_toggle_stats` would be a key that
-  switches the opposition off.
-- **An arm is ambulatory equipment.** Doc 01 §7.1's mask gains a second rule —
-  `PlacementValidator` refuses an Appendage on any chassis that does not carry
-  `AMBULATORY` (`APPENDAGE_CHASSIS_MISMATCH`). Nothing in the physics had stopped
-  one being bolted to the front of a car, and that is exactly what the first
-  version of this session's melee recipe was.
-- **The energy edge has been in an engagement.** `CombatArena.Recipe.MELEE` is the
-  ambulatory layout with an Appendage on each flank and an edge in each hand, and
-  `tests/physics/test_melee_duel.gd` fights it twice. Against an unarmed opponent
-  at 12 m it walks to **8.8 m** and holds: **374 energised ticks off one swing**,
-  and it never throws what it is cutting (0.03 m/s). That closes
-  `sustained-delivers-impulse`, a fault recorded as a survivor since session 42.
+The part table had been rescaled twice for *density* and never once for *shape*,
+so every Assembly in the game was the same 6x4 box with different running gear
+underneath. Doc 01 §10.1 now derives each chassis from a reference image, and no
+two are the same section any more:
 
-**The bad news about the edge, plainly.** Three things.
+| | Section (W x H) | Length | The ratio that forced it |
+|---|---|---|---|
+| Road car | 2.00 x 1.00 m | 3.50 m | height is a quarter of length |
+| Utility truck | 2.50 x 1.50 m | 5.00 m | height **equals** width |
+| Tracked platform | 2.50 x 1.25 m | 6.00 m | as long as the track under it |
+| Walking torso | 1.50 x 2.50 m | 2.50 m | taller than it is long |
+| Rotorcraft | 1.00 x 1.50 m | 7.00 m | ten times longer than it is wide |
 
-**It cannot get to a fight.** At 30 m against a build carrying the shipped
-autocannon the walker **loses ground** — 30.0 m out to 31.9 — and dies there with
-its arms intact. That is §3.1.3's steering defect, not the weapon: given something
-to walk at, this build arrives and cuts.
+Six new parts carry them: a 6.00 m gun, a bogie as long as its hull, a 0.75 m
+steered/fixed contact pair, a Prime Mover that lies down, and the utility chassis.
 
-**"Energised" is not "cutting".** The edge resolved on **25** of the 374 ticks it
-was held, because the blade drifts in and out of overlap and a walker never quite
-stands still. Anything sizing a sustained module against a duration over-states it
-by fifteen.
+**The tracked family stands level for the first time.** 12 of 12 road stations
+loaded at **1.4°** of pitch, against 8.1° nose-up with two carrying nothing — and
+`HANDOFF.md` §3.1.2's three items are done: a bogie longer than the hull,
+`pivot_taper_mps` 9.0 → 16.0, and `lateral_grip_ratio` 1.35 → **0.85**.
 
-**And it stoops.** Two arms and two blades are 1434 kg carried ahead of and above
-the torso, and the machine walks **29.6° nose-down**. The wheeled version answered
-this with ballast in the tail; the ambulatory chassis has three mounts spare and
-doc 01 §7.1 will not let the arms move to a hull with more.
+**The walker is a walking machine.** 5.00 m tall against 2.63, on a torso that is
+taller than it is long rather than a box lying on its side, standing at 0.6° after
+two measurements got the mass off its levers (`LEARNED_FACTS.md` fact 109).
 
-**99 files, 7725 checks, 0 failures.** `briefing_and_edge_sweep.py` plants eight
-faults and catches seven; the survivor is the four lines of `MatchScreen` joining
-the card to the gate, recorded in `CHANGE_LOG.md` §3 with what would close it.
+**The bad news, plainly. Three things, and the third is the one that matters.**
+
+**The remodel is not finished.** The suite went from green to **53 failures across
+19 files**, and almost all of them are assertions that quote a geometry which has
+moved — a mass, a wheelbase, a tick count, a hover margin. They are re-measurements
+rather than defects, but *until they are re-measured nobody knows which*, and a
+suite this red cannot tell a regression from an expectation. **§3.0 is the whole
+of the next session's work and nothing else should start before it.**
+
+**The walker is not the reference's proportion and cannot be.** The humanoid
+reference is a biped whose torso is 1.85 times as tall as it is deep. Doc 05 §13's
+virtual leg has a **point foot**, so fore-and-aft foot separation is the only pitch
+stability the family has, and torso depth and stance base are the same number. This
+is architecture, not data. §3.1.3.
+
+**A wheeled build is 3.00 m wide over a 2.00 m body.** The contacts stand proud of
+the flanks because a hub mounts inboard and its wheel hangs outboard, and the
+lattice has no way to recess a contact into a hull. The reference car is 0.42 of
+its length in width and this is 0.60. Nothing is wrong; the construction cannot
+express a wheel arch. §3.11.
+
+---
 
 ---
 
@@ -267,6 +272,37 @@ paper.**
 Ordered by what is worth doing next, not by dependency. Anything not here is
 either done or is in section 4.
 
+### 3.0 Re-measure the suite against the rebuilt geometry
+
+**Do this before anything else.** Session 44 moved every chassis section, four
+masses, a limb reach, a disc radius and a track patch, and the suite is carrying
+**53 failures across 19 files** as a result. Every one seen so far is an assertion
+quoting a number the rebuild moved, not a system that stopped working — but that is
+a claim about a set nobody has finished walking, and the ones that are *not*
+re-measurements are hiding in the same list.
+
+The rule is `LEARNED_FACTS.md` §3's and it has not changed: **re-measure and
+re-assert; never loosen.** Where a file asserts a defect as it stands, the
+measurement moves and the complaint stays.
+
+Known shape of what is left, from the last full run:
+
+- **`test_ground_terrain` reports `nan` for a surface multiplier** and its
+  Assembly finds no contact. That one is *not* obviously a re-measurement and is
+  the first thing to look at.
+- **`test_melee_duel`, `test_family_duels`, `test_team_engagement`,
+  `test_ai_engagement`** — engagement outcomes, hover margins and stand-off
+  distances against builds whose mass and inertia all moved. Read fact 44 before
+  asserting any count.
+- **`test_ambulatory_drift`, `test_braking_and_reverse`** — the walking family's
+  numbers moved a long way and some moved the *right* way: a walker now reverses
+  5.16 m where it managed 0.01, and a tracked build reverses at all. Both files
+  assert defects as they stand, so both go red when the defect closes; re-measure
+  and re-frame rather than deleting.
+- **`test_inertia_coupling`, `test_recoil_geometry`, `test_drive_and_shoot`,
+  `test_wheeled_drive_cycle`** — a tensor that grew 54% on an unchanged mass, and
+  everything downstream of it.
+
 ### 3.1 The motion layer
 
 #### 3.1.1 The drive torque, and why it did not move
@@ -291,7 +327,26 @@ recipe.** §3.1.2. Raised to 9600 the suite fails in three places, all of them
 tracked: it cannot stop without pitching past vertical and cannot reverse at all.
 The torque goes up when a tracked build stands level.
 
-#### 3.1.2 The tracked family, and the experiment that ruled out the obvious fix
+#### 3.1.2 The tracked family — done, and what it unblocks
+
+**Closed in session 44.** All three items this section listed are shipped:
+
+1. **A longer bogie.** `mot.tracked.long_bogie.t3` runs 6.00 m with 5.60 m of
+   patch and six road stations, under a 6.00 m `core.tracked.hauler.t3`.
+2. **`pivot_taper_mps` re-derived**, 9.0 → 16.0. At 9.0 the differential was down
+   to a third by 6 m/s, which is why full lock yawed a tracked build 0.03 rad/s.
+3. **`lateral_grip_ratio` questioned and answered**, 1.35 → **0.85**. A machine
+   that steers by breaking its patch loose sideways should not grip harder
+   sideways than it drives forward, and the longer the patch the more wrong it is.
+
+Measured at rest: **12 of 12 road stations loaded at 1.4° of pitch**, against 8.1°
+nose-up with the two forward stations carrying nothing. **The inversion in a
+sustained turn has not been re-measured** and this section said it should not be
+chased until the three above were settled — they now are, so that measurement is
+the next thing this family wants, along with whether §3.1.1's drive torque can
+finally come off 6400 N·m.
+
+#### 3.1.2a The old tracked section, kept for its measurements
 
 **It has its own chassis now and that did not fix it.** `core.tracked.hauler.t3`
 ships — nine cells rather than the command core's thirteen, `CHASSIS_TRACKED`,

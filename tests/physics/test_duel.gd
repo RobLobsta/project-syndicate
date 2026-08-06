@@ -42,14 +42,14 @@ extends TestCase
 
 const CORE_KEY := &"core.command.compact.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
-const WHEEL_KEY := &"mot.wheeled.allroad.t2"
-const REAR_KEY := &"mot.wheeled.fixed_rear.t2"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+const WHEEL_KEY := &"mot.wheeled.light_road.t1"
+const REAR_KEY := &"mot.wheeled.light_fixed.t1"
+const POWER_KEY := &"pmv.combustion.flat.t2"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const ROUND_KEY := &"proj.kinetic.ap_30"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)
-const POWER_ORIGIN := Vector3i(24, 8, 28)
+const POWER_ORIGIN := Vector3i(24, 4, 34)
 ## On the front of the Core Module's deck — and it was on the Prime Mover's roof
 ## until session 16 measured what that costs.
 ##
@@ -72,10 +72,10 @@ const POWER_ORIGIN := Vector3i(24, 8, 28)
 ## The barrel runs along the Assembly's -Z, which doc 07 §7.2 fixes as forward.
 const GUN_ORIGIN := Vector3i(24, 8, 24)
 const HUB_ORIGINS: Array[Vector3i] = [
-	Vector3i(22, 2, 19), Vector3i(26, 2, 19), Vector3i(22, 2, 30), Vector3i(26, 2, 30)
+	Vector3i(21, 2, 19), Vector3i(27, 2, 19), Vector3i(21, 2, 29), Vector3i(27, 2, 29)
 ]
 const WHEEL_ORIGINS: Array[Vector3i] = [
-	Vector3i(19, 3, 18), Vector3i(19, 3, 30), Vector3i(28, 3, 17), Vector3i(28, 3, 29)
+	Vector3i(18, 3, 19), Vector3i(18, 3, 29), Vector3i(29, 3, 19), Vector3i(29, 3, 29)
 ]
 const FRONT_AXLE_Z: int = 24
 

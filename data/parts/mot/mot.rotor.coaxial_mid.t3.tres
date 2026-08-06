@@ -905,6 +905,7 @@ accepts_classes = PackedInt32Array()
 
 [sub_resource type="Resource" id="Resource_2ue46"]
 script = ExtResource("4_bv4d5")
+disc_radius_m = 2.0
 thrust_coefficient = 0.0638
 
 [sub_resource type="Resource" id="Resource_gojmg"]
@@ -918,7 +919,7 @@ suspension_damping_ns_m = 0.0
 suspension_travel_limit_m = 0.0
 max_steer_angle_deg = 0.0
 steer_rate_deg_s = 0.0
-rated_load_kg = 8300.0
+rated_load_kg = 2893.0
 traction_coefficient = 0.0
 rolling_resistance = 0.0
 brake_torque_nm = 0.0
@@ -933,13 +934,13 @@ part_class = 2
 tier = 3
 occupancy_cells = PackedVector3Array(-2, 0, -2, -1, 0, -2, 0, 0, -2, 1, 0, -2, -2, 1, -2, -1, 1, -2, 0, 1, -2, 1, 1, -2, -2, 2, -2, -1, 2, -2, 0, 2, -2, 1, 2, -2, -2, 3, -2, -1, 3, -2, 0, 3, -2, 1, 3, -2, -2, 4, -2, -1, 4, -2, 0, 4, -2, 1, 4, -2, -2, 5, -2, -1, 5, -2, 0, 5, -2, 1, 5, -2, -2, 0, -1, -1, 0, -1, 0, 0, -1, 1, 0, -1, -2, 1, -1, -1, 1, -1, 0, 1, -1, 1, 1, -1, -2, 2, -1, -1, 2, -1, 0, 2, -1, 1, 2, -1, -2, 3, -1, -1, 3, -1, 0, 3, -1, 1, 3, -1, -2, 4, -1, -1, 4, -1, 0, 4, -1, 1, 4, -1, -2, 5, -1, -1, 5, -1, 0, 5, -1, 1, 5, -1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -2, 1, 0, -1, 1, 0, 0, 1, 0, 1, 1, 0, -2, 2, 0, -1, 2, 0, 0, 2, 0, 1, 2, 0, -2, 3, 0, -1, 3, 0, 0, 3, 0, 1, 3, 0, -2, 4, 0, -1, 4, 0, 0, 4, 0, 1, 4, 0, -2, 5, 0, -1, 5, 0, 0, 5, 0, 1, 5, 0, -2, 0, 1, -1, 0, 1, 0, 0, 1, 1, 0, 1, -2, 1, 1, -1, 1, 1, 0, 1, 1, 1, 1, 1, -2, 2, 1, -1, 2, 1, 0, 2, 1, 1, 2, 1, -2, 3, 1, -1, 3, 1, 0, 3, 1, 1, 3, 1, -2, 4, 1, -1, 4, 1, 0, 4, 1, 1, 4, 1, -2, 5, 1, -1, 5, 1, 0, 5, 1, 1, 5, 1)
 attachment_nodes = Array[ExtResource("1_i53u0")]([SubResource("Resource_i53u0"), SubResource("Resource_ynaj6"), SubResource("Resource_aiwon"), SubResource("Resource_bv4d5"), SubResource("Resource_xmwtx"), SubResource("Resource_625am"), SubResource("Resource_c6c1l"), SubResource("Resource_ndmt0"), SubResource("Resource_rpryo"), SubResource("Resource_o0bfo"), SubResource("Resource_3lwj4"), SubResource("Resource_x1sb0"), SubResource("Resource_ia2ak"), SubResource("Resource_rpk1x"), SubResource("Resource_nlfc6"), SubResource("Resource_yvb10"), SubResource("Resource_nli6j"), SubResource("Resource_331st"), SubResource("Resource_t8qk4"), SubResource("Resource_qpcdq"), SubResource("Resource_ea2cj"), SubResource("Resource_x41s8"), SubResource("Resource_6scq7"), SubResource("Resource_4jydk"), SubResource("Resource_3jnmi"), SubResource("Resource_mwpxj"), SubResource("Resource_vsljh"), SubResource("Resource_mp6e2"), SubResource("Resource_ectiy"), SubResource("Resource_vtpx4"), SubResource("Resource_rp2hw"), SubResource("Resource_w8esk"), SubResource("Resource_8nxod"), SubResource("Resource_8ssyo"), SubResource("Resource_ojafi"), SubResource("Resource_wmjka"), SubResource("Resource_7mosh"), SubResource("Resource_osdwx"), SubResource("Resource_kib2u"), SubResource("Resource_fnrmt"), SubResource("Resource_dd1kd"), SubResource("Resource_wgf1b"), SubResource("Resource_bdai2"), SubResource("Resource_f331o"), SubResource("Resource_ybq20"), SubResource("Resource_kvvny"), SubResource("Resource_qu8qp"), SubResource("Resource_ai12n"), SubResource("Resource_4kino"), SubResource("Resource_8uh5n"), SubResource("Resource_kqfja"), SubResource("Resource_iqvcc"), SubResource("Resource_3ygt2"), SubResource("Resource_m06vg"), SubResource("Resource_lq23d"), SubResource("Resource_kclpd"), SubResource("Resource_0w51h"), SubResource("Resource_gjrpe"), SubResource("Resource_hnwlh"), SubResource("Resource_h34iy"), SubResource("Resource_dcb78"), SubResource("Resource_pdcw6"), SubResource("Resource_kaxlx"), SubResource("Resource_p7c8x"), SubResource("Resource_366xh"), SubResource("Resource_a13gp"), SubResource("Resource_g4rbr"), SubResource("Resource_gijn0"), SubResource("Resource_hbjdn"), SubResource("Resource_2r0ic"), SubResource("Resource_j75kp"), SubResource("Resource_aa0rp"), SubResource("Resource_dbdh3"), SubResource("Resource_lpgrm"), SubResource("Resource_8q4pn"), SubResource("Resource_80bqf"), SubResource("Resource_830dp"), SubResource("Resource_4flyi"), SubResource("Resource_t3mxo"), SubResource("Resource_4whvj"), SubResource("Resource_lcady"), SubResource("Resource_1ls35"), SubResource("Resource_4hfed"), SubResource("Resource_cay57"), SubResource("Resource_2ihtj"), SubResource("Resource_nrwl3"), SubResource("Resource_dpr48"), SubResource("Resource_t8a5k"), SubResource("Resource_l57u1"), SubResource("Resource_8537c"), SubResource("Resource_ow8w4"), SubResource("Resource_1wouf"), SubResource("Resource_oj7oj"), SubResource("Resource_tq1f3"), SubResource("Resource_5pfhb"), SubResource("Resource_ywmu8"), SubResource("Resource_x5foj"), SubResource("Resource_3xu7m"), SubResource("Resource_gkj1i"), SubResource("Resource_y3but"), SubResource("Resource_0qs4m"), SubResource("Resource_7j7pc"), SubResource("Resource_thsm3"), SubResource("Resource_yn3rb"), SubResource("Resource_fma8l"), SubResource("Resource_k8s1k"), SubResource("Resource_5gr00"), SubResource("Resource_acwtm"), SubResource("Resource_4eicy"), SubResource("Resource_pmi6w"), SubResource("Resource_h7wmt"), SubResource("Resource_thusk"), SubResource("Resource_a524n"), SubResource("Resource_mqroi"), SubResource("Resource_k7dgv"), SubResource("Resource_t2eo4"), SubResource("Resource_o3p4r"), SubResource("Resource_ecose"), SubResource("Resource_haq1j"), SubResource("Resource_ei2lp"), SubResource("Resource_3ojmj"), SubResource("Resource_fafyp"), SubResource("Resource_kd1cp"), SubResource("Resource_biqiq"), SubResource("Resource_if206"), SubResource("Resource_kavcv"), SubResource("Resource_r0a2j"), SubResource("Resource_j71cq")])
-mass_kg = 848.0
+mass_kg = 500.0
 com_offset_m = Vector3(-0.125, 0.625, -0.125)
 integrity_max = 690.0
 resistance = PackedFloat32Array(0.04, 0.08, 0.06, 0.1, 0)
 armour_rating = 8.0
 load_capacity_kg = 300.0
-power_draw_pu = 150.0
+power_draw_pu = 40.0
 motive_profile = SubResource("Resource_gojmg")
 visual_profile = ExtResource("7_c6c1l")
 collider_profile = ExtResource("2_ynaj6")

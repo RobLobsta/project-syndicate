@@ -15,12 +15,13 @@ extends TestCase
 const CORE_KEY: StringName = &"core.command.compact.t2"
 const PANEL_KEY: StringName = &"str.panel.medium.t2"
 
-## The mast the stability comparison stacks, and where it starts. The Core
-## Module's deck is fully occupied — the Effector Module takes `z` 20–24 of it
-## and the Prime Mover 25–30 — so the mast goes on the Prime Mover's own roof,
-## which is four rows deep from `y` 8.
+## The mast the stability comparison stacks, and where it starts.
+##
+## The Prime Mover left the deck in session 44 and mates to the hull's tail (doc
+## 01 §10.4), so what stands on the deck at this `z` is the Effector Module — two
+## rows from `y` 8 — and the mast goes on that.
 const MAST_PANELS: int = 6
-const MAST_BASE_Y: int = 12
+const MAST_BASE_Y: int = 10
 const MAST_Z: int = 28
 
 ## Doc 01 §7.1's Compact Command Core, written out by value.
@@ -181,8 +182,10 @@ func test_the_starter_is_stable_and_a_tall_build_is_not() -> void:
 	# of mass a long way above them — which is the one input the threshold is a
 	# function of, so this is the comparison that shows the figure means anything.
 	#
-	# The Prime Mover occupies rows 8 to 11, so the stack starts at 12; the panel
-	# is one row deep, so they are contiguous from there.
+	# The Prime Mover left the deck in session 44 — it mates to the hull's tail now
+	# (doc 01 §10.4) — so what the stack starts on is the Effector Module, which
+	# occupies rows 8 to 9 at this `z`. The panel is one row deep, so they are
+	# contiguous from 10.
 	for i: int in MAST_PANELS:
 		bp.add(PANEL_KEY, Vector3i(24, MAST_BASE_Y + i, MAST_Z))
 	check_eq(bp.apply(tall), Blueprint.APPLIED_CLEANLY, "the mast is a legal build")

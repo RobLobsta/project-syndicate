@@ -18,7 +18,13 @@ const FACE_YN: Vector3i = Vector3i(0, -1, 0)
 
 ## §10.6's shoulder. The arm bolts to structure through its shoulder face and
 ## offers its hand at the far end.
-const ARM_LO := Vector3i(-1, -5, -1)
+##
+## Eight cells rather than six, which is the humanoid reference rather than a
+## balance change: measured off the artwork the arm is 0.40 of overall height,
+## and on a machine standing 4.7 m to the top of its torso that is about 1.9 m
+## from shoulder to hand. Six cells was 1.50 m — a stub against a torso that is
+## now 2.00 m on its own, which reads as a machine with its hands at its chest.
+const ARM_LO := Vector3i(-1, -7, -1)
 const ARM_HI := Vector3i(1, 0, 1)
 
 
@@ -40,9 +46,9 @@ func _initialize() -> void:
 	quit()
 
 
-## §10.6: [code]apx.arm.manipulator.t3[/code], 3x6x3, 410 kg, 460 integrity.
+## §10.6: [code]apx.arm.manipulator.t3[/code], 3x8x3, 470 kg, 460 integrity.
 ##
-## Six cells of reach at 0.25 m the cell is 1.5 m of arm, and
+## Eight cells of reach at 0.25 m the cell is 2.0 m of arm, and
 ## [member AppendageProfile.reach_m] is authored to match: the hand is where the
 ## occupancy ends, so what the player sees is where the sword goes. A grip rating
 ## of 28 800 N holds a 307 kg edge with room to spare, which is the trade §7.8
@@ -83,7 +89,7 @@ func _author_arm() -> String:
 		nodes.push_back(node)
 	def.attachment_nodes = nodes
 
-	def.mass_kg = 410.0
+	def.mass_kg = 470.0
 	def.com_offset_m = PartAuthoring.box_centre_m(ARM_LO, ARM_HI)
 	def.integrity_max = 460.0
 	def.resistance = PackedFloat32Array([0.22, 0.16, 0.30, 0.12, 0.08])
@@ -95,7 +101,7 @@ func _author_arm() -> String:
 	var arm := AppendageProfile.new()
 	arm.grip_rating_n = 28800.0
 	# Five cells from the shoulder pivot to the palm, at the 0.25 m lattice.
-	arm.reach_m = 1.25
+	arm.reach_m = 1.75
 	arm.degrades_held_effector = true
 	def.appendage_profile = arm
 

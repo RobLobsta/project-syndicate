@@ -58,9 +58,29 @@ const KEY_PATTERN: String = (
 	"^(core|str|mot|pmv|eff|sup|ctl|cel|apx)\\.[a-z][a-z0-9_]{2,23}\\.[a-z][a-z0-9_]{1,23}\\.t[1-5]$"
 )
 
-## §14 rule 5. A part larger than this in any axis would not fit the lattice
-## with room to mate on both sides.
-const MAX_EXTENT_CELLS: int = 16
+## §14 rule 5, as a fraction of the lattice rather than as a figure.
+##
+## [b]It was a flat 16 cells on every axis, and the stated reason for it was not
+## the reason it bound.[/b] Sixteen cells is 4.00 m against a Build Lattice that
+## is 12.0 m on X and Z, so "would not fit the lattice with room to mate on both
+## sides" was true of a number three times larger — what 16 actually did was cap
+## every part at about the length of a small car, which nobody noticed while
+## every chassis in the registry was 2.25 m.
+##
+## Session 44's five reference vehicles all break it: a 7.00 m fuselage, a 6.00 m
+## tracked hull, a 6.00 m bogie and a 6.00 m gun are 28 and 24 cells. The rule is
+## real and the figure was not, so the figure is now derived — [b]two thirds of
+## the lattice on each axis[/b], which is (32, 21, 32).
+##
+## Two thirds rather than "whatever fits" because the rule is a design bound and
+## not a packing one: a part that occupied a whole axis would be the vehicle, and
+## an Assembly assembled from one part is not an Assembly. A third of every axis
+## is left for everything that has to be built around the largest part on it.
+const MAX_EXTENT_CELLS: Vector3i = Vector3i(
+	SyndicateConstants.LATTICE_EXTENT.x * 2 / 3,
+	SyndicateConstants.LATTICE_EXTENT.y * 2 / 3,
+	SyndicateConstants.LATTICE_EXTENT.z * 2 / 3
+)
 
 ## §11. The ceiling exists so that no configuration can achieve immunity.
 const MAX_RESISTANCE: float = 0.85
@@ -367,11 +387,15 @@ func _check_occupancy(def: PartDefinition) -> void:
 	_check_six_connected(def, seen)
 
 	var size := def.bounds_size_cells
-	if size.x > MAX_EXTENT_CELLS or size.y > MAX_EXTENT_CELLS or size.z > MAX_EXTENT_CELLS:
+	if (
+		size.x > MAX_EXTENT_CELLS.x
+		or size.y > MAX_EXTENT_CELLS.y
+		or size.z > MAX_EXTENT_CELLS.z
+	):
 		_fail(
 			RULE_OCCUPANCY_EXTENT,
 			def.part_key,
-			"occupancy extent %v exceeds the %d-cell limit on at least one axis"
+			"occupancy extent %v exceeds the %v-cell limit on at least one axis"
 			% [size, MAX_EXTENT_CELLS]
 		)
 

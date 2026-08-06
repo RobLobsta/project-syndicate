@@ -1489,6 +1489,97 @@ there is only one section here.)
     a chassis authored as a vehicle cabin becomes a torso for free. And a part set
     with no bent members cannot express a bent pose, so a body plan that needs one
     is a request for a *part*, not for a layout.
+105. **A cylinder inscribed in a square is 78.5% of it at every radius, which is
+    outside doc 01 §6.2's collider coverage band — so a round part needs its
+    occupancy corners cut before a `CYLINDER` collider will validate.**
+
+    `π/4 = 0.7854`, and §6.2 wants 82%–118%. The four-cell wheels get away with a
+    cylinder because `PartAuthoring.disc_cells` takes their four corners off,
+    which drops the occupancy to 75% of the box and puts the ratio at 105%. At
+    **three** cells the same corner-cut leaves a plus of five cells — 55.6% of the
+    box — and the identical cylinder is then **141%** of it.
+
+    So a three-cell disc has no cell list a cylinder fits: the box is 78.5% and
+    the plus is 141%, with nothing in between. `mot.wheeled.light_road.t1` and
+    `mot.wheeled.light_fixed.t1` therefore carry a `BOX` collider over a box
+    occupancy, which is exactly 100%.
+
+    The general shape is worth more than the two parts: **a helper that produces a
+    "round" footprint is only round at the sizes it was written for**, and the
+    coverage rule is the thing that notices. Doc 05 §6.1 shape-casts suspension
+    from the probe rather than from the collider, so what a wheel's collider
+    decides is ramming and hit registration, not ride — which is why a box is
+    survivable here and would not be if the collider were the contact.
+
+106. **A validation limit whose stated reason does not match its value binds on
+    something nobody wrote down.** Doc 01 §14 rule 5 capped a part at
+    `Vector3i(16, 16, 16)` and gave the reason "a part larger than this would not
+    fit the lattice with room to mate on both sides". The lattice is
+    `Vector3i(48, 32, 48)`, so that reason is true of a number three times larger.
+
+    What 16 cells actually did was cap every part at **4.00 m**, and nothing
+    noticed for forty-four sessions because every chassis in the registry was
+    2.25 m long. Session 44's five reference vehicles broke it four times in one
+    afternoon — a 7.00 m fuselage, a 6.00 m hull, a 6.00 m bogie and a 6.00 m gun.
+
+    The repair was to derive the figure from `LATTICE_EXTENT` rather than to raise
+    it: two thirds per axis, `Vector3i(32, 21, 32)`. **Per axis matters and a
+    scalar could not say it** — the lattice is 48 on X and 32 on Y, so a run that
+    is legal along X is illegal along Y, and the test that asserted one scalar
+    against all three axes was asserting one of them and saying nothing about the
+    other two.
+
+107. **A recipe cell list is a property of the chassis's section, and sharing a
+    section is what let five vehicles become one vehicle.** Until session 44 all
+    four authored Core Modules were 6x4 in section and differed only in length, on
+    the reading that a shared section keeps every flank and deck mount cell the
+    same across families — so one cell list ported everywhere and
+    `tests/integration/test_placement_validator.gd` could probe all three chassis
+    with one candidate.
+
+    That reading is defensible and it cost the thing no validator can see: **every
+    Assembly was the same box with different running gear underneath**, which is
+    invisible to 8000 checks and obvious in one frame of capture (fact 75 again,
+    one level up). Reversing it is not free — every layout is now derived against
+    its own chassis's extents, and a fixture that probes several chassis needs a
+    cell per chassis or two of its three cases reject on `CELL_OCCUPIED` and read
+    exactly like the rule under test working.
+
+108. **A mass scaled against the hull makes the Assembly out of air, because the
+    bounding box grows faster than the hull does.** `core.command.compact.t2` was
+    taken from 1800 kg to 1450 during session 44's rebuild on sound reasoning —
+    the reference road car masses 1500 kg over 11.2 m³ of envelope — and every
+    validator passed. `tests/physics/test_build_proportions.gd` then measured the
+    finished Assembly at **93 kg/m³** of its own bounding box, under the 100 that
+    file calls the line between a vehicle and balsa.
+
+    The box a wheeled build occupies counts the contacts standing proud of the
+    flanks and the Effector Module standing on the deck; the hull counts neither.
+    So the hull's density and the Assembly's are different questions, and only the
+    second one is about whether the machine looks like a machine. The mass went
+    back to 1800.
+
+109. **A walking Assembly's pitch stability is its stance base and nothing else, so
+    torso depth and stability are the same number.** Doc 05 §13's virtual leg is
+    one spring-damper force along the hip-to-foot line with a **point foot**:
+    there is no ankle, no foot length and no balance controller, and
+    `GaitSolver.stance_axial_force_n` returns one scalar along one line.
+
+    This is the constraint that makes a humanoid reference undeliverable as data.
+    The reference torso is 1.85 times as tall as it is deep and its legs are half
+    its height; reproducing either needs a torso with almost no fore-and-aft
+    depth, and every cell of depth removed is a cell of stance base removed.
+    Measured on the way through: a 2.50 m torso on a 2.24 m hip over the family's
+    1.50 m stance stooped **25.8°** with all four contacts unloaded, and widening
+    the stance to the torso's own ends — 2.00 m — brought it to **0.6°**. Nothing
+    else changed.
+
+    **A biped is doc 05 §13 architecture, not a part table.** It needs a foot with
+    a length and an ankle torque, or a balance controller modulating stance force
+    fore and aft. Until one exists, the answer to "why is the walking machine not
+    the reference's proportion" is this fact.
+
+
 ---
 
 ## 2. What fault injection taught

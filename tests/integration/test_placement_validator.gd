@@ -26,40 +26,62 @@ const LIMB_KEY := &"mot.limb.strider.t4"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 const ARM_KEY := &"apx.arm.manipulator.t3"
 
-## Each probe hung off the Core Module's `-X` flank, at a height inside the
-## `y` 4..7 band all three chassis share and at `z` 24, which every chassis
-## occupies whether it is nine cells long or thirteen. The three differ only
-## because the three parts have different pivots.
-const FLANK_WHEEL := Vector3i(19, 6, 24)
-const FLANK_LIMB := Vector3i(19, 7, 24)
-const FLANK_ROTOR := Vector3i(19, 4, 24)
+## Each probe hung off its chassis's `-X` flank, at `z` 24 and at a height every
+## chassis occupies.
+##
+## [b]The `x` is now per chassis, and that is the session-44 rebuild arriving
+## here.[/b] The three chassis used to share a 6x4 section, so one probe cell was
+## legal geometry on all of them and the chassis was provably the only thing
+## differing between cases. Doc 01 §10.1 records why that stopped: seated at
+## [constant CORE_ORIGIN] the command core spans `x` 20..27, the strider 21..26
+## and the lifter 22..25, so there is no cell outboard of all three flanks.
+##
+## [b]A shared cell would now be worse than useless rather than merely stale.[/b]
+## Two of the three cases would reject on `CELL_OCCUPIED` — the candidate inside a
+## wider hull — and a `CELL_OCCUPIED` refusal reads from the outside exactly like
+## the family rule working. So the probe is placed against each chassis's own
+## flank, and the flank offsets below are the only thing that varies: the part,
+## the orientation, the height and the `z` are identical across the three.
+const FLANK_X_BY_CHASSIS: Array[int] = [18, 19, 20]
+## Probe heights, one per motive part, chosen so each overlaps the `y` band of
+## every chassis. They differ only because the three parts have different pivots:
+## a disc grows upward from its pivot, a limb hangs downward from it, and a wheel
+## straddles it.
+const FLANK_WHEEL_Y: int = 6
+const FLANK_LIMB_Y: int = 7
+const FLANK_ROTOR_Y: int = 4
+const FLANK_Z: int = 24
 ## The same probe for an Appendage: its shoulder carried onto `+X` so the arm
-## mates through the Core Module's `-X` flank and reaches outboard from there.
+## mates through the chassis's `-X` flank and reaches outboard from there.
 ##
 ## [b]A flank mount rather than the forward-running one
 ## [constant CombatArena.MELEE_ARMS] uses, and the reason is the fixture rather
 ## than the pose.[/b] An arm running forward has to sit one cell ahead of its
-## hull's `-Z` face, and that cell is `z` 19 on a nine-cell chassis and `z` 17 on
-## the thirteen-cell one — so no single candidate is legal geometry on all three,
-## and a case that rejected on `CELL_OCCUPIED` would look exactly like the family
-## rule working. The flank is at `x` 21 and `z` 24 on every chassis here, which
-## leaves the chassis as the only thing that differs between the three cases.
-const FLANK_ARM := Vector3i(20, 6, 24)
+## hull's `-Z` face, and the three chassis put that face at `z` 17, 19 and 10 —
+## so no single candidate is legal geometry on all three, and a case that
+## rejected on `CELL_OCCUPIED` would look exactly like the family rule working.
+## Under [constant ARM_ORIENTATION] the shoulder is the arm's `+X` end, so its
+## origin sits one cell outboard of the flank on every chassis.
+const FLANK_ARM_Y: int = 6
 const ARM_ORIENTATION: int = 8
 
-## The Core Module seated at the lattice origin. Occupies x 21..26, y 4..7,
-## z 18..30; its whole top face at y = 7 is DECK polarity.
+## The Core Module seated at the lattice origin. Occupies x 20..27, y 4..7,
+## z 17..30; its whole top face at y = 7 is DECK polarity.
 const CORE_ORIGIN := Vector3i(24, 4, 24)
 ## Directly on the Core Module's deck. The panel occupies x 22..25, z 22..25.
 const DECK_ORIGIN := Vector3i(24, 8, 24)
 ## One cell out from the Core Module's +X face, with clear air below it. The
-## flank is at x = 26 now, not 25, so this is a cell further out than it was.
-const BESIDE_ORIGIN := Vector3i(27, 5, 24)
+## flank is at x = 27 since the hull went to eight cells wide.
+const BESIDE_ORIGIN := Vector3i(28, 5, 24)
 ## Beside the stack of [method _stacked_context] and clear of the Core Module
-## entirely. The hull spans x 21..26 and reaches y = 7, so a panel one cell out
+## entirely. The hull spans x 20..27 and reaches y = 7, so a panel one cell out
 ## from the stack at deck height would rest on the roof and take the Core Module
 ## as its parent — which is a different joint from the one §7.8 is being asked
 ## about here. One cell higher, it can only mate with the stack.
+##
+## The `x` follows the **stack**, which is on the lattice centreline and did not
+## move when the hull went to eight cells wide. It was taken out to 29 with the
+## flank during the session-44 rebuild and stopped reaching the stack at all.
 const LATERAL_ORIGIN := Vector3i(28, 9, 24)
 
 ## Published in doc 01 §10.2 and re-asserted here so a data change that breaks
@@ -695,7 +717,7 @@ func test_commit_removal_cycles_do_not_drift() -> void:
 func test_a_chassis_takes_its_own_locomotion_family_and_no_other() -> void:
 	var chassis: Array[StringName] = [CORE_KEY, STRIDER_KEY, LIFTER_KEY]
 	var motive: Array[StringName] = [WHEEL_KEY, LIMB_KEY, ROTOR_KEY]
-	var origins: Array[Vector3i] = [FLANK_WHEEL, FLANK_LIMB, FLANK_ROTOR]
+	var probe_y: Array[int] = [FLANK_WHEEL_Y, FLANK_LIMB_Y, FLANK_ROTOR_Y]
 
 	for c: int in chassis.size():
 		var core := PartRegistry.definition_by_key(chassis[c])
@@ -707,8 +729,9 @@ func test_a_chassis_takes_its_own_locomotion_family_and_no_other() -> void:
 				continue
 			var ctx := _new_context()
 			PlacementValidator.commit(ctx, PlacementCandidate.create(core, CORE_ORIGIN, 0))
+			var origin := Vector3i(FLANK_X_BY_CHASSIS[c], probe_y[m], FLANK_Z)
 			var r := PlacementValidator.validate(
-				ctx, PlacementCandidate.create(part, origins[m], 0)
+				ctx, PlacementCandidate.create(part, origin, 0)
 			)
 			var expected := (
 				PlacementValidator.Reject.NONE
@@ -738,7 +761,12 @@ func test_the_family_refusal_is_not_a_budget_refusal_in_disguise() -> void:
 		"the mount budget has room for the disc"
 	)
 	check_eq(
-		PlacementValidator.validate(ctx, PlacementCandidate.create(rotor, FLANK_ROTOR, 0)),
+		PlacementValidator.validate(
+			ctx,
+			PlacementCandidate.create(
+				rotor, Vector3i(FLANK_X_BY_CHASSIS[1], FLANK_ROTOR_Y, FLANK_Z), 0
+			)
+		),
 		PlacementValidator.Reject.MOTIVE_FAMILY_MISMATCH,
 		"and it is refused on its family anyway"
 	)
@@ -757,7 +785,10 @@ func test_a_lattice_with_no_chassis_refuses_on_mating_rather_than_on_family() ->
 		return
 	check_eq(
 		PlacementValidator.validate(
-			_new_context(), PlacementCandidate.create(rotor, FLANK_ROTOR, 0)
+			_new_context(),
+			PlacementCandidate.create(
+				rotor, Vector3i(FLANK_X_BY_CHASSIS[2], FLANK_ROTOR_Y, FLANK_Z), 0
+			)
 		),
 		PlacementValidator.Reject.NO_MATING_NODE,
 		"an empty lattice takes a Core Module first and says so"
@@ -776,7 +807,8 @@ func test_an_appendage_takes_an_ambulatory_chassis_and_no_other() -> void:
 	if not check_not_null(arm, "the Appendage is registered"):
 		return
 	var chassis: Array[StringName] = [CORE_KEY, STRIDER_KEY, LIFTER_KEY]
-	for key: StringName in chassis:
+	for c: int in chassis.size():
+		var key := chassis[c]
 		var core := PartRegistry.definition_by_key(key)
 		if not check_not_null(core, "%s is registered" % key):
 			continue
@@ -787,9 +819,10 @@ func test_an_appendage_takes_an_ambulatory_chassis_and_no_other() -> void:
 			if key == STRIDER_KEY
 			else PlacementValidator.Reject.APPENDAGE_CHASSIS_MISMATCH
 		)
+		var origin := Vector3i(FLANK_X_BY_CHASSIS[c] + 1, FLANK_ARM_Y, FLANK_Z)
 		check_eq(
 			PlacementValidator.validate(
-				ctx, PlacementCandidate.create(arm, FLANK_ARM, ARM_ORIENTATION)
+				ctx, PlacementCandidate.create(arm, origin, ARM_ORIENTATION)
 			),
 			expected,
 			"an Appendage on %s" % key
@@ -816,7 +849,12 @@ func test_the_appendage_refusal_is_not_a_budget_refusal_in_disguise() -> void:
 	)
 	check_eq(
 		PlacementValidator.validate(
-			ctx, PlacementCandidate.create(arm, FLANK_ARM, ARM_ORIENTATION)
+			ctx,
+			PlacementCandidate.create(
+				arm,
+				Vector3i(FLANK_X_BY_CHASSIS[0] + 1, FLANK_ARM_Y, FLANK_Z),
+				ARM_ORIENTATION
+			)
 		),
 		PlacementValidator.Reject.APPENDAGE_CHASSIS_MISMATCH,
 		"and it is refused on its chassis anyway"

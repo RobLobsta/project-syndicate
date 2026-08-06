@@ -163,17 +163,49 @@ func test_connected_l_shape_is_accepted() -> void:
 	)
 
 
+## Rule 5's cap is per axis and is a fraction of the lattice rather than a flat
+## figure — a run along X is legal at a length that is illegal along Y, because
+## the Build Lattice is 48 cells on X and 32 on Y. The old test asserted one
+## scalar against all three, which passed while saying nothing about two of them.
 func test_occupancy_extent_is_capped() -> void:
+	var limit := PartRegistryValidator.MAX_EXTENT_CELLS
+	for axis: int in 3:
+		var def := _make_panel()
+		var cells := PackedVector3Array()
+		var step := Vector3(0.0, 0.0, 0.0)
+		step[axis] = 1.0
+		for n: int in limit[axis] + 1:
+			cells.append(step * float(n))
+		def.occupancy_cells = cells
+		def.collider_profile = _box_collider(def)
+		_bake(def)
+		check_true(
+			_rules_broken_by(def).has(PartRegistryValidator.RULE_OCCUPANCY_EXTENT),
+			(
+				"an extent of %d cells on axis %d exceeds that axis's limit of %d"
+				% [limit[axis] + 1, axis, limit[axis]]
+			)
+		)
+
+
+## The other half, and the half a scalar cap could not express: a part may be
+## longer than the Y limit along X, because the lattice is.
+func test_the_extent_cap_is_per_axis_rather_than_one_number() -> void:
+	var limit := PartRegistryValidator.MAX_EXTENT_CELLS
+	check_true(
+		limit.x > limit.y,
+		"the X cap (%d) is above the Y cap (%d), because the lattice is" % [limit.x, limit.y]
+	)
 	var def := _make_panel()
 	var cells := PackedVector3Array()
-	for x in PartRegistryValidator.MAX_EXTENT_CELLS + 1:
-		cells.append(Vector3(x, 0, 0))
+	for n: int in limit.y + 1:
+		cells.append(Vector3(float(n), 0.0, 0.0))
 	def.occupancy_cells = cells
 	def.collider_profile = _box_collider(def)
 	_bake(def)
-	check_true(
+	check_false(
 		_rules_broken_by(def).has(PartRegistryValidator.RULE_OCCUPANCY_EXTENT),
-		"an extent of %d cells exceeds the limit" % (PartRegistryValidator.MAX_EXTENT_CELLS + 1)
+		"%d cells along X is legal even though it would be illegal along Y" % (limit.y + 1)
 	)
 
 

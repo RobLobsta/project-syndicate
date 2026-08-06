@@ -41,6 +41,7 @@ they found are in `LEARNED_FACTS.md`.
 
 | Session | What it did |
 |---|---|
+| 44 | **Five vehicles, remodelled against five photographs.** The part table had been rescaled twice for density and never once for *shape*, so every Assembly in the game was the same 6x4 box with different running gear underneath. Doc 01 §10.1 now derives each chassis from a reference: a mid-engine road car (8x4x14), a protected utility truck (10x6x20, **new** `core.utility.hauler.t2`), a tracked gun platform (10x5x24), a humanoid walking torso (6x10x10) and a tandem-seat rotorcraft fuselage (4x6x28). Six new parts support them — a 6.00 m gun, a 0.75 m steered/fixed contact pair, a bogie as long as the hull it carries, a Prime Mover that lies down. **The tracked family's headline defect is closed**: 12/12 road stations loaded at 1.4° of pitch, against 8.1° nose-up with two carrying nothing. §14 rule 5's part-extent cap was a flat 16 cells whose stated reason was true of a number three times larger; it is now two thirds of `LATTICE_EXTENT` per axis. |
 | 43 | **The first match waits for you, and the edge finally goes to a fight — on legs.** Doc 05 §15.7.4 gains a third gate — `AiDriver.hold_fire`, written by the match layer — so an opponent holds its fire while doc 11 §14.6's first-run card is up; a player reading it was taking a third of their machine doing so. A card the player *asked for* is deliberately not a briefing, or `hud_toggle_stats` would be a key that switches the opposition off. Doc 01 §7.1 gains its appendage half: **an Appendage requires an ambulatory chassis** (`APPENDAGE_CHASSIS_MISMATCH`), so an arm stops being general mounting hardware. `CombatArena.Recipe.MELEE` is a walker with an arm on each flank and `tests/physics/test_melee_duel.gd` puts doc 07 §15 in an engagement for the first time: it walks to **8.8 m**, holds contact for **374 energised ticks off one swing**, and never throws what it is cutting — which closes `sustained-delivers-impulse`, a fault recorded as a survivor since session 42. Three findings: an energised edge resolves on only **25** of those 374 ticks; two arms are 1434 kg that pitch the walker **29.6° nose-down**; and at 30 m under fire it **loses ground**, which is doc 05 §13's steering defect rather than anything about the weapon. |
 | 14 | Combat layer: damage resolver, effectors, projectiles. Planted 37 faults over it and ran four — the rest waited three sessions (see §3). |
 | 15 | First engagements. Six duels between locomotion families; found the overpenetration grind, the first Prime Mover detonation, and three reasons an ambulatory Assembly is a poor gun platform. |
@@ -71,6 +72,85 @@ they found are in `LEARNED_FACTS.md`.
 | 33 | **Three queue items, and the middle one beaten twice.** The control card leaves the middle of the screen and stands down on the player's first input (doc 11 §14.6). `release_part` is finally called, so a destroyed part's collider and mesh leave with it — which took doc 07 §12.2's penetration budget off corpses and turned the ambulatory mirror from an eight-session stalemate into a decision in 221 of 900 ticks. §7.4's integrator was rebuilt with both traps solved and reverted again: the shipped Assembly stands on two of its four wheels, and on that stance a correct integrator looks like a broken one. |
 | 32 | **The wreck stays where it fell, and the reason a parked build never stops is now known.** Doc 05 §3.7: a body with no live parts is frozen rather than left as a one-kilogramme hull-sized collider anything can punt. Measured 2.80 m of hulk travel before, 0.00 m after. Then the physics assessment that came with it: §7.4's contact integration is **142× outside its own stability limit**, the contact reverses on ten of twelve ticks under a build standing still, and the repair was built, measured, and reverted because it moves every wheeled number in the project. `test_rest_stability` measures the defect and is asserted as it fails. |
 | 31 | **You are not driven over any more.** Doc 05 §15.7.1 gains an arrival brake and a stand-off measured against the hulls rather than guessed at. The instrument came first: `worst_roll_deg` on `CombatArena.Combatant`, which is the first attitude any engagement fixture has ever recorded. Target roll on a stationary build under three converging drivers: **146.2° before, 0.3° after.** Found on the way: a stand-off shorter than the two hulls it separates, and a parked Assembly that never stops rolling. |
+
+### Session 44, in more detail
+
+**What was wrong, and why nothing could see it.** `LEARNED_FACTS.md` fact 75 says
+the registry has no check that compares one part against another, so proportion is
+the one property of the part table no test can see. Session 34 acted on that and
+fixed the *density* — the reference build went from 46 kg/m³ to 141 — and left
+every chassis the same 6x4 section, on the reading that a shared section keeps
+every flank and deck mount cell identical across families. It does, and it is why
+five vehicles were one vehicle. Fact 107 records the trade in full.
+
+**The five chassis, each derived from a photograph.** Doc 01 §10.1 carries the
+table; the section is the first thing all five disagree about.
+
+| | Section (W×H) | Length | The ratio that forced it |
+|---|---|---|---|
+| Road car | 2.00 × 1.00 m | 3.50 m | height is a quarter of length |
+| Utility truck | 2.50 × 1.50 m | 5.00 m | height **equals** width |
+| Tracked platform | 2.50 × 1.25 m | 6.00 m | as long as the track under it |
+| Walking torso | 1.50 × 2.50 m | 2.50 m | taller than it is long |
+| Rotorcraft | 1.00 × 1.50 m | 7.00 m | ten times longer than it is wide |
+
+**Six new parts, and each exists because a silhouette needed it.**
+`eff.ballistic.rifle_long.t3` is 6.00 m of gun overhanging a 6.00 m hull;
+`mot.tracked.long_bogie.t3` is the bogie `HANDOFF.md` §3.1.2 asked for two
+sessions ago; `mot.wheeled.light_road.t1` and `mot.wheeled.light_fixed.t1` are
+0.75 m contacts at the reference car's 0.15-of-length; `pmv.combustion.flat.t2` is
+`pmv.combustion.standard.t2` laid on its side with every published figure
+identical, so a road car's engine bay is 1.50 m of length instead of 1.00 m of
+height; `core.utility.hauler.t2` is the one silhouette the shipping set could not
+express at all.
+
+**The tracked family stands level for the first time.** Measured on the shipped
+recipe after the rebuild:
+
+| | before | after |
+|---|---|---|
+| Rest pitch | 8.1° nose-up | **1.4°** |
+| Road stations carrying load | 2 of 4 unloaded | **12 of 12 loaded** |
+| Contact base against hull | 1.90 m under 2.25 m | **5.60 m under 6.00 m** |
+
+Two of the three items `HANDOFF.md` §3.1.2 listed are done with it —
+`pivot_taper_mps` went 9.0 → 16.0 and `lateral_grip_ratio` 1.35 → **0.85**, below
+1.0, because a machine that steers by breaking its patch loose sideways should not
+grip harder sideways than it drives forward.
+
+**The walker is a walking machine and not a car with legs.** The torso went from
+1.50 × 1.00 × 2.25 m — a box lying on its side — to 1.50 × 2.50 × 2.50 m, the limb
+reach from 1.90 m to 2.60 m, and the finished Assembly stands **5.00 m tall**
+against 2.63. Two measurements got it there and both are fact 109: with the Prime
+Mover on the tail it stooped **25.8°** with every contact unloaded, and with the
+mover slung under the belly between the legs and the stance widened to the torso's
+own ends it stands at **0.6°**.
+
+**And the walker is not the reference's proportion, which is architecture rather
+than a compromise.** The humanoid reference is a biped whose torso is 1.85 times as
+tall as it is deep. Doc 05 §13's virtual leg is one spring-damper force along the
+hip-to-foot line with a **point foot**, so fore-and-aft foot separation is the only
+pitch stability the family has, and torso depth and stance base are the same
+number. A biped needs a foot with a length and an ankle torque, or a balance
+controller modulating stance force fore and aft. Raised in doc 01 §10.1 and
+`HANDOFF.md` §3.1.3 rather than worked around.
+
+**Two limits found by walking into them.** §14 rule 5 capped a part at
+`Vector3i(16, 16, 16)` — 4.00 m — with a stated reason ("would not fit the lattice
+with room to mate on both sides") that is true of a number three times larger;
+nothing noticed while every chassis was 2.25 m long. It is now two thirds of
+`LATTICE_EXTENT` per axis, and per-axis matters because the lattice is 48 on X and
+32 on Y (fact 106). And a `CYLINDER` collider is π/4 = 78.5% of its own cell box at
+every radius, which is outside §6.2's 82%–118% band unless the occupancy has had
+its corners cut — which `disc_cells` only does correctly at four cells and above
+(fact 105).
+
+**The one thing a validator caught that nothing else would have.** The road hull
+was taken from 1800 kg to 1450 on the reasoning that the reference car masses
+1500 kg, and `tests/physics/test_build_proportions.gd` measured the finished
+Assembly at 93 kg/m³ — under its own floor. The bounding box a wheeled build
+occupies counts the contacts standing proud of the flanks and the module standing
+on the deck; the hull counts neither. The mass went back to 1800 (fact 108).
 
 ### Session 43, in more detail
 
