@@ -1656,6 +1656,11 @@ what a standing human does with their ankles.
 ```
 support polygon = foot_length_m (fore-aft) x foot_width_m (lateral)
 
+h   = centre of mass height over the ground this limb stands on
+k_p = m · g · h / limb_count            (this limb's share of the pendulum)
+k_a = ANKLE_STIFFNESS_RATIO · k_p       (restoring stiffness, N·m/rad)
+c_a = ANKLE_DAMPING_S · k_a             (restoring damping, N·m·s/rad)
+
 θ  = body_up x world_up                       (axis-angle, |θ| = sin of the tilt)
 ω  = body angular velocity, world-up component removed
 τ_d = k_a · θ − c_a · ω                        (desired restoring torque, world)
@@ -1667,8 +1672,23 @@ support polygon = foot_length_m (fore-aft) x foot_width_m (lateral)
           and returned to world
 ```
 
-`N` is the normal component of that limb's own stance force. Six things about
+`N` is the normal component of that limb's own stance force. Seven things about
 this are normative:
+
+- **`k_a` is a ratio and never an absolute figure.** `m · g · h` is the linear
+  inverted pendulum's destabilising stiffness, in the same newton-metres per
+  radian, and the aggregate ankle stiffness of a standing Assembly is `k_a` times
+  the number of limbs holding it up — so dividing the pendulum by the limb count
+  makes the aggregate exactly `ANKLE_STIFFNESS_RATIO · m · g · h` whatever the
+  machine is. **An absolute figure silently caps how much a walking Assembly may
+  carry, and does it at a mass nothing in the data or the interface states.** The
+  constant was 60 000 N·m/rad, which on the two-limbed reference build is an
+  aggregate 120 000 against a pendulum of 105 700: a margin of 1.14 that the whole
+  family had been balancing on. Measured across four builds of one chassis —
+  3820 kg settles at 1.63° of tilt, 4020 kg at 2.62°, and at 4960 kg the aggregate
+  falls under the pendulum and the machine pitches over from upright in about two
+  and a half seconds, having done nothing but stand there. Mass and height are
+  exactly what a builder adds.
 
 - **The bound is `N · half-extent` because the centre of pressure cannot leave
   the polygon.** That is the whole physical content: a foot carrying no load can
@@ -1697,6 +1717,18 @@ this are normative:
   deliberate: the term is opt-in per part, so an existing quadruped is unchanged
   until somebody gives it feet.
 
+**What the ratio bought, measured.** Taking the aggregate from 1.14 times the
+pendulum to 3.0 moved four things at once on the walking family, none of them
+aimed at directly: the shipped biped settles at 0.62° of tilt against 1.63°; a
+standing quadruped's uncommanded yaw drift falls from 18.1° over five seconds to
+0.54°, back under the one degree §13.4's standing state used to hold before the
+chassis rebuild; the melee build's stoop under two arms and two blades falls from
+12.8° to 8.0°; and a steering demand acquires real authority, with full left and
+full right landing 55.1° apart where they used to land within five degrees of each
+other. The last of those exposes an inversion — the family now steers the opposite
+way to every other one — which was invisible while the demand had no authority to
+invert, and is recorded in `tests/physics/test_ambulatory_drift.gd`.
+
 **The polygon is used twice, and the second use is what makes a biped stand
 still.** §13.4 freezes a standing Assembly with every foot planted, and a planted
 foot is a fixed world anchor — so if the hips travel out from over the feet, the
@@ -1705,6 +1737,19 @@ the feet back. A standing Assembly therefore **re-plants a limb when its hip has
 moved further than half a foot from it**, which is the same bound as the ankle
 clamp seen from the other side: the step happens exactly when the centre of
 pressure runs out of travel.
+
+**And it re-plants when the ground it is standing on is more than `step_height_m`
+below its foot**, which is the third trigger and the one that keeps a standing
+Assembly on the ground rather than over it. The first plant of a spawn is made
+against a probe result no physics tick has flushed yet, so it can report a surface
+metres above the one that is there; neither of the other two triggers catches
+that, because a foot planted *high* leaves the leg short rather than long and sits
+directly under its own hip. What happens instead is that §13.6's spring holds a
+metre of compression it can never work off, every limb saturates at
+`max_foot_force_n`, and the machine is thrown into the air and comes down on its
+face. The bound is the swing's own clearance because a foot the machine's stride
+would step over is a foot that is not standing on anything, and it is inert on
+level ground and on a slope alike, where the plant sets the difference to zero.
 
 A quadruped hides the need for it, because four feet fore and aft of the centre
 of mass cancel each other's horizontal components. A biped does not: measured
@@ -1717,6 +1762,62 @@ different jobs.
 has to come from the stance base, so torso depth stops being a stability budget
 and a two-limbed Assembly is expressible. Doc 01 §10.1 records the constraint
 this removes.
+
+### 13.12 The Heading Authority
+
+**A walking Assembly is not steered like a car, and until this section it was.**
+`ControlInput.steer` fed two consumers at once: it added a lateral component to
+§13.5's desired velocity, and it rotated §13.5's plant target. So a right command
+asked for a rightward *velocity* at the same moment it rotated the stride, the
+placement law's correction term planted the foot hard left to produce that
+velocity, and the velocity error won. Measured over three sessions, the demand
+read as a disturbance with a sign loosely attached to it: full left and full
+right landing within 4.7° of each other out of 112° of effect, and later — once
+§13.10's ankle gave the placement law enough stability to act at all — 55° apart
+in the *wrong* direction. The placement law's sign was correct throughout.
+
+**The split is normative.** For the ambulatory family:
+
+```
+desired_velocity = forward · throttle · speed_cap        (no lateral term)
+
+ω_target = −turn_rate_deg_s · steer                       (positive steer is right,
+                                                           a right turn is negative
+                                                           about world up)
+τ_yaw    = I_yy · (ω_target − ω_y) / HEADING_RESPONSE_S · share
+```
+
+applied about world up by every **planted** limb, where `share` is one over the
+Assembly's limb count. Six things about this are normative:
+
+- **`throttle` walks and `steer` turns.** No locomotion family may give one
+  control two jobs; that is the defect this section exists to close, and it cost
+  three sessions of measurement reading a correct sign as an inverted one.
+- **It is a rate controller and never an authored torque.** The gain is
+  `I · Δω / response`, a statement about how fast the heading may change, so it
+  carries no assumption about how heavy the machine is. An authored newton-metres
+  would turn a light Assembly faster than a heavy one and would cap what either
+  could carry at a mass nothing in the data states — which is exactly what §13.10's
+  ankle constant did before it became a ratio.
+- **The commanded rate is the part's own `turn_rate_deg_s`.** A limb that turns
+  faster is a limb a builder chose.
+- **A limb in swing contributes nothing**, and an Assembly with no foot on the
+  ground cannot turn at all. That is the same degradation §13.10 gets from
+  clamping by its own normal load, and it is what stops the term being free
+  rotation out of nothing.
+- **§13.5's plant rotation stays.** It is the *placement* half of turning — the
+  stride direction has to come round with the machine or it walks sideways
+  through the corner — and it rotates with the demand's sign, against world up.
+  This section is what makes the turn happen at the authored rate; that one is
+  what makes the feet arrive where the turn needs them.
+- **§13.10's ankle still sets its own yaw to zero.** Two terms fighting over one
+  axis is what §13.5 was protecting against, and the protection is kept by having
+  exactly one of them own yaw.
+
+Measured on `mot.limb.strider.t4` at an authored 45°/s, over 300 ticks: a full
+right demand comes round **−218.7°** and a full left **+219.4°**, which is 43.7
+and 43.9 degrees a second. A neutral run drifts 43.5° over the same window and a
+standing one holds its heading to half a degree.
 
 ### 13.11 Capture Point
 

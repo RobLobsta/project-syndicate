@@ -26,17 +26,58 @@ const STANDING_SPEED_MPS: float = 0.15
 
 ## ===== §13.10 THE ANKLE STRATEGY ======================================
 
-## Restoring torque per radian of tilt, and per radian per second of tilt rate.
+## Restoring torque per radian of tilt, as a multiple of the Assembly's own
+## toppling stiffness — and the fact that it is a ratio rather than a number is
+## the whole of §13.10's second revision.
 ##
 ## Each planted limb computes the same desired torque from the same body attitude
 ## and then clamps it by its [i]own[/i] normal load, which is what real ankles do
 ## and what makes the term degrade gracefully as feet leave the ground. So the
-## aggregate stiffness of a standing Assembly is this figure times the number of
-## limbs holding it up, and the damping is chosen against that aggregate rather
-## than against one limb: under-damping an attitude loop on a machine this tall
-## is a wobble that never settles, and the clamp keeps over-damping honest.
-const ANKLE_STIFFNESS_NM_PER_RAD: float = 60000.0
-const ANKLE_DAMPING_NMS_PER_RAD: float = 24000.0
+## aggregate stiffness of a standing Assembly is one limb's figure times the
+## number of limbs holding it up, and it has to be compared against the
+## destabilising stiffness of the inverted pendulum it is holding: `m · g · h`,
+## in the same newton-metres per radian.
+##
+## [b]An absolute figure therefore caps the machine, and nothing said so.[/b] The
+## constant here was 60 000 N·m/rad, which on the two-limbed reference build is an
+## aggregate 120 000 against a toppling stiffness of 105 700 — a margin of 1.14,
+## and every walking Assembly in the project has been balancing on it. Measured
+## across four builds of the same chassis: 3820 kg settles at 1.63° of tilt,
+## 4020 kg at 2.62°, and at 4960 kg the aggregate falls under the pendulum and
+## the machine pitches over from upright in about two and a half seconds. Mass
+## and height are exactly what a builder adds, so the old constant made "how much
+## can this machine carry before it cannot stand up" a number nobody could read
+## off anything.
+##
+## A ratio has no such ceiling and states the design directly: the ankle is
+## [constant ANKLE_STIFFNESS_RATIO] times as stiff as the thing trying to tip the
+## machine over, whatever that machine weighs. It changes nothing about the
+## bound — the clamp is still `N · half-extent`, so the ankle still saturates a
+## few degrees out and §13.11's step still has to do the rest.
+const ANKLE_STIFFNESS_RATIO: float = 3.0
+
+## Damping as a time constant against the stiffness above, in seconds.
+##
+## 0.40 s is the ratio the two authored constants had (24 000 against 60 000) and
+## it is kept, so this revision changes the loop's stiffness and not its damping
+## character. Under-damping an attitude loop on a machine this tall is a wobble
+## that never settles, and the clamp keeps over-damping honest.
+const ANKLE_DAMPING_S: float = 0.40
+
+
+## The stiffness one limb of an [param limb_count]-limbed Assembly opposes its own
+## toppling with, in newton-metres per radian.
+##
+## `m · g · h` is the linear inverted pendulum's destabilising stiffness — the
+## moment a machine of mass [param mass_kg] whose centre of mass stands
+## [param com_height_m] over its feet produces per radian it leans. Divided by the
+## limbs holding it up, because §13.10 has every planted limb compute the same
+## desired torque, so the aggregate is this times the count.
+static func topple_stiffness_nm_per_rad(
+	mass_kg: float, com_height_m: float, limb_count: int
+) -> float:
+	var h := maxf(com_height_m, 0.0)
+	return maxf(mass_kg, 0.0) * SyndicateConstants.GRAVITY_MPS2 * h / float(maxi(limb_count, 1))
 
 
 ## §13.10's clamp: the most torque this foot can apply at [param normal_force_n],
@@ -59,11 +100,16 @@ static func ankle_torque_limit_nm(profile: LimbProfile, normal_force_n: float) -
 ## the wrong sign. The returned torque is zero for a profile with no authored
 ## support polygon and for a foot carrying no load — both by construction rather
 ## than by an early return, because a bound of zero clamps everything to zero.
+## [param topple_stiffness_nm_per_rad] is this limb's share of the Assembly's own
+## `m · g · h`, from [method topple_stiffness_nm_per_rad]. It is passed in rather
+## than derived here because a solver has the mass and the pendulum height in hand
+## and this function has neither, and because a test wants to set it directly.
 static func ankle_torque_nm(
 	profile: LimbProfile,
 	normal_force_n: float,
 	body_basis: Basis,
-	angular_velocity: Vector3
+	angular_velocity: Vector3,
+	topple_stiffness_nm_per_rad: float
 ) -> Vector3:
 	# `body_up x world_up` is an axis-angle whose magnitude is the sine of the
 	# tilt and whose direction is the axis that rotates the body's up onto the
@@ -74,7 +120,8 @@ static func ankle_torque_nm(
 	# makes turning a matter of placement and gives this family exactly one
 	# heading authority.
 	var rate := angular_velocity - Vector3.UP * angular_velocity.dot(Vector3.UP)
-	var desired := tilt * ANKLE_STIFFNESS_NM_PER_RAD - rate * ANKLE_DAMPING_NMS_PER_RAD
+	var stiffness := ANKLE_STIFFNESS_RATIO * maxf(topple_stiffness_nm_per_rad, 0.0)
+	var desired := tilt * stiffness - rate * (stiffness * ANKLE_DAMPING_S)
 
 	var limit := ankle_torque_limit_nm(profile, normal_force_n)
 	var local := body_basis.inverse() * desired
@@ -83,6 +130,58 @@ static func ankle_torque_nm(
 		0.0,
 		clampf(local.z, -limit.y, limit.y)
 	)
+
+
+## ===== §13.12 THE HEADING AUTHORITY ===================================
+
+## Seconds the heading loop takes to reach a commanded turn rate.
+##
+## §13.5's plant rotation is the *placement* half of turning and it is slow by
+## construction: it can only act once per stance, so a demand takes most of a
+## stride to appear and most of another to stop. A player holding left on a
+## machine with legs expects it to come round now.
+##
+## A third of a second is about one stance at the shipped cadence, so the two
+## halves arrive together rather than the torque snapping the hull round ahead of
+## the feet it is standing on.
+const HEADING_RESPONSE_S: float = 0.35
+
+
+## §13.12's heading torque about world up, in newton-metres.
+##
+## [b]This is a yaw torque in a family §13.5 said would never have one, and the
+## reason it is here is that a walking machine is not steered like a car.[/b]
+## Turning by placement alone gave the demand an authority of a few degrees a
+## second on a good day and none at all on a machine that was working to stay
+## upright; it is kept, because the feet have to follow the turn or the machine
+## walks sideways, and this is what makes the turn happen at the rate the part
+## authors.
+##
+## [b]A rate controller and not a torque, which is fact 110's lesson applied
+## before it had to be learned again.[/b] The gain is `I · Δω / response`, so it
+## is a statement about how fast the heading may change and carries no assumption
+## about how heavy the machine is. An authored newton-metres would cap what a
+## walking Assembly may carry at a mass nothing states, exactly as §13.10's ankle
+## did.
+##
+## [param share] is this limb's fraction of the Assembly's planted limbs, so a
+## machine with one foot on the ground turns at a fraction of the authority and
+## one with none turns not at all. That is the same degradation §13.10 gets from
+## clamping by its own normal load, and it is what keeps the term from being free
+## rotation out of thin air.
+##
+## Positive [param turn_command] is right (doc 11 §7.2), and a right turn is a
+## negative rotation about world up.
+static func heading_torque_nm(
+	profile: LimbProfile,
+	yaw_inertia_kg_m2: float,
+	yaw_rate_rad_s: float,
+	turn_command: float,
+	share: float
+) -> float:
+	var target := -deg_to_rad(profile.turn_rate_deg_s) * clampf(turn_command, -1.0, 1.0)
+	var error := target - yaw_rate_rad_s
+	return maxf(yaw_inertia_kg_m2, 0.0) * error * clampf(share, 0.0, 1.0) / HEADING_RESPONSE_S
 
 
 ## Phase offsets for a limb set, parallel to [param hips_local] and
@@ -243,18 +342,19 @@ static func foot_target(
 	)
 
 	if not is_zero_approx(turn_command):
-		# Negated, and the sign is the whole line. [ControlInput.steer] is
-		# documented as positive-is-right and every other family obeys it: doc 05
-		# §7.1 rotates a wheeled contact frame right on a positive demand and
-		# §14.2 drives the right track slower. A right turn is a [b]negative[/b]
-		# rotation about the world up, so rotating the plant target by a positive
-		# angle on a positive demand walks the Assembly left — which is what this
-		# did, and it made an ambulatory Assembly the only thing in the game that
-		# steered backwards.
+		# [b]Negated, and the negation was never the bug.[/b] [ControlInput.steer]
+		# is positive-for-right and a right turn is a negative rotation about world
+		# up, so the stride direction rotates against the demand's sign. What is
+		# rotated is the whole placement offset, which is the direction the machine
+		# strides in — so the machine walks round the way it is asked to.
 		#
-		# The old test could not see it. It asserted that a turn command moved the
-		# foot and not which way it moved it, which is a fault a sign flip
-		# satisfies exactly.
+		# It measured as an inversion for three sessions and it was not one. While
+		# `steer` also fed [method ControlInput.desired_velocity] as a lateral
+		# demand, a right command asked for a rightward *velocity* at the same time,
+		# and §13.5's correction term plants the foot hard left to produce it. The
+		# two halves fought and the velocity error won: full right ended +44.0°,
+		# which is a left turn. Measured again with §13.12's split in place and the
+		# same line steers the way it says it does.
 		var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)
 		offset = offset.rotated(Vector3.UP, yaw)
 

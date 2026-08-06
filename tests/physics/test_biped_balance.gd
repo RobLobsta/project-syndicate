@@ -48,6 +48,17 @@ const UPRIGHT_LIMIT_DEG: float = 10.0
 ## Metres the machine may drift from where it was put down while standing still.
 ## It is balancing rather than bolted down, so this is not zero — but a metre of
 ## wander in five seconds is a machine walking away from its own spawn.
+##
+## [b]This is the one assertion in the file that fails, and it has failed since
+## the file was written.[/b] Measured at 2.82 m on the unarmed biped and **4.22 m**
+## now that `CombatArena.Recipe.BIPED` carries two Appendages, two edges and a
+## backpack. Doc 05 §13.10's ankle holds *attitude* and §13.11's capture point
+## acts only at touchdown, so nothing arrests the residual horizontal velocity of
+## a machine that never touches down — which is why the quadruped, whose four
+## stance forces cancel horizontally, holds station to half a degree and this does
+## not. Closing it is a third layer: a stepping reflex keyed on the capture point
+## leaving the support polygon, which is a §13 section rather than a constant.
+## Asserted as it stands.
 const STANDING_DRIFT_LIMIT_M: float = 1.0
 
 ## Metres a commanded run must cover, and metres a commanded reverse must cover
@@ -57,6 +68,10 @@ const STANDING_DRIFT_LIMIT_M: float = 1.0
 ## shipped ambulatory family at 0.01 m of reverse over three seconds and asserts
 ## it as a defect in `tests/physics/test_braking_and_reverse.gd`. Anything above
 ## noise here is §13.11 doing the thing the old placement law could not.
+##
+## Re-measured after §13.10's proportional ankle and the arms that made it
+## necessary: 4.32 m forward and 5.22 m back on a machine that is now 6024 kg
+## against the 3820 these figures were first taken on.
 const TRAVEL_MIN_M: float = 1.5
 const REVERSE_MIN_M: float = 0.75
 

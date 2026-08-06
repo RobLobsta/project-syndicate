@@ -22,7 +22,18 @@ const LIMB_KEY := &"mot.limb.strider.t4"
 const TRACK_KEY := &"mot.tracked.short_bogie.t2"
 const GUN_KEY := &"eff.ballistic.autocannon_30.t3"
 const EDGE_KEY := &"eff.melee.beam_edge.t4"
+## Both authored contact sizes, and they disagree about their own colliders: the
+## truck's is a cylinder over a disc footprint and the road car's is a box, for
+## the reason LEARNED_FACTS.md fact 105 gives.
 const WHEEL_KEY := &"mot.wheeled.allroad.t2"
+const ROAD_WHEEL_KEY := &"mot.wheeled.light_road.t1"
+const CHASSIS_KEYS: Array[StringName] = [
+	&"core.command.compact.t2",
+	&"core.utility.hauler.t2",
+	&"core.biped.humanoid.t3",
+	&"core.ambulatory.strider.t3",
+]
+const ARM_KEY := &"apx.arm.manipulator.t3"
 const PANEL_KEY := &"str.panel.medium.t2"
 
 ## Tolerance on a span that is the sum of a profile figure and an authored
@@ -196,26 +207,68 @@ func test_an_edge_is_drawn_at_the_reach_it_cuts_with() -> void:
 ## ===== THE FALLBACK ====================================================
 
 
-## The mirror is still the default, and the two classes that were already right
-## must not have been given a family shape they do not need.
+## The mirror is still the default, and a class that was already right must not be
+## given a family shape it does not need.
 ##
-## A wheel's collider is already a cylinder on the correct axis and a panel's is
-## already the panel. §2.1's default is the right answer for both, and the point
-## of asserting it is that a family path which claimed [i]every[/i] part would be
-## invisible in a capture — everything would still look like something.
+## A panel's collider is already the panel. §2.1's default is the right answer for
+## it, and the point of asserting it is that a family path which claimed
+## [i]every[/i] part would be invisible in a capture — everything would still look
+## like something.
+##
+## [b]The rolling contact came off this list, and the reason is worth the line.[/b]
+## It was here beside the panel on the reading that a wheel's collider is already
+## a cylinder on the correct axis — which is true of `mot.wheeled.allroad.t2` and
+## false of `mot.wheeled.light_road.t1`, whose collider is a **box**, because
+## LEARNED_FACTS.md fact 105 leaves a three-cell disc with no cell list a cylinder
+## fits. So half the wheeled contacts in the registry drew as cubes and the
+## assertion that they were fine was reading the other half.
 func test_a_part_whose_collider_is_its_likeness_still_mirrors_it() -> void:
-	for key: StringName in [WHEEL_KEY, PANEL_KEY] as Array[StringName]:
+	var def := PartRegistry.definition_by_key(PANEL_KEY)
+	if not check_not_null(def, "%s is registered" % PANEL_KEY):
+		return
+	check_eq(
+		ProxyMeshBuilder.family_primitives(def).size(), 0,
+		"%s has no family shape and falls through to the collider mirror" % PANEL_KEY
+	)
+	var mirrored := ProxyMeshBuilder.mirror_collider(def.collider_profile)
+	check_eq(
+		mirrored.size(), def.collider_profile.primitives.size(),
+		"and the mirror is one primitive per collider primitive"
+	)
+
+
+## A rolling contact is drawn round whatever its collider is, at the profile's own
+## rolling radius, about the axis doc 05 §7.1 fixes as the contact frame's lateral
+## one.
+##
+## Asserted over both authored contact sizes, because the two disagree about
+## whether their collider is already round and the whole point of the family shape
+## is that the drawing no longer depends on that.
+func test_a_rolling_contact_is_drawn_round_whatever_it_collides_as() -> void:
+	for key: StringName in [WHEEL_KEY, ROAD_WHEEL_KEY] as Array[StringName]:
 		var def := PartRegistry.definition_by_key(key)
 		if not check_not_null(def, "%s is registered" % key):
 			continue
-		check_eq(
-			ProxyMeshBuilder.family_primitives(def).size(), 0,
-			"%s has no family shape and falls through to the collider mirror" % key
+		var prims := ProxyMeshBuilder.family_primitives(def)
+		if not check_eq(prims.size(), 2, "%s draws a tyre and a hub" % key):
+			continue
+		var profile := def.motive_profile
+		var mesh := ProxyMeshBuilder.build(def)
+		if not check_not_null(mesh, "%s built a proxy" % key):
+			continue
+		var aabb := mesh.get_aabb()
+		check_approx(
+			aabb.size.x, profile.contact_radius_m * 2.0,
+			(
+				"%s is %.2f m across the tread against an authored radius of %.2f"
+				% [key, aabb.size.x, profile.contact_radius_m]
+			),
+			SPAN_TOLERANCE_M
 		)
-		var mirrored := ProxyMeshBuilder.mirror_collider(def.collider_profile)
-		check_eq(
-			mirrored.size(), def.collider_profile.primitives.size(),
-			"and the mirror is one primitive per collider primitive"
+		check_approx(
+			aabb.size.y, profile.contact_radius_m * 2.0,
+			"and the same over its diameter, so it is a disc and not a slab",
+			SPAN_TOLERANCE_M
 		)
 
 
@@ -244,4 +297,122 @@ func test_the_family_shape_leaves_the_collider_alone() -> void:
 	check_approx(
 		collider.half_extents_m.x, 0.5,
 		"at its authored half-metre, while the drawing spans 5.2 m"
+	)
+
+
+## ===== THE CHASSIS =====================================================
+
+
+## [b]A chassis may be carved but it may never shrink.[/b]
+##
+## §2.1's family shapes are allowed to draw outside a collider — a rotor's blades
+## do — and a Core Module is the one class where the opposite error matters, because
+## a hull is what a player aims at. A drawn silhouette narrower than the collider
+## is a target smaller than the one rounds actually stop on, so the union of the
+## pieces has to fill the box exactly on all three axes.
+##
+## Asserted over every chassis in the registry rather than over the two that get a
+## family shape, because the assertion has to hold for the ones that fall through
+## to the mirror as well — and a mask that started matching a chassis nobody meant
+## it to would show up here first.
+func test_a_chassis_proxy_fills_the_collider_it_is_carved_out_of() -> void:
+	for key: StringName in CHASSIS_KEYS:
+		var def := PartRegistry.definition_by_key(key)
+		if not check_not_null(def, "%s is registered" % key):
+			continue
+		var prim: ColliderPrimitiveDef = def.collider_profile.primitives[0]
+		var mesh := ProxyMeshBuilder.build(def)
+		if not check_not_null(mesh, "%s builds a proxy mesh" % key):
+			continue
+		var size := mesh.get_aabb().size
+		var wanted := prim.half_extents_m * 2.0
+		check_approx(size.x, wanted.x, "%s fills its collider across x" % key, 1e-3)
+		check_approx(size.y, wanted.y, "%s fills its collider across y" % key, 1e-3)
+		check_approx(size.z, wanted.z, "%s fills its collider across z" % key, 1e-3)
+
+
+## The two families are told apart by the locomotion mask and by nothing else, so
+## the assertion is that they are actually told apart: a hull that carries limbs
+## is drawn with a head above its widest part and a hull that stands on contacts
+## is drawn with a greenhouse over its rear, and those are different piece counts
+## only by accident. What is not an accident is that both differ from the mirror.
+func test_the_two_chassis_families_are_drawn_differently_from_each_other() -> void:
+	var road := PartRegistry.definition_by_key(&"core.command.compact.t2")
+	var torso := PartRegistry.definition_by_key(&"core.biped.humanoid.t3")
+	var tracked := PartRegistry.definition_by_key(&"core.tracked.hauler.t3")
+	if not check_not_null(road, "the road chassis is registered"):
+		return
+	if not check_not_null(torso, "the biped torso is registered"):
+		return
+	if not check_not_null(tracked, "the tracked hull is registered"):
+		return
+	check_true(
+		ProxyMeshBuilder.family_primitives(road).size() > 1,
+		"a wheeled chassis is carved rather than mirrored"
+	)
+	check_true(
+		ProxyMeshBuilder.family_primitives(torso).size() > 1,
+		"and so is an ambulatory one"
+	)
+	# The waist is drawn in and the cabin is not, so the two rules disagree about
+	# the widest thing at the bottom of the hull. Compared through the pieces
+	# rather than the mesh, because the meshes have the same bounding box by
+	# construction — that is the point of the test above.
+	var road_bottom: ProxyPrimitiveDef = ProxyMeshBuilder.family_primitives(road)[0]
+	var torso_bottom: ProxyPrimitiveDef = ProxyMeshBuilder.family_primitives(torso)[0]
+	var road_box: ColliderPrimitiveDef = road.collider_profile.primitives[0]
+	var torso_box: ColliderPrimitiveDef = torso.collider_profile.primitives[0]
+	check_approx(
+		road_bottom.half_extents_m.x, road_box.half_extents_m.x,
+		"a road vehicle's floor pan is as wide as the hull, because it covers the contacts",
+		1e-3
+	)
+	check_true(
+		torso_bottom.half_extents_m.x < torso_box.half_extents_m.x,
+		"and a torso's waist is drawn in under its chest"
+	)
+	check_eq(
+		ProxyMeshBuilder.family_primitives(tracked).size(), 0,
+		"while a tracked hull keeps the mirror, which already reads as what it is"
+	)
+
+
+## ===== THE APPENDAGE ===================================================
+
+
+## An arm is drawn down its own axis to the palm the melee sweep starts at, and
+## it is drawn as an arm rather than as the post it collides as.
+##
+## [b]The span matters more than the articulation.[/b] Doc 01 §10.6 puts the
+## shoulder on the part's `+Y` face and the single GRIP hand on its `-Y` one, so a
+## held Effector Module continues below the palm — a drawn hand that stopped short
+## of it would leave every held blade floating clear of the fist holding it.
+func test_an_arm_reaches_the_palm_the_hand_mates_at() -> void:
+	var def := PartRegistry.definition_by_key(ARM_KEY)
+	if not check_not_null(def, "the arm is registered"):
+		return
+	var arm: AppendageProfile = def.appendage_profile
+	var prim: ColliderPrimitiveDef = def.collider_profile.primitives[0]
+	var mesh := ProxyMeshBuilder.build(def)
+	if not check_not_null(mesh, "it builds a proxy mesh"):
+		return
+	var aabb := mesh.get_aabb()
+	check_approx(
+		aabb.size.y, prim.half_extents_m.y * 2.0,
+		"the drawn arm is the length of the arm: %.2f m against %.2f"
+			% [aabb.size.y, prim.half_extents_m.y * 2.0],
+		1e-3
+	)
+	# The pivot cell's centre is the part's own origin, so the palm is `-reach_m`
+	# from it and the hand block has to contain that point.
+	check_true(
+		aabb.position.y <= -arm.reach_m and aabb.position.y + aabb.size.y > -arm.reach_m,
+		"and the hand contains the palm at -%.2f m, where the held module starts"
+			% arm.reach_m
+	)
+	# Pauldron, upper arm, elbow, forearm, hand — and not the one box it collides
+	# as, which is what made a Gundam's arm a post.
+	check_eq(
+		ProxyMeshBuilder.family_primitives(def).size(), 5,
+		"a pauldron, an upper arm, an elbow, a forearm and a hand"
 	)

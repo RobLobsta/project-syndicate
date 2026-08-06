@@ -1593,6 +1593,105 @@ there is only one section here.)
     fore and aft. Until one exists, the answer to "why is the walking machine not
     the reference's proportion" is this fact.
 
+110. **A gain that is an absolute torque is a cap on how big the machine may be,
+    and it presents as "this build falls over" rather than as a limit.** Doc 05
+    §13.10's ankle stiffness was 60 000 N·m/rad, an aggregate of 120 000 on a
+    two-limbed Assembly — against a reference biped whose own inverted-pendulum
+    stiffness `m · g · h` is 105 700. A margin of 1.14, which the whole walking
+    family had been balancing on since the term was written.
+
+    Adding 940 kg of Appendages took the pendulum to 152 800 and the machine
+    pitched over from standing, upright to flat in about two and a half seconds,
+    with no contact, no command and nothing else on the screen. Every diagnostic
+    said something different: the centre of mass had moved 0.14 m forward, which
+    is inside the ankle's own 0.30 m clamp; a 450 kg counterweight brought it to
+    0.03 m and it still fell; the spawn drop was irrelevant at four different
+    heights. The ladder is what found it — 3820 kg settles at 1.63°, 4020 kg at
+    2.62°, 4960 kg falls — because three points on a curve say "mass" where any
+    one of them says "geometry".
+
+    **The general shape is worth more than the constant.** A restoring gain has
+    units, and so does the thing it is restoring against; when the destabilising
+    side scales with the build and the restoring side does not, there is a mass
+    at which the system inverts and nothing in the data, the document or the
+    interface states it. Write the gain as a ratio of the quantity it opposes.
+    Two others in this project have the same shape and have not been checked:
+    doc 05 §7.6's `YAW_GAIN_NM_PER_RAD_S` and §12's rotary autopilot gains.
+
+111. **The first plant of a spawn is made against a probe result no physics tick
+    has flushed, and a foot planted *high* is unrecoverable where a foot planted
+    low is not.** Fact 28 says the broadphase holds the pose a body was added
+    with until a tick flushes it; on the first tick of an ambulatory spawn the
+    shape cast can therefore report a surface metres above the real one.
+
+    Doc 05 §13.4's standing state re-plants on `slack` — a leg longer than its
+    rest length — and on the hip leaving the support polygon. Neither catches
+    this, and the reason is the interesting part: **a foot anchored above the
+    ground leaves the leg *short* rather than long, and sits directly under its
+    own hip**, so both tests pass while §13.6's spring holds a metre of
+    compression it can never work off. Measured: a foot anchored at `y = 2.00`,
+    both limbs saturated at `max_foot_force_n`, and the machine thrown 2.3 m into
+    the air. The unarmed build survives it by luck — its probe happens to report
+    *nothing* on the same tick, which the existing fallback handles — so the
+    failure appears when an unrelated part is added and reads as that part's
+    fault.
+
+    The repair is a third trigger keyed on the foot being further above the
+    reported ground than the swing's own clearance. The lesson is the one fact 19
+    keeps teaching from new angles: **a query made before the first step is not
+    empty, it is wrong**, and a consumer that only guards against "no answer" is
+    guarding against the easy half.
+
+112. **Two proxies of the same class may disagree about whether their collider is
+    already the right shape, and an assertion written against one of them reads
+    as a statement about both.** `tests/unit/test_proxy_mesh.gd` asserted that a
+    wheeled contact needs no family proxy because "a wheel's collider is already
+    a cylinder on the correct axis". True of `mot.wheeled.allroad.t2` and false
+    of `mot.wheeled.light_road.t1`, whose collider is a **box** — fact 105 leaves
+    a three-cell disc with no cell list a cylinder fits — so half the wheeled
+    contacts in the registry drew as cubes and the test that said they were fine
+    was reading the other half.
+
+    When a rule is asserted over a class, iterate the class. One representative
+    is a sample, and the part table is exactly where the exceptions live.
+
+
+
+113. **A control with two consumers is not a control, and the symptom is that
+    one of them measures as inverted.** `ControlInput.steer` fed doc 05 §13.5's
+    plant rotation *and* added a lateral term to the desired velocity the same
+    section's correction is computed against. A right command therefore asked for
+    a rightward velocity at the same moment it rotated the stride to the right,
+    and §13.5's correction plants a foot hard **left** to produce a rightward
+    velocity. The velocity error won.
+
+    **Three sessions measured the placement law's sign as backwards and it was
+    correct the whole time.** Session 45 flipped it on a derivation that was also
+    correct as far as it went, measured no change at all (154.9° against 154.3°),
+    and only then noticed that neither sign mattered because a third term
+    dominated both. The fix was to take the second job away, at which point the
+    original sign measured right on the first run.
+
+    Two things to carry. **When a sign flip changes nothing, the term is not the
+    one deciding the outcome** — that is a cheap and conclusive experiment and it
+    is worth running before the reasoning. And **a quantity with more than one
+    consumer cannot be diagnosed from its outcome**, only from disconnecting
+    them; doc 05 §13.12 now states the split as normative for exactly this
+    reason.
+
+114. **`Vector3.signed_angle_to` answers in (−180°, 180°], so a fixture that
+    measures a turn as one angle cannot see past half a circle — and it reports
+    the overshoot as a turn in the opposite direction.** Once the ambulatory
+    family gained a 45°/s heading authority, a 300-tick window is 225° of turn,
+    and `tests/physics/test_ambulatory_drift.gd` reported **+154°** — a left turn
+    — for a machine that had in fact come round 206° to the right.
+
+    It is the most confident wrong answer a fixture in this project has produced:
+    the sign was clean, the magnitude was plausible, and it agreed with the
+    previous session's measurement. Accumulate per tick when the quantity is a
+    heading and the window is long enough to wrap, and be suspicious of any
+    measured turn near ±180°.
+
 
 ---
 

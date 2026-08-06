@@ -111,18 +111,24 @@ const CONTACT_REOPEN_M: float = 1.5
 ## Ceiling on how fast the target may ever be travelling during the contact phase,
 ## in m/s.
 ##
-## The other half of §15.5's "an instalment carries no impulse", and on a walking
-## attacker it is the half that bites. A four-tonne machine walking into a 1.1 t
-## one moves it at **0.03 m/s** — the shove is two colliders touching and nothing
-## else. With §15.4's 2800 N·s applied on every tick instead, sixty a second is
-## about 46 m/s² on that hull and it leaves at speed.
+## The other half of §15.5's "an instalment carries no impulse". With §15.4's
+## 2800 N·s applied on every tick instead of once per swing, sixty a second is
+## about 46 m/s² on a 1.1 t hull and it leaves at speed — tens of metres a second,
+## not units.
 ##
-## One is thirty times the measured figure and far below anything an impulse can
-## produce, which is the margin fact 47 asks for. Note that this bound would have
-## been [b]useless[/b] on the wheeled version of this recipe, where the ram itself
-## moved the target at 2.76 m/s: the same law needs a different instrument
-## depending on how the Assembly carrying it gets around.
-const TARGET_PEAK_SPEED_MPS: float = 1.0
+## [b]It was 1.0, and the third measurement of this number is the interesting
+## one.[/b] The wheeled version of this recipe rammed its target at 2.76 m/s, so
+## the bound was useless; the walking version could barely reach and shoved it at
+## 0.03 m/s, so one was a thirty-fold margin; and now that doc 05 §13.10's ankle
+## scales with the machine it holds up, the walker closes 12.0 m to 3.3 and
+## arrives with real closing speed — **2.69 m/s**, which is the ram back again.
+##
+## Six is a little over twice the measured figure and an order of magnitude under
+## anything the faulted law produces, which is the margin fact 47 asks for. The
+## paragraph at [constant CONTACT_REOPEN_M] said which of the two constants is
+## sharp is a property of the recipe and that the recipe had already changed once;
+## it has now changed twice, and the re-opening is the sharp one again.
+const TARGET_PEAK_SPEED_MPS: float = 6.0
 
 var _ran: bool = false
 var _arena: CombatArena = null
@@ -271,23 +277,27 @@ func test_the_gunner_wins_the_duel() -> void:
 
 
 ## [b]The finding, and it is doc 05 §13's rather than doc 07 §15's.[/b] Over thirty
-## metres, under fire, the melee build does not merely fail to arrive — it
-## **loses ground**, finishing 31.9 m from a target it started 30.0 m from.
+## metres, under fire, the melee build does not arrive.
 ##
-## The edge is not what fails here. Given something to walk at, the same build
-## closes and cuts (every assertion above). What it cannot do is close on a target
-## while being shot at, and that is §3.1.3's open defect seen from a new angle: a
-## walking Assembly's steering demand reaches only the correction term of §13.5's
-## placement law, so a heading it is asked to hold is a heading it drifts off.
-## Recorded here rather than in prose because a finding left in prose gets
-## re-litigated (§9).
+## [b]It used to *lose* ground — 31.9 m from a target it started 30.0 m from — and
+## it no longer does.[/b] Doc 05 §13.10's ankle is a multiple of the machine's own
+## `m·g·h` rather than an absolute 60 000 N·m/rad, and a walker that is not
+## spending its stride staying upright walks: the same run now closes to 27.6 m
+## and the contact phase closes 12.0 m to 3.3 where it managed 12.0 to 11.0. What
+## has not changed is the verdict — it is shot to pieces long before its blades
+## are anywhere, and this file's job is to say so until it is not.
+##
+## So the assertion is a direction and a floor rather than the old complaint: it
+## gains ground, and it still never gets inside its own reach. Both are properties
+## of the fight rather than counts, which is what fact 44 requires of anything
+## measured with two Assemblies in one space.
 ##
 ## The `effector_lost` half is recorded and deliberately not asserted. When this
 ## recipe was wheeled it lost its arm and blade at t=37 and the reading was "a held
 ## module is the first thing a round meets" — which is still true and is still the
 ## reason a melee build wants armour in front of its arms. It is simply no longer
-## what kills this one: the walker dies at 30 m with its arms intact, because it
-## never brings them anywhere.
+## what kills this one: the walker dies with its arms intact, because it never
+## brings them anywhere.
 func test_the_walker_cannot_close_on_something_that_is_shooting() -> void:
 	await _run()
 	check_true(
@@ -298,37 +308,39 @@ func test_the_walker_cannot_close_on_something_that_is_shooting() -> void:
 		)
 	)
 	check_true(
-		_duel.final_range_m > DUEL_SEPARATION_M,
+		_duel.final_range_m < DUEL_SEPARATION_M,
 		(
-			"and finished further out than it started: %.1f m against %.1f"
+			"but it does gain ground now: %.1f m against the %.1f it started at, "
 			% [_duel.final_range_m, DUEL_SEPARATION_M]
+			+ "where before §13.10's revision it finished further out than it began"
 		)
 	)
 
 
-## The layout's own cost, asserted as it stands because a player building this
-## would meet it in the first second.
+## The layout's own cost, and the record of it closing.
 ##
-## **Two arms and two blades are 1434 kg carried ahead of and above a walking
-## torso, and the machine leans on it: 29.6° nose-down.** It stays up — every foot
-## keeps finding the ground and it never goes onto a flank — but it walks at a
-## pronounced stoop, and that is a third of the way to the 90° that would put its
-## blades in the dirt.
+## [b]Two arms and two blades are 1434 kg carried ahead of and above a walking
+## torso, and the machine used to lean on it: 29.6° nose-down when the recipe was
+## first measured, 12.8° after the chassis rebuild, and **8.0°** now.[/b] The last
+## step is doc 05 §13.10's: the ankle's restoring torque is a multiple of the
+## Assembly's own `m·g·h` rather than an absolute figure, so a machine that has
+## been loaded up gets an ankle in proportion to what it now has to hold, and a
+## quarter of the old stoop is what that buys.
 ##
-## The wheeled version of this recipe answered the same problem with an Energy
-## Cell in the tail as ballast. That is not available here: four limbs and two arms
-## are 31 of the ambulatory chassis's 34 mounts, and doc 01 §7.1 will not let the
-## arms move to a hull with more of them. The candidates are a lighter Appendage
-## tier, a shorter blade, or a chassis with the mounts for a counterweight — all
-## three are data, and none is measured.
+## Written as an upper bound and no longer as a complaint, which is the shape
+## `test_rest_stability` set: the number it recorded moved the right way, so the
+## file records the improvement and defends it rather than restating a defect that
+## is gone. Fifteen degrees is a little under twice the measured figure — a
+## walker never quite stands still and this is the phase where it is leaning on
+## another hull — and it is far under the 45° that would be a fall.
 func test_the_walker_stoops_under_its_own_arms() -> void:
 	await _run()
 	check_true(
-		_contact.worst_nose_down_deg > 15.0,
+		_contact.worst_nose_down_deg < 15.0,
 		(
 			"1434 kg of arms and blades pitches the walker %.1f degrees nose-down, "
 			% _contact.worst_nose_down_deg
-			+ "which is the layout's cost and is asserted as it stands"
+			+ "against 29.6 when this recipe was written and 12.8 before §13.10"
 		)
 	)
 	check_true(

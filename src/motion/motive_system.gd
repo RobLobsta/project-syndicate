@@ -669,7 +669,34 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 		limb_profile.foot_length_m > 0.0
 		and hip_offset > limb_profile.foot_length_m * 0.5
 	)
-	if now_stance and (not was_planted or (standing and (slack or outside_polygon))):
+	# §13.4's third re-plant, and the one that keeps a standing Assembly on the
+	# ground rather than over it.
+	#
+	# [b]The first plant of a spawn is made against a probe result nobody has
+	# stepped physics for yet[/b] (LEARNED_FACTS.md §1 fact 28: the broadphase
+	# holds the pose the body was added with until a tick flushes it), so it can
+	# report a surface metres above the one that is there. `slack` cannot catch
+	# that and neither can `outside_polygon`: a foot planted *high* leaves the leg
+	# short rather than long and sits directly under its own hip, so both tests
+	# pass while the stance spring holds a metre of compression it will never work
+	# off. Measured on `CombatArena.Recipe.BIPED` carrying arms — the foot anchored
+	# at y = 2.00 on tick one, both limbs saturated at
+	# `LimbProfile.max_foot_force_n`, and the machine was thrown 2.3 m into the air
+	# and came down on its face. The unarmed build survives it by luck: its probe
+	# happens to report nothing on that tick, which the fallback above handles.
+	#
+	# The bound is the height the swing lifts a foot to, because a foot the
+	# machine's own stride would clear is a foot that is not standing on anything.
+	# It is inert on level ground, where the plant sets this difference to zero,
+	# and on a slope, where the probe reports the surface the foot is on.
+	var off_ground := (
+		contact.grounded
+		and limb.foot_world.y - ground_y > limb_profile.step_height_m
+	)
+	if (
+		now_stance
+		and (not was_planted or (standing and (slack or outside_polygon or off_ground)))
+	):
 		limb.foot_world = _foot_target(limb_profile, hip_world, ground_y, gait_cap, cadence, basis)
 		limb.prev_length_m = (hip_world - limb.foot_world).length()
 	limb.planted = now_stance
@@ -725,14 +752,43 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	# Applied as a torque rather than by moving the force's application point,
 	# because the two are only equivalent when the offset is perpendicular to the
 	# force — and a stance force on a tilted leg is not.
+	# The gain is this limb's share of the Assembly's own toppling stiffness, so a
+	# machine that has been loaded up gets an ankle in proportion to what it now
+	# has to hold. The pendulum height is measured over the ground this limb is
+	# standing on, exactly as §13.11's capture time is and for the same reason.
 	var ankle := GaitSolver.ankle_torque_nm(
 		limb_profile,
 		absf(force.dot(normal)),
 		runtime.body.global_basis,
-		runtime.body.angular_velocity
+		runtime.body.angular_velocity,
+		GaitSolver.topple_stiffness_nm_per_rad(
+			runtime.body.mass,
+			(runtime.body.global_transform * runtime.body.center_of_mass).y - ground_y,
+			_limbs.size()
+		)
 	)
 	if not ankle.is_zero_approx():
 		runtime.body.apply_torque(ankle)
+
+	# §13.12's heading authority. The ankle above deliberately sets its own yaw to
+	# zero, so this is the only term in the family that turns the machine with a
+	# torque — the other half of turning is §13.5's plant rotation, which moves the
+	# feet the demand is asking the body to come round over.
+	#
+	# Divided by the limb count and applied per planted limb, so an Assembly with
+	# one foot down turns at a fraction of its authority and one in the air turns
+	# not at all. `inertia.y` is the body's own up-axis moment rather than a world
+	# one, which is exact while the machine is upright and is the state this term
+	# exists to hold.
+	var heading := GaitSolver.heading_torque_nm(
+		limb_profile,
+		runtime.body.inertia.y,
+		runtime.body.angular_velocity.y,
+		input.steer,
+		1.0 / float(maxi(_limbs.size(), 1))
+	)
+	if not is_zero_approx(heading):
+		runtime.body.apply_torque(Vector3.UP * heading)
 
 
 ## §13.5's placement law with this tick's Assembly state filled in.
@@ -755,7 +811,7 @@ func _foot_target(
 		hip_world,
 		ground_y,
 		runtime.body.linear_velocity,
-		input.desired_velocity(-basis.z, basis.x, gait_cap),
+		input.desired_velocity(-basis.z, gait_cap),
 		cadence_hz_value,
 		input.steer,
 		# §13.11's pendulum height: the centre of mass over the ground this limb

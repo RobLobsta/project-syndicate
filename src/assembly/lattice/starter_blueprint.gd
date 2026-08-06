@@ -115,3 +115,192 @@ static func skirmisher() -> Blueprint:
 		var inboard := Vector3.RIGHT if cell.x < CORE_CELL.x else Vector3.LEFT
 		bp.add(key, cell, OrientationTable.upright_facing(inboard))
 	return bp
+
+
+## ===== ONE PRESET PER LOCOMOTION FAMILY ================================
+## [b]A reference build for each way of getting around, so that a physics change
+## has five known machines to be measured against rather than one.[/b]
+##
+## Every layout below is the one `tests/combat_arena.gd` fights with, cell for
+## cell. That is deliberately a [b]second[/b] copy and not a third: CLAUDE.md §1.1
+## tolerates exactly two — this file, which is what a player gets, and the arena,
+## which is what the suite measures — and `tests/unit/test_family_presets.gd`
+## asserts that the two agree part for part, so a layout that moves in one and not
+## the other fails the build rather than quietly becoming two different machines.
+##
+## Each preset is authored in [b]placement order[/b], which is the order a player
+## has to build in and the order [PlacementValidator] enforces: a station before
+## the Motive Assembly that hangs off it, supply before draw, and an Appendage
+## before anything it is asked to hold.
+
+const TRACKED_CORE_KEY: StringName = &"core.tracked.hauler.t3"
+const AMBULATORY_CORE_KEY: StringName = &"core.ambulatory.strider.t3"
+const BIPED_CORE_KEY: StringName = &"core.biped.humanoid.t3"
+const ROTARY_CORE_KEY: StringName = &"core.rotary.lifter.t3"
+const UTILITY_CORE_KEY: StringName = &"core.utility.hauler.t2"
+
+const TRACK_KEY: StringName = &"mot.tracked.long_bogie.t3"
+const LIMB_KEY: StringName = &"mot.limb.strider.t4"
+const ROTOR_KEY: StringName = &"mot.rotor.coaxial_mid.t3"
+const UTILITY_WHEEL_KEY: StringName = &"mot.wheeled.allroad.t2"
+const UTILITY_REAR_KEY: StringName = &"mot.wheeled.fixed_rear.t2"
+const PYLON_KEY: StringName = &"str.outrigger.pylon.t2"
+const ARM_KEY: StringName = &"apx.arm.manipulator.t3"
+## The upright Prime Mover, for the hulls with the headroom for it. The
+## skirmisher uses the flat row because its roof is 1.00 m off its own floor.
+const BLOCK_POWER_KEY: StringName = &"pmv.combustion.standard.t2"
+const CANNON_KEY: StringName = &"eff.ballistic.rifle_long.t3"
+const AUTOCANNON_KEY: StringName = &"eff.ballistic.autocannon_30.t3"
+
+## The orientation that points a station's AXLE faces up and down, for a limb or
+## a rotor mast rather than a wheel.
+const AXLE_DOWN_ORIENTATION: int = 8
+
+const TRACKED_CORE_CELL := Vector3i(24, 4, 24)
+const TRACKED_POWER_CELL := Vector3i(24, 9, 33)
+const TRACKED_GUN_CELL := Vector3i(24, 9, 25)
+const TRACK_HUB_CELLS: Array[Vector3i] = [Vector3i(20, 2, 24), Vector3i(28, 2, 24)]
+const TRACK_CELLS: Array[Vector3i] = [Vector3i(17, 3, 24), Vector3i(30, 3, 23)]
+
+const AMBULATORY_CORE_CELL := Vector3i(24, 14, 24)
+const AMBULATORY_POWER_CELL := Vector3i(24, 10, 24)
+const AMBULATORY_GUN_CELL := Vector3i(24, 24, 26)
+## Station, then the limb hanging off it, four times.
+const AMBULATORY_LEG_CELLS: Array[Vector3i] = [
+	Vector3i(19, 14, 20), Vector3i(20, 13, 20),
+	Vector3i(27, 14, 20), Vector3i(27, 13, 20),
+	Vector3i(19, 14, 28), Vector3i(20, 13, 28),
+	Vector3i(27, 14, 28), Vector3i(27, 13, 28),
+]
+
+const BIPED_CORE_CELL := Vector3i(24, 14, 24)
+const BIPED_POWER_CELL := Vector3i(24, 10, 24)
+const BIPED_GUN_CELL := Vector3i(24, 24, 26)
+const BIPED_BACKPACK_CELL := Vector3i(24, 17, 29)
+const BIPED_LEG_CELLS: Array[Vector3i] = [
+	Vector3i(19, 14, 24), Vector3i(20, 13, 24),
+	Vector3i(27, 14, 24), Vector3i(27, 13, 24),
+]
+const BIPED_SHOULDER_CELLS: Array[Vector3i] = [Vector3i(19, 21, 22), Vector3i(28, 21, 22)]
+const BIPED_ARM_CELLS: Array[Vector3i] = [Vector3i(19, 20, 21), Vector3i(28, 20, 21)]
+
+const ROTARY_CORE_CELL := Vector3i(24, 4, 24)
+const ROTARY_POWER_CELL := Vector3i(24, 0, 24)
+const ROTARY_CELL_CELL := Vector3i(24, 10, 32)
+const ROTARY_GUN_CELL := Vector3i(24, 10, 16)
+const ROTARY_PYLON_CELLS: Array[Vector3i] = [Vector3i(20, 5, 24), Vector3i(27, 5, 24)]
+const ROTARY_MAST_CELLS: Array[Vector3i] = [Vector3i(17, 5, 24), Vector3i(29, 5, 24)]
+const ROTARY_DISC_CELLS: Array[Vector3i] = [Vector3i(18, 7, 24), Vector3i(30, 7, 24)]
+
+const UTILITY_CORE_CELL := Vector3i(24, 4, 24)
+const UTILITY_POWER_CELL := Vector3i(24, 4, 11)
+const UTILITY_GUN_CELL := Vector3i(24, 10, 26)
+const UTILITY_HUB_CELLS: Array[Vector3i] = [
+	Vector3i(20, 2, 17), Vector3i(28, 2, 17), Vector3i(20, 2, 31), Vector3i(28, 2, 31),
+]
+## The right flank sits one cell forward, because the contact's own pivot is
+## off-centre in its footprint: cells that are symmetric are metres that are not
+## (LEARNED_FACTS.md fact 74).
+const UTILITY_CONTACT_CELLS: Array[Vector3i] = [
+	Vector3i(17, 3, 17), Vector3i(17, 3, 31), Vector3i(30, 3, 16), Vector3i(30, 3, 30),
+]
+const UTILITY_FRONT_AXLE_Z: int = 24
+
+
+## The tracked gun platform: 6.00 m of hull over 6.00 m of track, carrying the
+## one barrel in the registry that overhangs its own nose.
+static func tracked() -> Blueprint:
+	var bp := Blueprint.new()
+	bp.add(TRACKED_CORE_KEY, TRACKED_CORE_CELL)
+	bp.add(BLOCK_POWER_KEY, TRACKED_POWER_CELL)
+	bp.add(CANNON_KEY, TRACKED_GUN_CELL)
+	for cell: Vector3i in TRACK_HUB_CELLS:
+		bp.add(HUB_KEY, cell)
+	for cell: Vector3i in TRACK_CELLS:
+		var inboard := Vector3.RIGHT if cell.x < TRACKED_CORE_CELL.x else Vector3.LEFT
+		bp.add(TRACK_KEY, cell, OrientationTable.upright_facing(inboard))
+	return bp
+
+
+## The four-limbed walking machine, on the chassis every gait measurement in
+## `tests/physics/` was taken against.
+static func ambulatory() -> Blueprint:
+	var bp := Blueprint.new()
+	bp.add(AMBULATORY_CORE_KEY, AMBULATORY_CORE_CELL)
+	bp.add(BLOCK_POWER_KEY, AMBULATORY_POWER_CELL)
+	bp.add(AUTOCANNON_KEY, AMBULATORY_GUN_CELL)
+	for i: int in AMBULATORY_LEG_CELLS.size() / 2:
+		bp.add(HUB_KEY, AMBULATORY_LEG_CELLS[i * 2], AXLE_DOWN_ORIENTATION)
+		bp.add(LIMB_KEY, AMBULATORY_LEG_CELLS[i * 2 + 1])
+	return bp
+
+
+## The humanoid: two limbs, a torso taller than it is deep, a shoulder joint on
+## each flank with an arm hanging from it, and a backpack that is ballast before
+## it is supply.
+##
+## The arms are the last thing on and the shoulders the second last, which is the
+## order the validator forces: an Appendage mates through its own top face and
+## has nothing to mate to until the joint above it exists.
+static func biped() -> Blueprint:
+	var bp := Blueprint.new()
+	bp.add(BIPED_CORE_KEY, BIPED_CORE_CELL)
+	bp.add(BLOCK_POWER_KEY, BIPED_POWER_CELL)
+	bp.add(AUTOCANNON_KEY, BIPED_GUN_CELL)
+	for i: int in BIPED_LEG_CELLS.size() / 2:
+		bp.add(HUB_KEY, BIPED_LEG_CELLS[i * 2], AXLE_DOWN_ORIENTATION)
+		bp.add(LIMB_KEY, BIPED_LEG_CELLS[i * 2 + 1])
+	bp.add(CELL_KEY, BIPED_BACKPACK_CELL)
+	for cell: Vector3i in BIPED_SHOULDER_CELLS:
+		bp.add(PYLON_KEY, cell)
+	for cell: Vector3i in BIPED_ARM_CELLS:
+		bp.add(ARM_KEY, cell)
+	return bp
+
+
+## The twin-disc rotorcraft. Supply before draw: the second disc is refused if
+## the Energy Cell covering it is not on yet, which is the same rule a player
+## meets in the garage.
+static func rotary() -> Blueprint:
+	var bp := Blueprint.new()
+	bp.add(ROTARY_CORE_KEY, ROTARY_CORE_CELL)
+	bp.add(BLOCK_POWER_KEY, ROTARY_POWER_CELL)
+	bp.add(CELL_KEY, ROTARY_CELL_CELL)
+	for cell: Vector3i in ROTARY_PYLON_CELLS:
+		bp.add(PYLON_KEY, cell)
+	for cell: Vector3i in ROTARY_MAST_CELLS:
+		bp.add(HUB_KEY, cell, AXLE_DOWN_ORIENTATION)
+	for cell: Vector3i in ROTARY_DISC_CELLS:
+		bp.add(ROTOR_KEY, cell)
+	bp.add(AUTOCANNON_KEY, ROTARY_GUN_CELL)
+	return bp
+
+
+## The protected utility truck: the second wheeled silhouette, on the one chassis
+## in the registry that is as tall as it is wide.
+static func utility() -> Blueprint:
+	var bp := Blueprint.new()
+	bp.add(UTILITY_CORE_KEY, UTILITY_CORE_CELL)
+	bp.add(BLOCK_POWER_KEY, UTILITY_POWER_CELL)
+	bp.add(EFFECTOR_KEY, UTILITY_GUN_CELL)
+	for cell: Vector3i in UTILITY_HUB_CELLS:
+		bp.add(HUB_KEY, cell)
+	for cell: Vector3i in UTILITY_CONTACT_CELLS:
+		var key := UTILITY_WHEEL_KEY if cell.z < UTILITY_FRONT_AXLE_Z else UTILITY_REAR_KEY
+		var inboard := Vector3.RIGHT if cell.x < UTILITY_CORE_CELL.x else Vector3.LEFT
+		bp.add(key, cell, OrientationTable.upright_facing(inboard))
+	return bp
+
+
+## Every preset, by the locomotion family it demonstrates. The one place a
+## caller that wants "a build of each kind" should read, so that adding a family
+## is an append here rather than a new branch in every consumer.
+static func presets() -> Dictionary:
+	return {
+		&"skirmisher": skirmisher(),
+		&"utility": utility(),
+		&"tracked": tracked(),
+		&"ambulatory": ambulatory(),
+		&"biped": biped(),
+		&"rotary": rotary(),
+	}

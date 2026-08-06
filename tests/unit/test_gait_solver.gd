@@ -14,6 +14,12 @@ const GAIN: float = 0.19
 const FOOT_L: float = 0.60
 const FOOT_W: float = 0.34
 
+## One limb's share of a real machine's own toppling stiffness: the shipped
+## two-limbed build is 3820 kg with its centre of mass 2.82 m over its feet, so
+## `m·g·h / 2` is about this. Doc 05 §13.10's gain is a multiple of it rather than
+## a constant, so every ankle assertion below has to be given one.
+const TOPPLE_K: float = 52850.0
+
 var _limb: LimbProfile = null
 var _motive: MotiveAssemblyProfile = null
 
@@ -422,6 +428,64 @@ func test_the_drawn_foot_never_leaves_the_swing_whatever_it_is_handed() -> void:
 ## ===== §13.10 THE ANKLE ================================================
 
 
+## [b]The gain is a ratio, and the assertion is that it beats the pendulum.[/b]
+##
+## §13.10's ankle used to be an absolute 60 000 N·m/rad, which is an aggregate of
+## 120 000 on a two-limbed machine — and the shipped biped's own `m·g·h` is
+## 105 700, so the family shipped with a stability margin of 1.14 that nobody
+## could read off any constant. Loading the same chassis with two Appendages took
+## the pendulum to 152 800 and the machine pitched over from standing.
+##
+## What is asserted here is the property that replaced it: whatever the machine
+## weighs and however tall it stands, the ankles are stiffer than the thing trying
+## to tip it over, by [constant GaitSolver.ANKLE_STIFFNESS_RATIO]. A gain that
+## went back to being a constant fails this at the second mass.
+func test_the_ankle_is_stiffer_than_the_pendulum_it_holds_up_at_any_mass() -> void:
+	check_true(
+		GaitSolver.ANKLE_STIFFNESS_RATIO > 1.0,
+		"an ankle no stiffer than the pendulum cannot right anything"
+	)
+	# The shipped biped, and the same chassis carrying two arms and two edges.
+	for build: Array in [[3820.0, 2.82], [6024.0, 3.07]] as Array[Array]:
+		var mass: float = build[0]
+		var height: float = build[1]
+		var share := GaitSolver.topple_stiffness_nm_per_rad(mass, height, 2)
+		check_approx(
+			share * 2.0,
+			mass * SyndicateConstants.GRAVITY_MPS2 * height,
+			"two limbs' shares are the whole of m·g·h at %.0f kg" % mass
+		)
+		# Below the clamp, where the gain rather than the polygon decides. One
+		# degree of tilt on a foot carrying half the machine.
+		var load := mass * SyndicateConstants.GRAVITY_MPS2 * 0.5
+		var tau := GaitSolver.ankle_torque_nm(
+			_limb, load, Basis(Vector3.RIGHT, deg_to_rad(1.0)), Vector3.ZERO, share
+		)
+		var toppling := mass * SyndicateConstants.GRAVITY_MPS2 * height * sin(deg_to_rad(1.0))
+		check_true(
+			absf(tau.x) * 2.0 > toppling,
+			(
+				"at %.0f kg the two ankles answer %.0f N·m against %.0f N·m of topple"
+				% [mass, absf(tau.x) * 2.0, toppling]
+			)
+		)
+
+
+## A limb count of zero cannot divide, and a machine with no limbs standing on
+## nothing is a state the solver reaches while a build is being assembled.
+func test_the_topple_stiffness_survives_a_degenerate_build() -> void:
+	check_approx(
+		GaitSolver.topple_stiffness_nm_per_rad(1000.0, 2.0, 0),
+		1000.0 * SyndicateConstants.GRAVITY_MPS2 * 2.0,
+		"no limbs is treated as one rather than as a division by zero"
+	)
+	check_approx(
+		GaitSolver.topple_stiffness_nm_per_rad(1000.0, -3.0, 2),
+		0.0,
+		"and a centre of mass below the ground it stands on has no pendulum"
+	)
+
+
 ## The bound is the model. A foot carrying nothing can do nothing, and a foot at
 ## load can do exactly as much as its own size allows — no more, at any tilt.
 func test_the_ankle_torque_is_bounded_by_the_load_and_the_foot() -> void:
@@ -436,7 +500,7 @@ func test_the_ankle_torque_is_bounded_by_the_load_and_the_foot() -> void:
 	# Saturated by construction: a tilt far past anything the stiffness could
 	# answer still cannot ask for more than the polygon allows.
 	var far_over := Basis(Vector3.RIGHT, deg_to_rad(40.0))
-	var tau := GaitSolver.ankle_torque_nm(_limb, 10000.0, far_over, Vector3.ZERO)
+	var tau := GaitSolver.ankle_torque_nm(_limb, 10000.0, far_over, Vector3.ZERO, TOPPLE_K)
 	check_true(
 		tau.length() <= limit.x + limit.y + 1.0,
 		"and 40 degrees of tilt cannot ask for more than the polygon allows"
@@ -452,7 +516,7 @@ func test_the_ankle_torque_rights_the_machine_rather_than_pushing_it_over() -> v
 	# Pitched nose-down: rotated about +X by a positive angle takes the body's up
 	# axis toward -Z. Righting it is a torque about -X.
 	var nose_down := Basis(Vector3.RIGHT, deg_to_rad(5.0))
-	var tau := GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_down, Vector3.ZERO)
+	var tau := GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_down, Vector3.ZERO, TOPPLE_K)
 	check_true(
 		tau.x < 0.0,
 		"a nose-down hull gets a torque that pitches it back up (%.0f N·m about X)" % tau.x
@@ -462,14 +526,14 @@ func test_the_ankle_torque_rights_the_machine_rather_than_pushing_it_over() -> v
 	# would satisfy the case above.
 	var nose_up := Basis(Vector3.RIGHT, deg_to_rad(-5.0))
 	check_true(
-		GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_up, Vector3.ZERO).x > 0.0,
+		GaitSolver.ankle_torque_nm(_limb, 20000.0, nose_up, Vector3.ZERO, TOPPLE_K).x > 0.0,
 		"and a nose-up one gets the opposite"
 	)
 
 	# Rolled right: about +Z. The restoring torque is about -Z.
 	var rolled := Basis(Vector3.BACK, deg_to_rad(5.0))
 	check_true(
-		GaitSolver.ankle_torque_nm(_limb, 20000.0, rolled, Vector3.ZERO).z < 0.0,
+		GaitSolver.ankle_torque_nm(_limb, 20000.0, rolled, Vector3.ZERO, TOPPLE_K).z < 0.0,
 		"and a rolled hull is rolled back"
 	)
 
@@ -480,7 +544,7 @@ func test_the_ankle_torque_rights_the_machine_rather_than_pushing_it_over() -> v
 func test_the_ankle_never_yaws() -> void:
 	var yawing := Vector3(0.0, 3.0, 0.0)
 	var tau := GaitSolver.ankle_torque_nm(
-		_limb, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(6.0)), yawing
+		_limb, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(6.0)), yawing, TOPPLE_K
 	)
 	check_approx(tau.y, 0.0, "a yaw rate produces no ankle torque about the vertical")
 
@@ -493,9 +557,93 @@ func test_a_foot_with_no_extent_has_no_ankle() -> void:
 	pointy.leg_length_m = LEG
 	check_true(
 		GaitSolver.ankle_torque_nm(
-			pointy, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(8.0)), Vector3.ZERO
+			pointy, 20000.0, Basis(Vector3.RIGHT, deg_to_rad(8.0)), Vector3.ZERO, TOPPLE_K
 		).is_zero_approx(),
 		"a point foot applies no torque at any tilt or load"
+	)
+
+
+## ===== §13.12 THE HEADING AUTHORITY ====================================
+
+
+## [b]The sense, which is the assertion a flipped term passes every other test
+## of.[/b] CLAUDE.md §10 rule 14: a normative formula producing a torque must say
+## which way it acts, and the test for it asserts that sense and not only the
+## magnitude. `ControlInput.steer` is positive-for-right throughout the project
+## and a right turn is a negative rotation about world up.
+func test_the_heading_torque_turns_the_way_the_demand_asks() -> void:
+	var right := GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, 1.0, 1.0)
+	check_true(right < 0.0, "a right demand yaws the machine right (%.0f N·m)" % right)
+	var left := GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, -1.0, 1.0)
+	check_true(left > 0.0, "and a left one the other way (%.0f N·m)" % left)
+	check_approx(right, -left, "and the two are symmetric", 1e-3)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, 0.0, 1.0), 0.0,
+		"while no demand asks for no torque"
+	)
+
+
+## It is a rate controller, so it stops pushing once the machine is turning at the
+## rate it was asked for — and it pushes back when the machine overshoots.
+##
+## That is what makes the term a heading authority rather than a spin: an
+## authored torque would keep accelerating the yaw for as long as the key is held,
+## and a walking Assembly would end the corner pirouetting.
+func test_the_heading_torque_holds_a_rate_rather_than_accelerating() -> void:
+	var target := -deg_to_rad(_limb.turn_rate_deg_s)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, target, 1.0, 1.0), 0.0,
+		"at the commanded rate it asks for nothing more",
+		1e-3
+	)
+	check_true(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, target * 2.0, 1.0, 1.0) > 0.0,
+		"and past it the term opposes the turn"
+	)
+
+
+## [b]The gain scales with the machine and the term degrades with the feet.[/b]
+## Fact 110's lesson, applied before it had to be learned twice: an authored
+## newton-metres would turn a light Assembly faster than a heavy one and would cap
+## what either could carry. And a limb in the air contributes nothing, so an
+## Assembly with no feet down cannot turn at all.
+func test_the_heading_authority_scales_with_the_machine_and_the_feet() -> void:
+	var light := GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 1.0)
+	var heavy := GaitSolver.heading_torque_nm(_limb, 12000.0, 0.0, 1.0, 1.0)
+	check_approx(
+		heavy, light * 3.0,
+		"three times the yaw inertia asks for three times the torque",
+		1e-3
+	)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 0.5), light * 0.5,
+		"and half the limbs planted contribute half the authority",
+		1e-3
+	)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 0.0), 0.0,
+		"with nothing on the ground it cannot turn at all"
+	)
+
+
+## §13.5's plant rotation is the other half of turning, and it rotates *with* the
+## demand's sign rather than against it — the stride direction comes round the way
+## the machine is being asked to go.
+func test_the_plant_target_rotates_the_stride_toward_the_turn() -> void:
+	var straight := GaitSolver.foot_target(
+		_limb, Vector3(0.0, 2.0, 0.0), 0.0, Vector3(0.0, 0.0, -2.0),
+		Vector3(0.0, 0.0, -2.0), 1.0, 0.0, 2.0
+	)
+	var turning := GaitSolver.foot_target(
+		_limb, Vector3(0.0, 2.0, 0.0), 0.0, Vector3(0.0, 0.0, -2.0),
+		Vector3(0.0, 0.0, -2.0), 1.0, 1.0, 2.0
+	)
+	check_true(
+		turning.x > straight.x,
+		(
+			"a right demand swings the plant target to the right of the neutral "
+			+ "point: x %.3f against %.3f"
+		) % [turning.x, straight.x]
 	)
 
 
