@@ -26,17 +26,58 @@ const STANDING_SPEED_MPS: float = 0.15
 
 ## ===== §13.10 THE ANKLE STRATEGY ======================================
 
-## Restoring torque per radian of tilt, and per radian per second of tilt rate.
+## Restoring torque per radian of tilt, as a multiple of the Assembly's own
+## toppling stiffness — and the fact that it is a ratio rather than a number is
+## the whole of §13.10's second revision.
 ##
 ## Each planted limb computes the same desired torque from the same body attitude
 ## and then clamps it by its [i]own[/i] normal load, which is what real ankles do
 ## and what makes the term degrade gracefully as feet leave the ground. So the
-## aggregate stiffness of a standing Assembly is this figure times the number of
-## limbs holding it up, and the damping is chosen against that aggregate rather
-## than against one limb: under-damping an attitude loop on a machine this tall
-## is a wobble that never settles, and the clamp keeps over-damping honest.
-const ANKLE_STIFFNESS_NM_PER_RAD: float = 60000.0
-const ANKLE_DAMPING_NMS_PER_RAD: float = 24000.0
+## aggregate stiffness of a standing Assembly is one limb's figure times the
+## number of limbs holding it up, and it has to be compared against the
+## destabilising stiffness of the inverted pendulum it is holding: `m · g · h`,
+## in the same newton-metres per radian.
+##
+## [b]An absolute figure therefore caps the machine, and nothing said so.[/b] The
+## constant here was 60 000 N·m/rad, which on the two-limbed reference build is an
+## aggregate 120 000 against a toppling stiffness of 105 700 — a margin of 1.14,
+## and every walking Assembly in the project has been balancing on it. Measured
+## across four builds of the same chassis: 3820 kg settles at 1.63° of tilt,
+## 4020 kg at 2.62°, and at 4960 kg the aggregate falls under the pendulum and
+## the machine pitches over from upright in about two and a half seconds. Mass
+## and height are exactly what a builder adds, so the old constant made "how much
+## can this machine carry before it cannot stand up" a number nobody could read
+## off anything.
+##
+## A ratio has no such ceiling and states the design directly: the ankle is
+## [constant ANKLE_STIFFNESS_RATIO] times as stiff as the thing trying to tip the
+## machine over, whatever that machine weighs. It changes nothing about the
+## bound — the clamp is still `N · half-extent`, so the ankle still saturates a
+## few degrees out and §13.11's step still has to do the rest.
+const ANKLE_STIFFNESS_RATIO: float = 3.0
+
+## Damping as a time constant against the stiffness above, in seconds.
+##
+## 0.40 s is the ratio the two authored constants had (24 000 against 60 000) and
+## it is kept, so this revision changes the loop's stiffness and not its damping
+## character. Under-damping an attitude loop on a machine this tall is a wobble
+## that never settles, and the clamp keeps over-damping honest.
+const ANKLE_DAMPING_S: float = 0.40
+
+
+## The stiffness one limb of an [param limb_count]-limbed Assembly opposes its own
+## toppling with, in newton-metres per radian.
+##
+## `m · g · h` is the linear inverted pendulum's destabilising stiffness — the
+## moment a machine of mass [param mass_kg] whose centre of mass stands
+## [param com_height_m] over its feet produces per radian it leans. Divided by the
+## limbs holding it up, because §13.10 has every planted limb compute the same
+## desired torque, so the aggregate is this times the count.
+static func topple_stiffness_nm_per_rad(
+	mass_kg: float, com_height_m: float, limb_count: int
+) -> float:
+	var h := maxf(com_height_m, 0.0)
+	return maxf(mass_kg, 0.0) * SyndicateConstants.GRAVITY_MPS2 * h / float(maxi(limb_count, 1))
 
 
 ## §13.10's clamp: the most torque this foot can apply at [param normal_force_n],
@@ -59,11 +100,16 @@ static func ankle_torque_limit_nm(profile: LimbProfile, normal_force_n: float) -
 ## the wrong sign. The returned torque is zero for a profile with no authored
 ## support polygon and for a foot carrying no load — both by construction rather
 ## than by an early return, because a bound of zero clamps everything to zero.
+## [param topple_stiffness_nm_per_rad] is this limb's share of the Assembly's own
+## `m · g · h`, from [method topple_stiffness_nm_per_rad]. It is passed in rather
+## than derived here because a solver has the mass and the pendulum height in hand
+## and this function has neither, and because a test wants to set it directly.
 static func ankle_torque_nm(
 	profile: LimbProfile,
 	normal_force_n: float,
 	body_basis: Basis,
-	angular_velocity: Vector3
+	angular_velocity: Vector3,
+	topple_stiffness_nm_per_rad: float
 ) -> Vector3:
 	# `body_up x world_up` is an axis-angle whose magnitude is the sine of the
 	# tilt and whose direction is the axis that rotates the body's up onto the
@@ -74,7 +120,8 @@ static func ankle_torque_nm(
 	# makes turning a matter of placement and gives this family exactly one
 	# heading authority.
 	var rate := angular_velocity - Vector3.UP * angular_velocity.dot(Vector3.UP)
-	var desired := tilt * ANKLE_STIFFNESS_NM_PER_RAD - rate * ANKLE_DAMPING_NMS_PER_RAD
+	var stiffness := ANKLE_STIFFNESS_RATIO * maxf(topple_stiffness_nm_per_rad, 0.0)
+	var desired := tilt * stiffness - rate * (stiffness * ANKLE_DAMPING_S)
 
 	var limit := ankle_torque_limit_nm(profile, normal_force_n)
 	var local := body_basis.inverse() * desired

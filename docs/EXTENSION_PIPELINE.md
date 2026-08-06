@@ -139,9 +139,43 @@ mirror, and builds the shape the part's **own profile already describes**:
 | Motive · rotor | `disc_radius_m`, `blade_count` | mast, hub, one blade each to the disc edge |
 | Motive · limb | `hip_offset_m`, `leg_length_m`, `foot_radius_m` | hip, thigh, shin, foot along the leg axis |
 | Motive · track | `patch_length_m`, `road_stations` | two runs, a sprocket, an idler, one road wheel per station |
+| Motive · rolling contact | `contact_radius_m`, `contact_width_m` | a tyre about the contact frame's lateral axis, and a hub proud of it |
 | Effector · direct fire | `muzzle_offsets_m` | breech, and a barrel out to the muzzle |
 | Effector · melee | `reach_m` | hilt and a blade of the authored reach |
+| Appendage | `reach_m`, collider box | pauldron, upper arm, elbow, boxed forearm, hand at the palm |
+| Core · wheeled chassis | collider box | floor pan, a body drawn in at the waist, a greenhouse set back from the nose |
+| Core · ambulatory chassis | collider box | waist, chest, head |
 | everything else | — | the collider mirror, unchanged |
+
+**The rolling contact is the one entry that exists because a collider had to be
+the wrong shape.** `LEARNED_FACTS.md` fact 105: a cylinder inscribed in a square
+is 78.5% of it, outside §6.2's coverage band, so a three-cell contact has no cell
+list a `CYLINDER` collider fits and `mot.wheeled.light_road.t1` carries a `BOX`
+over a box. Mirrored, the road car's contacts are four cubes under a vehicle whose
+reference has small round wheels, and no amount of work on the hull fixes that.
+
+**The two chassis entries are the exception to "every length comes from the
+profile", and the exception is deliberate.** A `CoreModuleProfile` publishes a
+power capacity, a mount budget, a speed cap and a locomotion mask, and not one
+figure that is a length — §7.9 of `PART_DATA_SCHEMA.md` records that only two of
+its fields are read by the simulation at all. So the fractions are of the
+chassis's own collider box, and *which* set of fractions is chosen by the
+locomotion mask: a hull built to stand on contacts is a road vehicle and one built
+to carry limbs is a torso. Nothing else in the data distinguishes them — the road
+car and the utility truck are within four hundredths of each other on every
+dimensionless ratio `PART_DATA_SCHEMA.md` §10.1 publishes, so a rule keyed on
+proportion would be reading noise. The tracked and rotary chassis keep the mirror:
+a long low hull already reads as a tracked platform once the bogies and the gun
+are on it.
+
+**A chassis proxy must fill its own collider box, and that constraint is not
+shared with the rest of the table.** A hull is the thing a player aims at, so a
+drawn silhouette narrower than the collider would be showing a target smaller than
+the one rounds actually stop on — the opposite error to the rotor's and a worse
+one, because it is a lie in the player's favour about their own machine and
+against them about everyone else's. One piece therefore spans the full plan and
+reaches the floor and another reaches the roof; the shaping happens between them.
+`tests/integration/test_part_visuals.gd` asserts the envelope by value.
 
 **Every length is read from the profile the simulation reads; only the thicknesses
 are authored.** That split is the point. A proxy and a solver that disagree about

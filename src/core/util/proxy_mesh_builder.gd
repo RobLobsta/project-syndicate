@@ -64,6 +64,26 @@ const TRACK_ROAD_WHEEL_RADIUS_M: float = 0.26
 const TRACK_END_WHEEL_RADIUS_M: float = 0.38
 const TRACK_WHEEL_WIDTH_M: float = 0.44
 
+## Rolling contact: the tyre at [member MotiveAssemblyProfile.contact_radius_m]
+## and a hub standing proud of it.
+##
+## [b]Only the kinds that actually roll.[/b] A repulsor pad is a
+## [constant PartEnums.MotiveKind] on the same profile with no wheel anywhere in
+## it, and drawing one as a tyre would be the picture inventing a mechanism the
+## simulation does not have.
+const ROLLING_KINDS: Array[int] = [
+	PartEnums.MotiveKind.WHEELED_STEERED,
+	PartEnums.MotiveKind.WHEELED_FIXED,
+	PartEnums.MotiveKind.OMNI_ROLLER,
+]
+## The tread's share of the authored contact width, and the hub's share of the
+## tyre's radius. The hub takes the full width and the tread a little less, so the
+## hub stands proud of the tread — which is what makes a wheel read as a wheel
+## from the front three quarters rather than as a disc lying against the hull —
+## without the drawn contact ever being wider than the one it collides as.
+const CONTACT_TREAD_WIDTH_FRACTION: float = 0.78
+const CONTACT_HUB_RADIUS_FRACTION: float = 0.52
+
 ## Direct fire: a breech at the mount and a barrel out to the muzzle. The breech
 ## keeps the collider's own cross-section so the module still reads as the thing
 ## that occupies those cells.
@@ -75,6 +95,64 @@ const BREECH_LENGTH_FRACTION: float = 0.45
 const EDGE_HALF_THICKNESS_M: float = 0.035
 const EDGE_HALF_WIDTH_M: float = 0.11
 const HILT_HALF_M: float = 0.09
+
+## ===== CHASSIS PROXIES =================================================
+## A Core Module's collider is one box around the whole hull, so the mirror draws
+## every chassis in the registry as a rectangular block — which is what made five
+## differently proportioned vehicles read as five differently proportioned
+## blocks. The three families below carve that block into the shape the vehicle
+## it was derived from actually has.
+##
+## [b]Every fraction is of the chassis's own collider half-extents, and the union
+## of the pieces fills that box exactly.[/b] That is the constraint the rotor and
+## the limb do not have to meet and this one does: a hull is the thing a player
+## aims at, so a chassis whose drawn silhouette were narrower than its collider
+## would be showing a target smaller than the one rounds actually stop on. One
+## piece therefore spans the full plan and reaches the floor, and another reaches
+## the roof — `tests/integration/test_part_visuals.gd` asserts the envelope by
+## value.
+
+## Road vehicle: a floor pan over the contacts, a body with a waistline, and a
+## greenhouse set back from the nose. Three steps of tumblehome is the least that
+## reads as a vehicle rather than as a crate.
+const ROAD_PAN_TOP: float = -0.56
+const ROAD_BODY_TOP: float = 0.20
+const ROAD_BODY_HALF_WIDTH: float = 0.92
+const ROAD_CABIN_HALF_WIDTH: float = 0.78
+## The greenhouse's share of the hull's length, and how far aft of centre it
+## sits. A cabin centred on the hull is a van; set back by a tenth of the length
+## it leaves a bonnet in front of the screen, which is the single feature that
+## makes a road vehicle read as one at greybox fidelity.
+const ROAD_CABIN_HALF_LENGTH: float = 0.66
+const ROAD_CABIN_SETBACK: float = 0.10
+
+## Walking torso: a waist, a chest wider and deeper than it, and a head.
+##
+## The proportions are the humanoid reference doc 01 §10.1 derives the chassis
+## from — the chest is the widest part, the waist is drawn in, and the head is a
+## sixth of the width sitting on the shoulder line.
+const TORSO_WAIST_TOP: float = -0.42
+const TORSO_WAIST_HALF_WIDTH: float = 0.58
+const TORSO_WAIST_HALF_DEPTH: float = 0.74
+const TORSO_CHEST_TOP: float = 0.64
+const TORSO_HEAD_HALF_WIDTH: float = 0.30
+const TORSO_HEAD_HALF_DEPTH: float = 0.46
+
+## ===== APPENDAGE PROXY =================================================
+## An arm's collider is one box eight cells long, and the mirror draws it as a
+## post. These are fractions of [member AppendageProfile.reach_m] — the distance
+## from the shoulder pivot to the palm, which is the figure the melee sweep and
+## the held module's mount both already read — so a drawn elbow cannot end up
+## somewhere the hand is not.
+const ARM_PAULDRON_END: float = 0.18
+const ARM_UPPER_END: float = 0.52
+const ARM_FOREARM_START: float = 0.58
+const ARM_WRIST: float = 0.90
+const ARM_PAULDRON_HALF_M: float = 0.30
+const ARM_UPPER_RADIUS_M: float = 0.13
+const ARM_ELBOW_RADIUS_M: float = 0.16
+const ARM_FOREARM_HALF_M: float = 0.17
+const ARM_HAND_HALF_M: float = 0.12
 
 
 ## The display mesh for [param def], or null if it has neither proxy primitives
@@ -159,12 +237,181 @@ static func family_primitives(def: PartDefinition) -> Array[ProxyPrimitiveDef]:
 			return _limb_primitives(mp.limb_profile, anchor)
 		if mp.track_profile != null:
 			return _track_primitives(mp.track_profile, anchor)
+		if ROLLING_KINDS.has(mp.kind):
+			return _contact_primitives(mp, anchor)
 		return out
 	var ep := def.effector_profile
 	if ep != null:
 		if ep.melee_profile != null:
 			return _edge_primitives(ep.melee_profile, anchor)
 		return _barrel_primitives(ep, def, anchor)
+	if def.core_profile != null:
+		return _chassis_primitives(def.core_profile, def, anchor)
+	if def.appendage_profile != null:
+		return _arm_primitives(def.appendage_profile, def, anchor)
+	return out
+
+
+## The hull shape a Core Module's own locomotion family implies, carved out of
+## its collider box.
+##
+## [b]Which family a chassis declares is the only thing in the data that says
+## what shape it is.[/b] Doc 01 §7.1's `locomotion_mask` exists so a limb cannot
+## be bolted to a road car, and the same statement answers this question: a hull
+## built to stand on contacts is a road vehicle and one built to carry limbs is a
+## torso. Nothing else on a [CoreModuleProfile] distinguishes them — the road car
+## and the utility truck are within four hundredths of each other on every
+## dimensionless ratio §10.1 publishes, so a rule keyed on proportion would be
+## reading noise.
+##
+## The tracked and rotary chassis return an empty array and keep the mirror. A
+## long low hull already reads as a tracked platform once the bogies and the gun
+## are on it, and a 7.00 m fuselage reads as an airframe; neither is the shape
+## this session found wanting.
+static func _chassis_primitives(
+	core: CoreModuleProfile, def: PartDefinition, anchor: Vector3
+) -> Array[ProxyPrimitiveDef]:
+	var out: Array[ProxyPrimitiveDef] = []
+	var box := _collider_extents(def)
+	if box == Vector3.ZERO:
+		return out
+	if core.carries(PartEnums.LocomotionMode.AMBULATORY):
+		return _torso_primitives(box, anchor)
+	if core.carries(PartEnums.LocomotionMode.GROUND):
+		return _road_body_primitives(box, anchor)
+	return out
+
+
+## A floor pan, a body drawn in at the waist, and a greenhouse set back from the
+## nose. Forward is `-Z`, which is the muzzle convention every part in this
+## project is authored against.
+static func _road_body_primitives(box: Vector3, anchor: Vector3) -> Array[ProxyPrimitiveDef]:
+	var out: Array[ProxyPrimitiveDef] = []
+	out.append(_slab(
+		Vector3(box.x, box.y, box.z), -1.0, ROAD_PAN_TOP, 0.0, anchor
+	))
+	out.append(_slab(
+		Vector3(box.x * ROAD_BODY_HALF_WIDTH, box.y, box.z),
+		ROAD_PAN_TOP, ROAD_BODY_TOP, 0.0, anchor
+	))
+	out.append(_slab(
+		Vector3(box.x * ROAD_CABIN_HALF_WIDTH, box.y, box.z * ROAD_CABIN_HALF_LENGTH),
+		ROAD_BODY_TOP, 1.0, box.z * ROAD_CABIN_SETBACK, anchor
+	))
+	return out
+
+
+## A waist, a chest, and a head. See [constant TORSO_WAIST_TOP].
+static func _torso_primitives(box: Vector3, anchor: Vector3) -> Array[ProxyPrimitiveDef]:
+	var out: Array[ProxyPrimitiveDef] = []
+	out.append(_slab(
+		Vector3(box.x * TORSO_WAIST_HALF_WIDTH, box.y, box.z * TORSO_WAIST_HALF_DEPTH),
+		-1.0, TORSO_WAIST_TOP, 0.0, anchor
+	))
+	out.append(_slab(
+		Vector3(box.x, box.y, box.z), TORSO_WAIST_TOP, TORSO_CHEST_TOP, 0.0, anchor
+	))
+	out.append(_slab(
+		Vector3(box.x * TORSO_HEAD_HALF_WIDTH, box.y, box.z * TORSO_HEAD_HALF_DEPTH),
+		TORSO_CHEST_TOP, 1.0, 0.0, anchor
+	))
+	return out
+
+
+## A box spanning [param from] to [param to] of the collider's height, in units
+## where -1 is its floor and +1 its roof, with [param half]'s `x` and `z` as its
+## own half-extents and [param z_offset] shifting it along the hull.
+##
+## The height arithmetic is here rather than at each call site because getting it
+## wrong is invisible — a slab that stops short of the roof leaves a chassis whose
+## drawn envelope is smaller than the box rounds stop on, and that reads as a
+## rendering glitch rather than as an arithmetic slip.
+static func _slab(
+	half: Vector3, from: float, to: float, z_offset: float, anchor: Vector3
+) -> ProxyPrimitiveDef:
+	var d := ProxyPrimitiveDef.new()
+	d.kind = ColliderPrimitiveDef.PrimitiveKind.BOX
+	d.half_extents_m = Vector3(half.x, half.y * (to - from) * 0.5, half.z)
+	d.local_offset_m = Vector3(
+		anchor.x, anchor.y + half.y * (from + to) * 0.5, anchor.z + z_offset
+	)
+	return d
+
+
+## §2.1's Appendage proxy: a pauldron, an upper arm, an elbow, a boxed forearm
+## and a hand, down the arm's own `-Y`.
+##
+## [b]The arm is authored along `-Y` and hangs, which is why this is drawn down
+## rather than forward.[/b] Doc 01 §10.6 puts the shoulder on the part's top face
+## and the single GRIP hand on its bottom one, so an unrotated Appendage is a
+## limb hanging beside a torso and the module it holds continues below the palm
+## (LEARNED_FACTS.md fact 104).
+##
+## The elbow is drawn and is not a joint. Invariant I-3 admits none, and doc 05
+## §13.1's reading applies unchanged: the visible articulation is presentation
+## under `VisualRoot`, the collider is the authored box from placement to
+## destruction, and nothing here is read back by anything.
+static func _arm_primitives(
+	arm: AppendageProfile, def: PartDefinition, anchor: Vector3
+) -> Array[ProxyPrimitiveDef]:
+	var out: Array[ProxyPrimitiveDef] = []
+	var box := _collider_extents(def)
+	if box == Vector3.ZERO:
+		return out
+	# The shoulder face rather than the pivot cell's centre: the plate the arm
+	# bolts to is above that face, and a pauldron that started half a cell below
+	# it would leave a visible gap at every shoulder in the game. The span runs
+	# from there to the far face, so the drawn arm is exactly the arm the
+	# occupancy claims — and `reach_m`, the pivot-to-palm distance the melee sweep
+	# reads, lands inside the hand block below rather than beside it.
+	var top := anchor.y + box.y
+	var span := maxf(box.y * 2.0, arm.reach_m)
+
+	var pauldron := ProxyPrimitiveDef.new()
+	pauldron.kind = ColliderPrimitiveDef.PrimitiveKind.BOX
+	# The collider's own cross-section, so the shoulder is where the widest part
+	# of the arm is and the envelope still matches what a round stops on.
+	pauldron.half_extents_m = Vector3(
+		maxf(box.x, ARM_PAULDRON_HALF_M), span * ARM_PAULDRON_END * 0.5, maxf(box.z, ARM_PAULDRON_HALF_M)
+	)
+	pauldron.local_offset_m = Vector3(anchor.x, top - span * ARM_PAULDRON_END * 0.5, anchor.z)
+	out.append(pauldron)
+
+	out.append(_cylinder(
+		ARM_UPPER_RADIUS_M,
+		span * (ARM_UPPER_END - ARM_PAULDRON_END),
+		Vector3(anchor.x, top - span * (ARM_PAULDRON_END + ARM_UPPER_END) * 0.5, anchor.z)
+	))
+
+	var elbow := ProxyPrimitiveDef.new()
+	elbow.kind = ColliderPrimitiveDef.PrimitiveKind.SPHERE
+	elbow.radius_m = ARM_ELBOW_RADIUS_M
+	elbow.local_offset_m = Vector3(
+		anchor.x, top - span * (ARM_UPPER_END + ARM_FOREARM_START) * 0.5, anchor.z
+	)
+	out.append(elbow)
+
+	var forearm := ProxyPrimitiveDef.new()
+	forearm.kind = ColliderPrimitiveDef.PrimitiveKind.BOX
+	forearm.half_extents_m = Vector3(
+		ARM_FOREARM_HALF_M, span * (ARM_WRIST - ARM_FOREARM_START) * 0.5, ARM_FOREARM_HALF_M
+	)
+	forearm.local_offset_m = Vector3(
+		anchor.x, top - span * (ARM_FOREARM_START + ARM_WRIST) * 0.5, anchor.z
+	)
+	out.append(forearm)
+
+	# The hand fills the last tenth, so the drawn arm reaches the far face of its
+	# own occupancy and the palm is where the held module's frame starts.
+	var hand := ProxyPrimitiveDef.new()
+	hand.kind = ColliderPrimitiveDef.PrimitiveKind.BOX
+	hand.half_extents_m = Vector3(
+		ARM_HAND_HALF_M, span * (1.0 - ARM_WRIST) * 0.5, ARM_HAND_HALF_M
+	)
+	hand.local_offset_m = Vector3(
+		anchor.x, top - span * (1.0 + ARM_WRIST) * 0.5, anchor.z
+	)
+	out.append(hand)
 	return out
 
 
@@ -284,6 +531,32 @@ static func _track_primitives(track: TrackProfile, anchor: Vector3) -> Array[Pro
 	return out
 
 
+## A tyre of the profile's own rolling radius, and a hub inside it.
+##
+## [b]This is the one family proxy that exists because a collider had to be the
+## wrong shape.[/b] LEARNED_FACTS.md fact 105: a cylinder inscribed in a square is
+## 78.5% of it, which is outside doc 01 §6.2's coverage band, so a three-cell
+## contact has no cell list a `CYLINDER` collider fits and
+## `mot.wheeled.light_road.t1` carries a `BOX` over a box. Mirrored, the road
+## car's contacts are four cubes — and the reference the chassis was derived from
+## is a vehicle with small round wheels.
+##
+## The axis is the part's local `Z`, which doc 05 §7.1 fixes as the contact
+## frame's lateral axis and is therefore the axle every wheel in this project
+## rolls on.
+static func _contact_primitives(
+	mp: MotiveAssemblyProfile, anchor: Vector3
+) -> Array[ProxyPrimitiveDef]:
+	var out: Array[ProxyPrimitiveDef] = []
+	var radius := mp.contact_radius_m
+	var width := mp.contact_width_m
+	if radius <= 0.0 or width <= 0.0:
+		return out
+	out.append(_axle_cylinder(radius, width * CONTACT_TREAD_WIDTH_FRACTION, anchor))
+	out.append(_axle_cylinder(radius * CONTACT_HUB_RADIUS_FRACTION, width, anchor))
+	return out
+
+
 ## A breech at the mount and a barrel out to the muzzle doc 07 §7.2 fires from.
 ##
 ## The muzzle offset is the one the emission loop uses, so a barrel that stops
@@ -360,7 +633,13 @@ static func _cylinder(radius: float, height: float, at: Vector3) -> ProxyPrimiti
 ## A cylinder laid on its side to turn about the part's local `Z`, which is the
 ## axle every contact in this project rolls on.
 static func _wheel(radius: float, at: Vector3) -> ProxyPrimitiveDef:
-	var d := _cylinder(radius, TRACK_WHEEL_WIDTH_M, at)
+	return _axle_cylinder(radius, TRACK_WHEEL_WIDTH_M, at)
+
+
+## [method _wheel] with the width given rather than assumed, for the parts that
+## author one.
+static func _axle_cylinder(radius: float, width: float, at: Vector3) -> ProxyPrimitiveDef:
+	var d := _cylinder(radius, width, at)
 	d.local_basis_euler_deg = Vector3(90.0, 0.0, 0.0)
 	return d
 

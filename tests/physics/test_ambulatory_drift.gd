@@ -67,26 +67,45 @@ const SETTLE_TICKS: int = 200
 const WALK_TICKS: int = 300
 
 ## Degrees of heading change that is unambiguously a drift rather than a weave.
-## A gait bobs; a gait does not turn a right angle by accident.
-const DRIFT_THRESHOLD_DEG: float = 60.0
+## A gait bobs; a gait does not turn fifteen degrees by accident.
+##
+## It was 60, which was the measurement when the family walked on the ground
+## chassis and turned a right angle in five seconds. The strider chassis took that
+## to 20.2° and doc 05 §13.10's proportional ankle to **31.8°** — the drift is
+## still there and is no longer enormous, so the floor comes down to a little
+## under half the measurement, which is the margin fact 47 asks for.
+const DRIFT_THRESHOLD_DEG: float = 15.0
 ## Degrees the hull may lean and still count as walking rather than falling.
 const UPRIGHT_DOT: float = 0.90
-## Degrees an uncommanded standing Assembly is measured to turn over
-## [constant WALK_TICKS]. Measured at 18.1° on the strider chassis, where it was
-## 51.2° on the ground one; the floor sits at less than half the measurement so
-## that an ordinary run-to-run wobble cannot flip it and a repair certainly can.
-## See [method test_standing_still_no_longer_holds_a_heading].
-const STANDING_DRIFT_FLOOR_DEG: float = 8.0
+## Degrees an uncommanded standing Assembly may turn over
+## [constant WALK_TICKS], now that it turns almost none.
+##
+## [b]This constant was a floor and is now a ceiling, and that is the whole of
+## what doc 05 §13.10's revision did for standing.[/b] The figure was 51.2° on the
+## ground chassis and 18.1° on the strider, and the file asserted it as a defect
+## as it stood. With the ankle's restoring torque scaled to the machine's own
+## `m·g·h` it is **0.54°** — back under the one degree §13.4's standing state used
+## to hold before the rebuild. Four degrees is seven times the measurement and
+## still far below anything the defect ever produced.
+const STANDING_DRIFT_CEILING_DEG: float = 4.0
 ## How level a standing Assembly stays. It was asserted at 0.999 — two and a half
 ## degrees — and the strider chassis holds 0.9892, which is eight and a half.
 ## Lower inertia over the same gait disturbance is the whole of the difference,
 ## and it is a lean rather than a topple: [constant UPRIGHT_DOT]'s walking bound
 ## is far looser again.
 const STANDING_UPRIGHT_DOT: float = 0.98
-## Degrees between the two commanded runs, above which the steering demand would
-## be a signed heading authority rather than a disturbance with a sign attached.
-## Measured at 4.7°.
-const STEERING_SEPARATION_DEG: float = 15.0
+## Degrees between the two commanded runs, above which the steering demand is a
+## signed heading authority rather than a disturbance with a sign attached.
+##
+## It was measured at 4.7° and asserted as a ceiling: full left and full right
+## landed in the same place, which is the sharpest statement this file could make
+## of doc 05 §13.8's missing heading term. Under §13.10's proportional ankle the
+## two runs separate by **55.1°** and land on opposite sides of neutral, so the
+## demand now decides the heading. Twenty-five is under half the measurement.
+##
+## What it does [b]not[/b] decide is which way. See
+## [method test_the_steering_demand_has_authority_and_it_is_inverted].
+const STEERING_SEPARATION_DEG: float = 25.0
 
 ## Metres between the four stations, and how far off the arena's centreline the
 ## whole row sits. Well clear of where every other file builds its fixture, so a
@@ -127,81 +146,80 @@ func test_a_neutral_steering_demand_does_not_hold_a_heading() -> void:
 	)
 
 
-## [b]The demand moves the heading a long way and its sign barely decides which
-## way.[/b] This replaces an assertion that said full opposite lock could not null
-## the drift, which was true on the ground chassis and is not true on this one:
-## the countered run ends at 19.9°, inside [constant DRIFT_THRESHOLD_DEG].
+## [b]The demand decides the heading now, and it decides it backwards.[/b]
 ##
-## What survives — and it is a stronger statement of the same defect — is that
-## both commanded runs land in the same place. Full left ends at +24.6° and full
-## right at +19.9°, from an uncommanded −92.2°: a hundred and twelve degrees of
-## effect and under five degrees of it attributable to which way the demand
-## pointed. A control that large and that unsigned is a disturbance, not a
-## heading authority, and doc 05 §13.8 says why — "the Raibert term is the only
-## balance authority", and it lists no heading term at all.
+## This assertion has been re-measured twice and inverted once. It was written
+## against a ground chassis on which full opposite lock could not null the drift;
+## it became "both commanded runs land in the same place" — +24.6° against +19.9°,
+## under five degrees apart out of a hundred and twelve degrees of effect — which
+## was the sharpest statement this file could make of doc 05 §13.8's missing
+## heading term. Under §13.10's proportional ankle the same two runs land at
+## **+44.0° and −11.1°**: opposite sides of neutral, 55.1° apart. A walking
+## Assembly that spends less of its stride staying upright has a placement law
+## that can actually steer it.
 ##
-## Both sides of this comparison are [i]commanded[/i] runs, and that is
-## deliberate. It used to compare the counter-steered run against the neutral one,
-## and session 23 found that assertion resting on a number that is not
-## reproducible: adding one unrelated engagement file earlier in the suite flipped
-## the neutral case from +169.6° to −76.1° while leaving both commanded runs
-## byte-identical. The neutral walker is the knife-edge — the one whose outcome is
-## decided entirely by accumulated asymmetry, with no demand to dominate it — so
-## its [i]direction[/i] is a property of the suite's floating-point history and
-## not of the family. Its magnitude is stable and is asserted above; nothing here
-## may depend on its sign.
+## [b]And the sign is wrong.[/b] `_walk` returns positive for left and
+## [member ControlInput.steer] is positive for right, so a right demand should
+## come back negative. Full right returns +44.0° and full left −11.1°: the family
+## steers the opposite way to every other one in the game. Doc 05 §13.5's
+## placement law already negates the yaw once for exactly this reason and that
+## negation is correct in isolation, so this is not that line — it is a second
+## inversion somewhere between the demand and the plant that could not be seen
+## while the demand had no authority to invert. Asserted as it stands, as §9
+## requires: when the inversion is found this check goes red and the fix is to
+## flip the comparison, never to widen it.
 ##
-## When §13 gains its heading term this check goes red, because the separation
-## will exceed the bound. The fix then is to re-measure and re-assert it as an
-## authority, never to widen the bound.
-func test_the_steering_demand_is_a_disturbance_rather_than_a_heading_authority() -> void:
+## Both sides of the comparison are [i]commanded[/i] runs, and that is deliberate.
+## It used to compare the counter-steered run against the neutral one, and session
+## 23 found that assertion resting on a number that is not reproducible: adding
+## one unrelated engagement file earlier in the suite flipped the neutral case
+## from +169.6° to −76.1° while leaving both commanded runs byte-identical. The
+## neutral walker is the knife-edge — the one whose outcome is decided entirely by
+## accumulated asymmetry, with no demand to dominate it — so its direction is a
+## property of the suite's floating-point history and not of the family. Its
+## magnitude is stable and is asserted above; nothing here may depend on its sign.
+func test_the_steering_demand_has_authority_and_it_is_inverted() -> void:
 	await _measure()
 	check_true(
-		absf(_hard_over_deg - _counter_deg) < STEERING_SEPARATION_DEG,
+		_hard_over_deg - _counter_deg > STEERING_SEPARATION_DEG,
 		(
-			"opposite demands land in the same place: %.1f° hard over against "
-			+ "%.1f° countering, %.1f° apart"
+			"a right demand ends %+.1f° and a left one %+.1f°, %.1f° apart — so the "
+			+ "demand decides the heading, and it decides it the wrong way round: "
+			+ "positive is left and positive steer is right"
 		)
-		% [_hard_over_deg, _counter_deg, absf(_hard_over_deg - _counter_deg)]
-	)
-	# And it is not a dead control path: the demand does something, and what it
-	# does is large. Compared against the *neutral* run's magnitude only, never
-	# its sign, for the reason the docstring gives.
-	var commanded := absf(_hard_over_deg - _neutral_deg)
-	check_true(
-		commanded > DRIFT_THRESHOLD_DEG,
-		(
-			"and it is not ignored: %.1f° of heading between the neutral run and "
-			+ "the commanded one"
-		) % commanded
+		% [_hard_over_deg, _counter_deg, _hard_over_deg - _counter_deg]
 	)
 
 
-## [b]The control used to be the half that worked, and the rebuild took it.[/b]
+## [b]It came back.[/b]
 ##
-## §13.4's standing state held a heading to a fraction of a degree indefinitely —
+## §13.4's standing state held a heading to a fraction of a degree indefinitely,
 ## which is why the arena's tactics plant an ambulatory Assembly before it shoots
-## instead of walking it into contact. On the rebuilt chassis a standing Assembly
-## yawed about fifty degrees over the same three hundred ticks; on the dedicated
-## `core.ambulatory.strider.t3` it yaws eighteen, and leans eight and a half
-## degrees while it does it where the heavier hull leaned under three. Lighter is
-## better on the heading and worse on the attitude, which is what a smaller
-## inertia under an unchanged gait disturbance buys. Neither is falling over; it
-## is turning on the spot with nothing asking it to.
+## instead of walking it into contact. The chassis rebuild took that away: a
+## standing Assembly yawed about fifty degrees over three hundred ticks on the
+## ground hull and eighteen on `core.ambulatory.strider.t3`, turning on the spot
+## with nothing asking it to, and this file asserted the defect as it stood.
 ##
-## [b]Asserted as it behaves, as a magnitude and never as a sign.[/b] Nothing
-## commands this walker, so LEARNED_FACTS.md §1 fact 54's second half applies in
-## full: an uncommanded quantity's direction is a property of the suite's
-## floating-point history. The magnitude is the measurement. When doc 05 §13 gains
-## the heading term §13.8 currently forbids by omission, this check goes red and
-## the fix is to re-measure it back down, not to loosen it.
-func test_standing_still_no_longer_holds_a_heading() -> void:
+## Doc 05 §13.10's ankle is now a multiple of the Assembly's own `m·g·h` rather
+## than an absolute 60 000 N·m/rad, and the drift is **0.54°** — under the one
+## degree the standing state used to hold. Nothing here was aimed at yaw: the
+## ankle sets its yaw component to zero by construction (§13.10) and always has.
+## What changed is that the machine is no longer working its stance to stay
+## upright, so the horizontal components of four stance forces cancel the way the
+## geometry says they should.
+##
+## Asserted as a magnitude and never as a sign, exactly as it was when it was a
+## complaint. Nothing commands this walker, so LEARNED_FACTS.md §1 fact 54's
+## second half applies in full: an uncommanded quantity's direction is a property
+## of the suite's floating-point history.
+func test_standing_still_holds_a_heading_again() -> void:
 	await _measure()
 	check_true(
-		absf(_standing_deg) > STANDING_DRIFT_FLOOR_DEG,
+		absf(_standing_deg) < STANDING_DRIFT_CEILING_DEG,
 		(
-			"a standing Assembly turns on the spot: %.2f° over %d ticks, against "
-			+ "51.2° on the ground chassis and under one before the rebuild"
+			"a standing Assembly holds its heading: %.2f° over %d ticks, against "
+			+ "18.1° on this chassis before §13.10's proportional ankle and 51.2° "
+			+ "on the ground one"
 		) % [_standing_deg, WALK_TICKS]
 	)
 	check_true(
