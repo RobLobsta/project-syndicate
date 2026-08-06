@@ -99,6 +99,14 @@ Nothing is installed by default. One command provisions everything:
 tools/ci/bootstrap_env.sh          # idempotent; ~75 MB download, ~30 s
 ```
 
+**Re-authoring parts goes through `tools/author_all_parts.sh` and not through the
+individual `--script` invocations.** The generators are order-dependent —
+`author_appendage_parts.gd` re-authors a key `author_locomotion_parts.gd` also
+writes — and running them out of order silently produces a melee blade that
+cannot be held, with no error and a registry that validates. `LEARNED_FACTS.md`
+fact 76 recorded that ordering as a fact to remember and session 44 then walked
+into it twice, which is what a fact-to-remember does.
+
 That puts Godot **4.7.1-stable** in `.tooling/`, which is gitignored in full and
 holds the binary, the engine's `XDG_*` data and test output. Run the engine only
 through the wrapper — without it Godot scatters editor settings and shader caches
@@ -209,11 +217,12 @@ inboard and its wheel hangs outboard and the lattice cannot recess a contact int
 a hull. The reference car is 0.42 of its length in width; this is 0.60. It is the
 one proportion in the set that the construction, rather than the data, refuses.
 
-**The walker is a walking machine and still not the reference.** It is 5.00 m tall
-with an upright torso, which is the change; it has four legs where the reference
-has two, and its torso is as deep as it is tall where the reference's is half
-that. Both are doc 05 §13's point foot (fact 109), both are architecture, and a
-player who knows what the reference is will notice immediately.
+**~~The walker is a walking machine and still not the reference.~~ Closed.** Doc
+05 §13.10 gives a foot an extent and a bounded ankle torque, §13.11 makes the
+plant target a capture point, and `core.biped.humanoid.t3` is a torso twice as
+tall as it is deep carrying two limbs at the same `z` — a stance base of literally
+zero. `CombatArena.Recipe.BIPED` stands on it. What is *not* closed is that the
+biped is a fixture rather than something a player can build, which is §3.3.
 
 Ranked by what would most improve a first-time player's experience:
 

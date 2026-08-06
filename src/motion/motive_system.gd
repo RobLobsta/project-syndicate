@@ -647,7 +647,29 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 		else hip_world.y - limb_profile.leg_length_m
 	)
 	var slack := (hip_world - limb.foot_world).length() >= limb_profile.stance_rest_length_m()
-	if now_stance and (not was_planted or (standing and slack)):
+	# §13.10's second use of the support polygon: a standing Assembly re-plants
+	# when its hip has travelled outside the foot it is standing on.
+	#
+	# [b]Without it a biped stands upright and slides.[/b] The ankle holds
+	# attitude and nothing holds station: the stance force acts along hip-to-foot,
+	# so once the feet are behind the hips the horizontal component pushes the
+	# machine along and the feet — frozen by §13.4's standing state — never come
+	# back under it. Measured before this existed: 0.7° of tilt, perfectly
+	# upright, drifting backwards at 1.15 m/s regardless of what the throttle was
+	# asking for. A quadruped hides it, because four feet fore and aft of the
+	# centre of mass cancel each other's horizontal components.
+	#
+	# Half the foot is the centre of pressure's own travel limit, so this is the
+	# same number the ankle clamp uses seen from the other side: the step happens
+	# exactly when the ankle runs out of authority, which is what a person does.
+	var hip_offset := Vector2(
+		hip_world.x - limb.foot_world.x, hip_world.z - limb.foot_world.z
+	).length()
+	var outside_polygon := (
+		limb_profile.foot_length_m > 0.0
+		and hip_offset > limb_profile.foot_length_m * 0.5
+	)
+	if now_stance and (not was_planted or (standing and (slack or outside_polygon))):
 		limb.foot_world = _foot_target(limb_profile, hip_world, ground_y, gait_cap, cadence, basis)
 		limb.prev_length_m = (hip_world - limb.foot_world).length()
 	limb.planted = now_stance
@@ -695,6 +717,23 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 		limb.foot_visual_world = limb.foot_world
 	_apply_at(hip_world, force)
 
+	# §13.10's ankle. The axial force above is applied at the hip and can only
+	# produce the moment its own lever gives it; this is the other half of what a
+	# foot with an extent can do, and it is bounded by the normal load this foot
+	# is actually carrying so a limb in the air contributes nothing.
+	#
+	# Applied as a torque rather than by moving the force's application point,
+	# because the two are only equivalent when the offset is perpendicular to the
+	# force — and a stance force on a tilted leg is not.
+	var ankle := GaitSolver.ankle_torque_nm(
+		limb_profile,
+		absf(force.dot(normal)),
+		runtime.body.global_basis,
+		runtime.body.angular_velocity
+	)
+	if not ankle.is_zero_approx():
+		runtime.body.apply_torque(ankle)
+
 
 ## §13.5's placement law with this tick's Assembly state filled in.
 ##
@@ -718,7 +757,12 @@ func _foot_target(
 		runtime.body.linear_velocity,
 		input.desired_velocity(-basis.z, basis.x, gait_cap),
 		cadence_hz_value,
-		input.steer
+		input.steer,
+		# §13.11's pendulum height: the centre of mass over the ground this limb
+		# is standing on, not over the body origin. The origin is the lattice
+		# origin and sits wherever the Core Module's pivot cell happens to be, so
+		# using it would make the capture time a property of the authoring.
+		(runtime.body.global_transform * runtime.body.center_of_mass).y - ground_y
 	)
 
 

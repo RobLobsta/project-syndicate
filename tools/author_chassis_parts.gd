@@ -75,12 +75,40 @@ extends SceneTree
 ## measured on while taking the height from 1.00 m to 2.50 m, which is the most
 ## verticality available without touching the gait model.
 ##
-## [b]Closing the rest of the gap is doc 05 §13 architecture and is raised as
-## such[/b] — a foot with a length and an ankle torque, or a balance controller
-## that modulates stance force fore and aft. Either would make a biped tractable
-## and neither is a data change. `HANDOFF.md` §3.1.3 carries it.
+## [b]The architecture that closes it now exists.[/b] Doc 05 §13.10 gives a foot
+## an extent and a bounded ankle torque and §13.11 makes the plant target a
+## capture point, so fore-and-aft stability no longer has to come from the stance
+## base. `core.biped.humanoid.t3` is the chassis that spends that: half this
+## one's depth, two limbs, and the reference's own proportion.
+##
+## [b]This row stays as it is, deliberately.[/b] It is the chassis every gait
+## measurement in `tests/physics/` was taken against, and a quadruped genuinely
+## does want its stance base — the ankle is a second term for it and the only
+## term for a biped.
 const AMBULATORY_LO := Vector3i(-3, 0, -5)
 const AMBULATORY_HI := Vector3i(2, 9, 4)
+
+## The biped torso: 6x10x5 cells, 1.50 m wide, 2.50 m tall, 1.25 m long.
+##
+## [b]Twice as tall as it is deep, which is the humanoid reference's own
+## proportion and which nothing in this project could express until doc 05
+## §13.10.[/b] The reference measures 1.85; this is 2.0, and the half-cell either
+## side of that is the whole of the difference.
+##
+## It is half `core.ambulatory.strider.t3`'s depth, and that is exactly the trade
+## §13.10 buys. On a point foot the fore-and-aft stance base is the only pitch
+## stability a walking Assembly has, and the stance base is the torso's depth — so
+## the quadruped torso has to be as deep as it is tall and a humanoid one
+## face-plants on its first step. With an authored support polygon the ankle
+## carries fore-and-aft stability instead, and the depth is free to be whatever
+## the machine is supposed to look like.
+##
+## 1200 kg against the strider's 1800 is 256 kg/m³ against 192, and both halves
+## are the design: a shorter torso is denser because the structure that carries
+## two legs' worth of load does not shrink with the volume, and 600 kg less is
+## 600 kg the ankle does not have to hold over a support polygon 0.60 m long.
+const BIPED_LO := Vector3i(-3, 0, -2)
+const BIPED_HI := Vector3i(2, 9, 2)
 
 ## The rotary fuselage: 4x6x28 cells, 1.00 m wide, 1.50 m deep, 7.00 m long.
 ##
@@ -155,6 +183,7 @@ func _run() -> bool:
 	keys.append(_author_core_rotary_lifter_t3())
 	keys.append(_author_core_tracked_hauler_t3())
 	keys.append(_author_core_utility_hauler_t2())
+	keys.append(_author_core_biped_humanoid_t3())
 	for key in keys:
 		if key.is_empty():
 			return false
@@ -429,5 +458,69 @@ func _author_core_utility_hauler_t2() -> String:
 		def,
 		"core",
 		PartAuthoring.single_box_collider(UTILITY_LO, UTILITY_HI),
+		&"plate_std"
+	)
+
+
+## §10.1: `core.biped.humanoid.t3`, 6×10×5 cells, 1200 kg, 3000 integrity,
+## 16 armour, 560 PU capacity, 30 mounts, 12.0 m/s cap, 6000 kg mass tolerance.
+## §11: the `core.ambulatory.*` resistance row, which it shares.
+##
+## [b]The chassis doc 05 §13.10 and §13.11 exist to make possible.[/b] See
+## [constant BIPED_LO] for the proportion and why it could not be authored before;
+## the published figures below are all the same argument from different sides.
+##
+## The armour and the integrity are under the strider's — 16 and 3000 against 20
+## and 3600 — and that is not a nerf, it is the same reasoning §10.1 applies to
+## the rotary chassis. Everything a biped carries has to be held up over a support
+## polygon 0.60 m long, so mass is stability rather than merely lift, and armour is
+## the first thing worth spending. A two-legged machine's defence is that it is
+## harder to hit and can step out of the way, which is a thing this family can now
+## do and could not before.
+##
+## Thirty mounts against thirty-four for the same reason: two limbs and their
+## stations cost ten where four cost twenty, so a biped has *more* budget spare
+## than a quadruped at a lower ceiling, and the ceiling is what stops it being
+## loaded until the ankle cannot hold it.
+func _author_core_biped_humanoid_t3() -> String:
+	var key := &"core.biped.humanoid.t3"
+	var def := PartDefinition.new()
+	def.part_key = key
+	def.display_name_key = &"part.core.biped.humanoid.t3.name"
+	def.description_key = &"part.core.biped.humanoid.t3.desc"
+	def.part_class = PartEnums.PartClass.CORE_MODULE
+	def.tier = PartEnums.TierGrade.REFINED
+
+	def.occupancy_cells = PartAuthoring.box_cells(BIPED_LO, BIPED_HI)
+	def.attachment_nodes = PartAuthoring.face_nodes(BIPED_LO, BIPED_HI, CHASSIS_FACES)
+
+	def.mass_kg = 1200.0
+	def.com_offset_m = PartAuthoring.box_centre_m(BIPED_LO, BIPED_HI)
+	def.inertia_box_half_extents_m = Vector3.ZERO
+
+	def.integrity_max = 3000.0
+	def.resistance = PackedFloat32Array([0.18, 0.16, 0.30, 0.10, 0.05])
+	def.armour_rating = 16.0
+	def.load_capacity_kg = 8000.0
+	def.occlusion = PartEnums.OcclusionProfile.OPAQUE_SOLID
+
+	var core := CoreModuleProfile.new()
+	core.locomotion_mask = PartEnums.CHASSIS_AMBULATORY
+	core.power_capacity_pu = 560.0
+	core.mount_budget = 30
+	core.speed_cap_mps = 12.0
+	core.control_authority = 1.0
+	core.mass_tolerance_kg = 6000.0
+	core.operator_seat_offset_m = Vector3(0.0, 0.35, 0.0)
+	core.respawn_integrity_fraction = 1.0
+	def.core_profile = core
+
+	def.build_cost = 1200
+	def.mount_weight = 0
+
+	return PartAuthoring.save_part(
+		def,
+		"core",
+		PartAuthoring.single_box_collider(BIPED_LO, BIPED_HI),
 		&"plate_std"
 	)

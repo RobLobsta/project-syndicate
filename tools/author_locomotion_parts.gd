@@ -60,6 +60,7 @@ func _process(_delta: float) -> bool:
 func _run() -> bool:
 	var keys := PackedStringArray()
 	keys.append(_author_hub_axle_station())
+	keys.append(_author_outrigger_pylon())
 	keys.append(_author_wheeled_allroad())
 	keys.append(_author_wheeled_fixed_rear())
 	keys.append(_author_wheeled_light_road())
@@ -112,6 +113,54 @@ func _author_hub_axle_station() -> String:
 	def.load_capacity_kg = 2400.0
 	# Tier-2 baseline for `str.hub.axle_station`; §12 scales other tiers from it.
 	def.build_cost = 140
+	def.mount_weight = 1
+	return PartAuthoring.save_part(
+		def, "str", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.2: `str.outrigger.pylon.t2`, 3x2x2, 85 kg, 410 integrity, 15 armour,
+## 3500 kg load capacity. §11: the `str.hub.*` row, which it shares — it is the
+## same load path in a different shape.
+##
+## [b]It exists because a fuselage can be too narrow for its own rotors.[/b] §4.2
+## makes an AXLE station attach through a neutral flank so that both of its drive
+## faces stay free, which means a mast station sits directly against the hull it
+## mounts on — and `core.rotary.lifter.t3` is 1.00 m wide, because the reference
+## rotorcraft seats one abreast. Two stations on its flanks put their disc centres
+## 2.00 m apart under 4.00 m discs: half a diameter of overlap, which reads as one
+## blurred rotor and not as two.
+##
+## Three cells between the flank and the station takes the separation to 3.00 m
+## and the overlap to a quarter of a diameter. The reference overlaps by about a
+## third, so this is very slightly the wider of the two and is the nearest an
+## integer lattice gets.
+##
+## [b]A stub and not a wing, deliberately.[/b] An outrigger long enough to
+## separate the discs completely would put them 4.50 m apart on a 7.00 m
+## fuselage, which is a wider span than the reference carries and would make the
+## machine read as a flying trestle. Every face is neutral so it mates on both
+## sides, and it takes one mount.
+func _author_outrigger_pylon() -> String:
+	var lo := Vector3i(-1, 0, -1)
+	var hi := Vector3i(1, 1, 0)
+	var def := _base(&"str.outrigger.pylon.t2", PartEnums.PartClass.STRUCTURAL_COMPONENT)
+	def.tier = PartEnums.TierGrade.STANDARD
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	# Every face neutral. A pylon exists to be built through from both ends, and a
+	# DECK or a polarity on either flank would refuse one of the two joints it is
+	# entirely for.
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 85.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 410.0
+	def.resistance = PackedFloat32Array([0.26, 0.10, 0.44, 0.10, 0.06])
+	def.armour_rating = 15.0
+	# High for its mass, and for the same reason the AXLE station's is: everything
+	# a disc does to the airframe — 28 kN of thrust and the reaction that comes
+	# with it — passes through this one spar.
+	def.load_capacity_kg = 3500.0
+	def.build_cost = 160
 	def.mount_weight = 1
 	return PartAuthoring.save_part(
 		def, "str", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
@@ -729,6 +778,13 @@ func _author_limb_strider() -> String:
 	# The pivot cell centre is the top of the limb, which is where the hip is.
 	limb.hip_offset_m = Vector3.ZERO
 	limb.foot_radius_m = 0.22
+	# §13.10's support polygon. Measured off the humanoid reference, whose foot is
+	# about 0.13 of its overall height long and half that wide; on a machine
+	# standing 4.75 m that is 0.60 m by 0.34. It is the first authored foot in the
+	# project — every limb before this one was a point, which is why every walking
+	# Assembly was a quadruped.
+	limb.foot_length_m = 0.60
+	limb.foot_width_m = 0.34
 	limb.stance_height_ratio = 0.86
 	# Scaled with the mass the stance carries, not with the reach: the rebuilt
 	# ambulatory recipe puts about 700 kg more on four limbs, and a stance spring

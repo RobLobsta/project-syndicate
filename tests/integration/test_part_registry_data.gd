@@ -146,6 +146,12 @@ const SHIPPED_KEYS: Array[String] = [
 	"mot.tracked.long_bogie.t3",
 	"pmv.combustion.flat.t2",
 	"core.utility.hauler.t2",
+	# Session 44. The pylon exists because a 1.00 m fuselage cannot hold its own
+	# discs apart (§10.2); the biped torso exists because doc 05 §13.10 gave a
+	# foot an extent, which is what stopped fore-and-aft stability being the same
+	# cells as torso depth (§10.1).
+	"str.outrigger.pylon.t2",
+	"core.biped.humanoid.t3",
 ]
 
 
@@ -192,17 +198,18 @@ func test_part_ids_reverse_resolve() -> void:
 func test_class_buckets_are_populated() -> void:
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.CORE_MODULE).size(),
-		5,
+		6,
 		(
 			"one chassis per locomotion family — wheeled, tracked, ambulatory, rotary — "
-			+ "and a second wheeled one, because a road car and a utility truck "
-			+ "disagree about the section before they disagree about anything else"
+			+ "a second wheeled one because a road car and a utility truck disagree "
+			+ "about the section before anything else, and a second ambulatory one "
+			+ "because a biped's torso is not a quadruped's"
 		)
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.STRUCTURAL_COMPONENT).size(),
-		2,
-		"the panel and the AXLE station"
+		3,
+		"the panel, the AXLE station and the rotor pylon"
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY).size(),

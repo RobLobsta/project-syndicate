@@ -1596,9 +1596,11 @@ Stated explicitly so a future session does not assume otherwise:
 
 - **No flight phase.** Every shipping `duty_factor` is above `0.5`, so support
   is continuous. A run is expressible and is untuned.
-- **No balance recovery beyond placement.** The Raibert term is the only balance
-  authority. A walker shoved hard enough falls over, and falling over is just
-  the rigid body doing what the forces say.
+- **~~No balance recovery beyond placement.~~ Two layers of it, as of §13.10 and
+  §13.11.** A foot with an authored extent applies a bounded ankle torque, and
+  the plant target is a capture point rather than a correction about neutral. A
+  walker shoved harder than both can absorb still falls over, and falling over is
+  still just the rigid body doing what the forces say.
 - **No terrain-aware footfall.** The plant target is projected onto whatever the
   probe finds beneath it; a limb does not search for a better foothold.
 - **No inverse kinematics.** §13.1's visible articulation belongs to doc 13 with
@@ -1634,6 +1636,149 @@ Standing is the strongest retarding state this family has, and it is a real dece
 The demand it subtracts is §15.5's **released** one, which is what lets one key be a brake and a reverse gear here as well.
 
 **What it does not do, and it is measured rather than asserted.** A walking Assembly sheds about half its speed over five seconds — 1.45 m/s down to 0.65 — where a wheeled one stops dead in 4.3 m. Closing the rest needs a stance *shear* term rather than a purely axial force, which is new architecture in this section rather than a solver change. And **the family cannot reverse at all**: a negative throttle reaches §13.5's placement law as a negative desired velocity, the law plants the foot ahead of neutral exactly as it should, and the Assembly moves 0.01 m over three seconds. That is §13.8's defect seen along the other axis — the demand reaches only the correction term of the placement law, and reversing needs the whole stride to run the other way. `tests/physics/test_braking_and_reverse.gd` asserts both as they stand.
+
+### 13.10 The Support Polygon and the Ankle Strategy
+
+**A foot with no extent can only push along one line, and that is why every
+walking Assembly in this project has been a quadruped.** §13.6's stance force
+acts along the hip-to-foot line and is applied at the hip, which is correct for a
+massless leg on a frictionless ankle: the only moment it can produce about the
+centre of mass is the one that comes from where the hip is. Pitch stability is
+then entirely a matter of having feet fore *and* aft of the centre of mass, so
+the stance base is the only balance term the family has — and stance base and
+torso depth are the same cells.
+
+A foot with an **extent** can also apply a torque, because the ground reaction
+does not have to act through the foot's centre. It acts through the **centre of
+pressure**, which may lie anywhere inside the contact patch, and moving it is
+what a standing human does with their ankles.
+
+```
+support polygon = foot_length_m (fore-aft) x foot_width_m (lateral)
+
+θ  = body_up x world_up                       (axis-angle, |θ| = sin of the tilt)
+ω  = body angular velocity, world-up component removed
+τ_d = k_a · θ − c_a · ω                        (desired restoring torque, world)
+
+τ_ankle = τ_d expressed in the body frame, then
+            about body +X (pitch) clamped to ± N · foot_length_m / 2
+            about body +Z (roll)  clamped to ± N · foot_width_m  / 2
+            about body +Y (yaw)   set to zero
+          and returned to world
+```
+
+`N` is the normal component of that limb's own stance force. Six things about
+this are normative:
+
+- **The bound is `N · half-extent` because the centre of pressure cannot leave
+  the polygon.** That is the whole physical content: a foot carrying no load can
+  apply no ankle torque, a foot at full load can apply exactly as much as its own
+  size allows, and there is no configuration in which the term produces free
+  energy. The clamp is the model, not a safety rail on it.
+- **The positive sense is "rotates the body's up axis back toward world up".**
+  `θ = body_up × world_up` has that sense by construction; negating it is a
+  balance controller that pushes the machine over, and it will still look like a
+  controller doing something. A test of this term asserts which way the hull ends
+  up, never that a torque was non-zero (§10 rule 14, and doc 05 §6.5's anti-roll
+  bar is the reason the rule exists).
+- **Yaw is set to zero rather than clamped.** §13.5 states that there is no yaw
+  torque term anywhere in this family and that turning is placement; an ankle that
+  yawed would make that false and would give the family two competing heading
+  authorities.
+- **A limb in swing contributes nothing**, because its stance force is zero and
+  therefore so is `N`.
+- **Every planted limb computes the same desired torque and clamps it by its own
+  load**, which is what real ankles do and what makes the term degrade gracefully
+  as feet leave the ground. The aggregate authority of a standing Assembly is
+  `Σ N · half-extent`, which for a machine standing still is its own weight times
+  half a foot.
+- **`foot_length_m` and `foot_width_m` default to zero**, and a profile that
+  authors neither behaves exactly as it did before this section existed. That is
+  deliberate: the term is opt-in per part, so an existing quadruped is unchanged
+  until somebody gives it feet.
+
+**The polygon is used twice, and the second use is what makes a biped stand
+still.** §13.4 freezes a standing Assembly with every foot planted, and a planted
+foot is a fixed world anchor — so if the hips travel out from over the feet, the
+stance force's horizontal component pushes the machine along and nothing brings
+the feet back. A standing Assembly therefore **re-plants a limb when its hip has
+moved further than half a foot from it**, which is the same bound as the ankle
+clamp seen from the other side: the step happens exactly when the centre of
+pressure runs out of travel.
+
+A quadruped hides the need for it, because four feet fore and aft of the centre
+of mass cancel each other's horizontal components. A biped does not: measured
+before this rule existed, `CombatArena.Recipe.BIPED` settled at **0.7° of tilt —
+perfectly upright — and slid backwards at 1.15 m/s** regardless of what the
+throttle was asking for. Attitude was held and station was not, and those are two
+different jobs.
+
+**What this buys is the biped.** With an ankle, fore-and-aft stability no longer
+has to come from the stance base, so torso depth stops being a stability budget
+and a two-limbed Assembly is expressible. Doc 01 §10.1 records the constraint
+this removes.
+
+### 13.11 Capture Point
+
+**The ankle holds a stance; it does not recover one.** Past a few degrees the
+clamp saturates and no amount of centre-of-pressure travel arrests the fall — a
+person shoved hard does not stiffen their ankles, they take a step. So the second
+balance layer is a rule for *where* that step goes.
+
+The linear inverted pendulum gives it in closed form. Treat the Assembly as a
+point mass at height `h` over a pivot; the **capture point** is where a foot must
+be planted for the body to come exactly to rest over it:
+
+```
+ξ = p_com_xz + v_com_xz · sqrt(h / g)
+```
+
+`sqrt(h / g)` is the pendulum's time constant, and the whole expression says
+"where the centre of mass will be when it has spent its horizontal momentum".
+Plant there and the machine stops; plant short and it keeps going; plant long and
+it is driven backwards.
+
+§13.5's placement law already has a term of this shape and it is why the two are
+not simply added. Raibert's `k_v · (v − v_desired)` is a correction *about the
+neutral point*, and doc 05 §13.8 records what it has cost: the demand reaches only
+that correction, so an uncommanded walker ends at −92.2° and a fully commanded one
+at +19.9°, and the sign of the demand accounts for under five degrees of a
+hundred and twelve. The correction has a magnitude and no authority.
+
+**The capture point replaces the correction rather than joining it.** §13.5's
+neutral term is untouched; what changes is the second term:
+
+```
+offset = v · (T_stance / 2)  +  (v − v_desired) · τ
+τ      = max( sqrt(h / g), placement_gain_s )
+```
+
+`τ` is the pendulum time constant, so `(v − v_desired) · τ` is exactly the
+distance the foot must be planted from under the centre of mass for the momentum
+*error* to be spent by the time the body arrives over it. Three readings fall
+straight out of it and none of them did before:
+
+- `v = v_desired` plants under the hip and the machine holds its speed.
+- `v > v_desired` plants ahead and it brakes — including `v_desired = 0`, which
+  is §13.9's stop and is now a placement rather than a hope.
+- `v < v_desired` plants behind and it accelerates, **and a negative
+  `v_desired` makes that a reversed stride.** §13.9 records the family as unable
+  to reverse because the demand reached only a correction that could scale a
+  disturbance and not create one; this term creates one.
+
+`placement_gain_s` survives as the **floor** on `τ`, and that is what the field
+now means: the correction a limb applies when it has no pendulum to measure — at
+spawn, mid-air, or on a build whose centre of mass has collapsed onto its feet.
+
+The clamps of §13.5 still apply and still apply in that order — step length
+first, then reach.
+
+**`h` is measured from the mean planted foot to the centre of mass**, not from
+the body origin, because the origin of an Assembly is its lattice origin and sits
+wherever the Core Module's pivot cell happens to be. Using the origin makes the
+time constant a property of the build's authoring rather than of its stance.
+
+---
 
 ## 14. Tracked Locomotion
 

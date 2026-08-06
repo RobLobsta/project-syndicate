@@ -892,9 +892,23 @@ there is only one section here.)
     Component, which reads as a polarity bug in the validator. **The authoring
     order is `first` → `combat` → `locomotion` → `appendage` → `chassis`**, and
     the general shape is worth more than the order: a generator that reads a file
-    another generator writes is order-dependent, and nothing in `tools/` declares
+    another generator writes is order-dependent, and nothing in `tools/` declared
     that. `author_chassis_parts.gd` reads nothing and is safe anywhere, which is
     why it is last rather than because it has to be.
+
+    **Session 44 walked into it twice, and the second time is the interesting
+    one.** The first was landing the vehicle remodel; the second was a single
+    follow-up re-run of `author_locomotion_parts.gd` to give a limb its foot,
+    with this fact already written down, already read that session, and already
+    cited in the file being edited. It still cost a full suite run, surfacing as
+    `polarity_mismatch` on a melee blade three hundred lines into a log.
+
+    **So the repair is `tools/author_all_parts.sh` and not another sentence
+    here.** A fact that has to be remembered at the moment of acting is a fact
+    that will be forgotten, and the thing to do with a known-order pipeline is to
+    write the order down somewhere the computer reads it. Re-author through the
+    script; the individual `--script` invocations remain for debugging one
+    generator.
 
 77. **A driver that has a target, is pointed at it, and is demanding full
     throttle is not a tactics defect — read the contacts, not the law.** Session

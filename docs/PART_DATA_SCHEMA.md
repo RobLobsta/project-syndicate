@@ -1031,6 +1031,7 @@ Three joins are load-bearing when a mass moves, and each of them broke once duri
 | `core.command.compact.t2` | 8×4×14 | 1800 | 4200 | 18 | 520 | 28 | 24.0 | 5300 | `CHASSIS_GROUND_TRANSITIONAL` |
 | `core.utility.hauler.t2` | 10×6×20 | 3000 | 5200 | 24 | 560 | 32 | 18.0 | 8200 | `CHASSIS_WHEELED` |
 | `core.ambulatory.strider.t3` | 6×10×10 | 1800 | 3600 | 20 | 560 | 34 | 12.0 | 7400 | `CHASSIS_AMBULATORY` |
+| `core.biped.humanoid.t3` | 6×10×5 | 1200 | 3000 | 16 | 560 | 30 | 12.0 | 6000 | `CHASSIS_AMBULATORY` |
 | `core.rotary.lifter.t3` | 4×6×28 | 1100 | 2400 | 10 | 640 | 26 | 34.0 | 5200 | `CHASSIS_ROTARY` |
 | `core.tracked.hauler.t3` | 10×5×24 | 4200 | 4600 | 26 | 500 | 30 | 14.0 | 9000 | `CHASSIS_TRACKED` |
 | `core.command.balanced.t2` | 5×4×6 | 520 | 1900 | 22 | 310 | 34 | 21.0 | 4800 | `CHASSIS_WHEELED` |
@@ -1053,7 +1054,8 @@ The rebuild is driven by five reference vehicles, and the section is the first t
 | `core.command.compact.t2` | mid-engine road car | 2.00 × 1.00 m | 3.50 m | **Height is a quarter of length.** A road car is defined by being low; the old 6×4×13 was 1.50 wide against a 4.00 m machine standing 2.75 m tall. |
 | `core.utility.hauler.t2` | protected utility truck | 2.50 × 1.50 m | 5.00 m | **Height equals width.** The one silhouette in the set that is as tall as it is wide, and it needs a section no road car would carry. |
 | `core.tracked.hauler.t3` | tracked gun platform | 2.50 × 1.25 m | 6.00 m | **Long and flat.** Twenty-four cells of hull so the track under it can be as long as it is — see §10.3. |
-| `core.ambulatory.strider.t3` | humanoid walking machine | 1.50 × 2.50 m | 2.50 m | **Two and a half times the height it had**, on the same footprint. A torso, not a hull — and see below for why it is not the reference's proportion. |
+| `core.ambulatory.strider.t3` | humanoid walking machine | 1.50 × 2.50 m | 2.50 m | **Two and a half times the height it had**, on the same footprint. A torso, not a hull — as deep as it is tall because a quadruped's stance base is its torso depth. |
+| `core.biped.humanoid.t3` | the same, on two legs | 1.50 × 2.50 m | 1.25 m | **Twice as tall as it is deep**, against the reference's 1.85. Only expressible once `DYNAMIC_MASS_PHYSICS.md` §13.10 gave a foot an extent. |
 | `core.rotary.lifter.t3` | tandem-seat rotorcraft | 1.00 × 1.50 m | 7.00 m | **Ten times longer than it is wide.** A fuselage sized for one seat abreast, with the length carried by a boom. |
 
 The cost is real and is paid knowingly: **a recipe cell list no longer ports between families**, so every layout in `tests/combat_arena.gd` and `StarterBlueprint` is derived against its own chassis's extents and each one says which. What is bought is that a person can tell the five apart in a single frame, which is the property `LEARNED_FACTS.md` §1 fact 75 says nothing in the repository can check and one capture answers immediately.
@@ -1093,6 +1095,11 @@ The mount budget is the figure that changes a build rather than a number on a ca
 | `str.shell.curved.t3` | 6×3×4 | 88 | 900 | 27 | 820 | `OPAQUE_SOLID` |
 | `str.aperture.port.t2` | 4×2×1 | 21 | 210 | 9 | 300 | `TRANSPARENT` |
 | `str.hub.axle_station.t2` | 2×2×2 | 90 | 340 | 16 | 2400 | `OPAQUE_SOLID` |
+| `str.outrigger.pylon.t2` | 3×2×2 | 85 | 410 | 15 | 3500 | `OPAQUE_SOLID` |
+
+**`str.outrigger.pylon.t2` exists because a fuselage can be too narrow for its own rotors.** §4.2 makes an `AXLE` station attach through a neutral flank so both drive faces stay free, which means a mast station sits directly against the hull it mounts on — and `core.rotary.lifter.t3` is 1.00 m wide. Two stations on its flanks put their disc centres 2.00 m apart carrying 4.00 m discs, so the pair overlaps by half a diameter and reads as one blurred rotor rather than as two. The reference rotorcraft overlaps its discs by about a third of a diameter, which is a visibly twin-rotor machine.
+
+Three cells of pylon between the flank and the station takes the separation to 3.00 m and the overlap to a quarter, and it costs one mount. It is deliberately a stub rather than a wing: an outrigger long enough to separate the discs fully would put them 4.50 m apart on a 7.00 m fuselage, which is a wider span than the reference carries. The load capacity is high for its mass for the same reason `str.hub.axle_station.t2`'s is — everything a disc does to the airframe, thrust and gyroscopic reaction alike, passes through this one spar.
 
 `str.hub.axle_station.t2` is the `AXLE` station of §4.2 and the only part in the shipping set that carries `AXLE` nodes. Its `AXLE` faces are ±X, restricted by `accepts_classes` to `MOTIVE_ASSEMBLY`; ±Y and ±Z are `FACE_NEUTRAL` so it can be built into a chassis from four sides. The load capacity is high for its mass because everything an Assembly's locomotion does to it passes through this one joint: a 1200 kg-rated Motive Assembly under a 2.4 g manoeuvre loads its station harder than any panel in the table ever sees.
 
@@ -1170,14 +1177,14 @@ These three are `balance-review` and they move together. Any one of them alone l
 
 Ambulatory rows carry the ground columns because a foot genuinely has a friction coefficient and a rated load. `Susp. k` and `Susp. c` on a limb row are the **stance** stiffness and damping and are stored on `LimbProfile`, not on the suspension fields of the parent profile — the parent's suspension fields are zero on a limb, for the reason §7.2 gives. The remaining gait parameters:
 
-| `part_key` | Leg (m) | Duty | Cadence (Hz) | Max step (m) | Step height (m) | Foot force (N) | Turn (°/s) |
-|---|---|---|---|---|---|---|---|
-| `mot.limb.strider.t3` | 1.62 | 0.64 | 1.15 | 0.92 | 0.29 | 30000 | 42 |
-| `mot.limb.strider.t4` | **2.60** | 0.62 | 1.05 | **1.50** | **0.46** | **52000** | 45 |
+| `part_key` | Leg (m) | Duty | Cadence (Hz) | Max step (m) | Step height (m) | Foot force (N) | Turn (°/s) | Foot L × W (m) |
+|---|---|---|---|---|---|---|---|---|
+| `mot.limb.strider.t3` | 1.62 | 0.64 | 1.15 | 0.92 | 0.29 | 30000 | 42 | — |
+| `mot.limb.strider.t4` | **2.60** | 0.62 | 1.05 | **1.50** | **0.46** | **52000** | 45 | **0.60 × 0.34** |
 
 **`mot.limb.strider.t4`'s reach went 1.90 → 2.60 m, and the ceiling on it is the stance base rather than the part.** The humanoid reference is half legs: measured off the artwork, hip-to-sole is 0.50 of overall height and the torso a further 0.24. The shipped limb gave 1.63 m of stance height under a 1.00 m hull — a body slung *between* legs the way a car body is slung between wheels, which is what `HANDOFF.md` §3.1.3 means when it says a walker is not a car with legs.
 
-The reference's ratio wants 3.10 m of reach, and §10.1's `core.ambulatory.strider.t3` entry has the reason it is not authored there: `DYNAMIC_MASS_PHYSICS.md` §13's virtual leg is one spring-damper force along the hip-to-foot line with a **point foot**, so fore-and-aft foot separation is the only pitch stability an ambulatory Assembly has. A taller hip over the same stance is a longer lever on the same base. 2.24 m of hip over the family's measured 1.50 m stance is 0.67; the shipped build was 0.92, and below about this the machine is being asked to balance rather than to walk.
+The reference's ratio wants 3.10 m of reach, and §10.1's `core.ambulatory.strider.t3` entry has the reason it is not authored there: `DYNAMIC_MASS_PHYSICS.md` §13's virtual leg was one spring-damper force along the hip-to-foot line with a **point foot**, so fore-and-aft foot separation was the only pitch stability an ambulatory Assembly had. **§13.10 and §13.11 changed that** — a foot with an authored extent applies a bounded ankle torque and the plant target is a capture point — which is what makes `core.biped.humanoid.t3` and its `0.60 × 0.34 m` foot expressible at all. The reach stays at 2.60 m on the shared row because the quadruped is still measured against it. A taller hip over the same stance is a longer lever on the same base. 2.24 m of hip over the family's measured 1.50 m stance is 0.67; the shipped build was 0.92, and below about this the machine is being asked to balance rather than to walk.
 
 `max_step_length_m` and `step_height_m` scale with the reach rather than being free: a leg that reaches 3.10 m and steps 1.10 is mincing, and the step height has to clear the foot's own swing arc. Both are `0.58` and `0.177` of `leg_length_m`, which are the shipped `t4` ratios carried forward unchanged. `max_foot_force_n` scales with the mass the stance carries — the rebuild puts about 700 kg more on four limbs — and `stance_stiffness_n_m` with it.
 

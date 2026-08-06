@@ -110,6 +110,21 @@ enum Recipe {
 	## and no arrangement of parts on the road hull produces that. Doc 01 §10.1
 	## carries the reference proportions both are derived from.
 	WHEELED_UTILITY,
+	## Two limbs, a humanoid torso, and the first Assembly in this project that
+	## balances rather than being propped up.
+	##
+	## [b]It exists because doc 05 §13.10 and §13.11 landed.[/b] Until they did, a
+	## walking Assembly's only pitch stability was the fore-and-aft separation of
+	## its feet, so two limbs side by side had a stance base of zero and fell over
+	## on the first tick. A foot with an authored support polygon carries the
+	## fore-aft axis on its ankle instead, and the plant target is a capture point
+	## that knows which way it is being asked to go.
+	##
+	## The torso is `core.biped.humanoid.t3` — twice as tall as it is deep, which
+	## is the humanoid reference's own proportion and which
+	## [constant Recipe.AMBULATORY]'s chassis cannot be, because a quadruped's
+	## stance base *is* its torso depth.
+	BIPED,
 }
 
 const CORE_KEY := &"core.command.compact.t2"
@@ -118,10 +133,14 @@ const CORE_KEY := &"core.command.compact.t2"
 ## [constant CORE_KEY] and are not meant to be — a limb and a disc each have a
 ## chassis now.
 const AMBULATORY_CORE_KEY := &"core.ambulatory.strider.t3"
+const BIPED_CORE_KEY := &"core.biped.humanoid.t3"
 const ROTARY_CORE_KEY := &"core.rotary.lifter.t3"
 const UTILITY_CORE_KEY := &"core.utility.hauler.t2"
 const TRACKED_CORE_KEY := &"core.tracked.hauler.t3"
 const HUB_KEY := &"str.hub.axle_station.t2"
+## Three cells of spar between a narrow fuselage's flank and its mast station.
+## See [constant ROTARY_PYLONS].
+const PYLON_KEY := &"str.outrigger.pylon.t2"
 ## The road car's 0.75 m contacts, sized off the reference at 0.15 of the
 ## vehicle's length. The 1.00 m pair below is the utility truck's, where the same
 ## ratio is 0.16 — the two vehicles genuinely disagree about wheel size, which is
@@ -327,6 +346,32 @@ const AMBULATORY_LEGS: Array[Vector3i] = [
 ]
 const HUB_AXLE_DOWN_ORIENTATION: int = 8
 
+## --- The biped ----------------------------------------------------------
+## `core.biped.humanoid.t3` spans `x` 21–26, `y` 14–23 and `z` 22–26 — 1.50 m
+## wide, 2.50 m tall, 1.25 m long. Half the strider's depth, and the same height.
+const BIPED_CORE := Vector3i(24, 14, 24)
+## Under the torso between the legs, exactly as on the quadruped and for the same
+## reason: it is the one mount in the layout that contributes no pitching moment,
+## and on a machine balancing over a 0.60 m foot that matters more than it does on
+## one standing on a 2.00 m base.
+const BIPED_POWER := Vector3i(24, 10, 24)
+## Shoulder-mounted, because `eff.ballistic.autocannon_30.t3` carries one
+## attachment node and it is on its underside. See
+## [constant AMBULATORY_GUN].
+const BIPED_GUN := Vector3i(24, 24, 26)
+## [b]Station, then the limb hanging off it — twice, and both at the same `z`.[/b]
+## That is what makes it a biped and it is the line that would have been a bug
+## before §13.10: two feet side by side have a fore-and-aft stance base of
+## [i]zero[/i], so every newton-metre of pitch stability this machine has comes
+## from the ankle torque its support polygon allows.
+##
+## The hips are at `z` 24, on the torso's centre, so the machine stands over its
+## own feet rather than ahead of or behind them.
+const BIPED_LEGS: Array[Vector3i] = [
+	Vector3i(19, 14, 24), Vector3i(20, 13, 24),
+	Vector3i(27, 14, 24), Vector3i(27, 13, 24),
+]
+
 ## [constant Recipe.MELEE]'s two Appendages and the edge in each hand, one per
 ## flank, derived from the ambulatory Core Module's own extents rather than
 ## guessed.
@@ -386,8 +431,20 @@ const ROTARY_CELL := Vector3i(24, 10, 32)
 ## In the chin position, forward on the deck — where the reference carries its
 ## turret, and as far as this fuselage allows from the discs it must not foul.
 const ROTARY_GUN := Vector3i(24, 10, 16)
-const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(20, 5, 24), Vector3i(26, 5, 24)]
-const ROTARY_DISCS: Array[Vector3i] = [Vector3i(20, 7, 24), Vector3i(28, 7, 24)]
+## [b]A pylon, then the station, then the disc — and the pylon is the whole
+## reason the pair reads as two rotors.[/b] §4.2 makes an AXLE station attach
+## through a neutral flank so both drive faces stay free, so a mast station sits
+## hard against the hull; on a 1.00 m fuselage that put the two disc centres
+## 2.00 m apart under 4.00 m discs, overlapping by half a diameter. Three cells
+## of `str.outrigger.pylon.t2` each side takes the separation to 3.00 m and the
+## overlap to a quarter, which is about what the reference carries.
+##
+## The chain outboard from the fuselage's `x` 22..25: pylon 19..21, station
+## 17..18, disc centred on 17.5 — and mirrored, pylon 26..28, station 29..30,
+## disc centred on 29.5.
+const ROTARY_PYLONS: Array[Vector3i] = [Vector3i(20, 5, 24), Vector3i(27, 5, 24)]
+const ROTARY_MAST_HUBS: Array[Vector3i] = [Vector3i(17, 5, 24), Vector3i(29, 5, 24)]
+const ROTARY_DISCS: Array[Vector3i] = [Vector3i(18, 7, 24), Vector3i(30, 7, 24)]
 
 ## ===== FIXTURE =========================================================
 
@@ -640,6 +697,8 @@ func spawn(
 			_lay_out_wheeled(ctx, false, REPEATER_KEY)
 		Recipe.WHEELED_UTILITY:
 			_lay_out_utility(ctx)
+		Recipe.BIPED:
+			_lay_out_biped(ctx)
 		Recipe.MELEE:
 			_lay_out_melee(ctx)
 		Recipe.TRACKED:
@@ -790,6 +849,21 @@ func engage(max_ticks: int) -> void:
 ## Calling [method engage] with one tick at a time would work and would restart
 ## [member _clock] on every call, so the timeline every engagement here is read
 ## through would stamp the whole fight at t=0.
+## One physics tick with nothing commanded and the inputs left exactly as the
+## caller set them.
+##
+## [b]Neither of the other two step helpers can hold a demand across a window.[/b]
+## [method settle] zeroes throttle and steer on every combatant before it steps —
+## it is the "put it down and leave it alone" helper — and [method tick_once]
+## overwrites them with [method command]'s decisions. A fixture measuring what a
+## *given* demand does therefore needs a third, and its absence presents as two
+## runs reporting byte-identical displacement for opposite throttles, which reads
+## exactly like a locomotion family ignoring its own input.
+func step_once() -> void:
+	_clock += 1
+	await _tick()
+
+
 func tick_once() -> void:
 	_clock += 1
 	for c: Combatant in combatants:
@@ -1250,6 +1324,23 @@ func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 		_place(ctx, LIMB_KEY, AMBULATORY_LEGS[i * 2 + 1], 0)
 
 
+## [constant Recipe.BIPED]: two limbs on a humanoid torso.
+##
+## Structurally the ambulatory layout with half the limbs and a shallower torso.
+## What makes it stand is not in this function at all — it is
+## `mot.limb.strider.t4`'s authored `foot_length_m`, which doc 05 §13.10 turns
+## into a bounded ankle torque, and §13.11's capture point deciding where the next
+## step goes. Neither existed before session 44 and the recipe would have been a
+## machine lying on its face.
+func _lay_out_biped(ctx: BuildContext) -> void:
+	_place(ctx, BIPED_CORE_KEY, BIPED_CORE, 0)
+	_place(ctx, POWER_KEY, BIPED_POWER, 0)
+	_place(ctx, GUN_KEY, BIPED_GUN, 0)
+	for i: int in BIPED_LEGS.size() / 2:
+		_place(ctx, HUB_KEY, BIPED_LEGS[i * 2], HUB_AXLE_DOWN_ORIENTATION)
+		_place(ctx, LIMB_KEY, BIPED_LEGS[i * 2 + 1], 0)
+
+
 func _lay_out_rotary(ctx: BuildContext) -> void:
 	# Supply before draw. §7.4's power budget is checked against what the context
 	# holds at the moment of the placement, so the second disc is refused if the
@@ -1258,6 +1349,10 @@ func _lay_out_rotary(ctx: BuildContext) -> void:
 	_place(ctx, ROTARY_CORE_KEY, ROTARY_CORE, 0)
 	_place(ctx, POWER_KEY, ROTARY_POWER, 0)
 	_place(ctx, CELL_KEY, ROTARY_CELL, 0)
+	# Pylon before station before disc. Each mates to the one before it, which is
+	# the order a player has to build in and the order the validator enforces.
+	for cell: Vector3i in ROTARY_PYLONS:
+		_place(ctx, PYLON_KEY, cell, 0)
 	for cell: Vector3i in ROTARY_MAST_HUBS:
 		_place(ctx, HUB_KEY, cell, HUB_AXLE_DOWN_ORIENTATION)
 	for cell: Vector3i in ROTARY_DISCS:
@@ -1294,6 +1389,7 @@ static func is_ambulatory(recipe: int) -> bool:
 		recipe == Recipe.AMBULATORY
 		or recipe == Recipe.AMBULATORY_BARE
 		or recipe == Recipe.MELEE
+		or recipe == Recipe.BIPED
 	)
 
 

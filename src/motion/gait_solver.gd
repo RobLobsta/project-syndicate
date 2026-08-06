@@ -24,6 +24,67 @@ extends RefCounted
 const STANDING_SPEED_MPS: float = 0.15
 
 
+## ===== §13.10 THE ANKLE STRATEGY ======================================
+
+## Restoring torque per radian of tilt, and per radian per second of tilt rate.
+##
+## Each planted limb computes the same desired torque from the same body attitude
+## and then clamps it by its [i]own[/i] normal load, which is what real ankles do
+## and what makes the term degrade gracefully as feet leave the ground. So the
+## aggregate stiffness of a standing Assembly is this figure times the number of
+## limbs holding it up, and the damping is chosen against that aggregate rather
+## than against one limb: under-damping an attitude loop on a machine this tall
+## is a wobble that never settles, and the clamp keeps over-damping honest.
+const ANKLE_STIFFNESS_NM_PER_RAD: float = 60000.0
+const ANKLE_DAMPING_NMS_PER_RAD: float = 24000.0
+
+
+## §13.10's clamp: the most torque this foot can apply at [param normal_force_n],
+## as `(about the body's lateral axis, about its forward axis)`.
+##
+## The centre of pressure cannot leave the contact patch, so the moment it can
+## produce about the foot's centre is the normal load times the distance the
+## centre of pressure may travel — half the extent, on each axis. That is the
+## whole physical content of §13.10 and it is why a foot carrying nothing can do
+## nothing.
+static func ankle_torque_limit_nm(profile: LimbProfile, normal_force_n: float) -> Vector2:
+	var n := maxf(normal_force_n, 0.0)
+	return Vector2(n * profile.foot_length_m * 0.5, n * profile.foot_width_m * 0.5)
+
+
+## §13.10's ankle torque, in world newton-metres.
+##
+## [param body_basis] and [param angular_velocity] are the chassis's; the tilt is
+## read from the basis rather than passed in, so a caller cannot supply one with
+## the wrong sign. The returned torque is zero for a profile with no authored
+## support polygon and for a foot carrying no load — both by construction rather
+## than by an early return, because a bound of zero clamps everything to zero.
+static func ankle_torque_nm(
+	profile: LimbProfile,
+	normal_force_n: float,
+	body_basis: Basis,
+	angular_velocity: Vector3
+) -> Vector3:
+	# `body_up x world_up` is an axis-angle whose magnitude is the sine of the
+	# tilt and whose direction is the axis that rotates the body's up onto the
+	# world's. Applying a torque along it therefore rights the machine, and that
+	# sense is normative (§13.10) rather than a convention this file chose.
+	var tilt := body_basis.y.cross(Vector3.UP)
+	# The world-up component of the rate is yaw, and an ankle does not yaw: §13.5
+	# makes turning a matter of placement and gives this family exactly one
+	# heading authority.
+	var rate := angular_velocity - Vector3.UP * angular_velocity.dot(Vector3.UP)
+	var desired := tilt * ANKLE_STIFFNESS_NM_PER_RAD - rate * ANKLE_DAMPING_NMS_PER_RAD
+
+	var limit := ankle_torque_limit_nm(profile, normal_force_n)
+	var local := body_basis.inverse() * desired
+	return body_basis * Vector3(
+		clampf(local.x, -limit.x, limit.x),
+		0.0,
+		clampf(local.z, -limit.y, limit.y)
+	)
+
+
 ## Phase offsets for a limb set, parallel to [param hips_local] and
 ## [param slots].
 ##
@@ -155,7 +216,8 @@ static func foot_target(
 	velocity_mps: Vector3,
 	desired_velocity_mps: Vector3,
 	cadence_hz_value: float,
-	turn_command: float
+	turn_command: float,
+	com_height_m: float = 0.0
 ) -> Vector3:
 	var hip_ground := Vector3(hip_world.x, ground_y, hip_world.z)
 	if cadence_hz_value <= 0.0:
@@ -164,7 +226,21 @@ static func foot_target(
 	var stance_s := profile.stance_duration_s(cadence_hz_value)
 	var v_flat := Vector3(velocity_mps.x, 0.0, velocity_mps.z)
 	var desired_flat := Vector3(desired_velocity_mps.x, 0.0, desired_velocity_mps.z)
-	var offset := v_flat * (stance_s * 0.5) + (v_flat - desired_flat) * profile.placement_gain_s
+	# §13.11. The first term is Raibert's neutral point, unchanged: planting there
+	# leaves the body's horizontal momentum alone across the stance. The second is
+	# the capture-point correction, and it is the term that used to be
+	# `placement_gain_s` — an authored number with a magnitude and no authority.
+	#
+	# `sqrt(h/g)` is the linear inverted pendulum's time constant, so
+	# `(v − v_desired) · sqrt(h/g)` is exactly the distance the foot has to be
+	# planted from under the centre of mass for the momentum error to be spent by
+	# the time the body arrives over it. It carries the sign of the demand, which
+	# is the whole difference: a negative travel demand puts the target *behind*
+	# the body and runs the stride the other way, where the old correction could
+	# only ever scale a disturbance that was already there.
+	var offset := v_flat * (stance_s * 0.5) + (v_flat - desired_flat) * capture_time_s(
+		profile, com_height_m
+	)
 
 	if not is_zero_approx(turn_command):
 		# Negated, and the sign is the whole line. [ControlInput.steer] is
@@ -191,6 +267,39 @@ static func foot_target(
 	if from_hip.length() > profile.leg_length_m:
 		target = hip_world + from_hip.normalized() * profile.leg_length_m
 	return target
+
+
+## §13.11's capture time constant, `sqrt(h / g)`, in seconds.
+##
+## [param com_height_m] is the height of the centre of mass over the planted
+## foot, not over the body origin — an Assembly's origin is its lattice origin
+## and sits wherever the Core Module's pivot cell happens to be, so measuring
+## from it makes the pendulum a property of how the build was authored.
+##
+## Floored by [member LimbProfile.placement_gain_s], which is what that field now
+## means: the authored gain is the correction a limb applies when it has no
+## pendulum to measure — at spawn, in the air, or on a build whose centre of mass
+## has collapsed onto its feet. Above that floor the physics decides.
+static func capture_time_s(profile: LimbProfile, com_height_m: float) -> float:
+	var h := maxf(com_height_m, 0.0)
+	return maxf(sqrt(h / SyndicateConstants.GRAVITY_MPS2), profile.placement_gain_s)
+
+
+## §13.11's capture point in world metres: where a foot must be planted for the
+## body to arrive over it with its horizontal momentum spent.
+##
+## Exposed separately from [method foot_target] because it is the quantity a test
+## can assert directly, and because a driver or a HUD that wants to show where
+## the machine is about to have to step needs it without a limb profile.
+static func capture_point(
+	com_world: Vector3, com_velocity_mps: Vector3, com_height_m: float
+) -> Vector3:
+	var tau := sqrt(maxf(com_height_m, 0.0) / SyndicateConstants.GRAVITY_MPS2)
+	return Vector3(
+		com_world.x + com_velocity_mps.x * tau,
+		com_world.y - com_height_m,
+		com_world.z + com_velocity_mps.z * tau
+	)
 
 
 ## Axial stance force in newtons along the hip-to-foot line.

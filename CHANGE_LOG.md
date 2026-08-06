@@ -145,6 +145,54 @@ every radius, which is outside §6.2's 82%–118% band unless the occupancy has 
 its corners cut — which `disc_cells` only does correctly at four cells and above
 (fact 105).
 
+#### The second half of the session: the biped, and the two terms that make one possible
+
+**`str.outrigger.pylon.t2`, three cells of spar.** §4.2 makes an `AXLE` station
+attach through a neutral flank so both drive faces stay free, so a mast station
+sits hard against the hull — and the rotorcraft fuselage is 1.00 m wide. Two
+stations on its flanks put 4.00 m discs 2.00 m apart, overlapping by half a
+diameter and reading as one blurred rotor. Three cells of pylon each side takes
+the separation to 3.00 m and the overlap to a quarter, which is about what the
+reference carries.
+
+**Doc 05 §13.10: a foot with an extent.** `LimbProfile` gains `foot_length_m` and
+`foot_width_m`, `GaitSolver` gains a centre-of-pressure solve clamped by
+`N × half-extent`, and `MotiveSystem` applies the resulting torque alongside the
+axial stance force. Both fields default to zero, so a part that authors neither
+behaves exactly as it did before. `mot.limb.strider.t4` authors `0.60 × 0.34 m` —
+the humanoid reference's own foot.
+
+**Doc 05 §13.11: a capture point.** §13.5's `placement_gain_s` correction becomes
+`(v − v_desired) · sqrt(h/g)` — the linear inverted pendulum's time constant
+rather than an authored number, which is roughly 3× the authority on a machine
+this tall and, more to the point, carries the *sign* of the demand.
+`placement_gain_s` survives as the floor for when there is no pendulum to measure.
+
+**And a third thing the measurement demanded.** The first biped settled at **0.7°
+of tilt — perfectly upright — and slid backwards at 1.15 m/s regardless of what
+the throttle asked for.** Attitude was held and station was not, and those are two
+different jobs: §13.4 freezes a standing Assembly with every foot planted, so once
+the hips travelled out from over the feet the stance force's horizontal component
+pushed the machine along and nothing brought the feet back. A quadruped hides it,
+because four feet fore and aft of the centre of mass cancel each other's
+horizontal components. §13.10 therefore uses the support polygon **twice**: a
+standing limb re-plants when its hip is further than half a foot from it, which
+is the ankle's own clamp seen from the other side.
+
+**`core.biped.humanoid.t3` and `CombatArena.Recipe.BIPED`.** A torso twice as tall
+as it is deep — the reference's own proportion, and one no chassis could carry
+while fore-and-aft stability was the stance base — with two limbs at the same `z`
+and a stance base of literally zero.
+
+**`tools/author_all_parts.sh`.** Fact 76 says the generators are order-dependent
+and that running them wrong silently produces a blade that cannot be held. This
+session walked into it twice, the second time with the fact already read and
+already cited in the file being edited. A fact that must be remembered at the
+moment of acting is a fact that will be forgotten; the order is now in a script.
+
+**`tools/capture_vehicles.gd`/`.tscn`.** Fact 55's route, framed per vehicle, so
+CLAUDE.md §10 rule 18's proportion review has something to look at.
+
 **Where it ends.** 8069 checks, **27 failures across 12 files, every one of them
 in `tests/physics/`.** Everything in `tests/unit/`, `tests/integration/` and
 `tests/arch/` agrees with the rebuilt geometry — the data, the registry, the
