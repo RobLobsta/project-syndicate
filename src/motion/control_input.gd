@@ -43,17 +43,23 @@ var yaw: float = 0.0
 
 
 ## Desired horizontal velocity for the gait's foot placement law, given the
-## Assembly's forward and right axes and its speed cap.
+## Assembly's forward axis and its speed cap.
 ##
 ## The ambulatory family needs a velocity rather than a throttle, because the
 ## Raibert law in §13.5 corrects against a velocity error. Deriving it here
 ## rather than in the solver keeps the solver a pure function of physical
 ## quantities and keeps the mapping from stick to intent in one place.
-func desired_velocity(forward: Vector3, right: Vector3, speed_cap_mps: float) -> Vector3:
-	var v := forward * throttle + right * steer
-	if v.length_squared() > 1.0:
-		v = v.normalized()
-	return v * speed_cap_mps
+##
+## [b]It used to be `forward · throttle + right · steer`, and dropping the second
+## term is doc 05 §13.12.[/b] A walking Assembly is not driven like a car and is
+## not driven like a drone either: `throttle` walks it along its own facing and
+## `steer` turns it, which is what a person does and what every player expects of
+## a machine with legs. While `steer` also strafed, one number did two jobs — it
+## commanded a sideways velocity *and* rotated §13.5's plant target — and the two
+## fought each other, which is most of why the demand behaved as a disturbance
+## with a sign attached rather than as a heading authority.
+func desired_velocity(forward: Vector3, speed_cap_mps: float) -> Vector3:
+	return forward * clampf(throttle, -1.0, 1.0) * speed_cap_mps
 
 
 ## True when the input asks for no motion at all, which is the state the gait

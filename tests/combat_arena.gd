@@ -141,9 +141,6 @@ const HUB_KEY := &"str.hub.axle_station.t2"
 ## Three cells of spar between a narrow fuselage's flank and its mast station.
 ## See [constant ROTARY_PYLONS].
 const PYLON_KEY := &"str.outrigger.pylon.t2"
-## Flat structure, four cells square and one thick. It is the biped's shoulder
-## bracket; see [constant BIPED_SHOULDERS].
-const PANEL_KEY := &"str.panel.medium.t2"
 ## The road car's 0.75 m contacts, sized off the reference at 0.15 of the
 ## vehicle's length. The 1.00 m pair below is the utility truck's, where the same
 ## ratio is 0.16 — the two vehicles genuinely disagree about wheel size, which is
@@ -375,49 +372,63 @@ const BIPED_LEGS: Array[Vector3i] = [
 	Vector3i(27, 14, 24), Vector3i(27, 13, 24),
 ]
 
-## [b]The shoulder brackets the arms hang from, and they are the reason the arms
-## can hang at all.[/b]
+## [b]The shoulder brackets the arms hang from, at the shoulder line rather than
+## over the head.[/b]
 ##
 ## An Appendage mates through its own `+Y` face and through nothing else (doc 01
 ## §10.6 keeps every other face bare so an arm cannot be stacked into a ladder of
 ## brackets), so an arm that hangs beside a torso needs something directly
-## [i]above[/i] it — and the torso's flank is beside it, not over it. A
-## `str.panel.medium.t2` laid flat on the roof line at `y` 24 overhangs the flank
-## by three cells, mates to the torso's own top row through its inboard column,
-## and gives the arm a ceiling to bolt to. It reads as a pauldron because it is
-## one: the plate over the shoulder is what holds the shoulder up.
+## [i]above[/i] it — and the torso's flank is beside it, not over it.
+## `str.outrigger.pylon.t2` mated to the flank and standing entirely outboard of
+## it is a 0.75 x 0.50 x 0.50 m block the arm can bolt under: a shoulder joint,
+## which is what the part is for. It was `str.panel.medium.t2`, and a 4x1x4 plate
+## either side of the head read as a pair of shelves.
 ##
-## `x` 20 and 28 put the plates at `x` 18–21 and 26–29 either side of a torso
-## spanning 21–26, and `z` 22 puts them at `z` 20–23, forward of the hip line at
-## 23–25 for the reason [constant BIPED_ARMS] gives.
-const BIPED_SHOULDERS: Array[Vector3i] = [Vector3i(20, 24, 22), Vector3i(28, 24, 22)]
+## [b]`y` 21 and not 24, and that is the difference between a machine and a
+## coat stand.[/b] The plates were first laid on the roof line, which is the only
+## place a bracket overhanging the deck can go — and that put the shoulders
+## [i]above the head[/i] and the hands at chest height. A human's shoulder line is
+## about 0.82 of standing height and the fingertips about 0.45; on a torso
+## spanning `y` 14–23 over feet at `y` 2.6 those are `y` 20 and `y` 12. The plate
+## at 21 puts the pauldron's top at 20 and the hand at 13, which is the hip.
+##
+## `x` 19 and 28 put the blocks at `x` 18–20 and 27–29, exactly the columns the
+## arms hang in, outboard of a torso spanning 21–26 and mating to its flanks.
+const BIPED_SHOULDERS: Array[Vector3i] = [Vector3i(19, 21, 22), Vector3i(28, 21, 22)]
 
-## [b]Two arms hanging down the flanks, clear of the ground and clear of the
-## legs.[/b]
+## [b]Two arms hanging down the flanks, hand at the hip, clear of the ground and
+## clear of the legs.[/b]
 ##
 ## The arm is authored along its own `-Y` — the shoulder is the top cell and the
-## hand the bottom — so orientation 0 is the hanging pose and needs no rotation
-## at all. Eight cells of arm from `y` 23 puts the hand at `y` 16, which is
-## 3.35 m of clearance over the sole and roughly hip height on a torso whose
-## bottom row is 14. LEARNED_FACTS.md fact 104 records what that costs: there is
-## no elbow, so the module in the hand carries straight on downward.
+## hand the bottom — so orientation 0 is the hanging pose and needs no rotation at
+## all. Eight cells is 2.00 m of arm on a machine standing 5.22 m, which is very
+## nearly the 1.86 m a human's shoulder-to-fingertip works out at for that height,
+## and hanging from `y` 20 it puts the hand at `y` 13 against hips at 13. That is
+## the proportion; LEARNED_FACTS.md fact 104 records what it costs, which is that
+## there is no elbow and anything held continues straight down.
 ##
 ## [b]They hang forward of the hip line and that is the only place they fit.[/b]
-## `z` 20–22 against limbs at 23–25: a metre of arm and two metres of blade
-## occupy the column an ambulatory limb swings through, and an arm sharing that
-## column is refused by the occupancy before anything about the pose is
-## considered. Aft — `z` 26–28 — is equally legal and puts the blades behind the
-## machine, which is not what anybody means by a humanoid.
-const BIPED_ARMS: Array[Vector3i] = [Vector3i(19, 23, 21), Vector3i(28, 23, 21)]
+## `z` 20–22 against limbs at 23–25: at the height a human hand reaches, the arm
+## is level with the hip housing and the thigh, and an arm sharing that column is
+## refused by the occupancy before anything about the pose is considered.
+const BIPED_ARMS: Array[Vector3i] = [Vector3i(19, 20, 21), Vector3i(28, 20, 21)]
 
-## An edge in each hand, hilt upward.
+## [b]Nothing in the hands, and that is what makes it read as a person.[/b]
 ##
-## The hand's GRIP face points down, so the hilt — the edge's own `+Z` — has to
-## be carried onto `+Y` and the blade then runs along `-Y` beneath it. Eight
-## cells of edge from `y` 15 stops at `y` 8, which is 1.22 m above the sole: the
-## machine stands with two blades drawn at its sides and neither of them touches
-## the ground.
-const BIPED_EDGES: Array[Vector3i] = [Vector3i(19, 15, 21), Vector3i(28, 15, 21)]
+## An edge mates hilt-upward under a hanging hand — the hand's GRIP face points
+## down, so the blade runs down from it and there is nowhere else for it to go
+## (fact 104). At the hand's old chest height that left the blades hanging beside
+## the knees, which is what made the machine read as having enormously long arms;
+## at the hand's *correct* height the same blade reaches within half a metre of
+## the floor, which is worse.
+##
+## So the shipped biped stands with its hands empty and its arms at its sides, and
+## the held edge is demonstrated by [constant Recipe.MELEE], whose arms run
+## forward and whose blades therefore point where a sword is useful. Holding one
+## on this recipe is a cell list and no new architecture — the hand is there, the
+## mate is legal, and `tests/physics/test_biped_balance.gd` records what it costs
+## — but it is not the pose a humanoid stands in.
+const BIPED_EDGES: Array[Vector3i] = []
 
 ## [b]The backpack, and it is ballast before it is supply.[/b]
 ##
@@ -749,29 +760,7 @@ func spawn(
 
 	var ctx := BuildContext.with_physics(assembly_id)
 	_contexts.append(ctx)
-	match recipe:
-		Recipe.WHEELED_LIGHT:
-			_lay_out_wheeled(ctx, false, GUN_KEY)
-		Recipe.WHEELED_HEAVY:
-			_lay_out_wheeled(ctx, true, GUN_KEY)
-		Recipe.WHEELED_REPEATER:
-			_lay_out_wheeled(ctx, false, REPEATER_KEY)
-		Recipe.WHEELED_UTILITY:
-			_lay_out_utility(ctx)
-		Recipe.BIPED:
-			_lay_out_biped(ctx)
-		Recipe.MELEE:
-			_lay_out_melee(ctx)
-		Recipe.TRACKED:
-			_lay_out_tracked(ctx)
-		Recipe.AMBULATORY:
-			_lay_out_ambulatory(ctx, true)
-		Recipe.AMBULATORY_BARE:
-			_lay_out_ambulatory(ctx, false)
-		Recipe.ROTARY:
-			_lay_out_rotary(ctx)
-		_:
-			push_error("CombatArena: unknown recipe %d" % recipe)
+	lay_out(ctx, recipe)
 
 	var runtime := AssemblyRuntime.new()
 	runtime.name = "Assembly%d" % assembly_id
@@ -863,6 +852,39 @@ func spawn(
 		ammo.add(assembly_id, _cannon_round_id, rounds)
 	combatants.append(c)
 	return c
+
+
+## Places [param recipe]'s parts into [param ctx], and nothing else.
+##
+## Split out of [method spawn] so that a caller who wants the [i]cells[/i] of a
+## recipe does not have to build a rigid body and a space to see them —
+## `tests/unit/test_family_presets.gd` compares every shipped
+## [StarterBlueprint] preset against the recipe of the same name, and that is a
+## question about a cell list rather than about a machine.
+func lay_out(ctx: BuildContext, recipe: int) -> void:
+	match recipe:
+		Recipe.WHEELED_LIGHT:
+			_lay_out_wheeled(ctx, false, GUN_KEY)
+		Recipe.WHEELED_HEAVY:
+			_lay_out_wheeled(ctx, true, GUN_KEY)
+		Recipe.WHEELED_REPEATER:
+			_lay_out_wheeled(ctx, false, REPEATER_KEY)
+		Recipe.WHEELED_UTILITY:
+			_lay_out_utility(ctx)
+		Recipe.BIPED:
+			_lay_out_biped(ctx)
+		Recipe.MELEE:
+			_lay_out_melee(ctx)
+		Recipe.TRACKED:
+			_lay_out_tracked(ctx)
+		Recipe.AMBULATORY:
+			_lay_out_ambulatory(ctx, true)
+		Recipe.AMBULATORY_BARE:
+			_lay_out_ambulatory(ctx, false)
+		Recipe.ROTARY:
+			_lay_out_rotary(ctx)
+		_:
+			push_error("CombatArena: unknown recipe %d" % recipe)
 
 
 ## ===== RUNNING =========================================================
@@ -1405,7 +1427,7 @@ func _lay_out_biped(ctx: BuildContext) -> void:
 	# it exists, and an edge's only node is a GRIP hilt with nothing to hold it.
 	_place(ctx, CELL_KEY, BIPED_BACKPACK, 0)
 	for cell: Vector3i in BIPED_SHOULDERS:
-		_place(ctx, PANEL_KEY, cell, 0)
+		_place(ctx, PYLON_KEY, cell, 0)
 	for cell: Vector3i in BIPED_ARMS:
 		_place(ctx, ARM_KEY, cell, 0)
 	for cell: Vector3i in BIPED_EDGES:

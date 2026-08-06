@@ -1656,6 +1656,43 @@ there is only one section here.)
     is a sample, and the part table is exactly where the exceptions live.
 
 
+
+113. **A control with two consumers is not a control, and the symptom is that
+    one of them measures as inverted.** `ControlInput.steer` fed doc 05 §13.5's
+    plant rotation *and* added a lateral term to the desired velocity the same
+    section's correction is computed against. A right command therefore asked for
+    a rightward velocity at the same moment it rotated the stride to the right,
+    and §13.5's correction plants a foot hard **left** to produce a rightward
+    velocity. The velocity error won.
+
+    **Three sessions measured the placement law's sign as backwards and it was
+    correct the whole time.** Session 45 flipped it on a derivation that was also
+    correct as far as it went, measured no change at all (154.9° against 154.3°),
+    and only then noticed that neither sign mattered because a third term
+    dominated both. The fix was to take the second job away, at which point the
+    original sign measured right on the first run.
+
+    Two things to carry. **When a sign flip changes nothing, the term is not the
+    one deciding the outcome** — that is a cheap and conclusive experiment and it
+    is worth running before the reasoning. And **a quantity with more than one
+    consumer cannot be diagnosed from its outcome**, only from disconnecting
+    them; doc 05 §13.12 now states the split as normative for exactly this
+    reason.
+
+114. **`Vector3.signed_angle_to` answers in (−180°, 180°], so a fixture that
+    measures a turn as one angle cannot see past half a circle — and it reports
+    the overshoot as a turn in the opposite direction.** Once the ambulatory
+    family gained a 45°/s heading authority, a 300-tick window is 225° of turn,
+    and `tests/physics/test_ambulatory_drift.gd` reported **+154°** — a left turn
+    — for a machine that had in fact come round 206° to the right.
+
+    It is the most confident wrong answer a fixture in this project has produced:
+    the sign was clean, the magnitude was plausible, and it agreed with the
+    previous session's measurement. Accumulate per tick when the quantity is a
+    heading and the window is long enough to wrap, and be suspicious of any
+    measured turn near ±180°.
+
+
 ---
 
 ## 2. What fault injection taught

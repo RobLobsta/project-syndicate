@@ -1763,6 +1763,62 @@ has to come from the stance base, so torso depth stops being a stability budget
 and a two-limbed Assembly is expressible. Doc 01 §10.1 records the constraint
 this removes.
 
+### 13.12 The Heading Authority
+
+**A walking Assembly is not steered like a car, and until this section it was.**
+`ControlInput.steer` fed two consumers at once: it added a lateral component to
+§13.5's desired velocity, and it rotated §13.5's plant target. So a right command
+asked for a rightward *velocity* at the same moment it rotated the stride, the
+placement law's correction term planted the foot hard left to produce that
+velocity, and the velocity error won. Measured over three sessions, the demand
+read as a disturbance with a sign loosely attached to it: full left and full
+right landing within 4.7° of each other out of 112° of effect, and later — once
+§13.10's ankle gave the placement law enough stability to act at all — 55° apart
+in the *wrong* direction. The placement law's sign was correct throughout.
+
+**The split is normative.** For the ambulatory family:
+
+```
+desired_velocity = forward · throttle · speed_cap        (no lateral term)
+
+ω_target = −turn_rate_deg_s · steer                       (positive steer is right,
+                                                           a right turn is negative
+                                                           about world up)
+τ_yaw    = I_yy · (ω_target − ω_y) / HEADING_RESPONSE_S · share
+```
+
+applied about world up by every **planted** limb, where `share` is one over the
+Assembly's limb count. Six things about this are normative:
+
+- **`throttle` walks and `steer` turns.** No locomotion family may give one
+  control two jobs; that is the defect this section exists to close, and it cost
+  three sessions of measurement reading a correct sign as an inverted one.
+- **It is a rate controller and never an authored torque.** The gain is
+  `I · Δω / response`, a statement about how fast the heading may change, so it
+  carries no assumption about how heavy the machine is. An authored newton-metres
+  would turn a light Assembly faster than a heavy one and would cap what either
+  could carry at a mass nothing in the data states — which is exactly what §13.10's
+  ankle constant did before it became a ratio.
+- **The commanded rate is the part's own `turn_rate_deg_s`.** A limb that turns
+  faster is a limb a builder chose.
+- **A limb in swing contributes nothing**, and an Assembly with no foot on the
+  ground cannot turn at all. That is the same degradation §13.10 gets from
+  clamping by its own normal load, and it is what stops the term being free
+  rotation out of nothing.
+- **§13.5's plant rotation stays.** It is the *placement* half of turning — the
+  stride direction has to come round with the machine or it walks sideways
+  through the corner — and it rotates with the demand's sign, against world up.
+  This section is what makes the turn happen at the authored rate; that one is
+  what makes the feet arrive where the turn needs them.
+- **§13.10's ankle still sets its own yaw to zero.** Two terms fighting over one
+  axis is what §13.5 was protecting against, and the protection is kept by having
+  exactly one of them own yaw.
+
+Measured on `mot.limb.strider.t4` at an authored 45°/s, over 300 ticks: a full
+right demand comes round **−218.7°** and a full left **+219.4°**, which is 43.7
+and 43.9 degrees a second. A neutral run drifts 43.5° over the same window and a
+standing one holds its heading to half a degree.
+
 ### 13.11 Capture Point
 
 **The ankle holds a stance; it does not recover one.** Past a few degrees the

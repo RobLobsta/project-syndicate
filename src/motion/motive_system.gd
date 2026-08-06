@@ -770,6 +770,26 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	if not ankle.is_zero_approx():
 		runtime.body.apply_torque(ankle)
 
+	# §13.12's heading authority. The ankle above deliberately sets its own yaw to
+	# zero, so this is the only term in the family that turns the machine with a
+	# torque — the other half of turning is §13.5's plant rotation, which moves the
+	# feet the demand is asking the body to come round over.
+	#
+	# Divided by the limb count and applied per planted limb, so an Assembly with
+	# one foot down turns at a fraction of its authority and one in the air turns
+	# not at all. `inertia.y` is the body's own up-axis moment rather than a world
+	# one, which is exact while the machine is upright and is the state this term
+	# exists to hold.
+	var heading := GaitSolver.heading_torque_nm(
+		limb_profile,
+		runtime.body.inertia.y,
+		runtime.body.angular_velocity.y,
+		input.steer,
+		1.0 / float(maxi(_limbs.size(), 1))
+	)
+	if not is_zero_approx(heading):
+		runtime.body.apply_torque(Vector3.UP * heading)
+
 
 ## §13.5's placement law with this tick's Assembly state filled in.
 ##
@@ -791,7 +811,7 @@ func _foot_target(
 		hip_world,
 		ground_y,
 		runtime.body.linear_velocity,
-		input.desired_velocity(-basis.z, basis.x, gait_cap),
+		input.desired_velocity(-basis.z, gait_cap),
 		cadence_hz_value,
 		input.steer,
 		# §13.11's pendulum height: the centre of mass over the ground this limb

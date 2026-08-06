@@ -563,6 +563,90 @@ func test_a_foot_with_no_extent_has_no_ankle() -> void:
 	)
 
 
+## ===== §13.12 THE HEADING AUTHORITY ====================================
+
+
+## [b]The sense, which is the assertion a flipped term passes every other test
+## of.[/b] CLAUDE.md §10 rule 14: a normative formula producing a torque must say
+## which way it acts, and the test for it asserts that sense and not only the
+## magnitude. `ControlInput.steer` is positive-for-right throughout the project
+## and a right turn is a negative rotation about world up.
+func test_the_heading_torque_turns_the_way_the_demand_asks() -> void:
+	var right := GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, 1.0, 1.0)
+	check_true(right < 0.0, "a right demand yaws the machine right (%.0f N·m)" % right)
+	var left := GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, -1.0, 1.0)
+	check_true(left > 0.0, "and a left one the other way (%.0f N·m)" % left)
+	check_approx(right, -left, "and the two are symmetric", 1e-3)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, 0.0, 0.0, 1.0), 0.0,
+		"while no demand asks for no torque"
+	)
+
+
+## It is a rate controller, so it stops pushing once the machine is turning at the
+## rate it was asked for — and it pushes back when the machine overshoots.
+##
+## That is what makes the term a heading authority rather than a spin: an
+## authored torque would keep accelerating the yaw for as long as the key is held,
+## and a walking Assembly would end the corner pirouetting.
+func test_the_heading_torque_holds_a_rate_rather_than_accelerating() -> void:
+	var target := -deg_to_rad(_limb.turn_rate_deg_s)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, target, 1.0, 1.0), 0.0,
+		"at the commanded rate it asks for nothing more",
+		1e-3
+	)
+	check_true(
+		GaitSolver.heading_torque_nm(_limb, 5000.0, target * 2.0, 1.0, 1.0) > 0.0,
+		"and past it the term opposes the turn"
+	)
+
+
+## [b]The gain scales with the machine and the term degrades with the feet.[/b]
+## Fact 110's lesson, applied before it had to be learned twice: an authored
+## newton-metres would turn a light Assembly faster than a heavy one and would cap
+## what either could carry. And a limb in the air contributes nothing, so an
+## Assembly with no feet down cannot turn at all.
+func test_the_heading_authority_scales_with_the_machine_and_the_feet() -> void:
+	var light := GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 1.0)
+	var heavy := GaitSolver.heading_torque_nm(_limb, 12000.0, 0.0, 1.0, 1.0)
+	check_approx(
+		heavy, light * 3.0,
+		"three times the yaw inertia asks for three times the torque",
+		1e-3
+	)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 0.5), light * 0.5,
+		"and half the limbs planted contribute half the authority",
+		1e-3
+	)
+	check_approx(
+		GaitSolver.heading_torque_nm(_limb, 4000.0, 0.0, 1.0, 0.0), 0.0,
+		"with nothing on the ground it cannot turn at all"
+	)
+
+
+## §13.5's plant rotation is the other half of turning, and it rotates *with* the
+## demand's sign rather than against it — the stride direction comes round the way
+## the machine is being asked to go.
+func test_the_plant_target_rotates_the_stride_toward_the_turn() -> void:
+	var straight := GaitSolver.foot_target(
+		_limb, Vector3(0.0, 2.0, 0.0), 0.0, Vector3(0.0, 0.0, -2.0),
+		Vector3(0.0, 0.0, -2.0), 1.0, 0.0, 2.0
+	)
+	var turning := GaitSolver.foot_target(
+		_limb, Vector3(0.0, 2.0, 0.0), 0.0, Vector3(0.0, 0.0, -2.0),
+		Vector3(0.0, 0.0, -2.0), 1.0, 1.0, 2.0
+	)
+	check_true(
+		turning.x > straight.x,
+		(
+			"a right demand swings the plant target to the right of the neutral "
+			+ "point: x %.3f against %.3f"
+		) % [turning.x, straight.x]
+	)
+
+
 ## ===== §13.11 THE CAPTURE POINT ========================================
 
 

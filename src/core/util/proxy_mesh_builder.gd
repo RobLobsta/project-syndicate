@@ -50,10 +50,17 @@ const ROTOR_BLADE_THICKNESS_M: float = 0.05
 ## Limb: hip, thigh, shin and foot along the leg axis. The thigh takes the upper
 ## share of [member LimbProfile.leg_length_m] and tapers into the shin, which is
 ## what makes a limb read as a leg rather than as a pole.
-const LIMB_HIP_RADIUS_M: float = 0.20
-const LIMB_THIGH_RADIUS_M: float = 0.15
-const LIMB_SHIN_RADIUS_M: float = 0.11
+const LIMB_HIP_RADIUS_M: float = 0.26
+const LIMB_THIGH_RADIUS_M: float = 0.21
+const LIMB_SHIN_RADIUS_M: float = 0.16
 const LIMB_THIGH_FRACTION: float = 0.52
+## How thick the foot is drawn, when it is drawn as a support polygon rather than
+## as a ball. The plan dimensions are [member LimbProfile.foot_length_m] and
+## [member LimbProfile.foot_width_m] and are not authored here — they are the
+## polygon doc 05 §13.10 bounds the ankle torque by, so a limb whose drawn foot
+## and whose balance model disagreed about how big a foot is would now disagree
+## visibly.
+const LIMB_FOOT_THICKNESS_M: float = 0.12
 
 ## Track: two runs top and bottom, [member TrackProfile.road_stations] road
 ## wheels between them, and a larger wheel at each end for the sprocket and the
@@ -126,16 +133,25 @@ const ROAD_CABIN_HALF_WIDTH: float = 0.78
 const ROAD_CABIN_HALF_LENGTH: float = 0.66
 const ROAD_CABIN_SETBACK: float = 0.10
 
-## Walking torso: a waist, a chest wider and deeper than it, and a head.
+## Walking torso: a waist, a chest, a shoulder yoke and a head.
 ##
-## The proportions are the humanoid reference doc 01 §10.1 derives the chassis
-## from — the chest is the widest part, the waist is drawn in, and the head is a
-## sixth of the width sitting on the shoulder line.
+## Four pieces rather than three, because three gave a drawn-in waist under a
+## uniform box and the box read as a crate with a knob on top. The widest part of
+## a person is the shoulder line and it is at the *top* of the chest, so the
+## torso has to widen as it rises and then stop — which is the one silhouette cue
+## that separates a body from a container, and it is where the arms hang from.
+## The chest is the widest and deepest part and the shoulder yoke above it is
+## drawn in, which is the opposite of the first attempt: a yoke wider than the
+## chest reads as a coat hanger, and a chest wider than the yoke reads as a torso
+## with something in it. The waist is drawn in under both.
 const TORSO_WAIST_TOP: float = -0.42
 const TORSO_WAIST_HALF_WIDTH: float = 0.58
 const TORSO_WAIST_HALF_DEPTH: float = 0.74
-const TORSO_CHEST_TOP: float = 0.64
-const TORSO_HEAD_HALF_WIDTH: float = 0.30
+const TORSO_CHEST_TOP: float = 0.54
+const TORSO_YOKE_TOP: float = 0.76
+const TORSO_YOKE_HALF_WIDTH: float = 0.86
+const TORSO_YOKE_HALF_DEPTH: float = 0.80
+const TORSO_HEAD_HALF_WIDTH: float = 0.34
 const TORSO_HEAD_HALF_DEPTH: float = 0.46
 
 ## ===== APPENDAGE PROXY =================================================
@@ -144,15 +160,22 @@ const TORSO_HEAD_HALF_DEPTH: float = 0.46
 ## from the shoulder pivot to the palm, which is the figure the melee sweep and
 ## the held module's mount both already read — so a drawn elbow cannot end up
 ## somewhere the hand is not.
-const ARM_PAULDRON_END: float = 0.18
-const ARM_UPPER_END: float = 0.52
-const ARM_FOREARM_START: float = 0.58
+const ARM_PAULDRON_END: float = 0.26
+const ARM_UPPER_END: float = 0.56
+const ARM_FOREARM_START: float = 0.62
 const ARM_WRIST: float = 0.90
-const ARM_PAULDRON_HALF_M: float = 0.30
-const ARM_UPPER_RADIUS_M: float = 0.13
-const ARM_ELBOW_RADIUS_M: float = 0.16
-const ARM_FOREARM_HALF_M: float = 0.17
-const ARM_HAND_HALF_M: float = 0.12
+## The pauldron's width as a multiple of the arm's own collider cross-section.
+##
+## [b]Over one, which the rest of the table is not.[/b] §2.1 allows a family shape
+## to draw outside a collider where the collider is a bounding box rather than a
+## likeness, and an arm's is a post; a shoulder that is exactly as wide as the
+## limb below it is a pipe with a cap on, and the shoulder is the one feature that
+## says "this is an arm and not a strut" at a glance.
+const ARM_PAULDRON_WIDTH_RATIO: float = 1.12
+const ARM_UPPER_RADIUS_M: float = 0.17
+const ARM_ELBOW_RADIUS_M: float = 0.19
+const ARM_FOREARM_HALF_M: float = 0.21
+const ARM_HAND_HALF_M: float = 0.15
 
 
 ## The display mesh for [param def], or null if it has neither proxy primitives
@@ -312,8 +335,12 @@ static func _torso_primitives(box: Vector3, anchor: Vector3) -> Array[ProxyPrimi
 		Vector3(box.x, box.y, box.z), TORSO_WAIST_TOP, TORSO_CHEST_TOP, 0.0, anchor
 	))
 	out.append(_slab(
+		Vector3(box.x * TORSO_YOKE_HALF_WIDTH, box.y, box.z * TORSO_YOKE_HALF_DEPTH),
+		TORSO_CHEST_TOP, TORSO_YOKE_TOP, 0.0, anchor
+	))
+	out.append(_slab(
 		Vector3(box.x * TORSO_HEAD_HALF_WIDTH, box.y, box.z * TORSO_HEAD_HALF_DEPTH),
-		TORSO_CHEST_TOP, 1.0, 0.0, anchor
+		TORSO_YOKE_TOP, 1.0, 0.0, anchor
 	))
 	return out
 
@@ -372,7 +399,9 @@ static func _arm_primitives(
 	# The collider's own cross-section, so the shoulder is where the widest part
 	# of the arm is and the envelope still matches what a round stops on.
 	pauldron.half_extents_m = Vector3(
-		maxf(box.x, ARM_PAULDRON_HALF_M), span * ARM_PAULDRON_END * 0.5, maxf(box.z, ARM_PAULDRON_HALF_M)
+		box.x * ARM_PAULDRON_WIDTH_RATIO,
+		span * ARM_PAULDRON_END * 0.5,
+		box.z * ARM_PAULDRON_WIDTH_RATIO
 	)
 	pauldron.local_offset_m = Vector3(anchor.x, top - span * ARM_PAULDRON_END * 0.5, anchor.z)
 	out.append(pauldron)
@@ -482,10 +511,25 @@ static func _limb_primitives(limb: LimbProfile, anchor: Vector3) -> Array[ProxyP
 	out.append(
 		_cylinder(LIMB_SHIN_RADIUS_M, shin, Vector3(x, hip_y - thigh - shin * 0.5, z))
 	)
+	# The foot is the authored support polygon where there is one, and the contact
+	# ball where there is not. Doc 05 §13.10 clamps pitch by `foot_length_m` along
+	# the machine's fore-aft and roll by `foot_width_m` across it, and with the leg
+	# axis on the part's own `-Y` those are its local `Z` and `X`. A limb with no
+	# polygon behaves exactly as it did before §13.10 existed and is drawn the same
+	# way, which keeps the drawing honest about which limbs can hold an attitude.
 	var foot := ProxyPrimitiveDef.new()
-	foot.kind = ColliderPrimitiveDef.PrimitiveKind.SPHERE
-	foot.radius_m = maxf(limb.foot_radius_m, LIMB_SHIN_RADIUS_M)
-	foot.local_offset_m = Vector3(x, hip_y - length, z)
+	if limb.foot_length_m > 0.0 and limb.foot_width_m > 0.0:
+		foot.kind = ColliderPrimitiveDef.PrimitiveKind.BOX
+		foot.half_extents_m = Vector3(
+			limb.foot_width_m * 0.5, LIMB_FOOT_THICKNESS_M * 0.5, limb.foot_length_m * 0.5
+		)
+		foot.local_offset_m = Vector3(
+			x, hip_y - length + LIMB_FOOT_THICKNESS_M * 0.5, z
+		)
+	else:
+		foot.kind = ColliderPrimitiveDef.PrimitiveKind.SPHERE
+		foot.radius_m = maxf(limb.foot_radius_m, LIMB_SHIN_RADIUS_M)
+		foot.local_offset_m = Vector3(x, hip_y - length, z)
 	out.append(foot)
 	return out
 

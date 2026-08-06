@@ -132,6 +132,58 @@ static func ankle_torque_nm(
 	)
 
 
+## ===== §13.12 THE HEADING AUTHORITY ===================================
+
+## Seconds the heading loop takes to reach a commanded turn rate.
+##
+## §13.5's plant rotation is the *placement* half of turning and it is slow by
+## construction: it can only act once per stance, so a demand takes most of a
+## stride to appear and most of another to stop. A player holding left on a
+## machine with legs expects it to come round now.
+##
+## A third of a second is about one stance at the shipped cadence, so the two
+## halves arrive together rather than the torque snapping the hull round ahead of
+## the feet it is standing on.
+const HEADING_RESPONSE_S: float = 0.35
+
+
+## §13.12's heading torque about world up, in newton-metres.
+##
+## [b]This is a yaw torque in a family §13.5 said would never have one, and the
+## reason it is here is that a walking machine is not steered like a car.[/b]
+## Turning by placement alone gave the demand an authority of a few degrees a
+## second on a good day and none at all on a machine that was working to stay
+## upright; it is kept, because the feet have to follow the turn or the machine
+## walks sideways, and this is what makes the turn happen at the rate the part
+## authors.
+##
+## [b]A rate controller and not a torque, which is fact 110's lesson applied
+## before it had to be learned again.[/b] The gain is `I · Δω / response`, so it
+## is a statement about how fast the heading may change and carries no assumption
+## about how heavy the machine is. An authored newton-metres would cap what a
+## walking Assembly may carry at a mass nothing states, exactly as §13.10's ankle
+## did.
+##
+## [param share] is this limb's fraction of the Assembly's planted limbs, so a
+## machine with one foot on the ground turns at a fraction of the authority and
+## one with none turns not at all. That is the same degradation §13.10 gets from
+## clamping by its own normal load, and it is what keeps the term from being free
+## rotation out of thin air.
+##
+## Positive [param turn_command] is right (doc 11 §7.2), and a right turn is a
+## negative rotation about world up.
+static func heading_torque_nm(
+	profile: LimbProfile,
+	yaw_inertia_kg_m2: float,
+	yaw_rate_rad_s: float,
+	turn_command: float,
+	share: float
+) -> float:
+	var target := -deg_to_rad(profile.turn_rate_deg_s) * clampf(turn_command, -1.0, 1.0)
+	var error := target - yaw_rate_rad_s
+	return maxf(yaw_inertia_kg_m2, 0.0) * error * clampf(share, 0.0, 1.0) / HEADING_RESPONSE_S
+
+
 ## Phase offsets for a limb set, parallel to [param hips_local] and
 ## [param slots].
 ##
@@ -290,18 +342,19 @@ static func foot_target(
 	)
 
 	if not is_zero_approx(turn_command):
-		# Negated, and the sign is the whole line. [ControlInput.steer] is
-		# documented as positive-is-right and every other family obeys it: doc 05
-		# §7.1 rotates a wheeled contact frame right on a positive demand and
-		# §14.2 drives the right track slower. A right turn is a [b]negative[/b]
-		# rotation about the world up, so rotating the plant target by a positive
-		# angle on a positive demand walks the Assembly left — which is what this
-		# did, and it made an ambulatory Assembly the only thing in the game that
-		# steered backwards.
+		# [b]Negated, and the negation was never the bug.[/b] [ControlInput.steer]
+		# is positive-for-right and a right turn is a negative rotation about world
+		# up, so the stride direction rotates against the demand's sign. What is
+		# rotated is the whole placement offset, which is the direction the machine
+		# strides in — so the machine walks round the way it is asked to.
 		#
-		# The old test could not see it. It asserted that a turn command moved the
-		# foot and not which way it moved it, which is a fault a sign flip
-		# satisfies exactly.
+		# It measured as an inversion for three sessions and it was not one. While
+		# `steer` also fed [method ControlInput.desired_velocity] as a lateral
+		# demand, a right command asked for a rightward *velocity* at the same time,
+		# and §13.5's correction term plants the foot hard left to produce it. The
+		# two halves fought and the velocity error won: full right ended +44.0°,
+		# which is a left turn. Measured again with §13.12's split in place and the
+		# same line steers the way it says it does.
 		var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)
 		offset = offset.rotated(Vector3.UP, yaw)
 

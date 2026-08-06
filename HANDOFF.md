@@ -20,75 +20,79 @@ refers to whichever document in `/docs/` was named just before it.
 
 ---
 
+## 0. From the owner — write here
+
+**This section is the inbox, and it is read before anything else.** CLAUDE.md §10
+rule 1 makes `HANDOFF.md` the first thing any session opens, so anything written
+here is seen before a line of code is read. It costs nothing to use and needs no
+format: a sentence, a list, a "stop doing X", a paste of something that looked
+wrong. Delete what has been acted on.
+
+It exists so that a change of direction does not have to arrive mid-session.
+Notes left here are acted on at the *start* of the next session, in order, and a
+session that finds this section non-empty says in its final message what it did
+with each item.
+
+> _(empty)_
+
+---
+
 ## Where this stands
 
 **It is a game with a loop, and the machine under it drives.** `godot --path .`
-opens on a menu. The menu opens a garage where a wheeled Assembly stands on the
-Build Lattice with fifteen parts beside it and its mass, power, mounts, top
-speed, integrity and rollover threshold on the right. **M** mirrors, **Ctrl+Z**
-takes back a misclick, a removal that would orphan something asks first. TEST
-DRIVE puts that build into a basin against one opponent built from the player's
-own blueprint, thirty metres away, carrying the same six hundred rounds. They
-fight. A card says which way it went. All of it is playable on a keyboard or on a
-controller, and a build can be made with either.
+opens on a menu, the menu opens a garage, TEST DRIVE fights an opponent built
+from the player's own blueprint, and a card says which way it went. Keyboard or
+controller, build or fight.
 
-**This session: the walking family got a Gundam, and landing it found the
-constant that had been capping every walking machine in the game.**
+**This session: a humanoid biped, walking controls for the family that walks, and
+a reference build for every way of getting around.**
 
-`CombatArena.Recipe.BIPED` now carries two Appendages hanging down its flanks
-from `str.panel.medium.t2` shoulder brackets, an edge in each hand hilt-up and
-clearing the ground by 1.22 m, and a `cel.static.standard.t3` backpack that is
-ballast before it is supply. It stands at **1.4°** carrying 6024 kg where the
-unarmed machine carried 3820.
+**The biped looks like a person.** A waisted torso with a chest wider than the
+shoulder yoke above it and a head on top; a shoulder joint on each flank with an
+arm hanging from it, ending at the hip; two legs with feet drawn as the support
+polygon the ankle actually uses. The arms hold nothing, and that is a decision
+rather than an omission — an edge mates hilt-up under a hanging hand and there is
+nowhere else for it to go, so a held blade at the correct hand height reaches
+within half a metre of the floor and the machine reads as having enormous arms.
+[constant CombatArena.Recipe.MELEE] is where a held edge points somewhere useful.
 
-**It fell over on the first attempt, and the reason was doc 05 §13.10.** The
-ankle's restoring stiffness was an absolute 60 000 N·m/rad — an aggregate of
-120 000 against the reference biped's own `m · g · h` of 105 700, a margin of
-**1.14** that the family had been balancing on since the term was written. Arms
-took the pendulum over the top. It is now
-`ANKLE_STIFFNESS_RATIO · m · g · h / limb_count`, and four numbers nobody was
-aiming at moved with it:
+**The walking family is driven like a walker.** `throttle` walks it along its own
+facing and `steer` turns it, at doc 05 §13.12's authored rate. Measured over five
+seconds: a full right demand comes round **−218.7°** and a full left **+219.4°**,
+against an authored 45°/s. It used to be −92° of drift with the sign of the
+demand accounting for under five degrees of it.
 
-| | before | after |
-|---|---|---|
-| Biped settled tilt | 1.63° | **0.62°** |
-| Standing yaw drift, 5 s | 18.1° | **0.54°** |
-| Melee build's stoop | 12.8° | **8.0°** |
-| Melee build closing 12 m | to 11.0 m | **to 3.3 m** |
-| Steering: full left vs full right | 4.7° apart | **55.1° apart** |
+**And the "inverted steering" this file reported last session was never a sign
+error.** `steer` fed two consumers — a lateral velocity into §13.5's correction
+*and* the plant rotation — and the velocity error won. Removing the strafe made
+the placement law's original sign correct on the first measurement.
 
-**The suite went from 25 failures across 13 files to 21 across 11**, and the two
-files that came green are the two the change was measured through.
+**There is now one preset per locomotion family.** `StarterBlueprint.skirmisher`,
+`.utility`, `.tracked`, `.ambulatory`, `.biped` and `.rotary`, every one of them a
+build a player could make, with `tests/unit/test_family_presets.gd` asserting both
+that they validate and that they are the same machines the arena fights with.
 
-**The meshes: four new family proxies and a capture that can see them.** A
-wheeled chassis is carved into a floor pan, a body drawn in at the waist and a
-greenhouse set back from the nose; an ambulatory one into waist, chest and head;
-an Appendage into pauldron, upper arm, elbow, boxed forearm and hand; and a
-rolling contact is drawn round whatever it collides as — which matters because
-fact 105 leaves half the registry's wheels with box colliders, so the road car
-had four cubes under it. `tools/capture_vehicles.gd` now fits its own framing to
-each Assembly's measured bounds and draws a floor, so the tall machines are no
-longer cropped at the torso and nothing floats.
+**The bad news, plainly. Four things.**
 
-**The bad news, plainly. Three things.**
+**The suite is still red — 21 failures across 11 files — and every one was red
+before this session.** They are §3.0's list: assertions quoting a geometry the
+session-44 rebuild moved. Nothing here made any of them worse and three files came
+green, but a red suite still cannot tell a regression from a moved expectation.
 
-**The suite is still red — 21 failures across 11 files — and every one of them
-was red before this session.** They are §3.0's list: assertions quoting a
-geometry the session-44 rebuild moved. Nothing here made any of them worse, and
-two of the thirteen files came green, but a red suite still cannot tell a
-regression from a moved expectation and that is the state the game is in.
+**No preset is reachable from the interface.** Six builds exist and
+`StarterBlueprint.skirmisher()` still has all three callers. The chooser is doc 11
+work and is now the most valuable item in the file that is not §3.0. §3.3.
 
-**The walking family steers backwards.** A right demand now turns it left by 44°
-and a left one turns it right by 11°. This is *new information rather than a new
-defect*: the demand had no authority to invert until the ankle change gave it
-one, and `tests/physics/test_ambulatory_drift.gd` asserts it as it stands. It is
-the single most player-visible thing in the file. §3.1.3.
+**The shipped starter is not any of the arena's recipes.** It carries an Energy
+Cell `WHEELED_REPEATER` does not and a repeater where `WHEELED_LIGHT` carries an
+autocannon, so the build a player opens the garage on has never been one of the
+builds the suite fights with. Recorded in `tests/unit/test_family_presets.gd`.
 
-**The biped drifts 4.22 m in five seconds while standing still**, up from 2.82 on
-the unarmed machine. The ankle holds attitude and the capture point acts only at
-touchdown, so nothing arrests the residual horizontal velocity of a machine that
-never touches down. The quadruped no longer has this — four stance forces cancel
-horizontally — which is the clue to where the third layer goes. §3.0.
+**The biped drifts 3.43 m in five seconds while standing still.** The ankle holds
+attitude and the capture point acts only at touchdown, so nothing arrests the
+residual horizontal velocity of a machine that never touches down. The quadruped
+no longer has this — four stance forces cancel horizontally — which is the clue to
+where the third layer goes. §3.0.
 
 ---
 
@@ -229,24 +233,21 @@ Ranked by what would most improve a first-time player's experience:
 
 1. **Finish the re-measurement.** §3.0. Nothing below can be trusted until the
    suite can tell a regression from a moved expectation.
-2. **The walking family steers backwards.** §3.1.3, and it is now a one-sign
-   question rather than an architecture one.
+2. **Six presets and no way to choose one.** §3.3. It was already the top design
+   item; there are now six finished machines behind the door.
 3. **The fight is two parked hulls trading fire.** §3.1.4.
-4. **Nothing a player can build looks like any of this.** §3.3 — there are seven
-   distinct silhouettes in `CombatArena` and a player can reach exactly one.
-   The Gundam is the strongest argument this item has ever had.
-5. **Sustained fire turns the whole screen brown.** §3.11.
-6. **The end card is drawn over nothing.** Unchanged.
-7. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator.
-8. **Nothing rewards a good build over a heavy one.** Unchanged.
-9. **Nothing in `src/combat/` knows what a team is.** §3.5.
-10. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
+4. **Sustained fire turns the whole screen brown.** §3.11.
+5. **The end card is drawn over nothing.** Unchanged.
+6. **One arena, and one opponent recipe beyond the mirror.** Doc 06's generator.
+7. **Nothing rewards a good build over a heavy one.** Unchanged.
+8. **Nothing in `src/combat/` knows what a team is.** §3.5.
+9. **A rotary Assembly has a brake and still no way to hold a hover.** §3.7.
 
-The summary: **the game now contains a humanoid machine that stands, walks and
-carries a sword in each hand, and getting it to stand exposed a constant that had
-been quietly capping how much any walking Assembly could carry. The price is that
-the same change gave the steering demand enough authority to show that it points
-the wrong way.**
+The summary: **the game contains a humanoid machine that stands, walks, turns
+where it is pointed, and looks like a person; a road car and a truck that read as
+what they are; and a finished reference build for each of the six ways of getting
+around. What it still does not have is any way for a player to choose one of
+them, and a suite that can tell a regression from a re-measurement.**
 
 ## 3. The work queue
 
@@ -400,43 +401,27 @@ Three things to do, in order:
 The inversion is downstream of all three and should be re-measured once they are
 settled rather than chased on its own.
 
-#### 3.1.3 The ambulatory family steers backwards
+#### 3.1.3 The ambulatory family — closed
 
-**This section has changed shape completely and is now the second item in the
-review.** It used to say the steering demand was a disturbance with a sign
-attached — that full left and full right landed within five degrees of each
-other, out of a hundred and twelve degrees of effect, and that the repair was a
-new term in doc 05 §13 carrying the sign of the demand into the cadence and the
-swing.
+**Done.** Doc 05 §13.12 gives the family a heading authority and takes the strafe
+off `steer`, and the three defects this section carried are gone or are
+re-measurements:
 
-**Doc 05 §13.10's proportional ankle gave the demand its authority for free.**
-Measured through `tests/physics/test_ambulatory_drift.gd`, on the same fixture:
-
-| | before §13.10 | after |
+| | when the section was written | now |
 |---|---|---|
-| Full right | +24.6° | **+44.0°** |
-| Full left | +19.9° | **−11.1°** |
-| Separation | 4.7° | **55.1°** |
-| Standing, uncommanded | 18.1° | **0.54°** |
-| Neutral, walking | −92.2° | +31.8° |
+| Full right, 300 ticks | +24.6° (a *left* turn) | **−218.7°** |
+| Full left | +19.9° | **+219.4°** |
+| Standing, uncommanded | 51.2° of yaw | **−0.49°** |
+| Reverse, biped | 0.01 m | **10.39 m** |
 
-A machine that is not spending its stride staying upright has a placement law
-that can steer it. **And it steers the wrong way.** `ControlInput.steer` is
-positive-for-right throughout the project — doc 05 §7.1 rotates a wheeled contact
-frame right on a positive demand and §14.2 drives the right track slower — and a
-positive demand walks this family *left*.
+**The reading that has to survive is that the placement law's sign was never
+wrong.** Three sessions measured it as inverted; what was inverted was the
+outcome of two controls fighting over one number. A control with two consumers is
+not a control, and the measurement that finally said so was only possible once
+one of the two was removed.
 
-**Doc 05 §13.5's placement law already negates the yaw once and that negation is
-correct in isolation**, so this is a second inversion somewhere between
-`ControlInput.steer` and the plant target. It could not be seen while the demand
-had no authority to invert. Asserted as it stands; when it is found the test goes
-red and the fix is to flip the comparison, never to widen it.
-
-The other two defects this section carried are re-measurements now rather than
-architecture. A walking build reverses **3.33 m** against 0.01 when the section
-was written, and its brake still puts it into §13.4's standing state and gains
-speed — both in `tests/physics/test_braking_and_reverse.gd`, both asserted as
-they stand, both §3.0.
+What is left of the family is in §3.0: a quadruped that brakes by gaining speed,
+and a biped that drifts while standing.
 
 #### 3.1.4 The engagement has no manoeuvre in it
 
@@ -486,45 +471,35 @@ left is navigation rather than placement:
 3. **Touch is specified and unbuilt.** `touch_placement_controller.gd` does not
    exist and the compact tier has no bottom sheet, so a phone still cannot build.
 
-### 3.3 The chassis are still unreachable, and so is the edge
+### 3.3 Six presets, and no way to choose one
 
-Doc 01 §7.1's family lock shipped with the parts and no way for a player to meet
-them. **The inspector half is done** — a Core Module's card now names the
-families it carries, so a refused limb has a reason a player can read. Two steps
-left:
+**Half of this is done and the remaining half is the whole of it.**
+`StarterBlueprint` now ships one reference build per locomotion family —
+`skirmisher`, `utility`, `tracked`, `ambulatory`, `biped`, `rotary` — each
+validated placement by placement and each asserted to be the same machine the
+arena fights with (`tests/unit/test_family_presets.gd`). `presets()` returns them
+by name so a consumer that wants "a build of each kind" reads one place.
 
-1. **A second and a third `StarterBlueprint`.** An `ambulatory()` and a `rotary()`
-   beside `skirmisher()` would give the garage something to open on other than a
-   wheeled hull. **Read `LEARNED_FACTS.md` fact 76 first** — the arena's layouts
-   are the reference, not a copy to make a third of.
+**Every one of them is dead code.** `StarterBlueprint.skirmisher()` still has all
+three callers: the shell, the garage and the match screen. What is missing is the
+chooser, and it is doc 11 work rather than data:
+
+1. **A row of build presets on the main menu**, or a "new build" control in the
+   garage, reading `StarterBlueprint.presets()`.
 2. **Let the opponent be one of them.** `MatchScreen` spawns the shipped starter;
-   spawning a walking or flying opponent is one constant, and it is the only way a
-   player sees a family they are not already driving. A rotary opponent is blocked
-   on §3.7; an ambulatory one is not, it just walks badly (§3.1.3).
+   spawning a walking or flying opponent is one constant, and it is the only way
+   a player meets a family they are not already driving.
 
-**And a `melee()` beside them, which is now cheap.**
-`CombatArena.Recipe.MELEE`'s layout is authored, validated and fought (§3.8) —
-the ambulatory hull, an Appendage at `(20, 17, 19)` and `(27, 17, 19)`, an edge at
-`(20, 17, 13)` and `(27, 17, 13)` — so a `StarterBlueprint.melee()` is that cell
-list and nothing else. It is the only route by which a player ever holds the
-weapon sessions 18, 42 and 43 built, and until it exists the honest statement is
-that the edge is not in the game.
+**And the shipped starter is not any of the arena's recipes**, which nothing
+noticed until the presets were paired with them: it carries an Energy Cell
+`WHEELED_REPEATER` does not and a repeater where `WHEELED_LIGHT` carries an
+autocannon. Either the starter or the recipe should move, and which is a design
+question about what a first build should be.
 
-**And session 45 made it more valuable again: there is a Gundam in the arena and no player can build one.** `CombatArena.Recipe.BIPED` is a humanoid machine with a blade in each hand and it exists only as a fixture. A `StarterBlueprint.biped()` is that cell list — core, mover, gun, two stations, two limbs, a backpack, two shoulder plates, two arms, two edges — and nothing else.
-
-**And session 44 made this the most valuable item in the file that is not §3.0.**
-There are now **five distinct silhouettes** in the registry — a road car, a
-utility truck, a tracked gun platform, a walking machine and a rotorcraft — and a
-player can reach exactly one of them. Everything else in the part table is
-reachable only through a catalogue with no chassis to root it on. The blueprints
-are cheap now, because `tests/combat_arena.gd` carries all five layouts as
-validated cell lists; what is missing is still the chooser.
-
-**None of the four is reachable without a way to choose one.** All four blueprints
-would be dead code the moment they are written: `skirmisher()` has three callers
-and nothing in the interface offers an alternative. The blueprints and the chooser
-are one task, not two, and the chooser is the half that is doc 11 work — a row of
-build presets on the main menu, or a "new build" control in the garage.
+**A held edge is still only in `Recipe.MELEE`.** The biped's hands are empty by
+design — see [constant CombatArena.BIPED_EDGES] for why a hanging blade cannot be
+where a player would want it — so a `melee()` preset would be the quadruped
+layout, which is the one that already fights.
 
 ### 3.4 Two controls with a producer and no consumer
 

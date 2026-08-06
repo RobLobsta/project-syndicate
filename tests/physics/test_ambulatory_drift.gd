@@ -94,18 +94,34 @@ const STANDING_DRIFT_CEILING_DEG: float = 4.0
 ## and it is a lean rather than a topple: [constant UPRIGHT_DOT]'s walking bound
 ## is far looser again.
 const STANDING_UPRIGHT_DOT: float = 0.98
-## Degrees between the two commanded runs, above which the steering demand is a
-## signed heading authority rather than a disturbance with a sign attached.
+## Fraction of [member LimbProfile.turn_rate_deg_s] a commanded run must actually
+## achieve, and the slack above it.
 ##
-## It was measured at 4.7° and asserted as a ceiling: full left and full right
-## landed in the same place, which is the sharpest statement this file could make
-## of doc 05 §13.8's missing heading term. Under §13.10's proportional ankle the
-## two runs separate by **55.1°** and land on opposite sides of neutral, so the
-## demand now decides the heading. Twenty-five is under half the measurement.
+## [b]This constant used to be a ceiling on how far apart two opposite demands
+## could land, and it is now a floor under how fast the machine comes round.[/b]
+## The history is worth the three lines because it is the same measurement read
+## three ways. It was written when full opposite lock could not null the drift; it
+## became "both commanded runs land in the same place" — 4.7° apart out of 112° of
+## effect, which was the sharpest statement this file could make of doc 05 §13.8's
+## missing heading term; and it briefly read as an *inversion*, because with the
+## ankle scaled to the machine the demand acquired 55° of authority pointing the
+## wrong way.
 ##
-## What it does [b]not[/b] decide is which way. See
-## [method test_the_steering_demand_has_authority_and_it_is_inverted].
-const STEERING_SEPARATION_DEG: float = 25.0
+## None of that survives §13.12. `steer` no longer feeds a lateral velocity into
+## §13.5's correction — it turns the machine, through a rate controller on the
+## body's own yaw inertia — and the two halves of turning stopped fighting.
+## Measured over 300 ticks: full right **−218.7°** and full left **+219.4°**,
+## which is 43.7 and 43.9 degrees a second against an authored 45.0.
+## `mot.limb.strider.t4`'s authored turn rate, written out by value.
+##
+## Read from the document rather than from the profile, because a test that
+## imports the same figure its subject reads asserts nothing (§9): the expectation
+## would move with the part and a limb that had lost its turn rate entirely would
+## still pass.
+const LIMB_TURN_RATE_DEG_S: float = 45.0
+
+const TURN_RATE_FLOOR: float = 0.70
+const TURN_RATE_CEILING: float = 1.15
 
 ## Metres between the four stations, and how far off the arena's centreline the
 ## whole row sits. Well clear of where every other file builds its fixture, so a
@@ -146,48 +162,49 @@ func test_a_neutral_steering_demand_does_not_hold_a_heading() -> void:
 	)
 
 
-## [b]The demand decides the heading now, and it decides it backwards.[/b]
+## [b]The demand turns the machine, at the rate the part authors, in the direction
+## it is asked to.[/b] This is doc 05 §13.12 and it is the assertion this file was
+## written to be unable to make.
 ##
-## This assertion has been re-measured twice and inverted once. It was written
-## against a ground chassis on which full opposite lock could not null the drift;
-## it became "both commanded runs land in the same place" — +24.6° against +19.9°,
-## under five degrees apart out of a hundred and twelve degrees of effect — which
-## was the sharpest statement this file could make of doc 05 §13.8's missing
-## heading term. Under §13.10's proportional ankle the same two runs land at
-## **+44.0° and −11.1°**: opposite sides of neutral, 55.1° apart. A walking
-## Assembly that spends less of its stride staying upright has a placement law
-## that can actually steer it.
+## Two things landed together and neither works without the other. `steer` stopped
+## commanding a lateral velocity — a walking Assembly is driven like a walker, so
+## `throttle` walks it along its own facing and `steer` turns it — and the family
+## gained a heading authority: a rate controller on the body's own yaw inertia,
+## divided among the limbs that are actually planted, targeting
+## [member LimbProfile.turn_rate_deg_s].
 ##
-## [b]And the sign is wrong.[/b] `_walk` returns positive for left and
-## [member ControlInput.steer] is positive for right, so a right demand should
-## come back negative. Full right returns +44.0° and full left −11.1°: the family
-## steers the opposite way to every other one in the game. Doc 05 §13.5's
-## placement law already negates the yaw once for exactly this reason and that
-## negation is correct in isolation, so this is not that line — it is a second
-## inversion somewhere between the demand and the plant that could not be seen
-## while the demand had no authority to invert. Asserted as it stands, as §9
-## requires: when the inversion is found this check goes red and the fix is to
-## flip the comparison, never to widen it.
+## Until the first of those, one number did two jobs. A right command asked for a
+## rightward *velocity* at the same moment it rotated the stride, §13.5's
+## correction planted the foot hard left to produce the velocity, and the velocity
+## error won — which is why three sessions of measurement read the placement law's
+## sign as inverted when it was correct all along.
 ##
-## Both sides of the comparison are [i]commanded[/i] runs, and that is deliberate.
-## It used to compare the counter-steered run against the neutral one, and session
-## 23 found that assertion resting on a number that is not reproducible: adding
-## one unrelated engagement file earlier in the suite flipped the neutral case
-## from +169.6° to −76.1° while leaving both commanded runs byte-identical. The
-## neutral walker is the knife-edge — the one whose outcome is decided entirely by
-## accumulated asymmetry, with no demand to dominate it — so its direction is a
-## property of the suite's floating-point history and not of the family. Its
-## magnitude is stable and is asserted above; nothing here may depend on its sign.
-func test_the_steering_demand_has_authority_and_it_is_inverted() -> void:
+## [b]Asserted as a rate and a sign, never as a heading.[/b] The window is long
+## enough for the machine to come round more than half a circle, and a heading is
+## only defined modulo one — `_walk` accumulates per tick for exactly that reason,
+## and the docstring there records what the wrap cost. Both sides of the
+## comparison are commanded runs, which is the other rule this file learned the
+## hard way: session 23 found the *neutral* case flipping sign when an unrelated
+## file was added earlier in the suite, because a quantity with no demand driving
+## it is the suite's floating-point history and not the family's behaviour.
+func test_the_steering_demand_turns_the_machine_at_the_authored_rate() -> void:
 	await _measure()
+	var authored := WALK_TICKS * SyndicateConstants.PHYSICS_DT * LIMB_TURN_RATE_DEG_S
+	# Positive is left and positive steer is right, so the right-hand run is the
+	# negative one. Asserting the two separately rather than as a separation is
+	# what makes a symmetric sign flip fail rather than pass.
 	check_true(
-		_hard_over_deg - _counter_deg > STEERING_SEPARATION_DEG,
+		_hard_over_deg < -authored * TURN_RATE_FLOOR
+		and _hard_over_deg > -authored * TURN_RATE_CEILING,
 		(
-			"a right demand ends %+.1f° and a left one %+.1f°, %.1f° apart — so the "
-			+ "demand decides the heading, and it decides it the wrong way round: "
-			+ "positive is left and positive steer is right"
-		)
-		% [_hard_over_deg, _counter_deg, _hard_over_deg - _counter_deg]
+			"a full right demand comes round %.1f° in %d ticks, against the %.1f° "
+			+ "its authored %.0f°/s asks for"
+		) % [_hard_over_deg, WALK_TICKS, -authored, LIMB_TURN_RATE_DEG_S]
+	)
+	check_true(
+		_counter_deg > authored * TURN_RATE_FLOOR
+		and _counter_deg < authored * TURN_RATE_CEILING,
+		"and a full left demand comes round %+.1f° the other way" % _counter_deg
 	)
 
 
@@ -282,12 +299,22 @@ func _walk(steer: float, throttle: float, station: int) -> float:
 	)
 	await _arena.settle(SETTLE_TICKS)
 	var body := c.runtime.body
-	var start := -body.global_transform.basis.z
 	c.motion.input.throttle = throttle
 	c.motion.input.steer = steer
+	# [b]Accumulated tick by tick, and it has to be.[/b] `signed_angle_to` answers
+	# in (-180°, 180°], so a machine that turns further than half a circle reports
+	# a smaller angle in the *opposite* direction — and doc 05 §13.12's heading
+	# authority turns the shipped limb at 45°/s, which is 225° over this window.
+	# Measured before this was fixed: a full right demand reported +154°, a left
+	# turn, when the machine had in fact come round 206° to the right.
+	var previous := -body.global_transform.basis.z
+	var turned := 0.0
 	for i: int in WALK_TICKS:
 		await physics_frames(1)
+		var now := -body.global_transform.basis.z
+		turned += previous.signed_angle_to(now, Vector3.UP)
+		previous = now
 	c.motion.input.throttle = 0.0
 	c.motion.input.steer = 0.0
 	_last_upright = body.global_transform.basis.y.dot(Vector3.UP)
-	return rad_to_deg(start.signed_angle_to(-body.global_transform.basis.z, Vector3.UP))
+	return rad_to_deg(turned)
