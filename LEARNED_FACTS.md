@@ -1692,6 +1692,68 @@ there is only one section here.)
     heading and the window is long enough to wrap, and be suspicious of any
     measured turn near ±180°.
 
+115. **A test file named for a quantity is not evidence that the quantity is
+    measured, and the axis nobody measures is where the defect lives.**
+    `tests/physics/test_ambulatory_drift.gd` is the project's file about walking
+    Assemblies drifting. It measured **heading only**, for six sessions, and its
+    heading assertions had been green since §13.10's ankle landed — which every
+    session since read, reasonably, as "standing is solved". Underneath them the
+    shipped biped was travelling **9.74 m in five seconds at 2.74 m/s** with
+    nothing commanding it, and the quadruped 6.85 m.
+
+    A slide in a dead straight line changes no heading at all, so the one file
+    whose subject was drift reported the sliding machine as holding perfectly
+    still. Three other files carried the consequence and none of them could see
+    the cause: `test_biped_balance` recorded the distance and diagnosed it as a
+    missing third balance layer; `test_braking_and_reverse` recorded a brake
+    demand that took a walker from 2.768 m/s to **3.262** and read it as the
+    family's weak deceleration; `test_melee_duel` recorded a walker that could not
+    reach a fight.
+
+    The general shape, and it is worth more than the defect: **when several files
+    record symptoms that each look like a different missing feature, look for one
+    quantity none of them measures.** Here it was position. The repair was one
+    early return and the sentence that would have found it years earlier is "this
+    file is called drift; which kinds of drift does it actually read?"
+
+116. **A gate on "is this thing moving" must name which speed, and
+    `linear_velocity.length()` is almost never the right one.** Doc 05 §7.6's yaw
+    loop engaged on the full velocity magnitude, so a build that had just been
+    shot into the air, or one bouncing over relief, reported metres a second of
+    *vertical* speed and switched on a controller whose entire model is a bicycle
+    on a road. It then corrected a heading error on a machine that was not
+    travelling, by braking one flank — which is a sideways shove and nothing else.
+
+    §7.8's governor two functions away in the same file takes the **horizontal**
+    speed and carries a comment saying exactly why. One of the two was written
+    with the question in mind and the other was not, and nothing in the language,
+    the tests or the document could tell them apart. Three speeds are routinely
+    meant and they are not interchangeable: the full magnitude, the horizontal
+    speed over the ground, and the signed component along the hull's own nose.
+    Name the one you mean at the call site.
+
+117. **An aid measured at a crawl is an aid measured where it does nothing, and
+    the conclusion generalises silently.** `test_ground_assembly` drove at quarter
+    throttle for 150 ticks — one to two metres a second on a build capped at 24 —
+    imposed a spin, and compared the aid against no aid over six ticks. The
+    contacts take the whole spin off by themselves in that window, so both runs
+    landed on the same number with the aid marginally behind, and doc 05 §7.6
+    recorded "the yaw loop no longer earns its keep" as a property of the loop.
+
+    A ladder from 2 m/s to 20 says the opposite at every point on it: 0.3° of
+    heading at the bottom and 16.9° at the top, growing monotonically, because the
+    lateral grip that trims a spin falls with speed and the yaw the contacts
+    generate does not. The measurement was correct and the *scope* of it was
+    invented.
+
+    Two things to carry. **A comparison between "with" and "without" needs a
+    sweep and not a point**, wherever the thing being compared is speed- or
+    load-dependent — which is every aid in the motion layer. And the crawl
+    measurement was still telling the truth about something: it said the loop has
+    nothing to do down there, which is a reason to **gate** the loop rather than
+    to re-derive its gain, and gating it is what the measurement actually
+    supported all along.
+
 
 ---
 

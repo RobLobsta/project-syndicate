@@ -308,6 +308,26 @@ static func phase_of(clock: float, phase_offset: float) -> float:
 ## Yaw is placement too: [param turn_command] rotates the target about the
 ## vertical, so the feet land off-axis and the resulting stance forces yaw the
 ## body. There is no yaw torque term anywhere in this family.
+##
+## [b]A standing Assembly keeps the capture-point term and loses the rest.[/b]
+## This function used to answer `hip_ground` outright at zero cadence, and that
+## one early return is what made every walking Assembly in the project slide: the
+## §13.4 standing state re-plants on the triggers §13.10 lists, and each re-plant
+## put the foot exactly under a hip that was already travelling. A foot planted
+## under a moving hip arrests nothing — it resets the lever and the machine keeps
+## going — so the re-plant was a ratchet rather than a step, and the biped slid
+## backwards at 2.74 m/s for as long as it was left alone. Measured over 300 ticks
+## with no demand of any kind: 9.74 m before, [b]0.15 m[/b] after; the quadruped
+## 6.85 m and 0.18 m; the melee build 10.37 m and 0.23 m.
+##
+## The two terms are not the same kind of statement, which is why one survives
+## and one does not. The neutral point is `v · T_stance / 2` — a claim about a
+## stride, and a machine that is standing is not taking one, so it has no
+## `T_stance` and needs none. §13.11's capture point is `(v − v_desired) ·
+## sqrt(h/g)`, which is a claim about a pendulum, and a standing machine is
+## exactly a pendulum. It is also the only balance layer that can act here at all:
+## §13.10's ankle holds [i]attitude[/i], and attitude was never what was wrong —
+## the biped slid at 0.88° of tilt, perfectly upright the whole way.
 static func foot_target(
 	profile: LimbProfile,
 	hip_world: Vector3,
@@ -319,15 +339,9 @@ static func foot_target(
 	com_height_m: float = 0.0
 ) -> Vector3:
 	var hip_ground := Vector3(hip_world.x, ground_y, hip_world.z)
-	if cadence_hz_value <= 0.0:
-		return hip_ground
-
-	var stance_s := profile.stance_duration_s(cadence_hz_value)
 	var v_flat := Vector3(velocity_mps.x, 0.0, velocity_mps.z)
 	var desired_flat := Vector3(desired_velocity_mps.x, 0.0, desired_velocity_mps.z)
-	# §13.11. The first term is Raibert's neutral point, unchanged: planting there
-	# leaves the body's horizontal momentum alone across the stance. The second is
-	# the capture-point correction, and it is the term that used to be
+	# §13.11's capture-point correction, and it is the term that used to be
 	# `placement_gain_s` — an authored number with a magnitude and no authority.
 	#
 	# `sqrt(h/g)` is the linear inverted pendulum's time constant, so
@@ -337,26 +351,32 @@ static func foot_target(
 	# is the whole difference: a negative travel demand puts the target *behind*
 	# the body and runs the stride the other way, where the old correction could
 	# only ever scale a disturbance that was already there.
-	var offset := v_flat * (stance_s * 0.5) + (v_flat - desired_flat) * capture_time_s(
-		profile, com_height_m
-	)
+	var offset := (v_flat - desired_flat) * capture_time_s(profile, com_height_m)
 
-	if not is_zero_approx(turn_command):
-		# [b]Negated, and the negation was never the bug.[/b] [ControlInput.steer]
-		# is positive-for-right and a right turn is a negative rotation about world
-		# up, so the stride direction rotates against the demand's sign. What is
-		# rotated is the whole placement offset, which is the direction the machine
-		# strides in — so the machine walks round the way it is asked to.
-		#
-		# It measured as an inversion for three sessions and it was not one. While
-		# `steer` also fed [method ControlInput.desired_velocity] as a lateral
-		# demand, a right command asked for a rightward *velocity* at the same time,
-		# and §13.5's correction term plants the foot hard left to produce it. The
-		# two halves fought and the velocity error won: full right ended +44.0°,
-		# which is a left turn. Measured again with §13.12's split in place and the
-		# same line steers the way it says it does.
-		var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)
-		offset = offset.rotated(Vector3.UP, yaw)
+	if cadence_hz_value > 0.0:
+		var stance_s := profile.stance_duration_s(cadence_hz_value)
+		# Raibert's neutral point: planting there leaves the body's horizontal
+		# momentum alone across the stance. Both this and the turn below are
+		# properties of a stride, so both are absent from a standing Assembly.
+		offset += v_flat * (stance_s * 0.5)
+		if not is_zero_approx(turn_command):
+			# [b]Negated, and the negation was never the bug.[/b]
+			# [ControlInput.steer] is positive-for-right and a right turn is a
+			# negative rotation about world up, so the stride direction rotates
+			# against the demand's sign. What is rotated is the whole placement
+			# offset, which is the direction the machine strides in — so the
+			# machine walks round the way it is asked to.
+			#
+			# It measured as an inversion for three sessions and it was not one.
+			# While `steer` also fed [method ControlInput.desired_velocity] as a
+			# lateral demand, a right command asked for a rightward *velocity* at
+			# the same time, and §13.5's correction term plants the foot hard left
+			# to produce it. The two halves fought and the velocity error won: full
+			# right ended +44.0°, which is a left turn. Measured again with
+			# §13.12's split in place and the same line steers the way it says it
+			# does.
+			var yaw := deg_to_rad(-profile.turn_rate_deg_s * turn_command * stance_s)
+			offset = offset.rotated(Vector3.UP, yaw)
 
 	# Clamped twice, in this order: the step first, then the reach. A leg cannot
 	# reach past its own length, and clamping the reach after the step is what

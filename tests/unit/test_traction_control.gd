@@ -17,7 +17,13 @@ const DOC_YAW_GAIN_NM_PER_RAD_S: float = 2600.0
 const DOC_YAW_DEADBAND_RAD_S: float = 0.10
 const DOC_MAX_BRAKE_FRACTION: float = 0.25
 const DOC_MIN_YAW_CONTROL_SPEED_MPS: float = 1.5
+const DOC_YAW_CONTROL_SPEED_FRACTION: float = 0.317
 const DOC_GRIP_YAW_MARGIN: float = 0.95
+
+## The reference Core Module's authored cap, and the figure §7.6's ladder was
+## measured against. Quoted rather than loaded: this file checks the code against
+## the document, and a test that reads the `.tres` would move with the data.
+const REFERENCE_SPEED_CAP_MPS: float = 24.0
 
 
 func test_the_published_constants_are_what_the_document_says() -> void:
@@ -43,6 +49,11 @@ func test_the_published_constants_are_what_the_document_says() -> void:
 		TractionControl.MIN_YAW_CONTROL_SPEED_MPS,
 		DOC_MIN_YAW_CONTROL_SPEED_MPS,
 		"MIN_YAW_CONTROL_SPEED_MPS"
+	)
+	check_approx(
+		TractionControl.YAW_CONTROL_SPEED_FRACTION,
+		DOC_YAW_CONTROL_SPEED_FRACTION,
+		"YAW_CONTROL_SPEED_FRACTION"
 	)
 	check_approx(TractionControl.GRIP_YAW_MARGIN, DOC_GRIP_YAW_MARGIN, "GRIP_YAW_MARGIN")
 
@@ -166,6 +177,47 @@ func test_the_grip_limit_falls_away_with_speed() -> void:
 		TractionControl.grip_limited_yaw_rate_rad_s(20.0, 1.0)
 		< TractionControl.grip_limited_yaw_rate_rad_s(10.0, 1.0),
 		"and it tightens as the Assembly speeds up"
+	)
+
+
+func test_the_loop_engages_at_a_fraction_of_the_builds_own_cap() -> void:
+	# The user-visible half of §7.6: the aid is for a machine that is travelling,
+	# and 1.5 m/s is a walking pace. The engagement speed is a fraction of the
+	# Assembly's authored cap so that "fast" means fast *for this build* — a 14 m/s
+	# tracked hauler and a 24 m/s road build do not share a definition of it, and
+	# an absolute figure would be silently tuned against whichever one the session
+	# happened to have open (LEARNED_FACTS.md §1 fact 110).
+	check_approx(
+		TractionControl.yaw_engagement_speed_mps(REFERENCE_SPEED_CAP_MPS),
+		REFERENCE_SPEED_CAP_MPS * DOC_YAW_CONTROL_SPEED_FRACTION,
+		"the reference build engages the loop at about 7.6 m/s"
+	)
+	check_true(
+		TractionControl.yaw_engagement_speed_mps(REFERENCE_SPEED_CAP_MPS)
+		> DOC_MIN_YAW_CONTROL_SPEED_MPS * 4.0,
+		"which is several times the 1.5 m/s floor it used to engage at"
+	)
+	check_true(
+		TractionControl.yaw_engagement_speed_mps(14.0)
+		< TractionControl.yaw_engagement_speed_mps(REFERENCE_SPEED_CAP_MPS),
+		"and a slower build engages it sooner, in absolute terms, than a faster one"
+	)
+
+
+func test_the_engagement_speed_never_falls_under_the_models_own_floor() -> void:
+	# The floor is the bicycle model's singularity guard rather than a design
+	# choice, so a build with an absurdly low cap still keeps out of it. Without
+	# this a 2 m/s cap would engage the loop at 0.63 m/s, where the grip limit is
+	# dividing by almost nothing.
+	check_approx(
+		TractionControl.yaw_engagement_speed_mps(1.0),
+		DOC_MIN_YAW_CONTROL_SPEED_MPS,
+		"a 1 m/s cap still does not engage the loop under the floor"
+	)
+	check_approx(
+		TractionControl.yaw_engagement_speed_mps(0.0),
+		DOC_MIN_YAW_CONTROL_SPEED_MPS,
+		"and neither does a build that reports no cap at all"
 	)
 
 

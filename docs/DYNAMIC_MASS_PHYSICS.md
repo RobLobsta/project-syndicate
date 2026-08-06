@@ -840,9 +840,11 @@ excess  = max(|ω·r − v_long| − allowed, 0)
 scale   = lerp(1, 1 / (1 + excess · SLIP_GAIN), authority)
 τ_drive ← τ_drive · scale
 
-# Yaw control, per Assembly
+# Yaw control, per Assembly. v_road is the hull's HORIZONTAL speed.
+engage   = v_road ≥ max(MIN_YAW_CONTROL_SPEED_MPS,
+                        speed_cap_mps · YAW_CONTROL_SPEED_FRACTION)
 ω_target = −v_long · tan(δ) / wheelbase          # bicycle model
-ω_target = clamp(ω_target, ±GRIP_YAW_MARGIN · μ · g / |v|)
+ω_target = clamp(ω_target, ±GRIP_YAW_MARGIN · μ · g / v_road)
 error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
 τ_brake  = min(|error| · YAW_GAIN_NM_PER_RAD_S · authority,
                brake_torque_nm · MAX_BRAKE_FRACTION)   on the flank sign(error)
@@ -857,7 +859,25 @@ error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
 | `YAW_DEADBAND_RAD_S` | 0.10 |
 | `MAX_BRAKE_FRACTION` | 0.25 |
 | `MIN_YAW_CONTROL_SPEED_MPS` | 1.5 |
+| `YAW_CONTROL_SPEED_FRACTION` | 0.317 |
 | `GRIP_YAW_MARGIN` | 0.95 |
+
+**The yaw loop engages at speed, and the engagement speed is a fraction of the build's own cap.** `MIN_YAW_CONTROL_SPEED_MPS` is the bicycle model's singularity guard and is not where the loop turns on; a 1.5 m/s gate is a walking pace, and the aid spent every metre above it modulating a brake on a machine whose tyres were already coping.
+
+Where they stop coping is a measurement rather than a judgement. An imposed 1.0 rad/s was handed to the reference build's contacts alone — the aid off entirely — from a coast at seven speeds, and read back one second later against the loop's own `YAW_DEADBAND_RAD_S`:
+
+| road speed m/s | 2 | 4 | 6 | 9 | 12 | 16 | 20 |
+|---|---|---|---|---|---|---|---|
+| residual, no aid (rad/s) | 0.000 | 0.030 | 0.071 | 0.124 | 0.291 | 0.765 | 0.975 |
+| residual, aid (rad/s) | 0.000 | 0.018 | 0.054 | 0.090 | 0.160 | 0.303 | 0.416 |
+| heading error, no aid | 11.3° | 16.1° | 18.1° | 21.1° | 27.1° | 39.2° | 48.4° |
+| heading error, aid | 10.9° | 14.8° | 16.3° | 18.6° | 22.0° | 27.0° | 31.5° |
+
+Two readings come out of it. The aid is a **monotone gain at every speed on the ladder** and the gain grows with speed, which settles the question §7.6's previous amendment left open and which `tests/physics/test_ground_assembly.gd` recorded the wrong way round: that file measures at quarter throttle over 150 ticks, which is a crawl, and generalised a low-speed result. And the unaided residual crosses the 0.10 rad/s deadband at about **7.6 m/s** — below that the contacts return an unasked-for spin to inside the aid's own tolerance without help, so there is nothing for the loop to correct that the tyres were not already correcting, and it was buying 0.3° of heading at 2 m/s for the trouble.
+
+7.6 m/s against the reference Core Module's authored 24.0 m/s is 0.317, and **it is stored as that fraction and never as the speed**. An absolute engagement figure means "fast" on a 14 m/s tracked hauler and "a crawl" on a 24 m/s road build, with nothing in the data or the interface stating which one it was tuned against — the same defect §13.10's ankle constant had, recorded as a general shape in `LEARNED_FACTS.md` §1 fact 110.
+
+**The gate and the grip limit both read the hull's horizontal speed.** They used to read `linear_velocity.length()`, so a build shot into the air, or one bouncing over relief, reported metres a second of *vertical* speed and engaged a loop whose entire model is a bicycle on a road. The aid then corrected a heading error on a machine that was not travelling, by braking one flank, which is a sideways shove and nothing else. §7.8's governor takes the horizontal speed for exactly this reason and says so at its own call site; this one did not.
 
 **An electronic aid may not apply a force the tyres could not.** A yaw controller that called `apply_torque` would turn an Assembly just as briskly on ice, on a slope, or with two wheels in the air, and would keep working after the contacts it is managing had stopped touching anything. Modulating one flank's brakes produces the same yaw moment through the same patches the driver is using, so it fades out exactly when grip does. This is what a real stability system does and it costs one extra term in §7.2's brake torque.
 
@@ -874,6 +894,8 @@ error    = deadband(ω_y − ω_target, YAW_DEADBAND_RAD_S)
 > That was not enough. With the lateral grip §7.4's limit cycle had been destroying — a cornering contact kept about a quarter of what it should have had — the **contacts alone** now take three quarters of an imposed 1 rad/s off in six ticks. The aid leaves 0.35 rad/s where no aid at all leaves 0.26, and halving the ceiling moved that by a thousandth, which is what says the mechanism is the friction circle rather than the ceiling.
 >
 > The loop's *authority* therefore owes a re-derivation against a contact that can brake. It is left as it stands rather than tuned blind, `tests/physics/test_ground_assembly.gd` asserts the measurement with the reasoning at the constant, and `HANDOFF.md` §3.1.3 owns it.
+>
+> **Amendment to the amendment — "the loop no longer earns its keep" was a low-speed result read as a general one, and it is wrong above about 7.6 m/s.** The measurement above it is taken at quarter throttle over 150 ticks, which is a crawl on a build whose cap is 24 m/s; the ladder in this section drives the same comparison from 2 m/s to 20 and the aid is ahead at every point on it, by 0.3° of heading at the bottom and by 16.9° at the top. What the crawl was recording is that at 2 m/s the contacts take the whole spin off by themselves within the window, so both runs land on the same number and the aid's brake bias is pure cost — which is a reason to **gate the loop**, not to re-derive its gain. `YAW_CONTROL_SPEED_FRACTION` is that gate. `MAX_BRAKE_FRACTION` stays at 0.25 for the reason it came down to it.
 
 **What it fixes.** Deep slip is unstable by construction: past the peak of the §7.2 friction curve, more slip means less force, so once one flank hooks up before the other the Assembly yaws away and keeps yawing. Holding both patches inside the allowance is what stops the pull; the yaw loop trims what is left. Measured on the four-contact fixture, full throttle wandered about 20° in two and a half seconds with the aid off and holds inside 8° with it on.
 
@@ -1537,6 +1559,37 @@ projection is limited to `max_step_length_m / 2`, then the whole hip-to-target
 vector is limited to `leg_length_m`. A leg cannot reach past its own length, and
 clamping the reach *after* the step length is what keeps a limb from planting a
 foot it would have to over-extend to hold.
+
+**A standing Assembly keeps §13.11's capture-point term and loses the other
+two.** The placement law used to answer the hip's ground projection outright at
+zero cadence, and that single early return is why every walking Assembly in this
+project slid. §13.4's standing state re-plants on the three triggers §13.10
+lists, and each of those re-plants put the foot exactly under a hip that was
+already travelling — a foot planted under a moving hip arrests nothing, it resets
+the lever and the machine keeps going. The re-plant was a ratchet rather than a
+step. Measured over 300 ticks with no demand of any kind:
+
+| standing, no input | before | after |
+|---|---|---|
+| `Recipe.BIPED` drift | 9.74 m at 2.74 m/s | **0.15 m at 0.38 m/s** |
+| `Recipe.AMBULATORY` drift | 6.85 m at 2.28 m/s | **0.18 m at 0.36 m/s** |
+| `Recipe.MELEE` drift | 10.37 m at 2.74 m/s | **0.23 m at 0.30 m/s** |
+
+The two dropped terms and the kept one are not the same kind of statement, which
+is the whole of why the split falls where it does. The neutral point is
+`v · T_stance / 2` and the turn rotation is `−turn_rate · steer · T_stance`:
+both are claims about a **stride**, and a machine that is standing is not taking
+one, so it has no `T_stance` and needs none. §13.11's capture point is
+`(v − v_desired) · sqrt(h/g)`, which is a claim about a **pendulum**, and a
+standing machine is exactly a pendulum.
+
+It is also the only balance layer that can act in this state. §13.10's ankle
+holds *attitude*, and attitude was never what was wrong — the biped slid at 0.88°
+of tilt, perfectly upright the whole way, which is what made this survive so long
+and what made "the ankle did not touch it" the correct and useless diagnosis. A
+walking Assembly now stands still because the same law that catches it when it is
+pushed catches it when it is drifting, and there is no third layer and no
+standing-only code path.
 
 ### 13.6 Stance Force
 

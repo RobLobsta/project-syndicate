@@ -49,16 +49,26 @@ const UPRIGHT_LIMIT_DEG: float = 10.0
 ## It is balancing rather than bolted down, so this is not zero — but a metre of
 ## wander in five seconds is a machine walking away from its own spawn.
 ##
-## [b]This is the one assertion in the file that fails, and it has failed since
-## the file was written.[/b] Measured at 2.82 m on the unarmed biped and **4.22 m**
-## now that `CombatArena.Recipe.BIPED` carries two Appendages, two edges and a
-## backpack. Doc 05 §13.10's ankle holds *attitude* and §13.11's capture point
-## acts only at touchdown, so nothing arrests the residual horizontal velocity of
-## a machine that never touches down — which is why the quadruped, whose four
-## stance forces cancel horizontally, holds station to half a degree and this does
-## not. Closing it is a third layer: a stepping reflex keyed on the capture point
-## leaving the support polygon, which is a §13 section rather than a constant.
-## Asserted as it stands.
+## [b]This was the one assertion in the file that failed, from the day the file
+## was written until the session that closed it.[/b] It measured 2.82 m on the
+## unarmed biped and 4.22 m once `CombatArena.Recipe.BIPED` carried two
+## Appendages, two edges and a backpack; over a five-second window with nothing
+## commanding it the machine slid **9.74 m at 2.74 m/s**. It is now **0.51 m**.
+##
+## The diagnosis recorded here was right about the symptom and wrong about the
+## cure. "§13.10's ankle holds attitude and §13.11's capture point acts only at
+## touchdown" is exactly correct — the machine slid at 0.6° of tilt, perfectly
+## upright — and the conclusion drawn from it was that closing it needed a third
+## balance layer. It did not. §13.4 already re-plants a standing limb when its hip
+## leaves the foot, which is the stepping reflex; what was missing is that
+## §13.5's placement law answered the hip's ground projection outright at zero
+## cadence, so every one of those re-plants put the foot **directly under a hip
+## that was already travelling** and arrested nothing. The capture point was not
+## absent from the standing state, it was being discarded on arrival.
+##
+## The bound stays at a metre rather than being tightened onto the measurement.
+## The machine is balancing rather than bolted down and this is the assertion that
+## would notice it walking away from its own spawn again.
 const STANDING_DRIFT_LIMIT_M: float = 1.0
 
 ## Metres a commanded run must cover, and metres a commanded reverse must cover

@@ -50,9 +50,30 @@ const REVERSE_FLOOR_M: float = 3.0
 ## letting the hull tilt each hip-to-foot line until §13.6's axial spring opposes
 ## the travel. That is a real deceleration through a real friction cone and it is
 ## about half of a wheeled build's: measured, 1.45 m/s down to 0.65 over five
-## seconds. A stance [i]shear[/i] term would close the rest and is new architecture
-## in doc 05 §13; `HANDOFF.md` §3.3 carries it.
+## seconds.
+##
+## [b]It then stopped being a deceleration at all, and nothing noticed for two
+## sessions.[/b] The standing state a brake demand puts the machine into was the
+## state doc 05 §13.5's placement law abandoned at zero cadence, so "brake" meant
+## "plant every foot directly under its own hip and slide" — measured, 2.768 m/s
+## in and **3.262 m/s out**, a brake that accelerated the machine, over 15.19 m.
+## With the capture point kept at zero cadence the same demand reads 2.77 m/s down
+## to **0.12 m/s in 1.25 m**, which is 4% of the entry speed against the 60% this
+## fraction allows. The bound stays where it is: it is a claim about the family's
+## authority relative to a wheeled build, not a re-measurement, and it now has
+## fifteen times the margin it was written with.
 const AMBULATORY_BRAKE_FRACTION: float = 0.60
+
+## Metres a walking build must travel backwards along its own nose under a reverse
+## demand.
+##
+## Deliberately under the wheeled [constant REVERSE_FLOOR_M] and deliberately not
+## far under it. The family measured 0.01 m when
+## [method test_a_walking_build_reverses] was written to record that it could not
+## reverse at all, and it now measures 6.83 m against a wheeled build's 8.18 — so
+## the honest floor is one that a family which had lost the ability again could
+## not clear, rather than one sized to the defect it replaced.
+const AMBULATORY_REVERSE_FLOOR_M: float = 3.0
 
 var _wheeled: Run = null
 var _tracked: Run = null
@@ -157,29 +178,27 @@ func test_a_walking_build_can_be_asked_to_stop() -> void:
 	)
 
 
-## [b]Asserted as it stands, and it is the one family that cannot.[/b] A negative
-## throttle reaches §13.5's placement law as a negative desired velocity, the law
-## plants the foot ahead of neutral exactly as it should, and the Assembly then
-## goes [b]nowhere[/b]: 0.01 m over three seconds against a wheeled build's 7.67.
+## [b]This was written asserted as a defect — "the walking family cannot reverse"
+## — and the defect has closed.[/b] It went 0.01 m over three seconds, then 1.29,
+## and it is now **6.83 m** against a wheeled build's 8.18. The complaint stays and
+## the measurement moves, which is what `LEARNED_FACTS.md` §3 asks for.
 ##
-## It is the same defect doc 05 §13.8 records for the steering demand, seen along
-## the other axis. `turn_command` rotates the plant offset and nothing else, and
-## the travel demand only reaches the correction term of the placement law — so
-## what the gait can actually produce is bounded by how far the correction can
-## move one plant, and reversing needs the whole stride to run the other way. Doc
-## 05 §13 owes the family a term that carries the sign of the demand into the
-## cadence and the swing, which is new architecture rather than a solver fix.
-##
-## Recorded here rather than left in prose because it is the check that goes red
-## when somebody closes it, and the fix then is to re-measure and re-assert.
-## `HANDOFF.md` §3.1.2 carries it.
-func test_a_walking_build_does_not_reverse() -> void:
+## Two changes did it and neither was aimed here. §13.11 replaced the placement
+## law's authored gain with `(v − v_desired) · sqrt(h/g)`, which carries the
+## [i]sign[/i] of the demand and so can put the plant target behind the machine
+## rather than only scaling a disturbance that was already there. And §13.5 now
+## keeps that term at zero cadence, which is what stopped the run-up phase leaving
+## the Assembly sliding forwards at 2.28 m/s before the reverse demand arrived —
+## the old fixture was measuring a reverse demand fighting a drift, and reported
+## the difference as the family's reverse authority.
+func test_a_walking_build_reverses() -> void:
 	await _measure()
 	check_true(
-		absf(_ambulatory.reverse_m) < 0.5,
+		_ambulatory.reverse_m < -AMBULATORY_REVERSE_FLOOR_M,
 		(
-			"a negative throttle moves a walking Assembly %.2f m, against a wheeled "
-			+ "build's %.2f — doc 05 §13.5's placement law has no reverse in it"
+			"a negative throttle backs a walking Assembly out %.2f m along its own "
+			+ "nose, against a wheeled build's %.2f, where it managed 0.01 m when doc "
+			+ "05 §13.5's placement law had no reverse in it"
 		) % [_ambulatory.reverse_m, _wheeled.reverse_m]
 	)
 

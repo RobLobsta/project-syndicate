@@ -67,11 +67,45 @@ const YAW_DEADBAND_RAD_S: float = 0.10
 ## the condition under which a brake bias produces yaw rather than removing grip.
 const MAX_BRAKE_FRACTION: float = 0.25
 
-## Below this speed the yaw controller does nothing. The kinematic target divides
-## by nothing at a standstill and a stationary Assembly has no heading error
-## worth the name — it also lets a driver pivot a light build on the handbrake
-## without the aid fighting them.
+## Absolute floor under the yaw controller, in m/s, and the model's own validity
+## limit rather than a design choice. The kinematic target divides by nothing at a
+## standstill and a stationary Assembly has no heading error worth the name — it
+## also lets a driver pivot a light build on the handbrake without the aid
+## fighting them. [method grip_limited_yaw_rate_rad_s] guards its own division
+## with it for the same reason.
+##
+## It is [i]not[/i] where the loop engages. That is
+## [method yaw_engagement_speed_mps], which is a fraction of the build's own cap.
 const MIN_YAW_CONTROL_SPEED_MPS: float = 1.5
+
+## Fraction of the Assembly's authored speed cap above which the yaw loop
+## engages, and the whole of "traction control acts at speed and not before".
+##
+## [b]It is derived from where the contacts stop coping, not chosen.[/b] An
+## imposed 1.0 rad/s was left to the reference build's own tyres — the aid off
+## entirely — from a coast at seven speeds, and the residual read one second
+## later against [constant YAW_DEADBAND_RAD_S]:
+##
+## [codeblock]
+## road speed m/s      2      4      6      9     12     16     20
+## residual rad/s  0.000  0.030  0.071  0.124  0.291  0.765  0.975
+## [/codeblock]
+##
+## The contacts return an unasked-for spin to inside the aid's own deadband
+## unaided up to about 7.6 m/s and progressively fail to above it, so below that
+## crossing there is nothing for the loop to correct that the tyres were not
+## already going to correct — and the aid was modulating a brake the whole time
+## to buy 0.3° of heading at 2 m/s. Above it the aid earns its keep and the margin
+## widens with speed: 22.0° of heading error against 27.1° unaided at 12 m/s,
+## 27.0° against 39.2° at 16, and 31.5° against 48.4° at 20.
+##
+## 7.6 m/s against the reference Core Module's authored 24.0 m/s cap is 0.317.
+## [b]A fraction and never an absolute figure[/b], for the reason
+## `LEARNED_FACTS.md` §1 fact 110 gives and §13.10's ankle constant paid for: an
+## absolute engagement speed means "fast" on a 14 m/s tracked hauler and "a crawl"
+## on a 24 m/s road build, and nothing in the data or the interface states which
+## one it was tuned against.
+const YAW_CONTROL_SPEED_FRACTION: float = 0.317
 
 ## Lateral acceleration the grip limit is taken at, as a multiple of the surface
 ## friction. Keeps the yaw target inside what the contacts could actually
@@ -98,6 +132,16 @@ static func drive_scale(
 		return 1.0
 	var cut := 1.0 / (1.0 + excess * SLIP_GAIN)
 	return lerpf(1.0, cut, clampf(authority, 0.0, 1.0))
+
+
+## Road speed, in m/s, above which the yaw loop engages on an Assembly whose Core
+## Module authors [param speed_cap_mps].
+##
+## [constant MIN_YAW_CONTROL_SPEED_MPS] is the floor rather than the answer, so a
+## build with a very low cap still keeps the bicycle model out of its own
+## singularity.
+static func yaw_engagement_speed_mps(speed_cap_mps: float) -> float:
+	return maxf(MIN_YAW_CONTROL_SPEED_MPS, speed_cap_mps * YAW_CONTROL_SPEED_FRACTION)
 
 
 ## The yaw rate a steer angle asks for, in rad/s, from the bicycle model.
