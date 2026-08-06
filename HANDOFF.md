@@ -182,11 +182,30 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-**Not captured this session, and that is a gap worth naming.** The rule asks
-whether a customer would get the best possible experience from the game as it
-stands, and the honest answer is that **the machine was taken apart and is not
-back together yet**. What follows is read off the suite's own instrumentation and
-off the geometry, not off a frame.
+**Captured, through `tools/capture_vehicles.tscn`.** One framed still per
+vehicle at 1600x900 through Mesa, fact 55's route. Three things had to be fixed
+before a frame contained anything at all and all three are recorded at the code:
+the camera was not `current` (which renders the environment background and
+nothing else, and reads exactly like geometry that failed to spawn), the first
+arena was opened in `_ready` while the scene root was still adding children (so
+the ground slab was refused, the [World3D] never existed and every system
+downstream of `direct_space_state` failed in turn), and a recipe with no body
+must be skipped rather than framed.
+
+**What the frames show, and it is the answer to "did the remodel work".** The
+tracked platform reads as a tracked platform — a long low hull, six road wheels
+running its full length, a gun overhanging the nose. The rotorcraft reads as a
+twin-rotor aircraft with two visibly separate discs on outriggers. The biped
+stands on two articulated legs. The road car is long, low and small-wheeled. None
+of that was true of a single frame before this session.
+
+**Two things the capture found that no number did.** The framing is too tight on
+the tall machines — the walking recipes are cropped at the torso — so
+`SHOTS`'s distances want re-deriving from each Assembly's measured bounding box
+rather than being authored per vehicle. And **the arena draws no ground**:
+`CombatArena` builds its slab as a `StaticBody3D` with a collision shape and no
+mesh, so every machine appears to float. Neither affects the simulation; both
+make the capture harder to read than it should be.
 
 **What a player would now see, and it is the point of the whole session.** Five
 vehicles that are five *different shapes* rather than one box with different

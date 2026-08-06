@@ -64,15 +64,32 @@ var _arena: CombatArena = null
 var _shot: int = -1
 var _frame: int = 0
 
+## `current` is set in the scene as well as here. A [Camera3D] that is not
+## current renders nothing at all — the environment background fills the frame
+## and the CanvasLayer draws over it, which looks exactly like a scene whose
+## geometry failed to spawn and is not.
 @onready var _camera: Camera3D = $Camera3D
 @onready var _label: Label = $Overlay/Label
 
 
+## [b]The first arena is opened on the first frame and not in [method _ready], and
+## the difference is the whole capture.[/b] [method CombatArena.open] adds its
+## ground slab to `EventBus.get_tree().root`, and a `root` that is still setting
+## up its own children refuses the call — "Parent node is busy setting up
+## children". The arena then has no slab, so it has no [World3D], so
+## `direct_space_state` is null and every system downstream of it fails in turn.
+##
+## What that looks like is a frame containing the label and nothing else: no
+## vehicle, no ground, just the environment background. It reads exactly like a
+## camera that is not current, which is the wrong thing to go and fix.
 func _ready() -> void:
-	_next_shot()
+	_camera.current = true
 
 
 func _process(_delta: float) -> void:
+	if _shot < 0:
+		_next_shot()
+		return
 	if _shot >= shots().size():
 		return
 	_frame += 1
@@ -109,6 +126,12 @@ func _frame_subject() -> void:
 	if _arena == null or _arena.combatants.is_empty():
 		return
 	var c: CombatArena.Combatant = _arena.combatants[0]
+	# A recipe that failed to build leaves a combatant whose body never reached
+	# the tree, and `global_position` on one is an engine error per frame rather
+	# than a bad picture.
+	if c.runtime == null or c.runtime.body == null or not c.runtime.body.is_inside_tree():
+		push_warning("capture_vehicles: %s has no body to frame" % _label.text)
+		return
 	var shot := shots()[_shot]
 	var focus := c.runtime.body.global_position
 	var yaw := deg_to_rad(AZIMUTH_DEG)

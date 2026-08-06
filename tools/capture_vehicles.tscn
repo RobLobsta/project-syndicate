@@ -23,6 +23,7 @@ environment = SubResource("Environment_1")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 12)
+current = true
 fov = 42.0
 
 [node name="KeyLight" type="DirectionalLight3D" parent="."]
