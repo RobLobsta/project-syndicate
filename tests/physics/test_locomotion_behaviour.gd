@@ -30,7 +30,13 @@ const CORE_KEY := &"core.command.compact.t2"
 ## limb cannot be placed on [constant CORE_KEY] and is not meant to be. A torso
 ## 2.50 m tall rather than a 1.00 m hull, and 1800 kg rather than 1450.
 const WALKER_CORE_KEY := &"core.ambulatory.strider.t3"
+## The road car's Prime Mover is the flat row, which is 2.00 m wide: it mates to
+## a hull's tail rather than standing on its deck (doc 01 §10.4). The walking and
+## tracked fixtures below carry the square row instead, and on the walker that is
+## load-bearing — a 2.00 m mover slung between limbs 1.50 m apart occupies the
+## cells the limbs need, and two of the four are then silently refused.
 const POWER_KEY := &"pmv.combustion.flat.t2"
+const SQUARE_POWER_KEY := &"pmv.combustion.standard.t2"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const TRACK_KEY := &"mot.tracked.long_bogie.t3"
 const TRACKED_CORE_KEY := &"core.tracked.hauler.t3"
@@ -441,7 +447,7 @@ func _build_tracked() -> Array:
 	PlacementValidator.commit(
 		ctx,
 		PlacementCandidate.create(
-			PartRegistry.definition_by_key(&"pmv.combustion.standard.t2"),
+			PartRegistry.definition_by_key(SQUARE_POWER_KEY),
 			TRACKED_POWER_ORIGIN,
 			0
 		)
@@ -472,7 +478,9 @@ func _build_walker() -> Array:
 	)
 	PlacementValidator.commit(
 		ctx,
-		PlacementCandidate.create(PartRegistry.definition_by_key(POWER_KEY), WALKER_POWER, 0)
+		PlacementCandidate.create(
+			PartRegistry.definition_by_key(SQUARE_POWER_KEY), WALKER_POWER, 0
+		)
 	)
 	var hub := PartRegistry.definition_by_key(HUB_KEY)
 	var limb := PartRegistry.definition_by_key(LIMB_KEY)

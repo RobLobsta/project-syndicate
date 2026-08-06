@@ -66,9 +66,11 @@ const WHEEL_ORIGINS: Array[Vector3i] = [
 ## Pivot Z below which a wheel is on the front axle and steers.
 const FRONT_AXLE_Z: int = 24
 
-## 1800 kg Core Module, 620 kg Prime Mover, four 90 kg stations, two 110 kg
-## steered discs and two 105 kg fixed ones.
-const EXPECTED_MASS_KG: float = 3210.0
+## 1800 kg Core Module, 620 kg Prime Mover, four 90 kg stations, two 78 kg
+## steered discs and two 74 kg fixed ones. The contacts are the road car's 0.75 m
+## pair since session 44 — doc 01 §10.3 sizes them off the reference at 0.15 of
+## the vehicle's length, where the 1.00 m pair is 0.20 of it.
+const EXPECTED_MASS_KG: float = 3084.0
 
 ## Doc 05 §6.1's probe radius ratio, quoted rather than imported.
 ##
