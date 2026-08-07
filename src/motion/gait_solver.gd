@@ -23,6 +23,28 @@ extends RefCounted
 ## stationary Assembly is rock-solid and a moving one visibly bobs.
 const STANDING_SPEED_MPS: float = 0.15
 
+## Metres a standing Assembly may travel from the foot it is standing on before
+## it takes the step that arrests the drift.
+##
+## §13.10's re-plant trigger fires when the hip leaves the foot, which is the
+## centre of pressure's own travel limit read from the other side — and for one
+## authored foot that is the whole rule. [b]It stops being the whole rule the
+## moment two limb rows author different feet.[/b] The trigger is what arrests a
+## standing Assembly's drift, and tying it to the polygon alone means a machine
+## with a bigger foot creeps proportionally further before it steps:
+## `mot.limb.broad_foot.t4`'s 1.10 m foot took the shipped biped from 0.46 m of
+## standing drift to 0.87 m, and the four-limbed family from 0.21 m to 0.79 m
+## against `test_ambulatory_drift`'s 0.50 m ceiling, with nothing about either
+## machine's balance having changed.
+##
+## So the bound is the lesser of the two, and [b]this half is station-keeping
+## rather than geometry[/b]: it states how still "standing still" is, in metres,
+## and it is a design decision rather than a derivation. Thirty centimetres is
+## what `mot.limb.strider.t4`'s foot already enforced — the figure every standing
+## measurement in the suite was taken against — so a limb may buy itself
+## stability with a bigger foot and may not spend the standing state to do it.
+const STANDING_STEP_TOLERANCE_M: float = 0.30
+
 
 ## ===== §13.10 THE ANKLE STRATEGY ======================================
 

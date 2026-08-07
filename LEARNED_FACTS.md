@@ -1858,6 +1858,34 @@ there is only one section here.)
     events. **A steady-state offset in a P loop is arithmetic, not a limitation of
     the plant** — check the loop before you conclude anything about the machine.
 
+123. **A locomotion family's failure mode is invisible to any fixture that only
+    drives it in a straight line, and two fields answer it: the per-limb normal
+    force and the hip-to-foot length.**
+
+    This is fact 77's lesson on the walking family. The shipped biped settled at
+    0.6° of tilt, walked nine metres on a demand, reversed nine back, and passed
+    every assertion in `test_biped_balance` — and it fell on its face inside four
+    seconds of any commanded turn, every time. Nothing in the suite had ever held
+    a steering demand on a biped, and `HANDOFF.md` carried the fall for two
+    sessions as "almost no lateral authority in single support", which was a
+    reasonable guess and the wrong axis: the machine goes over in **pitch**, and
+    the roll it does have is a stable banked lean.
+
+    What answered it in one run was printing, per limb, per fifteen ticks:
+    hip-to-foot length, the axial force that length implies, and whether the limb
+    was planted. Those three make the whole mechanism readable off the log — one
+    limb pinned at `max_foot_force_n` while the other sits at zero is a machine
+    standing on one leg, and a length above `stance_rest_length_m()` is a limb
+    that is on the ground and carrying nothing. Every field that was already
+    being printed — throttle, steer, speed, heading, tilt — said the machine was
+    walking.
+
+    **And the roll/pitch split has to be taken in the heading frame.** The first
+    trace measured `basis.y.angle_to(Vector3.UP)`, which is one number for two
+    independent failures, and the obvious decomposition —
+    `atan2(up.dot(basis.x), up.y)` — is identically zero for an orthonormal
+    basis. Project the forward and right axes onto the horizontal plane first.
+
 ---
 
 ## 2. What fault injection taught

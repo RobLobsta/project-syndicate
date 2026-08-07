@@ -151,6 +151,13 @@ const UTILITY_WHEEL_KEY := &"mot.wheeled.allroad.t2"
 const UTILITY_REAR_KEY := &"mot.wheeled.fixed_rear.t2"
 const TRACK_KEY := &"mot.tracked.long_bogie.t3"
 const LIMB_KEY := &"mot.limb.strider.t4"
+## The two-limbed row, and doc 01 §10.3 has the derivation. A biped is in single
+## support for 76% of its gait cycle, so the foot it stands on has to satisfy the
+## static-stability condition on its own — `sin θ_max = foot_length / 2h`, which
+## on the strider's 0.60 m foot under this build's 2.55 m centre of mass is 6.8°
+## against a gait that produces eight. It landed on its face at t=390 of a
+## commanded turn until this row existed.
+const BIPED_LIMB_KEY := &"mot.limb.broad_foot.t4"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 ## The truck's bonnet, and the wheeled family's second section. §7.3's mask makes
 ## this row `CHASSIS_WHEELED`, which is why the three recipes that used to borrow
@@ -1461,17 +1468,22 @@ func _lay_out_ambulatory(ctx: BuildContext, armed: bool) -> void:
 ##
 ## Structurally the ambulatory layout with half the limbs and a shallower torso.
 ## What makes it stand is not in this function at all — it is
-## `mot.limb.strider.t4`'s authored `foot_length_m`, which doc 05 §13.10 turns
+## [constant BIPED_LIMB_KEY]'s authored `foot_length_m`, which doc 05 §13.10 turns
 ## into a bounded ankle torque, and §13.11's capture point deciding where the next
 ## step goes. Neither existed before session 44 and the recipe would have been a
 ## machine lying on its face.
+##
+## [b]And it is a different limb from the quadruped's.[/b] Sharing
+## [constant LIMB_KEY] made the recipe a machine that walks in a straight line and
+## falls on its face the moment it is asked to turn, because a foot sized for four
+## limbs is 6.8° of recoverable tilt on two.
 func _lay_out_biped(ctx: BuildContext) -> void:
 	_place(ctx, BIPED_CORE_KEY, BIPED_CORE, 0)
 	_place(ctx, STRIDER_POWER_KEY, BIPED_POWER, 0)
 	_place(ctx, GUN_KEY, BIPED_GUN, 0)
 	for i: int in BIPED_LEGS.size() / 2:
 		_place(ctx, HUB_KEY, BIPED_LEGS[i * 2], HUB_AXLE_DOWN_ORIENTATION)
-		_place(ctx, LIMB_KEY, BIPED_LEGS[i * 2 + 1], 0)
+		_place(ctx, BIPED_LIMB_KEY, BIPED_LEGS[i * 2 + 1], 0)
 	# Bracket, then arm, then edge — the order the validator forces and the order
 	# a player has to build in. An arm has nothing to mate to until the plate over
 	# it exists, and an edge's only node is a GRIP hilt with nothing to hold it.

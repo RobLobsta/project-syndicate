@@ -44,104 +44,62 @@ opens on a menu, the menu opens a garage, TEST DRIVE fights an opponent built
 from the player's own blueprint, and a card says which way it went. Keyboard or
 controller, build or fight.
 
-**This session: every machine in the game now stands still when you let go of the
-keys, and traction control stops helping a machine that is crawling.**
+**This session: the biped can be steered.** It walked in a straight line
+perfectly well and went onto its face on the first turn it was asked for —
+measured over ten seconds of throttle 0.8 at full right lock, **97.7° of tilt,
+face down from t=390, and it stays there**. Nothing in the suite had ever held a
+steering demand on a biped, which is why four sessions of green runs sat on top
+of it.
 
-**Every walking Assembly in the project had been sliding, and nothing measured
-it.** Doc 05 §13.5's placement law answered the hip's ground projection outright
-at zero cadence, so §13.4's standing re-plants each put the foot directly under a
-hip that was already travelling — which resets the lever and arrests nothing.
-With no demand of any kind over five seconds:
+**It is one number in the part table, and the derivation is short enough to state
+here.** Doc 05 §13.10 bounds an ankle at `N × half-extent`; a limb in single
+support carries the whole Assembly, so `N ≈ m·g` and the tilt that bound can hold
+against its own pendulum is `sin θ_max = foot_length / 2h` — the ordinary
+static-stability condition. **A quadruped never has to satisfy it** (a duty factor
+of 0.62 over four limbs keeps two or three planted). **A biped misses it for
+`2 · duty − 1 = 76%` of every stride.** So the 0.60 m foot that is generous under
+four limbs is **6.8°** of recoverable tilt under two, against a gait that produces
+eight.
 
-| standing, no input | before | after |
-|---|---|---|
-| biped | 9.74 m at 2.74 m/s | **0.15 m at 0.38 m/s** |
-| quadruped | 6.85 m at 2.28 m/s | **0.18 m at 0.36 m/s** |
-| melee build | 10.37 m at 2.74 m/s | **0.23 m at 0.30 m/s** |
+`mot.limb.broad_foot.t4` ships: the strider with a `1.10 × 0.62 m` support
+polygon, 4100 build cost, 5 mount weight, and every other field identical so the
+difference is one line of doc 01 §10.3.
 
-Keeping §13.11's capture point at zero cadence is the whole change. It is not a
-third balance layer, which is what §3.0 and `test_biped_balance` both predicted it
-would need: §13.4 already re-plants a standing limb when its hip leaves the foot,
-and the capture point was being discarded on arrival rather than being absent.
+| ten seconds, throttle 0.8, full right lock | worst tilt | end | heading |
+|---|---|---|---|
+| `mot.limb.strider.t4`, 0.60 m foot | **97.7°** | 89.9°, face down | — |
+| `mot.limb.broad_foot.t4`, 1.10 m foot | **13.8°** | 9.3° | **−521°** |
 
-**Two files were carrying the consequence and could not see the cause.** A brake
-demand used to take a walker from 2.768 m/s to **3.262** over 15.19 m — a brake
-that accelerated the machine — and now reads 2.77 down to **0.12 in 1.25 m**. A
-reverse demand went 0.01 m → 1.29 → **6.83**, against a wheeled build's 8.18.
-Both were recorded as the walking family's weak authority and neither was.
+**A second row and not a change to the first, and that is measured too.** The
+polygon also bounds §13.4's standing re-plant, so giving the shared row the big
+foot took the quadruped's standing travel from 0.21 m to **0.79** against a
+0.50 m ceiling, and the biped's from 0.46 to 0.87. Doc 05 §13.10 now caps that
+half separately at `GaitSolver.STANDING_STEP_TOLERANCE_M` — geometry and
+station-keeping had been one number and only ever agreed because the project
+authored one foot. **The quadruped is byte-identical across the whole change**:
+`test_ambulatory_drift` reports the same +43.5° / −218.7° / +219.4° / 0.21 m it
+reported before it.
 
-**Traction control now acts at speed and not before.** Doc 05 §7.6's yaw loop
-gated on `linear_velocity.length()` — so a build in the air engaged a bicycle
-model — and engaged at 1.5 m/s, a walking pace. It now reads the hull's
-*horizontal* speed and engages above `YAW_CONTROL_SPEED_FRACTION` of the build's
-own cap: **7.6 m/s on the reference build**, derived from where an imposed
-1 rad/s stops being returned to inside the aid's own deadband by the contacts
-alone.
-
-**And the ladder that produced that number settles §7.6's open question the other
-way.** The aid is a **monotone gain at every speed** — 0.3° of heading at 2 m/s,
-16.9° at 20 — so "the loop no longer earns its keep" was a quarter-throttle
-measurement generalised to every speed. §3.1.4's dispute about it is closed.
-
-**Then §3.0, and the first file opened was not a re-measurement at all.**
-`test_inertia_coupling` names three parts and had been building two since session
-44 — the rotor's cell stopped mating, `commit`'s assert printed and aborted the
-call, and `before_all` carried on without the one part that puts products of
-inertia in the tensor. That closed two of its three failures. The third was the
-**frame**: a torque-free tumble is invisible in world space, where `ω · L` is
-pinned by conservation, and the file was measuring there. Re-framed in the body
-frame it is unambiguous — the minor axis keeps 5.21 of 6.0 rad/s and the
-intermediate keeps 1.56.
-
-**The suite went 21 failures to 13, and the engine-error scan is clean for the
-first time.** 8241 checks across 102 files, eight closed, none new. That assert
-was failing the wrapper on its own, so a run could exit non-zero with every check
-green.
-
-**Then one Prime Mover per locomotion family, which is what unblocked it.** Two
-movers carried four families between them — a tank, a mech and a rotorcraft all
-ran a road car's 6400 N·m — so no family's physics could be tuned without moving
-the other three. `PrimeMoverProfile` gains a `locomotion_mask`, the validator
-refuses a mover on a chassis it does not drive, and three rows are authored:
-`pmv.turbine.tracked.t3`, `pmv.combustion.strider.t3`, `pmv.turboshaft.rotary.t3`.
-`CHASSIS_GROUND_TRANSITIONAL` is retired in the same change, because a hull
-declaring a family it does not use now refuses every mover that does not drive
-it.
-
-The tracked raise §3.1.1 held for four sessions is applied: **run-up 2.14 →
-4.98 m/s, reverse −2.53 → −5.80 m**, and the walking family is byte-identical
-across the split, which is what the clone was for.
-
-**And the rotorcraft flies.** Doc 05 §12.7. A disc's thrust is bolted to its own
-hull, so any tilt is positive feedback and the shipped recipe — at a
-thrust-to-weight of **1.47**, never short of lift — passed 57° of tilt at four
-seconds and came down inverted at 177°. It flew in tests only because the arena's
-pilot loop commands the cyclic at a world-space direction and incidentally held
-it level. An attitude hold bounded by what the swashplate could actually produce
-now climbs to **317 m holding 1.99°** on a bare collective demand with nothing
-else commanded. It also fixed the rotary brake — 12.40 m/s out of a 6.62 run-up,
-now 0.590 — and the arena's hover droop, which was a P controller sitting 1.28 m
-under its target because its output must be non-zero at equilibrium.
-
-**The suite is at 7 failures across 7 files, from 21 at the start of the
-session.**
+**The suite is 8291 checks across 102 files with the same 7 failures it started
+with.** Eight new checks, none of the seven touched.
 
 **The bad news, plainly. Four things.**
 
-**The biped falls over when you turn it.** Full right at throttle takes it to
-41° of tilt in five seconds and, on a longer run, all the way onto its side. This
-is **pre-existing** — the baseline reaches 55° on the same demand — and this
-session did not cause it, but the drift was masking how bad it is and it is now
-the most visible thing wrong with the walking family. It also wanders **−26° over
-five seconds walking dead straight**. §3.1.3.
+**The biped leans out of its turns.** It holds them now — ten seconds, no fall —
+but it settles at 9–12° of roll *away* from the corner and crabs, carrying about
+0.7 m/s of outward sideslip the whole way round. A machine leaning out of a
+corner is the wrong way up, and the cause is understood: §13.11's capture point is
+a proportional controller with no feed-forward, so the outboard foot placement
+that banks the machine has to be *earned* by a standing lateral error. §3.1.3 has
+the shape of the answer.
 
 **A tracked build still will not turn.** Full right lock for five seconds moves
-it 2.4°, at 0.90 m/s. §3.1.2.
+it 2.4°, at 0.90 m/s. §3.1.2. Unchanged.
 
 **The suite is still red — 7 failures across 7 files — and every one of them was
-red before this session.** They are §3.0's remaining list. A red suite still
-cannot tell a regression from a moved expectation, and the seven left are the
-ones nobody has looked at closely.
+red before this session.** They are §3.0's remaining list, and the two that moved
+since it was written moved in opposite directions: `test_team_engagement`'s
+five-a-side now passes, and `test_family_duels` has taken its place.
 
 **No preset is reachable from the interface.** Six finished builds and
 `StarterBlueprint.skirmisher()` still has all three callers. §3.3.
@@ -178,12 +136,12 @@ downloads from the GitHub releases CDN, which the agent proxy allows; the GitHub
 
 ### The suite
 
-**101 files, 8161 checks, and 21 failures** as of session 45, in about 300
+**102 files, 8291 checks, and 7 failures** as of session 47, in about 200
 seconds — 14 s of reimport and the rest suite. It was green at 100 files and 7760
-checks; §3.0 is the work that gets it back. Three files are most of the time: `integration/test_screen_flow.gd` at
-82 s, `physics/test_ground_terrain.gd` at 41 s and `integration/test_ground_deform.gd`
-at 30 s. The runner prints per-file timings; check before assuming where the cost
-is.
+checks; §3.0 is the work that gets it back. Three files are most of the time:
+`physics/test_ground_terrain.gd` at 32 s, `integration/test_ground_deform.gd` at
+30 s and `integration/test_screen_flow.gd`. The runner prints per-file timings;
+check before assuming where the cost is.
 
 `run_all_checks.sh` fails on any engine error printed during the suite, not only
 on recorded assertion failures (`LEARNED_FACTS.md` §1 fact 34). That is why
@@ -214,7 +172,7 @@ python3 tools/ci/sweeps/ai_layer_sweep.py -j1 --full steer-sign-flipped
 Ten of them; `CHANGE_LOG.md` §3 says what each covers and what still survives.
 A sweep's `BASELINE` is a check count and moves with the suite; update it in the
 same change as anything that moves the count. **Every one of them is currently
-stale**, because sessions 44 and 45 both moved the count and the suite is still
+stale**, because sessions 44, 45 and 47 all moved the count and the suite is still
 red — a sweep run against a failing baseline reports `CAUGHT` for every fault
 including the ones nothing noticed (fact 64). Do not run a sweep until §3.0 is
 done. A sweep costs about a minute a
@@ -238,43 +196,41 @@ See `LEARNED_FACTS.md` §1 facts 36 and 44 before adding to `tests/physics/`.
 Recorded every session, because a green suite says nothing about whether the
 thing is any good to play. **Section 3's ordering comes from here.**
 
-**Measured this session, on every shipped recipe: stand, walk straight, turn.**
-Two hundred and forty ticks to settle, then three hundred ticks of one demand.
+**Measured this session: the one demand nobody had ever held on a biped.** Every
+walking measurement in the project's history is a straight line or a standstill,
+and the family passed both. Ten seconds of a steering demand is a different
+machine.
 
 | recipe | stands still | walks straight | turns right |
 |---|---|---|---|
-| wheeled light | **0.000 m** | 21.2 m, −0.7° | 186.7° in 5 s |
-| wheeled utility | **0.000 m** | 16.3 m, −0.4° | — |
-| tracked | **0.000 m** | 6.8 m, +0.3° | **−2.4°, and it is not turning** |
-| quadruped | **0.18 m** | 11.9 m, +4.1° | 216° in 5 s |
-| biped | **0.15 m** | 12.2 m, **−26.1°** | **falls over: 41° of tilt** |
-| melee build | **0.04 m** | — | — |
+| wheeled light | 0.000 m | 21.2 m, −0.7° | 186.7° in 5 s |
+| wheeled utility | 0.000 m | 16.3 m, −0.4° | — |
+| tracked | 0.000 m | 6.8 m, +0.3° | **−2.4°, and it is not turning** |
+| quadruped | 0.18 m | 11.9 m, +4.1° | 216° in 5 s |
+| biped | **0.49 m** | 9.5 m | **−521° in 10 s, 13.8° worst tilt** |
+| melee build | 0.04 m | — | — |
 
-**The good news is the first column.** Every machine in the game now stays where
-it is put. Three of the six were sliding between 6.8 and 10.4 m in five seconds
-with nobody touching the controls, which is the single most basic thing a player
-checks and the project failed it for its whole life.
+**The good news is the biped's last column.** It was 97.7° of tilt and lying face
+down, on every turn, for as long as the recipe has existed. It now holds a turn
+indefinitely and comes round faster than the wheeled build does.
 
-**The bad news, plainly. Four things, and the first two are the walking family.**
+**The bad news, plainly. Four things.**
 
-**The biped falls over when you turn it, and wanders when you do not.** 41° of
-tilt in five seconds under a right demand, and −26° of heading over the same
-window walking dead straight. Both are pre-existing — the baseline reaches 55° of
-tilt on the identical demand — and the standing drift was hiding them, because a
-machine that slides at 2.7 m/s never has to hold a stance for long. A biped is
-the most interesting machine in the game to look at and it is the least usable
-one to drive. §3.1.3.
+**The biped leans out of its corners.** It survives them and it looks wrong doing
+it: 9–12° of roll away from the turn, with 0.7 m/s of outward sideslip held the
+whole way round. §13.11's capture point can only produce the outboard foot
+placement that banks a machine by *first* accumulating the lateral error it is
+correcting, so a steady turn is held at a steady crab. That is a P-loop droop and
+it has the same shape as the rotary hover droop session 46 closed with a
+feed-forward. §3.1.3.
 
 **A tracked build will not turn.** Full lock, five seconds, 2.4° of heading at
 0.90 m/s. Doc 05 §14.2's differential is authored and the family is the one this
 project rebuilt a chassis and a bogie for; it drives straight and it cannot
-corner. §3.1.2.
+corner. §3.1.2. Unchanged, and now the most broken thing in the game.
 
-**Nobody knows whether this build plays better than the last one.** 13 failures
-across 9 files. All 13 were failing before this session, but "all of them are
-re-measurements" is the claim §3.0 keeps disproving: of the three looked at
-closely, two were a fixture that had been building the wrong Assembly. A red
-suite cannot tell a regression from a moved expectation.
+**Nobody knows whether this build plays better than the last one.** 7 failures
+across 7 files. §3.0, and the set is now small enough to finish.
 
 **Sustained fire still turns the whole screen brown.** Unchanged, cheap, and
 still the only thing in this list a player meets in their first ten seconds.
@@ -282,15 +238,12 @@ still the only thing in this list a player meets in their first ten seconds.
 
 Ranked by what would most improve a first-time player's experience:
 
-1. **The biped cannot be driven.** §3.1.3. It falls over on a turn and cannot
-   hold a heading straight. New at the top, because closing the drift is what
-   made it visible.
-2. **Finish the re-measurement.** §3.0. Thirteen left, and four of them are
-   §3.1.1's drive torque, which is measured and waiting.
+1. **A tracked build cannot corner.** §3.1.2. Top of the list now that the biped
+   can be steered: it is the one shipped family that cannot do the basic thing.
+2. **Finish the re-measurement.** §3.0. Seven left, and six of them are
+   single-assertion files nobody has opened.
 3. **Six presets and no way to choose one.** §3.3.
-4. **A tracked build cannot corner, and it is slow.** §3.1.2 for the corner,
-   which is geometry; §3.1.1 for the speed, which is one constant and four of
-   §3.0's failures.
+4. **The biped leans the wrong way in a corner.** §3.1.3.
 5. **The fight is two parked hulls trading fire.** §3.1.4.
 6. **Sustained fire turns the whole screen brown.** §3.11.
 7. **The end card is drawn over nothing.** Unchanged.
@@ -298,12 +251,11 @@ Ranked by what would most improve a first-time player's experience:
 9. **Nothing rewards a good build over a heavy one.** Unchanged.
 10. **Nothing in `src/combat/` knows what a team is.** §3.5.
 
-The summary: **every machine in the game now stands still when you let go, which
-it did not before, and traction control has stopped braking one flank of a
-machine that is crawling. What the game still does not have is a biped a person
-can steer, a tracked build that corners, any way for a player to choose one of the
-six finished presets, and a suite that can tell a regression from a
-re-measurement.**
+The summary: **the biped is a machine a person can drive now — it stands where it
+is put, walks, reverses and holds a turn for as long as you ask — and it leans out
+of that turn in a way that looks wrong. What the game still does not have is a
+tracked build that corners, any way for a player to choose one of the six finished
+presets, and a suite that can tell a regression from a re-measurement.**
 
 ## 3. The work queue
 
@@ -314,48 +266,32 @@ either done or is in section 4.
 
 **Do this before anything else.** Session 44 moved every chassis section, four
 masses, a limb reach, a disc radius and a track patch, and the suite has been
-carrying the result ever since: **7 failures across 7 files**, down from 25
-across 13 and from 21 across 11 at the start of session 46.
-Every one is claimed to be an assertion quoting a number the rebuild moved — but
-that is a claim about a set nobody has finished walking, and **two of the three
-looked at closely so far were not re-measurements at all**.
+carrying the result ever since: **7 failures across 7 files**, down from 25 across
+13. Every one is claimed to be an assertion quoting a number the rebuild moved —
+but that is a claim about a set nobody has finished walking, and **the ones looked
+at closely so far have mostly not been re-measurements at all**.
 
 The rule is `LEARNED_FACTS.md` §3's and it has not changed: **re-measure and
 re-assert; never loosen.** Where a file asserts a defect as it stands, the
 measurement moves and the complaint stays.
 
-**Eight checks came off this list in session 46.** Five were defects that had
-*closed* — `test_biped_balance`'s standing drift, `test_ambulatory_drift`'s
-heading, `test_braking_and_reverse`'s walking brake and walking reverse, and
-`test_ground_assembly`'s yaw loop. Three were `test_inertia_coupling`, and that
-one is the cautionary tale of the whole section: **the fixture had been building
-the wrong Assembly since session 44.** It names three parts, the rotor's authored
-cell stopped mating when the rotary chassis moved, `PlacementValidator.commit`'s
-assert printed and aborted the call, and `before_all` carried straight on with a
-two-part hull — losing the exact part that puts the products of inertia in the
-tensor. It produced plausible wrong numbers rather than crashing, and sat here for
-two sessions suspected of a flipped `−ω × (I ω)`. `LEARNED_FACTS.md` §1 facts 118
-and 119 have it, and **the engine error it printed was the only signal**: the
-wrapper fails a run on one even when the check count is green, so a non-zero exit
-with no failed checks is the first thing to read in a log.
+**Two entries on this list have moved since it was written, in opposite
+directions.** `test_team_engagement`'s five-a-side, which was the one file
+asserting a defect as it stands, now **passes** — it no longer runs to its
+timeout. `test_family_duels` has taken its place in the seven. Neither was
+touched by session 47, so both are the suite's float ordering (fact 62) and both
+should be read with fact 44 in hand before anything is concluded about them.
 
-**Everything left is in `tests/physics/`.** `tests/unit/`, `tests/integration/`
-and `tests/arch/` are green: the data, the registry, the placement chain, the mass
+**Everything is in `tests/physics/`.** `tests/unit/`, `tests/integration/` and
+`tests/arch/` are green: the data, the registry, the placement chain, the mass
 solver and the screen flow all agree with the rebuilt geometry. What is left is
 what the simulation *does* with it.
 
-**The tracked and rotary clusters are closed.** Six of the eight failures that
-went this session were those two, and both were one cause each: a Prime Mover
-shared across four families (§3.1.1) and a rotary Assembly with no attitude
-control (doc 05 §12.7). What is left of the tracked family is the pivot, which is
-geometry — §3.1.2.
-
-**The seven left are singletons and only one has been investigated.**
+**The seven, and only one has been investigated.**
 
 - **`test_locomotion_behaviour`** — the tracked pivot, 2.7° at full lock. §3.1.2
   has the diagnosis: it is an L/B ratio of 2.8 and it is geometry rather than a
-  constant. The other three of this file's failures went with §3.1.1's raise.
-
+  constant.
 - **`test_overpenetration_bounds`** — "resolved over 1 ticks, not inside one".
   The file's claim is that §12.2.2's budget is spent over the round's *life*
   rather than per tick, which needs the four penetrations to land on different
@@ -366,21 +302,22 @@ geometry — §3.1.2.
   fault this file was written to close.
 - **`test_ai_engagement`** — the approach was still running when sampled, 38.0 m
   out. Related to §3.1.4's slow approach.
-- **`test_drive_and_shoot`** — the autocannon build holds 28.3° of heading over
+- **`test_drive_and_shoot`** — the autocannon build holds 28.2° of heading over
   17 rounds. `I_zz` grew 54% on an unchanged mass; this is the file that inverted
   once already and should be read with fact 78 in hand.
 - **`test_recoil_geometry`** — a traversed round yaws the parked hull −0.0756
   rad/s against the 0.124 the assertion was written against.
+- **`test_family_duels`** — a nose-mounted module's muzzle is 0.651 m off the
+  centre of mass where the assertion expects two. New to this list; not
+  investigated.
 - **`test_ground_assembly`'s one remaining failure** is
   `test_the_aid_does_not_cost_the_launch`, which is §7.6's *slip limiter* and not
-  its yaw loop. Worth knowing first: measured this session, the limiter costs the
-  reference build **42% of its acceleration** over 300 ticks of full throttle —
-  7.35 m/s managed against 12.88 unmanaged — while the aid-off contact runs at
-  **160 m/s of slip velocity** at 13 m/s of road speed, which is a burnout that
-  never ends. Both numbers are odd, neither is explained, and the governed top
-  speed is unaffected, so this is launch behaviour rather than a cap.
-- **`test_team_engagement`'s five-a-side** still runs to its timeout and is the
-  one file left that asserts a defect as it stands.
+  its yaw loop. Worth knowing first: the limiter costs the reference build **42%
+  of its acceleration** over 300 ticks of full throttle — 7.35 m/s managed against
+  12.88 unmanaged — while the aid-off contact runs at **160 m/s of slip velocity**
+  at 13 m/s of road speed, which is a burnout that never ends. Both numbers are
+  odd, neither is explained, and the governed top speed is unaffected, so this is
+  launch behaviour rather than a cap.
 
 ### 3.1 The motion layer
 
@@ -472,47 +409,52 @@ at full lock got no better. `core.command.compact.t2` therefore keeps
 was taken on the 1.90 m bogie, and the braking objection does not survive the
 5.60 m one. It is worth re-taking alongside §3.1.1's raise.
 
-#### 3.1.3 The biped cannot be driven
+#### 3.1.3 The biped leans out of its corners
 
-**The top item in the review, and it is new only in the sense that the drift was
-hiding it.** Doc 05 §13.12 gave the family a heading authority and §13.5 now
-keeps it standing still; what is left is that the two-limbed machine cannot hold
-a stance once it is asked to do anything.
+**The fall is closed and the lean is what is left.** `mot.limb.broad_foot.t4`
+gives the two-limbed family a foot sized for the static-stability condition it
+actually has to meet, and the machine now holds a full-lock turn for ten seconds
+where it used to be face down at four. The derivation is in doc 01 §10.3 and the
+sizing rule is doc 05 §13.10; the short version is that a biped is in single
+support for 76% of its stride and a quadruped never is, so `sin θ_max = L / 2h`
+binds on one and not the other.
 
-Measured over 300 ticks from a settled spawn:
+**What is left, measured over 600 ticks of throttle 0.8 at full right lock:**
 
-| demand | biped | quadruped |
-|---|---|---|
-| throttle 1.0, steer 0 | 12.2 m, **−26.1° of heading**, 9.6° worst tilt | 11.9 m, +4.1°, 3.1° |
-| throttle 0.8, steer +1.0 | 6.4 m, **41° of tilt and still going over** | 6.4 m, 216° of turn, 2.8° |
+| | |
+|---|---|
+| heading | **−521°**, still turning at the end |
+| worst tilt | 13.8° |
+| roll at the end | **−9 to −12°, away from the corner** |
+| lateral velocity | **−0.7 m/s outward, held the whole way round** |
+| pitch | ±2°, bounded |
 
-**The turn is the one to chase.** On a longer window the same demand takes it
-past 90° of tilt and onto its side; the baseline before this session's change
-reached 55°, so the fall is pre-existing and this session did not cause it — what
-changed is that the machine now walks from a standstill instead of entering the
-turn already sliding backwards at 2.7 m/s, and it gets further into the fall
-inside the same window.
+A machine that leans *out* of a corner is the wrong way up, and the mechanism is
+not mysterious. §13.11's capture point plants at `(v − v_desired) · τ` and
+`v_desired` has no lateral component (§13.12 removed it, correctly, for a
+different reason). The outboard foot placement that banks a machine into a turn is
+therefore only produced *after* a lateral error exists — so a steady turn is held
+at a steady crab, and the lean the crab buys is not the lean the corner wants.
+**That is a P-loop droop and it has the same shape as the rotary hover droop
+session 46 closed**: the disturbance is known exactly, so the answer is a
+feed-forward rather than another gain.
 
-**The mechanism is lateral and the family has almost no lateral authority in
-single support.** A biped's two feet are at ±0.88 m, which is a wide stance while
-both are down — and a walking gait has one foot down at a time, at which point
-the whole lateral base is one foot, 0.34 m wide, and the only thing resisting
-roll is §13.10's ankle clamp at `N · foot_width / 2`. §13.11's capture point is
-what should catch it and does not, because it corrects a *velocity* and the
-machine is toppling about a plant point rather than translating.
+The feed-forward is derivable. A turn at yaw rate `ω` and speed `v` needs a
+centripetal acceleration `a_c = ω × v` toward the inside; the linear inverted
+pendulum gives the COM acceleration as `(g/h)(p_com − p_foot)`, so the foot has to
+be planted at `p_com − a_c · h/g` — **outboard of the turn by `a_c · τ²`**, which
+is 0.43 m on the shipped biped at its measured turn rate against the ~0.34 m the
+crab currently earns. `ω` is the commanded rate §13.12 already computes. Worth
+noting before starting: it is a §13.5 term, it must state its direction (CLAUDE.md
+§10 rule 14), and the test for it asserts which way the machine leans and not that
+an offset was non-zero.
 
-Two things were tried this session and one is recorded so it is not tried again:
-**feeding the centre of mass's velocity to the placement law instead of the body
-origin's** — which is more correct by §13.11's own wording, improves standing
-further (melee build 0.23 m → 0.04 m), and **destabilises the walk badly enough
-that the biped falls over going in a straight line**. It puts the body's rotation
-rate into the plant target, which is a feedback path through a quantity the
-stance force itself produces.
-
-The shape of the answer is probably a lateral term the ankle clamp cannot supply:
-either a foot placed off the stride line by the roll rate as well as by the
-velocity, or a stance-width demand. Both are doc 05 §13 architecture rather than
-a constant.
+**One thing was tried and is recorded so it is not tried again**: feeding the
+centre of mass's velocity to the placement law instead of the body origin's is
+more correct by §13.11's own wording, improves standing further, and destabilises
+the walk badly enough that the biped falls over going in a straight line. It puts
+the body's rotation rate into the plant target, which is a feedback path through a
+quantity the stance force itself produces.
 
 #### 3.1.4 The engagement has no manoeuvre in it
 
@@ -759,7 +701,8 @@ lattice is integer and a wreck is not aligned to it), and a cap under I-12.
   constant is knowingly left alone — it moves every engagement measurement at
   once.
 - **A second steered wheeled row**, and **a second tier of the rotor family**.
-  Both make doc 01 §14 rule 13 non-vacuous. `mot.rotor.main_single.t3` is worth
+  Both make doc 01 §14 rule 13 non-vacuous — the limb family has two rows as of
+  session 47, and it is the only one that does. `mot.rotor.main_single.t3` is worth
   authoring for its failure mode alone: `torque_reaction_ratio = 1.0` and no yaw
   authority, so a build carrying one alone spins under its own reaction torque.
 - **Rescale §10.5's four legacy direct-fire rows, or decide not to.** 1450 N·s for
@@ -932,8 +875,11 @@ is enough to recognise one and not be surprised.
   thing it is orbiting is directly under it.
 - **Nothing verifies the confirmation dialog's own presentation** — legibility,
   sizing, keyboard dismissal. That is capture work.
-- **One file still asserts a defect as it stands**: `test_team_engagement`'s
-  five-a-side running to its timeout. The other three came off this list in
+- **No file asserts a defect as it stands any more.** `test_team_engagement`'s
+  five-a-side was the last one and it no longer runs to its timeout — it passes,
+  without having been touched, which makes it the suite's float ordering
+  (fact 62) rather than a repair, and it should be re-read before anything is
+  concluded from it. The other three came off this list in
   session 46 when the things they recorded were repaired —
   `test_braking_and_reverse`'s walking brake and reverse,
   `test_ambulatory_drift`'s standing yaw, and `test_ground_assembly`'s yaw loop.

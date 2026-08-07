@@ -159,6 +159,11 @@ const SHIPPED_KEYS: Array[String] = [
 	"pmv.turbine.tracked.t3",
 	"pmv.combustion.strider.t3",
 	"pmv.turboshaft.rotary.t3",
+	# Session 47. A second limb row, because doc 05 §13.10's ankle clamp is
+	# `N × half-extent` and a two-limbed Assembly in single support has nothing
+	# else — so the foot that is generous under four limbs is 6.8° of recoverable
+	# tilt under two, and the shipped biped landed on its face on every turn.
+	"mot.limb.broad_foot.t4",
 ]
 
 
@@ -220,10 +225,11 @@ func test_class_buckets_are_populated() -> void:
 	)
 	check_eq(
 		PartRegistry.ids_of_class(PartEnums.PartClass.MOTIVE_ASSEMBLY).size(),
-		8,
+		9,
 		(
 			"one Motive Assembly per locomotion family, plus a steered/fixed pair at "
-			+ "0.75 m for the road car and a bogie long enough for a hull"
+			+ "0.75 m for the road car, a bogie long enough for a hull, and a second "
+			+ "limb row whose foot is sized for a machine that stands on one of them"
 		)
 	)
 	check_eq(

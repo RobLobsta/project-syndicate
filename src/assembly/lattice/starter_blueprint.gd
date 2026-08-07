@@ -141,6 +141,10 @@ const UTILITY_CORE_KEY: StringName = &"core.utility.hauler.t2"
 
 const TRACK_KEY: StringName = &"mot.tracked.long_bogie.t3"
 const LIMB_KEY: StringName = &"mot.limb.strider.t4"
+## The two-limbed row. Doc 01 §10.3: a biped stands on one foot for 76% of its
+## gait cycle, so that foot has to satisfy the static-stability condition alone,
+## and the four-limbed row's 0.60 m foot does not.
+const BIPED_LIMB_KEY: StringName = &"mot.limb.broad_foot.t4"
 const ROTOR_KEY: StringName = &"mot.rotor.coaxial_mid.t3"
 const UTILITY_WHEEL_KEY: StringName = &"mot.wheeled.allroad.t2"
 const UTILITY_REAR_KEY: StringName = &"mot.wheeled.fixed_rear.t2"
@@ -255,7 +259,7 @@ static func biped() -> Blueprint:
 	bp.add(AUTOCANNON_KEY, BIPED_GUN_CELL)
 	for i: int in BIPED_LEG_CELLS.size() / 2:
 		bp.add(HUB_KEY, BIPED_LEG_CELLS[i * 2], AXLE_DOWN_ORIENTATION)
-		bp.add(LIMB_KEY, BIPED_LEG_CELLS[i * 2 + 1])
+		bp.add(BIPED_LIMB_KEY, BIPED_LEG_CELLS[i * 2 + 1])
 	bp.add(CELL_KEY, BIPED_BACKPACK_CELL)
 	for cell: Vector3i in BIPED_SHOULDER_CELLS:
 		bp.add(PYLON_KEY, cell)

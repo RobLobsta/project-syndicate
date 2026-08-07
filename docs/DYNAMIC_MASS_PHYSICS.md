@@ -1829,6 +1829,42 @@ moved further than half a foot from it**, which is the same bound as the ankle
 clamp seen from the other side: the step happens exactly when the centre of
 pressure runs out of travel.
 
+**The re-plant's bound is the lesser of half the foot and
+`STANDING_STEP_TOLERANCE_M`, because the two halves of that sentence are not the
+same statement.** Half the foot is geometry — it is where the centre of pressure
+runs out of travel — and the re-plant's *job* is station-keeping, which is a
+different question with a different answer. The two shared one number for as long
+as the project authored one foot, and the sharing became visible the moment it
+authored two: `mot.limb.broad_foot.t4`'s foot is 1.83× the strider's, and a
+standing Assembly on it crept 1.83× as far before taking the step that arrests it
+— the shipped biped from 0.46 m of standing drift to 0.87 m, and the four-limbed
+family from 0.21 m to 0.79 m against `test_ambulatory_drift`'s 0.50 m ceiling —
+with nothing about either machine's balance having changed. **A limb may buy
+itself stability with a bigger foot and may not spend the standing state to do
+it.** `STANDING_STEP_TOLERANCE_M` is 0.30 m, which is what the strider's own foot
+already enforced and therefore what every standing measurement in the suite was
+taken against; it is a design decision about how still "standing still" is, and it
+is stated as one rather than derived.
+
+**A foot is sized by the tilt its Assembly has to be able to recover, and for a
+two-limbed Assembly that is the whole of its balance.** The clamp above is
+`N · half-extent`; a limb in single support carries the whole machine, so `N ≈ m·g`
+and the steepest tilt it can hold against the pendulum it is holding is
+
+```
+N · L/2 = m · g · h · sin θ     with N = m·g
+sin θ_max = L / (2h)
+```
+
+— the ordinary static-stability condition. A quadruped never has to satisfy it,
+because a duty factor above 0.5 over four limbs keeps two or three planted and the
+pendulum is shared; a biped satisfies it for `2 · duty − 1` of its cycle and misses
+it for the rest, which on the shipping figures is **76% of every stride**. Doc 01
+§10.3 carries the worked case and the two measurements: on `CombatArena.Recipe.BIPED`
+a 0.60 m foot is 6.8° of recoverable tilt against a gait that produces eight, and
+the machine walks in a straight line and lands on its face the moment it is asked
+to turn.
+
 **And it re-plants when the ground it is standing on is more than `step_height_m`
 below its foot**, which is the third trigger and the one that keeps a standing
 Assembly on the ground rather than over it. The first plant of a spawn is made

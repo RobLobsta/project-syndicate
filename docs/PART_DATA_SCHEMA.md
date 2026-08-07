@@ -1143,6 +1143,7 @@ Three cells of pylon between the flank and the station takes the separation to 3
 | `mot.tracked.long_bogie.t3` | `TRACKED_SEGMENT` | 24×4×3 | 1450 | 1420 | 11000 | **0.95** | 0 | 132000 | 11400 |
 | `mot.omni.roller.t3` | `OMNI_ROLLER` | 4×4×4 | 96 | 400 | 720 | 0.88 | 0 | 52000 | 4100 |
 | `mot.limb.strider.t4` | `AMBULATORY_LIMB` | 3×7×3 | 700 | 720 | 4500 | 1.22 | 45 | 340000 | 42500 |
+| `mot.limb.broad_foot.t4` | `AMBULATORY_LIMB` | 3×7×3 | 700 | 720 | 4500 | 1.22 | 45 | 340000 | 42500 |
 | `mot.repulsor.pad.t5` | `REPULSOR_PAD` | 5×2×5 | 140 | 480 | 1600 | 0.72 | 0 | 26000 | 8800 |
 | `mot.rotor.coaxial_mid.t3` | `ROTOR_DISC` | 4×6×4 | 500 | 690 | **2893** | 0.00 | 0 | 0 | 0 |
 | `mot.rotor.coaxial_heavy.t4` | `ROTOR_DISC` | 5×7×5 | 410 | 1010 | 4400 | 0.00 | 0 | 0 | 0 |
@@ -1200,12 +1201,33 @@ Ambulatory rows carry the ground columns because a foot genuinely has a friction
 |---|---|---|---|---|---|---|---|---|
 | `mot.limb.strider.t3` | 1.62 | 0.64 | 1.15 | 0.92 | 0.29 | 30000 | 42 | — |
 | `mot.limb.strider.t4` | **2.60** | 0.62 | 1.05 | **1.50** | **0.46** | **52000** | 45 | **0.60 × 0.34** |
+| `mot.limb.broad_foot.t4` | 2.60 | 0.62 | 1.05 | 1.50 | 0.46 | 52000 | 45 | **1.10 × 0.62** |
 
 **`mot.limb.strider.t4`'s reach went 1.90 → 2.60 m, and the ceiling on it is the stance base rather than the part.** The humanoid reference is half legs: measured off the artwork, hip-to-sole is 0.50 of overall height and the torso a further 0.24. The shipped limb gave 1.63 m of stance height under a 1.00 m hull — a body slung *between* legs the way a car body is slung between wheels, which is what `HANDOFF.md` §3.1.3 means when it says a walker is not a car with legs.
 
 The reference's ratio wants 3.10 m of reach, and §10.1's `core.ambulatory.strider.t3` entry has the reason it is not authored there: `DYNAMIC_MASS_PHYSICS.md` §13's virtual leg was one spring-damper force along the hip-to-foot line with a **point foot**, so fore-and-aft foot separation was the only pitch stability an ambulatory Assembly had. **§13.10 and §13.11 changed that** — a foot with an authored extent applies a bounded ankle torque and the plant target is a capture point — which is what makes `core.biped.humanoid.t3` and its `0.60 × 0.34 m` foot expressible at all. The reach stays at 2.60 m on the shared row because the quadruped is still measured against it. A taller hip over the same stance is a longer lever on the same base. 2.24 m of hip over the family's measured 1.50 m stance is 0.67; the shipped build was 0.92, and below about this the machine is being asked to balance rather than to walk.
 
 `max_step_length_m` and `step_height_m` scale with the reach rather than being free: a leg that reaches 3.10 m and steps 1.10 is mincing, and the step height has to clear the foot's own swing arc. Both are `0.58` and `0.177` of `leg_length_m`, which are the shipped `t4` ratios carried forward unchanged. `max_foot_force_n` scales with the mass the stance carries — the rebuild puts about 700 kg more on four limbs — and `stance_stiffness_n_m` with it.
+
+**The two `t4` limb rows differ in exactly one field, and the field is the foot.** `mot.limb.broad_foot.t4` is `mot.limb.strider.t4` with a `1.10 × 0.62 m` support polygon in place of `0.60 × 0.34`, a build cost of 4100 against 3400, and a mount weight of 5 against 4. Everything else — reach, mass, integrity, stance spring, cadence, step, turn rate, foot force — is identical, deliberately, so that the difference between a two-limbed machine and a four-limbed one is one number and can be read off this table.
+
+**Why the foot is the field.** `DYNAMIC_MASS_PHYSICS.md` §13.10 bounds a limb's ankle torque at `N × half-extent`. A limb in single support carries the whole Assembly, so `N ≈ m·g`, and the steepest tilt that bound can hold against the pendulum it is holding falls out as
+
+```
+N · L/2  =  m · g · h · sin θ        with  N = m · g
+sin θ_max  =  L / (2h)
+```
+
+which is the ordinary static-stability condition: the centre of mass's ground projection must stay inside the support polygon. **A quadruped never has to satisfy it**, because a `duty_factor` of 0.62 over four limbs keeps two or three planted at all times and the pendulum is shared between them. **A biped satisfies it for `2 × duty − 1 = 24%` of its gait cycle and misses it for the other 76%.** So the same foot is generous on four limbs and binding on two, and the number it produces on `CombatArena.Recipe.BIPED` — 5380 kg with its centre of mass 2.55 m over the feet — is:
+
+| foot length | `asin(L / 2h)` | ten seconds of throttle 0.8 at full right lock |
+|---|---|---|
+| 0.60 m | **6.8°** | worst tilt **97.7°** — face down from t=390 and it stays there |
+| 1.10 m | **12.5°** | worst tilt **13.6°** — a banked turn, held for the whole window |
+
+and the gait itself produces about eight degrees of pitch inside a commanded turn, which is the number that sits between those two rows. The machine walked in a straight line perfectly well on the 0.60 m foot and fell over the moment it was asked to turn; `tests/physics/test_biped_balance.gd` now holds a steering demand for ten seconds, which nothing in the suite had ever done to a biped.
+
+**It is a second row rather than a change to the first, and that is measured too.** The polygon also bounds §13.10's standing re-plant — a standing Assembly steps when its hip leaves half a foot — so a longer foot lets a standing machine creep further before it takes the step that arrests it. Giving the shared row the bigger foot took `tests/physics/test_ambulatory_drift.gd`'s standing travel from 0.21 m to **0.79 m** against a 0.50 m ceiling, and the biped's own from 0.46 m to 0.87 m. The four-limbed family is already correct with the foot it has, and `DYNAMIC_MASS_PHYSICS.md` §13.10 now caps the station-keeping half of that bound separately so a limb may buy stability with a bigger foot without spending the standing state to do it.
 
 A `duty_factor` above `0.5` means more than half the gait cycle is spent in stance, so a two-limbed Assembly always has at least one foot planted and never leaves the ground. This is what makes a biped tractable under Invariant I-3: the chassis is one rigid body held up by whichever feet are currently in stance, and there is never a tick with no support. Duty factors below `0.5` describe a run with a flight phase and are outside the shipping set — not because the solver cannot express one, but because a flight phase makes support intermittent and the tuning is a separate piece of work.
 

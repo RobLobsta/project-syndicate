@@ -70,6 +70,7 @@ func _run() -> bool:
 	keys.append(_author_prime_mover_combustion_flat())
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
+	keys.append(_author_limb_broad_foot())
 	keys.append(_author_prime_mover_combustion_standard())
 	keys.append(_author_prime_mover_turbine_tracked())
 	keys.append(_author_prime_mover_combustion_strider())
@@ -811,6 +812,121 @@ func _author_limb_strider() -> String:
 
 	def.build_cost = 3400
 	def.mount_weight = 4
+	return PartAuthoring.save_part(
+		def, "mot", PartAuthoring.single_box_collider(lo, hi), &"tread_std"
+	)
+
+
+## §10.3: `mot.limb.broad_foot.t4`, AMBULATORY_LIMB, 3x7x3, 700 kg, 720 integrity,
+## 4500 kg rated, 1.22 traction, 45 degree turn, 340000 N/m, 42500 Ns/m.
+## §11: the `mot.limb.*` row. [method _author_limb_strider] for everything else,
+## because this row differs from it in exactly one place and the whole design is
+## in which place that is.
+##
+## [b]The support polygon is 1.10 x 0.62 m, and it is the difference between a
+## machine that stands on two feet and one that stands on four.[/b]
+##
+## Doc 05 §13.10 bounds a limb's ankle torque at `N x half-extent`, so the
+## steepest tilt a stance can hold is where that bound equals the pendulum moment
+## it is holding: `N · L/2 = m · g · h · sin θ`. A limb in single support carries
+## the whole Assembly, which puts `N` at `m · g` and reduces the whole thing to
+## `sin θ_max = L / (2h)` — the static-stability condition, the same one a foot
+## has to satisfy for a machine to stand on it at all.
+##
+## A quadruped never meets that condition, because it never stands on one foot: a
+## duty factor of 0.62 over four limbs keeps two or three planted at all times and
+## the pendulum is shared. A biped meets it for `2 · duty − 1 = 24%` of its gait
+## cycle and misses it for the other **76%**. So the same foot that is generous on
+## four limbs is the binding constraint on two, and this row is the four-limbed
+## foot resized for a two-limbed machine.
+##
+## Worked on `CombatArena.Recipe.BIPED` — 5380 kg with its centre of mass 2.55 m
+## over the feet:
+##
+## [codeblock]
+## 0.60 m foot:  asin(0.60 / 5.10) =  6.8 deg of recoverable tilt
+## 1.10 m foot:  asin(1.10 / 5.10) = 12.5 deg
+## [/codeblock]
+##
+## and the gait itself produces eight degrees of pitch inside a commanded turn.
+## Measured over 600 ticks of throttle 0.8 at full right lock:
+##
+## [codeblock]
+## 0.60 x 0.34   worst tilt 97.7 deg — face down from t=390, and it stays there
+## 1.10 x 0.62   worst tilt 13.6 deg — a banked turn held for the whole ten seconds
+## [/codeblock]
+##
+## [b]It is a separate row rather than a change to the strider, and the reason is
+## measured too.[/b] The polygon also bounds §13.4's standing re-plant — a standing
+## Assembly steps when its hip leaves half a foot — so a longer foot lets a
+## standing machine creep further before it takes the step that arrests it. On the
+## quadruped that took `tests/physics/test_ambulatory_drift.gd`'s standing travel
+## from 0.21 m to 0.79 m against a 0.50 m ceiling. The four-limbed family is
+## already correct with the foot it has; giving it a foot it does not need in
+## order to fix a machine it is not costs it the one thing it does well.
+##
+## The trade against the strider is mount weight and cost. A foot at 1.83x the
+## length is a heavier ankle to hang off a station, and a builder who wants to
+## stand on two of these pays five mounts each for the privilege where four buys
+## a limb that has to work in a set of four.
+func _author_limb_broad_foot() -> String:
+	var lo := Vector3i(-1, -6, -1)
+	var hi := Vector3i(1, 0, 1)
+	var def := _base(&"mot.limb.broad_foot.t4", PartEnums.PartClass.MOTIVE_ASSEMBLY)
+	def.tier = PartEnums.TierGrade.PROTOTYPE
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(
+		lo, hi, {FACE_YP: PartEnums.AttachmentPolarity.AXLE}, {FACE_YP: structural_only()}
+	)
+	def.mass_kg = 700.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 720.0
+	def.resistance = PackedFloat32Array([0.16, 0.14, 0.26, 0.06, 0.02])
+	def.armour_rating = 18.0
+	def.load_capacity_kg = 600.0
+
+	var profile := MotiveAssemblyProfile.new()
+	profile.kind = PartEnums.MotiveKind.AMBULATORY_LIMB
+	profile.contact_radius_m = 0.16
+	profile.contact_width_m = 0.32
+	profile.suspension_rest_length_m = 0.0
+	profile.suspension_stiffness_n_m = 0.0
+	profile.suspension_damping_ns_m = 0.0
+	profile.suspension_travel_limit_m = 0.0
+	profile.max_steer_angle_deg = 0.0
+	profile.steer_rate_deg_s = 0.0
+	profile.rated_load_kg = 4500.0
+	profile.traction_coefficient = 1.22
+	profile.rolling_resistance = 0.0
+	profile.brake_torque_nm = 0.0
+	profile.driven = true
+
+	var limb := LimbProfile.new()
+	limb.leg_length_m = 2.60
+	limb.hip_offset_m = Vector3.ZERO
+	# The contact sphere grows with the foot it sits under, at the ratio the
+	# strider row carries: 0.22 under a 0.60 m foot is 0.37 of its length.
+	limb.foot_radius_m = 0.40
+	# The whole of this row. See the docstring for the derivation and the two
+	# measurements it rests on.
+	limb.foot_length_m = 1.10
+	limb.foot_width_m = 0.62
+	limb.stance_height_ratio = 0.86
+	limb.stance_stiffness_n_m = 340000.0
+	limb.stance_damping_ns_m = 42500.0
+	limb.max_foot_force_n = 52000.0
+	limb.duty_factor = 0.62
+	limb.nominal_cadence_hz = 1.05
+	limb.max_cadence_hz = 2.20
+	limb.max_step_length_m = 1.50
+	limb.step_height_m = 0.46
+	limb.placement_gain_s = 0.19
+	limb.turn_rate_deg_s = 45.0
+	profile.limb_profile = limb
+	def.motive_profile = profile
+
+	def.build_cost = 4100
+	def.mount_weight = 5
 	return PartAuthoring.save_part(
 		def, "mot", PartAuthoring.single_box_collider(lo, hi), &"tread_std"
 	)

@@ -698,12 +698,23 @@ func _solve_ambulatory(slot: int, dt: float) -> void:
 	# Half the foot is the centre of pressure's own travel limit, so this is the
 	# same number the ankle clamp uses seen from the other side: the step happens
 	# exactly when the ankle runs out of authority, which is what a person does.
+	#
+	# [b]Capped, and the cap is what stops a bigger foot being worse at standing
+	# still.[/b] The two bounds are not the same statement — the ankle's is
+	# geometry and this one is station-keeping — and they shared one number until
+	# `mot.limb.broad_foot.t4` made the difference visible: a foot at 1.83x the
+	# length lets a standing Assembly creep 1.83x as far before it takes the step
+	# that arrests it, and the shipped biped went from 0.46 m of standing drift to
+	# 0.87 m without anything about its balance changing. See
+	# [constant GaitSolver.STANDING_STEP_TOLERANCE_M].
 	var hip_offset := Vector2(
 		hip_world.x - limb.foot_world.x, hip_world.z - limb.foot_world.z
 	).length()
 	var outside_polygon := (
 		limb_profile.foot_length_m > 0.0
-		and hip_offset > limb_profile.foot_length_m * 0.5
+		and hip_offset > minf(
+			limb_profile.foot_length_m * 0.5, GaitSolver.STANDING_STEP_TOLERANCE_M
+		)
 	)
 	# §13.4's third re-plant, and the one that keeps a standing Assembly on the
 	# ground rather than over it.
