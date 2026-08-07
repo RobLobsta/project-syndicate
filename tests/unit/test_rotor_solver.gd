@@ -338,3 +338,111 @@ func test_cyclic_steps_toward_a_cone_limited_target() -> void:
 	check_approx(
 		settled.length(), CYCLIC_LIMIT, "a long step lands on the cone, not past it", 1e-4
 	)
+
+
+## ===== §12.7 ATTITUDE HOLD =============================================
+
+
+## [b]The sign, and CLAUDE.md §10 rule 14 is why this is the first assertion.[/b]
+## A negated levelling term is a controller that pushes the machine over, and it
+## still produces a non-zero torque of a plausible magnitude — so a test that
+## asserted "a torque was applied" would pass on the version that flips the
+## Assembly onto its back.
+func test_the_levelling_torque_rotates_the_hull_back_toward_upright() -> void:
+	# Banked with the hull's up axis tilted toward +X. The restoring axis is
+	# `body_up x world_up`, which for that bank is +Z — and a positive rotation
+	# about +Z carries (+x, +y) toward (-y, +x), taking the up axis back off +X.
+	# [b]Verified by rotating the fixture rather than by reasoning about it[/b]: the
+	# check below applies the torque's own axis to the banked basis and asserts the
+	# tilt actually falls, which is the only form of this test a sign flip cannot
+	# pass.
+	var banked := Basis(Vector3.BACK, deg_to_rad(-20.0))
+	var torque := RotorSolver.levelling_torque_nm(
+		banked, Vector3.ZERO, 1000.0, 1.0e9, 1.0
+	)
+	check_true(banked.y.x > 0.0, "the fixture is banked with its up axis toward +X")
+	check_true(
+		torque.z > 0.0,
+		"and the levelling torque is about +Z: %s" % torque
+	)
+	check_true(
+		Basis(torque.normalized(), deg_to_rad(5.0)).y.angle_to(Vector3.UP)
+		< banked.y.angle_to(Vector3.UP),
+		"and turning the hull about that axis reduces its tilt rather than adding to it"
+	)
+	check_approx(torque.y, 0.0, "with nothing about world up")
+
+	# The mirror, because a term that only ever answers one sign is a constant.
+	var other := RotorSolver.levelling_torque_nm(
+		Basis(Vector3.BACK, deg_to_rad(20.0)), Vector3.ZERO, 1000.0, 1.0e9, 1.0
+	)
+	check_true(other.z < 0.0, "and a bank the other way is corrected the other way")
+
+
+func test_a_level_hull_is_left_alone() -> void:
+	check_true(
+		RotorSolver.levelling_torque_nm(
+			Basis(), Vector3.ZERO, 1000.0, 1.0e9, 1.0
+		).is_zero_approx(),
+		"an upright hull with no rate needs no correction"
+	)
+
+
+## The damping half, asserted on a hull that is already level and rolling. Without
+## it the loop is a spring and the Assembly porpoises rather than settling.
+func test_the_levelling_torque_opposes_a_roll_rate() -> void:
+	var torque := RotorSolver.levelling_torque_nm(
+		Basis(), Vector3(0.0, 0.0, 4.0), 1000.0, 1.0e9, 1.0
+	)
+	check_true(torque.z < 0.0, "a level hull rolling about +Z is retarded about -Z")
+
+
+## §12.7's bound is the model rather than a safety rail: what levels a rotorcraft
+## is the swashplate working against its own thrust, so a disc making none levels
+## nothing and a powerless Assembly falls over.
+func test_the_levelling_torque_cannot_exceed_the_discs_own_authority() -> void:
+	var wild := Basis(Vector3.BACK, deg_to_rad(-60.0))
+	var bounded := RotorSolver.levelling_torque_nm(wild, Vector3.ZERO, 50000.0, 900.0, 1.0)
+	check_approx(
+		bounded.length(), 900.0, "an absurd tilt still only gets the authority it has", 1e-3
+	)
+	check_true(
+		RotorSolver.levelling_torque_nm(wild, Vector3.ZERO, 50000.0, 0.0, 1.0).is_zero_approx(),
+		"and a disc producing no thrust levels nothing at all"
+	)
+
+
+## Yaw belongs to [member RotorProfile.yaw_authority_nm] and to nothing else. Two
+## controllers on one axis is the defect doc 05 §13.5 spent three sessions on.
+func test_the_levelling_torque_never_touches_yaw() -> void:
+	var torque := RotorSolver.levelling_torque_nm(
+		Basis(Vector3.BACK, deg_to_rad(-15.0)), Vector3(0.0, 6.0, 0.0), 1000.0, 1.0e9, 1.0
+	)
+	check_approx(torque.y, 0.0, "a hull spinning about world up is not levelled by this term")
+
+
+## One over the disc count, so an Assembly levels with the discs it still has.
+func test_the_levelling_share_scales_the_result() -> void:
+	var whole := RotorSolver.levelling_torque_nm(
+		Basis(Vector3.BACK, deg_to_rad(-10.0)), Vector3.ZERO, 1000.0, 1.0e9, 1.0
+	)
+	var half := RotorSolver.levelling_torque_nm(
+		Basis(Vector3.BACK, deg_to_rad(-10.0)), Vector3.ZERO, 1000.0, 1.0e9, 0.5
+	)
+	check_approx(half.length(), whole.length() * 0.5, "half the discs, half the authority", 1e-3)
+
+
+## The authority is the moment the thrust makes at the edge of the cone, so it is
+## linear in both thrust and lever and zero when either is.
+func test_the_levelling_authority_is_thrust_times_cone_times_lever() -> void:
+	var authority := RotorSolver.levelling_authority_nm(_rotor, 10000.0, 2.0)
+	check_approx(
+		authority,
+		10000.0 * sin(deg_to_rad(CYCLIC_LIMIT)) * 2.0,
+		"T sin(cone) x lever"
+	)
+	check_approx(
+		RotorSolver.levelling_authority_nm(_rotor, 10000.0, 0.0),
+		0.0,
+		"a disc on the centre of mass has no lever and levels nothing"
+	)

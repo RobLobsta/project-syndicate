@@ -36,7 +36,11 @@ const WALKER_CORE_KEY := &"core.ambulatory.strider.t3"
 ## load-bearing — a 2.00 m mover slung between limbs 1.50 m apart occupies the
 ## cells the limbs need, and two of the four are then silently refused.
 const POWER_KEY := &"pmv.combustion.flat.t2"
-const SQUARE_POWER_KEY := &"pmv.combustion.standard.t2"
+## The square section, and one per family it is mounted on: the walking rig takes
+## the strider mover and the tracked rig the turbine, because doc 01 §7.3's mask
+## is what keeps four sets of tuning apart.
+const SQUARE_POWER_KEY := &"pmv.combustion.strider.t3"
+const TRACKED_POWER_KEY := &"pmv.turbine.tracked.t3"
 const HUB_KEY := &"str.hub.axle_station.t2"
 const TRACK_KEY := &"mot.tracked.long_bogie.t3"
 const TRACKED_CORE_KEY := &"core.tracked.hauler.t3"
@@ -447,7 +451,7 @@ func _build_tracked() -> Array:
 	PlacementValidator.commit(
 		ctx,
 		PlacementCandidate.create(
-			PartRegistry.definition_by_key(SQUARE_POWER_KEY),
+			PartRegistry.definition_by_key(TRACKED_POWER_KEY),
 			TRACKED_POWER_ORIGIN,
 			0
 		)

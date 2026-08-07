@@ -36,6 +36,81 @@ const ARREST_REFERENCE_MPS: float = 6.0
 ## re-simulating a rotor during rollback replays several ticks inside one frame,
 ## and an Euler lag would converge at a different rate under replay than it did
 ## live, so a rotor's altitude would drift every time the network corrected it.
+## ===== §12.7 ATTITUDE HOLD =============================================
+
+## Time constant of the levelling loop, in seconds. The natural frequency is its
+## reciprocal, so a smaller number is a stiffer machine.
+##
+## [b]A time rather than a torque, for the reason `LEARNED_FACTS.md` §1 fact 110
+## records and §13.10's ankle constant paid for.[/b] An authored newton-metres
+## would level a light Assembly briskly and a heavy one not at all, and would cap
+## what a rotary build may carry at a mass nothing in the data or the interface
+## states. The gain here is `I · ω_n²`, so it is a statement about how fast the
+## attitude may be corrected and carries no assumption about the machine.
+const ATTITUDE_RESPONSE_S: float = 0.45
+
+## Damping ratio of the same loop. Just under critical: a rotorcraft that
+## overshoots its level is one that porpoises, and one that is overdamped cannot
+## be manoeuvred out of a bank.
+const ATTITUDE_DAMPING_RATIO: float = 0.9
+
+
+## §12.7's levelling torque about the horizontal axes, in world newton-metres.
+##
+## [b]Without this a rotary Assembly cannot fly, and the reason is that its thrust
+## is fixed to its own hull.[/b] A disc pushes along the axis the chassis points
+## it at, so a hull that has tilted one degree is a hull whose lift now has a
+## horizontal component — which tilts it further. It is an inverted pendulum with
+## the thrust above the centre of mass and nothing restoring it. Measured on the
+## shipped recipe with a bare collective demand and no other input: the machine
+## lifts off cleanly, passes 12° of tilt at two seconds, 57° at four, and comes
+## down inverted at 177° — with a thrust-to-weight of 1.47, which is to say it was
+## never short of lift.
+##
+## [b]It is bounded by [param authority_nm] and that bound is the model.[/b] The
+## same rule §7.6 states for traction control: an aid may not apply a force the
+## machine could not. What levels a helicopter is the swashplate tilting the disc
+## against its own thrust, so the ceiling is `T · sin(cyclic_limit) · lever` —
+## a disc making no thrust levels nothing, a disc at full thrust levels exactly as
+## hard as its authored cone allows, and there is no configuration in which the
+## term is free rotation. A rotary Assembly that has lost power falls over, which
+## is correct.
+##
+## [b]Yaw is excluded rather than damped.[/b] [member RotorProfile.yaw_authority_nm]
+## already owns that axis through [member ControlInput.yaw]; a leveller that also
+## turned the machine would give the family two heading authorities, which is the
+## defect §13.5 spent three sessions proving is worth avoiding.
+##
+## [param share] is one over the disc count, so an Assembly levels with the discs
+## it still has and one with none does not level at all.
+static func levelling_torque_nm(
+	body_basis: Basis,
+	angular_velocity: Vector3,
+	horizontal_inertia_kg_m2: float,
+	authority_nm: float,
+	share: float
+) -> Vector3:
+	# `body_up x world_up` has |theta| = sin(tilt) and points along the rotation
+	# that carries the hull back upright. Negating it is a controller that pushes
+	# the machine over, and it would still look like a controller doing something
+	# (CLAUDE.md §10 rule 14).
+	var theta := body_basis.y.cross(Vector3.UP)
+	var omega := angular_velocity - Vector3.UP * angular_velocity.dot(Vector3.UP)
+	var w := 1.0 / maxf(ATTITUDE_RESPONSE_S, SyndicateConstants.EPSILON_LINEAR)
+	var desired := (
+		theta * (w * w) - omega * (2.0 * ATTITUDE_DAMPING_RATIO * w)
+	) * maxf(horizontal_inertia_kg_m2, 0.0)
+	return desired.limit_length(maxf(authority_nm, 0.0)) * clampf(share, 0.0, 1.0)
+
+
+## The levelling authority one disc has, in newton-metres: the moment its own
+## thrust makes when the swashplate tilts it to the edge of its cone.
+static func levelling_authority_nm(
+	profile: RotorProfile, thrust_n: float, lever_m: float
+) -> float:
+	return maxf(thrust_n, 0.0) * sin(deg_to_rad(profile.cyclic_limit_deg)) * maxf(lever_m, 0.0)
+
+
 static func spool(omega_rad_s: float, command_rad_s: float, tau_s: float, dt: float) -> float:
 	if tau_s <= 0.0 or dt <= 0.0:
 		return command_rad_s

@@ -84,10 +84,37 @@ const UPRIGHT_DOT: float = 0.90
 ## what doc 05 §13.10's revision did for standing.[/b] The figure was 51.2° on the
 ## ground chassis and 18.1° on the strider, and the file asserted it as a defect
 ## as it stood. With the ankle's restoring torque scaled to the machine's own
-## `m·g·h` it is **0.54°** — back under the one degree §13.4's standing state used
-## to hold before the rebuild. Four degrees is seven times the measurement and
-## still far below anything the defect ever produced.
-const STANDING_DRIFT_CEILING_DEG: float = 4.0
+## `m·g·h` it went to 0.54° — back under the one degree §13.4's standing state used
+## to hold before the rebuild.
+##
+## **Re-measured at 5.68°, and the rise is the price of §13.5's standing capture
+## point.** A standing Assembly now takes a real step whenever its hip leaves the
+## foot it is standing on, where before it re-planted directly underneath itself
+## and never had to move; a step is a stance force applied off the centreline, so
+## a machine that steps holds a heading slightly less well than one that is
+## sliding across the ground with both feet welded under its hips. Ten degrees is
+## under twice the measurement, and it is bought with the assertion below —
+## 6.85 m of translation became 0.18 m.
+const STANDING_DRIFT_CEILING_DEG: float = 10.0
+
+## Metres an uncommanded standing Assembly may travel over
+## [constant WALK_TICKS].
+##
+## [b]This file is named for drift and measured only the rotational half of it,
+## which is how the family came to slide for the whole life of the project.[/b]
+## The heading assertion above has been green since §13.10's ankle landed and was
+## read, reasonably, as "standing is solved"; meanwhile the same machine was
+## travelling **6.85 m in five seconds at 2.28 m/s** with nothing commanding it,
+## and the shipped biped 9.74 m at 2.74. Nothing measured it, because a machine
+## sliding in a dead straight line at a constant heading is a machine this file
+## reported as holding perfectly still.
+##
+## The cause was doc 05 §13.5's placement law answering the hip's ground
+## projection outright at zero cadence, so §13.4's re-plant put the foot under a
+## hip that was already moving and arrested nothing. Measured after: **0.18 m**.
+## Half a metre is a bound rather than the measurement — the machine is balancing
+## rather than bolted down — and it is an order below what it replaced.
+const STANDING_TRAVEL_CEILING_M: float = 0.5
 ## How level a standing Assembly stays. It was asserted at 0.999 — two and a half
 ## degrees — and the strider chassis holds 0.9892, which is eight and a half.
 ## Lower inertia over the same gait disturbance is the whole of the difference,
@@ -137,6 +164,7 @@ var _hard_over_deg: float = 0.0
 var _counter_deg: float = 0.0
 var _standing_deg: float = 0.0
 var _standing_upright: float = 0.0
+var _standing_travel_m: float = 0.0
 var _walking_upright: float = 0.0
 
 
@@ -245,6 +273,22 @@ func test_standing_still_holds_a_heading_again() -> void:
 	)
 
 
+## [b]The half of "drift" this file is named for and did not measure.[/b] Six
+## sessions of green heading assertions sat on top of a machine that was sliding
+## across the arena at 2.28 m/s with nothing commanding it, because a slide in a
+## straight line changes no heading at all. Doc 05 §13.5's standing capture point
+## is what closed it; this check is what would notice it coming back.
+func test_standing_still_holds_its_station_and_not_only_its_heading() -> void:
+	await _measure()
+	check_true(
+		_standing_travel_m < STANDING_TRAVEL_CEILING_M,
+		(
+			"a standing Assembly stays where it was put: %.2f m over %d ticks, against "
+			+ "6.85 m at 2.28 m/s before §13.5 kept the capture point at zero cadence"
+		) % [_standing_travel_m, WALK_TICKS]
+	)
+
+
 ## ===== FIXTURES ========================================================
 
 
@@ -267,6 +311,7 @@ func _measure() -> void:
 	_counter_deg = await _walk(-1.0, 1.0, 2)
 	_standing_deg = await _walk(0.0, 0.0, 3)
 	_standing_upright = _last_upright
+	_standing_travel_m = _last_travel_m
 	# Closed here rather than left to `after_all`, and it matters. Every arena
 	# builds in the one world the autoloads live in (§3.45), and this file sorts
 	# first in `tests/physics/` — four Assemblies left standing on the slab put
@@ -277,13 +322,17 @@ func _measure() -> void:
 	print(
 		(
 			"  ambulatory drift over %d ticks: neutral %+.1f°, hard over %+.1f°, "
-			+ "counter %+.1f°, standing %+.2f°"
+			+ "counter %+.1f°, standing %+.2f° and %.2f m"
 		)
-		% [WALK_TICKS, _neutral_deg, _hard_over_deg, _counter_deg, _standing_deg]
+		% [
+			WALK_TICKS, _neutral_deg, _hard_over_deg, _counter_deg, _standing_deg,
+			_standing_travel_m
+		]
 	)
 
 
 var _last_upright: float = 0.0
+var _last_travel_m: float = 0.0
 
 
 ## Spawns an Assembly at its own station, settles it, holds [param steer] and
@@ -308,6 +357,7 @@ func _walk(steer: float, throttle: float, station: int) -> float:
 	# Measured before this was fixed: a full right demand reported +154°, a left
 	# turn, when the machine had in fact come round 206° to the right.
 	var previous := -body.global_transform.basis.z
+	var from := body.global_position
 	var turned := 0.0
 	for i: int in WALK_TICKS:
 		await physics_frames(1)
@@ -317,4 +367,9 @@ func _walk(steer: float, throttle: float, station: int) -> float:
 	c.motion.input.throttle = 0.0
 	c.motion.input.steer = 0.0
 	_last_upright = body.global_transform.basis.y.dot(Vector3.UP)
+	# The other half of "drift", and the half this file was missing. Flat, because
+	# a machine settling onto its feet changes height and that is not drift.
+	_last_travel_m = Vector2(
+		body.global_position.x - from.x, body.global_position.z - from.z
+	).length()
 	return rad_to_deg(turned)

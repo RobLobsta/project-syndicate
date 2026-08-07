@@ -105,6 +105,11 @@ var _holding_brake: bool = false
 ## §7.7's proportioning ceiling on one contact's brake torque this tick, in N·m,
 ## or [code]INF[/code] when there is no contact base to derive one from.
 var _brake_ceiling_nm: float = INF
+## §7.6's yaw error as the last GROUND Motive Assembly solved it this tick, in
+## rad/s, and zero whenever the loop did not engage. Diagnostics and tests: the
+## engagement gate is the one part of the aid whose absence looks exactly like the
+## aid working, so it is worth being able to read directly.
+var _yaw_aid_error: float = 0.0
 ## True when this Assembly carries a family that turns on the spot from a steer
 ## demand alone. Rebuilt on registration, never per tick; §7.7 reads it.
 var _steer_moves_hull: bool = false
@@ -305,6 +310,10 @@ func step(dt: float) -> void:
 
 	var speed := runtime.body.linear_velocity.length()
 	_resolve_brake_state(speed)
+	# Cleared here rather than in the family, so that an Assembly with no GROUND
+	# Motive Assembly left on it reads zero instead of the last value the one it
+	# lost happened to leave behind.
+	_yaw_aid_error = 0.0
 	_gait_clock = GaitSolver.advance_clock(_gait_clock, _assembly_cadence_hz(), dt)
 
 	for slot: int in _motive_slots:
@@ -415,7 +424,8 @@ func _solve_ground(slot: int, dt: float, chassis_speed: float) -> void:
 	var contacts: Array = _contacts.get(slot, [])
 	# §7.6. One yaw error for the whole Assembly, evaluated before any contact is
 	# solved, so every wheel this tick is corrected against the same heading.
-	var yaw_error := _yaw_error(profile, chassis_speed)
+	var yaw_error := _yaw_error(profile)
+	_yaw_aid_error = yaw_error
 	for c: MotiveContact in contacts:
 		if not c.grounded:
 			c.prev_compression_m = 0.0
@@ -569,6 +579,32 @@ func _solve_rotary(slot: int, dt: float) -> void:
 	var torque := disc.reaction_torque_nm(rotor) + input.yaw * rotor.yaw_authority_nm
 	if not is_zero_approx(torque):
 		runtime.body.apply_torque(spin_axis * torque)
+
+	# §12.7's attitude hold, and the term without which this family cannot fly at
+	# all. A disc's thrust is fixed to the hull that carries it, so a hull that has
+	# tilted is a hull whose lift has acquired a horizontal component — an inverted
+	# pendulum with nothing restoring it. Bounded by what this disc's own swashplate
+	# could produce against its own thrust, so it fades exactly as lift does and a
+	# powerless Assembly falls over.
+	#
+	# Applied after the reaction and the yaw demand and about the horizontal axes
+	# only: [member RotorProfile.yaw_authority_nm] owns the vertical one, and two
+	# controllers on one axis is the defect §13.5 records at length.
+	var com_world := runtime.body.global_transform * runtime.body.center_of_mass
+	var inertia := runtime.body.inertia
+	var level := RotorSolver.levelling_torque_nm(
+		basis,
+		runtime.body.angular_velocity,
+		maxf(inertia.x, inertia.z),
+		RotorSolver.levelling_authority_nm(
+			rotor,
+			disc.last_thrust_n,
+			(_part_world_position(slot) - com_world).length()
+		),
+		1.0 / float(maxi(_discs.size(), 1))
+	)
+	if not level.is_zero_approx():
+		runtime.body.apply_torque(level)
 
 
 func _solve_ambulatory(slot: int, dt: float) -> void:
@@ -1028,6 +1064,14 @@ func _mean_contact_radius_m() -> float:
 	return total / float(count)
 
 
+## §7.6's yaw error this tick, in rad/s. Zero means the loop did not engage —
+## because the aid is off, because the Assembly is below
+## [method TractionControl.yaw_engagement_speed_mps], or because it is already
+## going where it was pointed. Diagnostics and tests.
+func yaw_aid_error_rad_s() -> float:
+	return _yaw_aid_error
+
+
 ## True when §7.7's holding brake is engaged this tick. Diagnostics and tests.
 func holding_brake_engaged() -> bool:
 	return _holding_brake
@@ -1071,20 +1115,46 @@ func _steer_contact(slot: int, profile: MotiveAssemblyProfile, c: MotiveContact)
 
 
 ## §7.6's yaw error for this tick, in rad/s, or zero when the aid is off, the
-## Assembly is too slow for the model to mean anything, or it is already going
-## where it was pointed.
-func _yaw_error(profile: MotiveAssemblyProfile, chassis_speed: float) -> float:
-	if input.traction_control <= 0.0 or chassis_speed < TractionControl.MIN_YAW_CONTROL_SPEED_MPS:
+## Assembly is not travelling fast enough for the loop to engage, or it is already
+## going where it was pointed.
+##
+## [b]Taken against the hull's horizontal speed, and against a fraction of its own
+## cap.[/b] Two corrections to one gate, both of them the same mistake §7.8's
+## governor already avoids two functions below:
+##
+## [enum]
+## [*] [param chassis_speed] is [member RigidBody3D.linear_velocity]'s full
+##     magnitude, so a build that has just been shot into the air, or one bouncing
+##     over relief, reads metres a second of [i]vertical[/i] speed and engaged a
+##     loop whose entire model is a bicycle on a road. The aid then corrected a
+##     yaw error on a machine that was not travelling at all, by braking one
+##     flank, which is a sideways shove and nothing else.
+## [*] The engagement speed is now
+##     [method TractionControl.yaw_engagement_speed_mps] — about 7.6 m/s on the
+##     reference build — rather than the 1.5 m/s floor. The measurement is at that
+##     constant; the short version is that below it the contacts return an
+##     unasked-for spin unaided and the aid was modulating a brake to buy a third
+##     of a degree.
+## [/enum]
+##
+## The grip limit takes the same horizontal speed: `μ g / v` is about the speed
+## the Assembly is going round a corner at, which is a speed over the ground.
+func _yaw_error(profile: MotiveAssemblyProfile) -> float:
+	if input.traction_control <= 0.0:
+		return 0.0
+	var v := runtime.body.linear_velocity
+	var road_speed := Vector2(v.x, v.z).length()
+	if road_speed < TractionControl.yaw_engagement_speed_mps(_speed_cap_mps()):
 		return 0.0
 	var forward := -runtime.body.global_transform.basis.z
-	var along := runtime.body.linear_velocity.dot(forward)
+	var along := v.dot(forward)
 	var target := TractionControl.target_yaw_rate_rad_s(
 		along, deg_to_rad(_commanded_steer_deg()), _wheelbase_m
 	)
 	return TractionControl.yaw_error_rad_s(
 		runtime.body.angular_velocity.dot(runtime.body.global_transform.basis.y),
 		target,
-		TractionControl.grip_limited_yaw_rate_rad_s(chassis_speed, profile.traction_coefficient)
+		TractionControl.grip_limited_yaw_rate_rad_s(road_speed, profile.traction_coefficient)
 	)
 
 

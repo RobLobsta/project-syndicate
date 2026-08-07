@@ -32,6 +32,7 @@ enum Reject {
 	DUPLICATE_CORE,
 	MOTIVE_FAMILY_MISMATCH,
 	APPENDAGE_CHASSIS_MISMATCH,
+	PRIME_MOVER_CHASSIS_MISMATCH,
 }
 
 ## Effector arc sampling, per §7.6.
@@ -66,6 +67,7 @@ const REJECT_KEYS: Array[StringName] = [
 	&"build.reject.duplicate_core",
 	&"build.reject.motive_family_mismatch",
 	&"build.reject.appendage_chassis_mismatch",
+	&"build.reject.prime_mover_chassis_mismatch",
 ]
 
 ## Downward face in the part's own frame, rotated per candidate by §7.5.
@@ -116,6 +118,9 @@ static func validate(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
 	if r != Reject.NONE:
 		return r
 	r = _check_motive_family(ctx, cand)
+	if r != Reject.NONE:
+		return r
+	r = _check_prime_mover_chassis(ctx, cand)
 	if r != Reject.NONE:
 		return r
 	r = _check_appendage_chassis(ctx, cand)
@@ -408,6 +413,49 @@ static func _check_motive_family(ctx: BuildContext, cand: PlacementCandidate) ->
 ## one with a body plan an arm belongs to — a torso above the ground with room
 ## either side of it. That is not enforceable in the lattice and does not need to
 ## be; the chassis is the proxy for it.
+## §7.3's family half: a Prime Mover may only be mounted on a chassis it is built
+## to drive.
+##
+## The same shape as the Appendage rule below and for a different reason. That
+## one is a design decision about body plans; this one is about **keeping four
+## sets of tuning apart**. Two movers used to carry four families between them,
+## so every torque figure in the game was a compromise across a 3.5 t road car
+## and a 10.5 t tracked hauler, and the visible cost was that a measured,
+## correct raise for one family could not be applied without moving the other
+## three — `HANDOFF.md` §3.1.1 was blocked on exactly that for four sessions.
+##
+## The check is against the [i]chassis[/i] rather than against the Motive
+## Assemblies already placed, which matters because of build order: a player
+## bolts the Prime Mover on before the running gear as often as after, and a rule
+## that read the running gear would accept or refuse the same part depending on
+## which order the two were placed in. Doc 01 §7.1 already makes the chassis the
+## one place a build declares what it is, and a Core Module's inspector card
+## names the families it carries, so a refused mover has its reason on screen.
+##
+## An absent chassis declares nothing and refuses nothing, and a mover whose mask
+## is [constant PartEnums.CHASSIS_ANY] — the default — is admitted everywhere, so
+## a profile that has not been authored for this behaves as it did before the
+## field existed.
+static func _check_prime_mover_chassis(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
+	var def := cand.definition
+	if def.part_class != PartEnums.PartClass.PRIME_MOVER:
+		return Reject.NONE
+	var mover := def.prime_mover_profile
+	if mover == null:
+		return Reject.NONE
+	var core := ctx.budgets.core_profile
+	if core == null:
+		return Reject.NONE
+	# Every family the hull declares must be one this mover drives. A hull that
+	# carries two families needs a mover that drives both — which is the honest
+	# reading of a multi-family chassis, and is why the transitional ground mask
+	# had to go before the wheeled pair could be narrowed.
+	for mode: int in PartEnums.LOCOMOTION_MODE_COUNT:
+		if core.carries(mode) and not mover.drives(mode):
+			return Reject.PRIME_MOVER_CHASSIS_MISMATCH
+	return Reject.NONE
+
+
 static func _check_appendage_chassis(ctx: BuildContext, cand: PlacementCandidate) -> Reject:
 	if cand.definition.part_class != PartEnums.PartClass.APPENDAGE:
 		return Reject.NONE

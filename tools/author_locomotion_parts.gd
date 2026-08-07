@@ -71,6 +71,9 @@ func _run() -> bool:
 	keys.append(_author_rotor_coaxial_mid())
 	keys.append(_author_limb_strider())
 	keys.append(_author_prime_mover_combustion_standard())
+	keys.append(_author_prime_mover_turbine_tracked())
+	keys.append(_author_prime_mover_combustion_strider())
+	keys.append(_author_prime_mover_turboshaft_rotary())
 	keys.append(_author_energy_cell_static_standard())
 	keys.append(_author_melee_beam_edge())
 	for key: String in keys:
@@ -838,6 +841,11 @@ func _author_prime_mover_combustion_standard() -> String:
 	def.heat_generation_hu_s = 7.4
 
 	var mover := PrimeMoverProfile.new()
+	# §7.3's family half. The wheeled pair, and the one place a mask legitimately
+	# covers two shipped machines: the road car mounts the flat slab as an engine
+	# bay and the utility truck mounts this block as a bonnet, which is two
+	# sections of one family's mover rather than two families.
+	mover.locomotion_mask = PartEnums.CHASSIS_WHEELED
 	mover.drive_torque_nm = 6400.0
 	mover.peak_angular_rpm = 5200.0
 	mover.throttle_response_s = 0.18
@@ -848,6 +856,174 @@ func _author_prime_mover_combustion_standard() -> String:
 	def.prime_mover_profile = mover
 
 	def.build_cost = 480
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `pmv.turbine.tracked.t3`, 4x4x6, 620 kg, 420 integrity, **13 000 N.m**,
+## 5200 RPM, 150 PU, 7.4 HU/s. §11: the `pmv.turbine.*` row.
+##
+## [b]The tank's own mover, and the reason the family gets one is that it had
+## been sharing a car's.[/b] `pmv.combustion.standard.t2` drove the tracked
+## hauler, the quadruped, the biped and the rotorcraft on 6400 N.m, so a torque
+## correct for a 3.5 t road car was also the torque a 10.5 t tracked hauler ran.
+## `HANDOFF.md` §3.1.1 measured the raise four sessions ago and could not apply it,
+## because applying it moved every locomotion family in the suite at once. A mask
+## on [PrimeMoverProfile] is what makes it applicable.
+##
+## [b]13 000 N.m is measured rather than chosen.[/b] The published ceiling was
+## 6400 because a tracked build at 9600 "cannot stop without pitching past
+## vertical" — taken on `mot.tracked.short_bogie.t2`, 1.90 m of patch under a
+## 2.25 m hull with its two forward road stations carrying nothing. Session 44
+## shipped the 5.60 m bogie and 12 of 12 stations now load at 1.4 deg of pitch, so
+## re-taken on the shipped recipe over 420 ticks:
+##
+## [codeblock]
+## N.m      6400    9600   13000   18000   26000
+## m/s      3.34    5.48    7.77   11.13   13.20
+## tilt    1.36    1.41    1.41    1.41    1.41   degrees
+## [/codeblock]
+##
+## The tilt does not move at all across a fourfold raise; the old objection is
+## void. 13 000 is taken because 7.77 m/s is a heavy tracked vehicle's speed and
+## because it clears both bounds the family was failing — a 3.0 m/s run-up floor
+## and a 3.0 m reverse. It is deliberately short of 18 000, which is 11 m/s and
+## reads as a light tank rather than a hauler.
+##
+## Every other figure is `pmv.combustion.standard.t2`'s, unchanged and
+## deliberately so: the section, the mass and the blast are identical, so the
+## only thing this row moves is the torque and any measurement that shifts is
+## attributable to it.
+func _author_prime_mover_turbine_tracked() -> String:
+	var lo := Vector3i(-2, 0, -3)
+	var hi := Vector3i(1, 3, 2)
+	var def := _base(&"pmv.turbine.tracked.t3", PartEnums.PartClass.PRIME_MOVER)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 620.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 420.0
+	def.resistance = PackedFloat32Array([0.10, 0.05, 0.15, 0.30, 0.02])
+	def.armour_rating = 14.0
+	def.load_capacity_kg = 700.0
+	def.power_supply_pu = 150.0
+	def.heat_generation_hu_s = 7.4
+
+	var mover := PrimeMoverProfile.new()
+	mover.locomotion_mask = PartEnums.CHASSIS_TRACKED
+	mover.drive_torque_nm = 13000.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
+
+	def.build_cost = 760
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `pmv.combustion.strider.t3`, 4x4x6, 620 kg, 420 integrity, 6400 N.m,
+## 5200 RPM, 150 PU, 7.4 HU/s. §11: the `pmv.combustion.*` row.
+##
+## [b]The walking family's own mover, and every published figure is deliberately
+## `pmv.combustion.standard.t2`'s.[/b] A clone with one field changed looks like
+## duplication and is the point: the quadruped and the biped were sharing a mover
+## with the truck, so tuning either meant tuning both, and the walking family's
+## numbers were freshly measured the session this row was added. Keeping every
+## figure identical is what makes that measurement survive the split — the gait,
+## the reach, the stance and the standing drift are all byte-identical across it.
+##
+## What it buys is the next change rather than this one. A limb is driven by
+## §13.6's stance spring rather than by shaft torque, so `drive_torque_nm` reaches
+## nothing on this family at all and the knob that matters is `power_supply_pu`;
+## having a row of its own is what lets somebody discover that without moving a
+## truck.
+func _author_prime_mover_combustion_strider() -> String:
+	var lo := Vector3i(-2, 0, -3)
+	var hi := Vector3i(1, 3, 2)
+	var def := _base(&"pmv.combustion.strider.t3", PartEnums.PartClass.PRIME_MOVER)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 620.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 420.0
+	def.resistance = PackedFloat32Array([0.10, 0.05, 0.15, 0.30, 0.02])
+	def.armour_rating = 14.0
+	def.load_capacity_kg = 700.0
+	def.power_supply_pu = 150.0
+	def.heat_generation_hu_s = 7.4
+
+	var mover := PrimeMoverProfile.new()
+	mover.locomotion_mask = PartEnums.CHASSIS_AMBULATORY
+	mover.drive_torque_nm = 6400.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
+
+	def.build_cost = 480
+	def.mount_weight = 3
+	return PartAuthoring.save_part(
+		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
+	)
+
+
+## §10.4: `pmv.turboshaft.rotary.t3`, 4x4x6, 620 kg, 420 integrity, 2400 N.m,
+## **320 PU**, 7.4 HU/s. §11: the `pmv.turboshaft.*` row.
+##
+## [b]The rotorcraft's own mover, and the two figures that differ from the block
+## it replaces are the two a rotary build actually reads.[/b] Shaft torque drives
+## a ground contact and a rotary Assembly has none — §12 turns supply into disc
+## speed and disc speed into thrust — so `drive_torque_nm` comes down to 2400,
+## which is what a turboshaft has after the reduction gearing, and the figure that
+## goes up is the one that matters.
+##
+## 320 PU against 150. The standard block's 150 is "exactly one
+## `mot.rotor.coaxial_mid.t3` at full collective", which the row it replaces says
+## outright — a mover barely covering a single disc, on a family whose shipped
+## recipe carries **two**. That is why the rotary recipe has to carry an Energy
+## Cell to fly at all, and why a rotary build that loses either sinks. 320 covers
+## both discs with margin for the spool transient.
+func _author_prime_mover_turboshaft_rotary() -> String:
+	var lo := Vector3i(-2, 0, -3)
+	var hi := Vector3i(1, 3, 2)
+	var def := _base(&"pmv.turboshaft.rotary.t3", PartEnums.PartClass.PRIME_MOVER)
+	def.tier = PartEnums.TierGrade.REFINED
+	def.occupancy_cells = PartAuthoring.box_cells(lo, hi)
+	def.attachment_nodes = PartAuthoring.face_nodes(lo, hi, {})
+	def.mass_kg = 620.0
+	def.com_offset_m = PartAuthoring.box_centre_m(lo, hi)
+	def.integrity_max = 420.0
+	def.resistance = PackedFloat32Array([0.10, 0.05, 0.15, 0.30, 0.02])
+	def.armour_rating = 14.0
+	def.load_capacity_kg = 700.0
+	def.power_supply_pu = 320.0
+	def.heat_generation_hu_s = 7.4
+
+	var mover := PrimeMoverProfile.new()
+	mover.locomotion_mask = PartEnums.CHASSIS_ROTARY
+	mover.drive_torque_nm = 2400.0
+	mover.peak_angular_rpm = 5200.0
+	mover.throttle_response_s = 0.18
+	mover.thermal_throttle_start_hu = 620.0
+	mover.thermal_shutdown_hu = 900.0
+	mover.detonation_blast_radius_m = 4.2
+	mover.detonation_blast_damage = 380.0
+	def.prime_mover_profile = mover
+
+	def.build_cost = 620
 	def.mount_weight = 3
 	return PartAuthoring.save_part(
 		def, "pmv", PartAuthoring.single_box_collider(lo, hi), &"plate_std"
@@ -889,6 +1065,7 @@ func _author_prime_mover_combustion_flat() -> String:
 	def.heat_generation_hu_s = 7.4
 
 	var mover := PrimeMoverProfile.new()
+	mover.locomotion_mask = PartEnums.CHASSIS_WHEELED
 	mover.drive_torque_nm = 6400.0
 	mover.peak_angular_rpm = 5200.0
 	mover.throttle_response_s = 0.18

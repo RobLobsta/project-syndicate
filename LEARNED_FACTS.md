@@ -1692,6 +1692,171 @@ there is only one section here.)
     heading and the window is long enough to wrap, and be suspicious of any
     measured turn near ±180°.
 
+115. **A test file named for a quantity is not evidence that the quantity is
+    measured, and the axis nobody measures is where the defect lives.**
+    `tests/physics/test_ambulatory_drift.gd` is the project's file about walking
+    Assemblies drifting. It measured **heading only**, for six sessions, and its
+    heading assertions had been green since §13.10's ankle landed — which every
+    session since read, reasonably, as "standing is solved". Underneath them the
+    shipped biped was travelling **9.74 m in five seconds at 2.74 m/s** with
+    nothing commanding it, and the quadruped 6.85 m.
+
+    A slide in a dead straight line changes no heading at all, so the one file
+    whose subject was drift reported the sliding machine as holding perfectly
+    still. Three other files carried the consequence and none of them could see
+    the cause: `test_biped_balance` recorded the distance and diagnosed it as a
+    missing third balance layer; `test_braking_and_reverse` recorded a brake
+    demand that took a walker from 2.768 m/s to **3.262** and read it as the
+    family's weak deceleration; `test_melee_duel` recorded a walker that could not
+    reach a fight.
+
+    The general shape, and it is worth more than the defect: **when several files
+    record symptoms that each look like a different missing feature, look for one
+    quantity none of them measures.** Here it was position. The repair was one
+    early return and the sentence that would have found it years earlier is "this
+    file is called drift; which kinds of drift does it actually read?"
+
+116. **A gate on "is this thing moving" must name which speed, and
+    `linear_velocity.length()` is almost never the right one.** Doc 05 §7.6's yaw
+    loop engaged on the full velocity magnitude, so a build that had just been
+    shot into the air, or one bouncing over relief, reported metres a second of
+    *vertical* speed and switched on a controller whose entire model is a bicycle
+    on a road. It then corrected a heading error on a machine that was not
+    travelling, by braking one flank — which is a sideways shove and nothing else.
+
+    §7.8's governor two functions away in the same file takes the **horizontal**
+    speed and carries a comment saying exactly why. One of the two was written
+    with the question in mind and the other was not, and nothing in the language,
+    the tests or the document could tell them apart. Three speeds are routinely
+    meant and they are not interchangeable: the full magnitude, the horizontal
+    speed over the ground, and the signed component along the hull's own nose.
+    Name the one you mean at the call site.
+
+117. **An aid measured at a crawl is an aid measured where it does nothing, and
+    the conclusion generalises silently.** `test_ground_assembly` drove at quarter
+    throttle for 150 ticks — one to two metres a second on a build capped at 24 —
+    imposed a spin, and compared the aid against no aid over six ticks. The
+    contacts take the whole spin off by themselves in that window, so both runs
+    landed on the same number with the aid marginally behind, and doc 05 §7.6
+    recorded "the yaw loop no longer earns its keep" as a property of the loop.
+
+    A ladder from 2 m/s to 20 says the opposite at every point on it: 0.3° of
+    heading at the bottom and 16.9° at the top, growing monotonically, because the
+    lateral grip that trims a spin falls with speed and the yaw the contacts
+    generate does not. The measurement was correct and the *scope* of it was
+    invented.
+
+    Two things to carry. **A comparison between "with" and "without" needs a
+    sweep and not a point**, wherever the thing being compared is speed- or
+    load-dependent — which is every aid in the motion layer. And the crawl
+    measurement was still telling the truth about something: it said the loop has
+    nothing to do down there, which is a reason to **gate** the loop rather than
+    to re-derive its gain, and gating it is what the measurement actually
+    supported all along.
+
+
+118. **An `assert()` in production code that a fixture trips does not stop the
+    fixture — it silently builds a different Assembly, and the numbers that come
+    out read as a broken subject.** `tests/physics/test_inertia_coupling.gd`
+    names three parts and commits them through `PlacementValidator.commit`, whose
+    first line is `assert(validate(...) == Reject.NONE)`. Session 44 moved the
+    rotary chassis, the rotor's authored cell stopped mating, and per fact 34 the
+    assert printed and aborted **the call** — so `before_all` carried straight on
+    and built a two-part hull with no rotor. The rotor is the part that hangs
+    mass off two axes at once, which is the entire purpose of the fixture.
+
+    It then spent two sessions on the work queue as "not obviously a
+    re-measurement", suspected of a flipped `−ω × (I ω)`, because it produced
+    plausible wrong numbers rather than crashing. Restoring the rotor closed two
+    of its three failures on the spot.
+
+    Two things to carry. **A fixture that names N parts must count N parts**, and
+    the check has to be a count rather than a property — this file already
+    asserted "the tensor has a substantial xz product" and "three distinct
+    principal moments" as its anti-fixture-trap guards, and the Prime Mover alone
+    satisfied both. And **an engine error in a `before_all` is the highest-value
+    line in a suite log**: the wrapper fails the run on it (fact 34), which is the
+    only reason this was findable at all, so a run that exits non-zero with a
+    green check count is telling you something specific and worth reading before
+    anything else.
+
+119. **A torque-free tumble is invisible in the world frame, and the measurement
+    there runs backwards.** The same file asserted that a spin about the
+    intermediate axis "has left the axis it started on" by taking the off-axis
+    component of the **world** angular velocity. It cannot work: `ω · L` is
+    exactly constant for a free body and `L` is fixed in world space, so once the
+    body has tumbled onto a stable axis its world `ω` settles back down near where
+    it began.
+
+    Measured on the reference fixture, launched at 6 rad/s and soaked for five
+    seconds — the world-frame reading is anti-correlated with the phenomenon:
+
+    | launched about | body keeps, on that axis | world off-axis |
+    |---|---|---|
+    | minor (stable) | **5.21** of 6.0 | 3.02 rad/s |
+    | intermediate (tumbles) | **1.56** of 6.0 | 0.13 rad/s |
+
+    The axis the body genuinely holds reports the *largest* world excursion,
+    because a stable spin that is not exactly on `L` precesses. The general
+    shape: **when a quantity is pinned by a conservation law, measuring it is
+    measuring the conservation law.** Ask which frame the phenomenon lives in
+    before choosing where to stand.
+
+120. **A shared part is a shared tuning constant, and the cost is paralysis
+    rather than compromise.** Two Prime Movers carried four locomotion families
+    between them for the life of the project: one slab drove every wheeled build
+    and one upright block drove the tank, the quadruped, the biped and the
+    rotorcraft. The obvious cost is that a 3.5 t road car and a 10.5 t tracked
+    hauler ran the same 6400 N·m, and that is real but survivable.
+
+    The cost that actually bit is that **no family could be changed at all**.
+    `HANDOFF.md` §3.1.1 carried a measured, correct torque raise for the tracked
+    family across four sessions and no session would apply it, because applying it
+    moved every engagement, recoil and stopping figure in the suite at the same
+    time — and a suite that moves everywhere at once cannot tell a fix from a
+    regression. The blocker was never the measurement; it was that the change had
+    no way to be *attributable*.
+
+    Two things to carry. **Ask what a datum is shared by before tuning it**, and
+    treat "this constant is read by four subsystems" as a design defect rather
+    than as economy. And when splitting one, **make the new rows byte-identical
+    clones except for the field being separated** — the walking family's numbers
+    had been re-measured the same session and survived the split exactly because
+    `pmv.combustion.strider.t3` changed nothing but its own mask.
+
+121. **A thrust vector fixed to a hull is an inverted pendulum, and no amount of
+    thrust fixes it.** The shipped rotorcraft could not fly: it lifted off
+    cleanly, passed 12° of tilt at two seconds, 57° at four, and came down
+    inverted at 177°. Every instinct says underpowered; the thrust-to-weight is
+    **1.47** out of ground effect. A disc pushes along the axis its chassis points
+    it at, so a hull that has tilted one degree has lift with a horizontal
+    component, which tilts it further — the lift is the destabilising term.
+
+    It survived because the only thing that ever flew one was a test fixture whose
+    pilot loop commands the cyclic at a *world-space* thrust direction, which
+    incidentally holds the hull level. So the family flew in every test and fell
+    over in the game, and the failing suite assertions read as "the autopilot is
+    mistuned" rather than "there is no attitude control anywhere in `src/`".
+
+    The general shape: **when a fixture stands in for a system that does not
+    exist, it will hide the absence rather than expose it** — and the tell is a
+    family that works only through the fixture. `HANDOFF.md` §3.7 had named the
+    missing layer for six sessions; what nobody had done was drive the thing
+    without the stand-in and watch it fall over.
+
+122. **A proportional controller settles where its output equals the disturbance,
+    and that offset reads as "the machine cannot reach the target".** The arena's
+    rotary builds were asserted to be flying above 3 m and settled at 2.72 m,
+    every run, on both combatants — which was read as the rotary family being
+    unable to make its hover height. The altitude loop is `error · gain − rate ·
+    gain`, and a hover needs a non-zero collective, so it necessarily sits
+    `collective_hover / gain` below the target: 1.28 m under 4.00 m, exactly the
+    measurement.
+
+    The repair is a feed-forward and not an integrator: the disturbance is the
+    Assembly's own weight, which is known exactly and constant between structural
+    events. **A steady-state offset in a P loop is arithmetic, not a limitation of
+    the plant** — check the loop before you conclude anything about the machine.
 
 ---
 

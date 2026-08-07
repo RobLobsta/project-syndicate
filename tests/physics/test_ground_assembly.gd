@@ -141,41 +141,59 @@ const LAUNCH_TICKS: int = 45
 ## controller rather than about the Assembly spinning out either way.
 const IMPOSED_SPIN_RAD_S: float = 1.0
 
-## Ticks the yaw controller is given to work on the imposed spin. A tenth of a
-## second, and the window is the measurement: the contacts' own lateral grip
-## takes an unmanaged spin from 1.0 rad/s to about 0.05 within half a second, so
-## a longer soak compares two Assemblies that have both already stopped yawing.
-## Measured at this window on the 911 kg build: 0.30 rad/s unmanaged, 0.12 managed.
-const YAW_TRIM_TICKS: int = 6
+## Ticks the yaw controller is given to work on the imposed spin. A second, and
+## the window is part of the measurement: §7.6's own ladder reads the residual one
+## second after the spin arrives, and this file has to compare against that table
+## rather than against a window of its own.
+##
+## [b]It was six ticks, and six ticks is why this file drew the wrong conclusion
+## for two sessions.[/b] At the crawl the old fixture ran at, a tenth of a second
+## is long enough for the contacts to take the whole spin and short enough that
+## the aid's brake bias is pure cost, so the two runs landed on the same number
+## with the aid marginally behind — which was read as "the aid no longer earns its
+## keep" and generalised to every speed. It is true at 2 m/s and false at 12.
+const YAW_TRIM_TICKS: int = 60
 
-## Yaw, in rad/s, an [b]unaided[/b] Assembly may still be carrying after that
-## window. The fixture assertion, and it inverted this session.
+## Speed, in m/s, the Assembly is taken to before the spin is imposed, as a
+## multiple of §7.6's own engagement speed.
 ##
-## It used to be a [i]floor[/i] of 0.25 — "the imposed spin survives a tenth of a
-## second on its own" — because §7.4's limit cycle put the combined slip at ±20
-## and left `sy/s` near zero, so a cornering contact kept about a quarter of the
-## lateral force it should have had. With the step repaired, the contacts take
-## three quarters of an imposed 1 rad/s off in six ticks unaided. This bound is
-## what would notice that grip going away again.
-const YAW_GRIP_TRIM_CEILING_RAD_S: float = 0.60
+## [b]The loop is gated at speed now, so a fixture that measures it at a crawl
+## measures a loop that is deliberately switched off.[/b] Below
+## [method TractionControl.yaw_engagement_speed_mps] the managed and unmanaged
+## runs are the same run by construction, and this file's whole subject is the
+## difference between them. Comfortably above rather than just above, because a
+## coasting Assembly bleeds speed through the window and a run that starts on the
+## gate spends half of it under one.
+const YAW_ENTRY_SPEED_FACTOR: float = 1.55
 
-## Fraction of the [b]imposed[/b] spin the managed run must be under.
+## Ticks of full throttle allowed to reach that speed before the fixture gives up
+## and says so. Generous: the launch is under the aid, which is what §7.6's
+## limiter is for, and the bound is here to stop a build that cannot get there
+## hanging the suite rather than to measure anything.
+const YAW_ENTRY_TICKS: int = 900
+
+## Yaw, in rad/s, an [b]unaided[/b] Assembly may still be carrying a second after
+## the spin arrives, at this speed.
 ##
-## [b]It was a fraction of the unmanaged run, and it could not stay one.[/b] The
-## measurement it asserted — that the aid is a strict improvement — is no longer
-## true and the constant cannot be made to say so without saying something false:
-## measured this session, the aid leaves 0.35 rad/s where no aid at all leaves
-## 0.26. §7.6's yaw loop brakes one flank, and a braked patch spends its friction
-## circle longitudinally and has less left to resist the spin — which was a good
-## trade when the lateral half of that circle was being destroyed by §7.4 and is a
-## bad one now that it is not.
+## [b]Asserted as a floor, and the floor is the finding.[/b] At a crawl the
+## contacts take an imposed 1.0 rad/s off entirely on their own; at 12 m/s they
+## leave 0.29 and at 20 m/s they leave 0.98, which is a spin that is not being
+## trimmed at all. The lateral grip that trims a spin falls with speed and the
+## yaw the contacts generate does not, so an unaided build above the gate is the
+## Assembly §7.6 exists for. This bound is what would notice the gate being set
+## somewhere the tyres are still coping.
+const YAW_UNAIDED_FLOOR_RAD_S: float = 0.15
+
+## Fraction of the [b]unmanaged[/b] residual the managed run must be under.
 ##
-## So this bound is what it can honestly be: the aid does not [i]run away[/i] with
-## an imposed spin. A disconnected loop, which is what session 13's sweep planted
-## and what this test exists to catch, still shows as `managed == unmanaged` in
-## the printed message. Re-deriving §7.6's authority against a contact that can
-## brake is `HANDOFF.md` §3.1.3.
-const YAW_TRIM_FRACTION: float = 0.60
+## Back to being a fraction of the unmanaged run, which is what it was before
+## session 38 and what §7.6's ladder says it can honestly be again: measured
+## across the whole ladder above the gate the aid is a strict improvement, by 45%
+## of the residual at 12 m/s, 60% at 16 and 57% at 20. 0.85 is a bound rather than
+## the measurement — a loop that has been disconnected shows as `managed ==
+## unmanaged`, which is what session 13's sweep planted and what this test exists
+## to catch.
+const YAW_TRIM_FRACTION: float = 0.85
 
 const GROUND_HALF_HEIGHT: float = 2.0
 const GROUND_SPAN_M: float = 200.0
@@ -937,36 +955,38 @@ func test_the_yaw_controller_trims_a_spin_the_driver_did_not_ask_for() -> void:
 	# two authorities. It also starts both runs at the same speed, which they do
 	# not do if the limiter is allowed to hold one of them back.
 	#
-	# [b]This is asserted as it stands, and it inverted this session.[/b] With
-	# §7.4's contact integration repaired the lateral grip that had been costing a
-	# cornering contact four fifths of its budget came back, and the contacts now
-	# take three quarters of an imposed 1 rad/s off in six ticks on their own. The
-	# aid, which brakes one flank, spends part of that flank's friction circle
-	# longitudinally and leaves [b]more[/b] spin than no aid at all: 0.35 rad/s
-	# against 0.26. Halving [constant TractionControl.MAX_BRAKE_FRACTION] so the
-	# aid can no longer lock the patch it is biasing moved it by a thousandth,
-	# which is what says the mechanism is the friction circle rather than the
-	# ceiling.
+	# [b]It measured the wrong way round for two sessions, and the cause was the
+	# fixture rather than the loop.[/b] Both runs used to be taken at quarter
+	# throttle over 150 ticks — one to two metres a second on a build whose cap is
+	# 24 — and at that speed the contacts' own lateral grip takes an imposed
+	# 1.0 rad/s off entirely inside the window. Two runs that have both already
+	# stopped yawing differ only by the cost of the aid's brake bias, so the aid
+	# came out marginally behind, and "the aid is the worse of the two" was
+	# recorded as a property of §7.6 rather than of a crawl.
 	#
-	# §7.6's yaw loop was tuned against a contact that could not brake, and what it
-	# needs is a re-derivation against one that can. That is a balance question and
-	# it is `HANDOFF.md` §3.1.3's; the bound below records the measurement so that
-	# whoever takes it can see which way it has to move.
-	var unmanaged := await _coasting_spin(0.0)
-	var managed := await _coasting_spin(1.0)
+	# §7.6's ladder settles it: the aid is ahead at every speed on it and the
+	# margin grows, because the lateral grip that trims a spin falls with speed
+	# and the yaw the contacts generate does not. What the crawl was really
+	# recording is that the loop has nothing to do down there — which is a reason
+	# to gate it, and [constant TractionControl.YAW_CONTROL_SPEED_FRACTION] is
+	# that gate. This fixture now measures above it, which is the only place the
+	# loop claims to act.
+	var entry := TractionControl.yaw_engagement_speed_mps(_motion.speed_cap_mps())
+	var unmanaged := await _coasting_spin(0.0, entry * YAW_ENTRY_SPEED_FACTOR)
+	var managed := await _coasting_spin(1.0, entry * YAW_ENTRY_SPEED_FACTOR)
 
 	check_true(
-		unmanaged < YAW_GRIP_TRIM_CEILING_RAD_S,
+		absf(unmanaged) > YAW_UNAIDED_FLOOR_RAD_S,
 		(
-			"the contacts take most of an imposed %.1f rad/s off in %d ticks with no aid "
-			+ "at all: %.3f rad/s left"
-		) % [IMPOSED_SPIN_RAD_S, YAW_TRIM_TICKS, unmanaged]
+			"above §7.6's engagement speed the contacts no longer trim an imposed %.1f "
+			+ "rad/s on their own: %.3f rad/s left after %d ticks"
+		) % [IMPOSED_SPIN_RAD_S, unmanaged, YAW_TRIM_TICKS]
 	)
 	check_true(
-		absf(managed) < IMPOSED_SPIN_RAD_S * YAW_TRIM_FRACTION,
+		absf(managed) < absf(unmanaged) * YAW_TRIM_FRACTION,
 		(
-			"and the aid does not run away with it: %.3f vs %.3f rad/s unmanaged — the "
-			+ "aid is currently the worse of the two and §7.6 owes a re-derivation"
+			"and the aid is a strict improvement where it engages: %.3f rad/s vs %.3f "
+			+ "unmanaged. A disconnected loop reads as the two being equal"
 		) % [managed, unmanaged]
 	)
 
@@ -974,20 +994,42 @@ func test_the_yaw_controller_trims_a_spin_the_driver_did_not_ask_for() -> void:
 ## Yaw rate, in rad/s, [constant YAW_TRIM_TICKS] after an identical spin is
 ## imposed on an Assembly coasting in a straight line at [param authority].
 ##
+## [param entry_speed_mps] is reached under the aid so that both runs start from
+## the same place and the corrective brake is the only difference between them.
+## The throttle is released before the spin arrives, so the drive torque is zero
+## through the measurement window and [method TractionControl.drive_scale] cannot
+## contribute to the comparison either.
+##
 ## Signed, because a controller strong enough to reverse the spin has still
 ## corrected it and the caller takes the magnitude.
-func _coasting_spin(authority: float) -> float:
+func _coasting_spin(authority: float, entry_speed_mps: float) -> float:
 	await _at_rest()
 	_motion.input.traction_control = 1.0
-	_motion.input.throttle = PART_THROTTLE
-	await physics_frames(DRIVE_TICKS)
+	_motion.input.throttle = 1.0
+	var reached := 0.0
+	for i: int in YAW_ENTRY_TICKS:
+		await physics_frames(1)
+		reached = _runtime.body.linear_velocity.dot(-_runtime.body.global_transform.basis.z)
+		if reached >= entry_speed_mps:
+			break
 	_motion.input.throttle = 0.0
 	_motion.input.traction_control = authority
+	check_true(
+		reached >= entry_speed_mps,
+		(
+			"the fixture got above §7.6's engagement speed before imposing the spin: "
+			+ "%.2f m/s against %.2f wanted"
+		) % [reached, entry_speed_mps]
+	)
 	# Yawing left. No steer is commanded, so the bicycle model asks for zero and
 	# the whole of this is error.
 	_runtime.body.angular_velocity = Vector3(0.0, IMPOSED_SPIN_RAD_S, 0.0)
 	await physics_frames(YAW_TRIM_TICKS)
 	var remaining := _runtime.body.angular_velocity.y
+	print(
+		"      yaw trim: entry %.2f m/s, authority %.1f, %.3f rad/s left after %d ticks"
+		% [reached, authority, remaining, YAW_TRIM_TICKS]
+	)
 	_motion.input.traction_control = 1.0
 	return remaining
 

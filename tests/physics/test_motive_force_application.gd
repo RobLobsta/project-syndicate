@@ -27,7 +27,9 @@ extends TestCase
 ## anywhere else. This fixture predates the split and was building on the ground
 ## chassis, which is the placement the split exists to stop.
 const CORE_KEY := &"core.rotary.lifter.t3"
-const POWER_KEY := &"pmv.combustion.standard.t2"
+## The rotary family's own mover, per doc 01 §7.3's mask. `core.rotary.lifter.t3`
+## refuses any other, which is the point of the rule.
+const POWER_KEY := &"pmv.turboshaft.rotary.t3"
 const ROTOR_KEY := &"mot.rotor.coaxial_mid.t3"
 
 const CORE_ORIGIN := Vector3i(24, 4, 24)

@@ -83,28 +83,18 @@ const CHASSIS_WHEELED: int = 1 << LocomotionMode.GROUND
 ## chassis as a wheeled one.
 const CHASSIS_TRACKED: int = 1 << LocomotionMode.TRACKED
 
-## [b]The transitional mask, and it is named so that it cannot be mistaken for a
-## design.[/b] `core.command.compact.t2` still declares both ground families
-## because migrating the shipped tracked recipe onto `core.tracked.hauler.t3`
-## makes the family measurably [i]worse[/i] rather than better, and shipping that
-## is not a trade worth making.
-##
-## The static stance improves and the dynamics do not: a nine-cell hull takes the
-## rest pitch from 4.7° to 1.6° and the front-to-rear load spread from 3.2× to
-## 1.45×, and the build still inverts in a sustained turn, still yaws 0.03 rad/s at
-## full lock, and now cannot brake without going over — because a nine-cell hull
-## cannot carry a six-cell Prime Mover and a nine-cell Effector Module without one
-## of them overhanging a **1.43 m** contact base.
-##
-## What the family needs is a contact base longer than its hull, and the shipped
-## part set cannot express one: `mot.tracked.short_bogie.t2` runs eight cells and
-## two per flank do not fit on any chassis in the registry. `HANDOFF.md` §3.1.2
-## carries it. This constant goes when that does.
-const CHASSIS_GROUND_TRANSITIONAL: int = CHASSIS_WHEELED | CHASSIS_TRACKED
 ## A body slung between limbs.
 const CHASSIS_AMBULATORY: int = 1 << LocomotionMode.AMBULATORY
 ## A body slung under discs.
 const CHASSIS_ROTARY: int = 1 << LocomotionMode.ROTARY
+
+## Every family at once. The default for
+## [member PrimeMoverProfile.locomotion_mask], so a Prime Mover that declares
+## nothing drives everything and no existing `.tres` is narrowed by the field
+## being added. A Core Module deliberately has no such default: a hull that
+## carries every family is a hull nobody designed, whereas a shaft that turns is
+## a shaft that turns until somebody says otherwise.
+const CHASSIS_ANY: int = (1 << LOCOMOTION_MODE_COUNT) - 1
 
 enum EffectorKind {
 	BALLISTIC_DIRECT = 0,

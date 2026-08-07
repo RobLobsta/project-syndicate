@@ -13,7 +13,15 @@ const WHEEL: StringName = &"mot.wheeled.allroad.t2"
 const TRACK: StringName = &"mot.tracked.short_bogie.t2"
 const ROTOR: StringName = &"mot.rotor.coaxial_mid.t3"
 const LIMB: StringName = &"mot.limb.strider.t4"
-const PLANT: StringName = &"pmv.combustion.standard.t2"
+## The rotary family's own mover, per doc 01 §7.3's mask — this file builds on
+## [constant ROTARY_CORE] as well as the road hull, and a mover has to drive
+## every family the hull it is bolted to declares.
+const PLANT: StringName = &"pmv.turboshaft.rotary.t3"
+## The walking family's mover, and the one a held edge actually competes with for
+## power: doc 01 §7.1 requires an Appendage on an ambulatory chassis, so the plant
+## a lit blade is drawing against is a mech's rather than a rotorcraft's. The two
+## were the same row until doc 01 §7.3's mask split the families.
+const EDGE_PLANT: StringName = &"pmv.combustion.strider.t3"
 ## Doc 01 §7.1: a disc goes on a rotary chassis and the validator refuses it
 ## anywhere else, so the minimal flying Assembly is rooted on this and not on
 ## [constant CORE]. It mattered the moment §10.3 took the disc's radius from
@@ -308,12 +316,19 @@ func test_the_shipped_edge_costs_power_to_hold_lit() -> void:
 	# so an Assembly that both cuts and drives needs a second one. That is the
 	# trade, and it only reads as a trade because the number is just under rather
 	# than comfortably under.
-	var supply := _def(PLANT).power_supply_pu
+	#
+	# Taken against [constant EDGE_PLANT] and not [constant PLANT], and the
+	# distinction is the whole of what doc 01 §7.3's mask bought. They were one row
+	# until the families were split; a rotorcraft's turboshaft supplies 320 PU,
+	# against which a lit edge is comfortable rather than marginal — and it is also
+	# a plant no build carrying an arm can mount, because an Appendage needs an
+	# ambulatory chassis and a turboshaft only drives a rotary one.
+	var supply := _def(EDGE_PLANT).power_supply_pu
 	var lit := def.power_draw_pu + melee.energised_draw_pu
-	check_true(lit < supply, "one standard Prime Mover can just cover a lit edge")
+	check_true(lit < supply, "the walking family's Prime Mover can just cover a lit edge")
 	check_true(
 		lit > supply * 0.8,
-		"but only just: %.0f PU of a %.0f PU plant leaves nothing for a disc" % [lit, supply]
+		"but only just: %.0f PU of a %.0f PU plant leaves nothing else" % [lit, supply]
 	)
 
 

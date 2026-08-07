@@ -220,11 +220,68 @@ func test_the_reach_is_clamped_to_the_leg_length() -> void:
 	check_approx(hip.distance_to(target), LEG, "the foot lands exactly at full extension", 1e-4)
 
 
-func test_a_frozen_gait_plants_under_the_hip() -> void:
+## §13.5's standing plant, and this test used to assert the defect that made every
+## walking Assembly in the project slide.
+##
+## It asserted `hip_ground` outright, which is what the law returned at zero
+## cadence, and which is a foot planted directly under a hip that is already
+## travelling. That foot arrests nothing: it resets the lever the stance force
+## acts along and the machine keeps going, so §13.4's re-plant triggers made a
+## ratchet rather than a step and the shipped biped slid backwards at 2.74 m/s
+## while standing perfectly upright.
+##
+## What survives a standing Assembly is §13.11's capture point and nothing else,
+## because it is the only one of the three terms that is a claim about a pendulum
+## rather than about a stride. So the plant is under the hip when the machine is
+## still, and ahead of it by the momentum it has to spend when it is not.
+func test_a_frozen_gait_plants_the_capture_point_rather_than_the_hip() -> void:
 	var hip := Vector3(2.0, 1.5, -3.0)
-	var target := GaitSolver.foot_target(_limb, hip, 0.0, Vector3(1, 0, 0), Vector3.ZERO, 0.0, 0.0)
-	check_approx(target.x, 2.0, "a standing Assembly plants directly beneath its hip")
-	check_approx(target.z, -3.0, "on both axes")
+	var still := GaitSolver.foot_target(_limb, hip, 0.0, Vector3.ZERO, Vector3.ZERO, 0.0, 0.0)
+	check_approx(still.x, 2.0, "a standing Assembly that is not moving plants under its hip")
+	check_approx(still.z, -3.0, "on both axes")
+
+	# One metre a second along +X, no pendulum height given, so `capture_time_s`
+	# falls to its authored floor and the offset is exactly `v · GAIN`.
+	var drifting := GaitSolver.foot_target(
+		_limb, hip, 0.0, Vector3(1, 0, 0), Vector3.ZERO, 0.0, 0.0
+	)
+	check_approx(
+		drifting.x,
+		2.0 + GAIN,
+		"and one that is drifting plants ahead of the hip, into the drift, to stop it"
+	)
+	check_approx(drifting.z, -3.0, "with nothing added across it")
+
+	# The direction is the half a sign flip passes: a foot planted *behind* a
+	# drifting machine accelerates the drift it was supposed to catch.
+	check_true(
+		drifting.x > still.x,
+		"the plant leads the velocity rather than trailing it: %.3f against %.3f"
+		% [drifting.x, still.x]
+	)
+
+
+## The neutral point and the turn rotation are both properties of a stride, so a
+## standing Assembly has neither — it has no stance period to take them against.
+## Asserted against a walking plant at the same velocity, because the difference
+## between the two is the whole of what the standing branch drops.
+func test_a_frozen_gait_drops_the_neutral_point_and_the_turn() -> void:
+	var hip := Vector3(0.0, 1.5, 0.0)
+	var v := Vector3(0.5, 0.0, 0.0)
+	var standing := GaitSolver.foot_target(_limb, hip, 0.0, v, Vector3.ZERO, 0.0, 1.0)
+	var walking := GaitSolver.foot_target(_limb, hip, 0.0, v, Vector3.ZERO, 1.0, 0.0)
+	check_approx(
+		standing.x,
+		v.x * GAIN,
+		"a standing plant is the capture point alone — no v · T_stance / 2"
+	)
+	check_true(
+		walking.x > standing.x,
+		"where a walking one at the same speed reaches further, by the neutral point"
+	)
+	check_approx(
+		standing.z, 0.0, "and a turn demand rotates a stride the standing machine is not taking"
+	)
 
 
 ## Yaw is placement. There is no yaw torque term in the ambulatory family, so a

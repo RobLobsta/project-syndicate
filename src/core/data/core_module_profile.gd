@@ -11,11 +11,19 @@ extends Resource
 ## [constant PartEnums.CHASSIS_WHEELED] and its three siblings.
 ##
 ## [PlacementValidator] refuses a Motive Assembly whose family this mask does not
-## admit, which is what makes a chassis a chassis rather than a box every
-## locomotion family is bolted to in turn. Defaulted to the ground families so
-## that an unauthored profile behaves as every Core Module did before the field
-## existed.
-@export var locomotion_mask: int = PartEnums.CHASSIS_GROUND_TRANSITIONAL
+## admit — and, since §7.3 gained its own mask, a Prime Mover that does not drive
+## every family the hull declares.
+##
+## [b]The default was `CHASSIS_GROUND_TRANSITIONAL`, which is retired.[/b] That
+## mask carried `GROUND` and `TRACKED` together so `core.command.compact.t2` — the
+## road car — also accepted a bogie, on a reading the tracked family disproved and
+## on the grounds that the shipped tracked recipe had nowhere else to live.
+## Session 44 moved that recipe onto `core.tracked.hauler.t3` and the mask has
+## been vestigial ever since. What forced the issue is §7.3's rule: a hull
+## declaring two families needs a mover driving both, so the road car declaring a
+## family it does not use would have refused every wheeled Prime Mover in the
+## registry.
+@export var locomotion_mask: int = PartEnums.CHASSIS_WHEELED
 
 @export var power_capacity_pu: float = 240.0
 @export var mount_budget: int = 28

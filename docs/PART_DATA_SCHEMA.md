@@ -750,6 +750,7 @@ A Prime Mover converts stored energy into shaft torque, and it is the only class
 class_name PrimeMoverProfile
 extends Resource
 
+@export var locomotion_mask: int = PartEnums.CHASSIS_ANY
 @export var drive_torque_nm: float = 3200.0
 @export var torque_curve: Curve = null          # normalised RPM -> torque scalar
 @export var peak_angular_rpm: float = 5200.0
@@ -761,6 +762,24 @@ extends Resource
 ```
 
 The class was `PRIME_MOVER` and carried both this role and the supply role §7.7 now owns. See §10.4 for why they split, and CLAUDE.md §8 for why the replacement is not called an engine.
+
+**`locomotion_mask` is the family a mover drives, and it exists so that four sets of physics tuning can be kept apart.** `PlacementValidator` refuses a Prime Mover on a chassis whose declared families it does not cover — the same shape as §7.1's Appendage rule and for a different reason. That one is a design decision about body plans; this one is arithmetic. Two movers used to carry four families between them:
+
+| | before | now |
+|---|---|---|
+| road car | `pmv.combustion.flat.t2` | unchanged, `CHASSIS_WHEELED` |
+| utility truck | `pmv.combustion.standard.t2` | unchanged, `CHASSIS_WHEELED` |
+| tracked hauler | `pmv.combustion.standard.t2` | **`pmv.turbine.tracked.t3`**, 13 000 N·m |
+| quadruped, biped | `pmv.combustion.standard.t2` | **`pmv.combustion.strider.t3`** |
+| rotorcraft | `pmv.combustion.standard.t2` | **`pmv.turboshaft.rotary.t3`**, 320 PU |
+
+So a 3.5 t road car and a 10.5 t tracked hauler ran the same 6400 N·m, and every torque figure in the game was a compromise across machines that share nothing. The visible cost was not the compromise but the **paralysis**: `HANDOFF.md` §3.1.1 held a measured, correct raise for the tracked family for four sessions because applying it moved every other family's engagement, recoil and stopping figure at the same time. The mask is what makes such a change attributable.
+
+The check is against the **chassis** rather than against the Motive Assemblies already placed, because build order is a player's choice: a rule reading the running gear would accept or refuse the same part depending on whether the mover went on before or after it. §7.1 already makes the chassis the one place a build declares what it is.
+
+A mask rather than a single family because the wheeled pair is real — a road car's flat slab and a truck's upright block are two sections of one family's mover. The default is `CHASSIS_ANY`, so a profile that has not been authored for this drives everything and no existing `.tres` is narrowed by the field appearing.
+
+**`CHASSIS_GROUND_TRANSITIONAL` is retired in the same change.** That mask let `core.command.compact.t2` accept a bogie, and it had been vestigial since session 44 moved the tracked recipe onto its own hull. What forced it out is this rule: a hull declaring a family it does not use would refuse every mover that does not drive that family.
 
 ### 7.4 `EffectorModuleProfile`
 
